@@ -42,7 +42,7 @@ public enum ArtCatalog {
             MonitorArt.body(), MonitorArt.stand(),
             MonitorArt.powerButton(pressed: false), MonitorArt.powerButton(pressed: true),
             MonitorArt.inputButton(pressed: false), MonitorArt.inputButton(pressed: true),
-            SpriteAsset("screen.deskOS", wall, anchor: .zero),
+            SpriteAsset("screen.deskOS", frames: SkyVariant.allCases.map { MonitorArt.deskOSWallpaper(sky: $0) }, anchor: .zero),
             SpriteAsset("screen.off", MonitorArt.screenOff(), anchor: .zero),
             SpriteAsset("screen.powerOff", frames: MonitorArt.powerOffFrames(from: wall), anchor: .zero),
             SpriteAsset("screen.powerOn", frames: MonitorArt.powerOnFrames(to: wall), anchor: .zero),
@@ -225,7 +225,7 @@ public enum RoomPlan {
         add("monitor.body", .deskBack, MonitorArt.body(), core: CoreLayout.monitorBody.origin)
         add("monitor.screen", .deskBack,
             lights.monitorOn
-                ? SpriteAsset("screen.deskOS", MonitorArt.deskOSWallpaper(), anchor: .zero)
+                ? SpriteAsset("screen.deskOS.\(state.sky.rawValue)", MonitorArt.deskOSWallpaper(sky: state.sky), anchor: .zero)
                 : SpriteAsset("screen.off", MonitorArt.screenOff(), anchor: .zero),
             core: CoreLayout.screen.origin)
         add("monitor.led", .deskBack, MonitorArt.led(lights.monitorOn ? .on : .off), core: CoreLayout.led.origin)

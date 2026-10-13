@@ -138,13 +138,15 @@ public enum LayoutSolver {
             out.append(WallDecor(.crown, ArtRect(0, 0, canvas.w, 6)))
         }
         let ceiling = c.y > 150 ? max(top + 8, c.y - 150) : top
+        // The lights drape a little above the furniture, not along a far-off ceiling.
+        let lightsTop = max(ceiling, c.y - 38)
 
         // String lights: hooks near the top of the band, lowest bulb above the window and monitor (core y 12).
         var lightsBottom = ceiling
-        let band = c.y + 9 - ceiling
+        let band = c.y + 9 - lightsTop
         if band >= 14 {
             let sag = min(8, band - 10)
-            let r = ArtRect(4, ceiling + 2, canvas.w - 8, sag + 6)
+            let r = ArtRect(4, lightsTop + 2, canvas.w - 8, sag + 6)
             out.append(WallDecor(.stringLights, r))
             lightsBottom = r.maxY
         }
@@ -152,8 +154,8 @@ public enum LayoutSolver {
         // Painting on a tall wall, centred over the monitor.
         if wallAbove >= 110 {
             let w = 112, h = 64
-            let r = ArtRect(c.x + 264 - w / 2, max(lightsBottom + 10, c.y - 24 - h), w, h)
-            if clear(r) { out.append(WallDecor(.painting, r)) }
+            let r = ArtRect(c.x + 264 - w / 2, lightsTop - 10 - h, w, h)
+            if r.minY >= ceiling, clear(r) { out.append(WallDecor(.painting, r)) }
         }
 
         // Right wall: the shelf hangs over the phone and hub; it widens into a wide right margin.

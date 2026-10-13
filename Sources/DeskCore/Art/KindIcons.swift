@@ -93,12 +93,13 @@ public enum KindIcons {
                 c.hline(x: band.x + 2, y: band.y + 3, length: 3, .neutral9)
             }
         case .code:
-            let g: [String] = big
-                ? [".#.....#.", "#...#...#", "#..#....#", ".#.#...#.", "...#....."]
-                : [".#...#.", "#..#..#", ".#.#.#."]
-            stamp(&c, g, at: ArtPoint(p.x + (p.w - g[0].count) / 2, big ? 6 : 4), .green2)
-            c.hline(x: lx, y: big ? 3 : 2, length: lw - 3, .green3)
-            if big { c.hline(x: lx, y: 13, length: lw - 2, .neutral6) }
+            // Syntax-coloured lines with indentation.
+            let lines: [(Int, Int, Ink)] = big
+                ? [(0, 4, .purple3), (2, 5, .blue3), (2, 3, .green2), (4, 4, .red3), (2, 6, .blue3), (0, 2, .purple3)]
+                : [(0, 3, .purple3), (2, 3, .blue3), (2, 4, .green2), (0, 2, .purple3)]
+            for (i, line) in lines.enumerated() {
+                c.hline(x: lx + line.0, y: 3 + i * 2, length: min(line.1, lw - line.0), line.2)
+            }
         case .audio:
             let g: [String] = big
                 ? ["....##", "...###", "...#.#", "...#..", ".###..", "####..", ".##..."]

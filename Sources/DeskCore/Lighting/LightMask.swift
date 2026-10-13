@@ -98,6 +98,16 @@ public struct LightMask: Hashable, Sendable {
         }
     }
 
+    /// Lights every opaque pixel of `sprite` placed at `origin` (only rows in `rows`, sprite-local, if given).
+    public mutating func addSprite(_ sprite: PixelBuffer, at origin: ArtPoint, rows: Range<Int>? = nil, level: Int, tint: Tint) {
+        let r = rows ?? 0..<sprite.height
+        for y in r where y >= 0 && y < sprite.height {
+            for x in 0..<sprite.width where sprite.pixel(x, y).a != 0 {
+                light(origin.x + x, origin.y + y, level: level, tint: tint)
+            }
+        }
+    }
+
     /// The mask as a palette image for goldens and review: levels as neutral steps (cool) or the walnut ramp
     /// (warm); 0 is transparent.
     public func debugImage() -> PixelBuffer {
@@ -152,23 +162,27 @@ extension LightMask {
         }
         m.addRect(layout.rect(WindowArt.skyRect(in: CoreLayout.window)), level: 7, tint: .cool)
         if lights.monitorOn {
-            m.addEllipse(layout.rect(CoreLayout.monitorBody).insetBy(-28, -18), level: 2, tint: .cool, edge: 10)
+            m.addEllipse(layout.rect(CoreLayout.monitorBody).insetBy(-14, -10), level: 2, tint: .cool, edge: 12)
             m.addTrapezoid(top: shift(CoreLayout.monitorGlowTop), bottom: shift(CoreLayout.monitorGlowBottom),
-                           level: 4, tint: .cool, edge: 6, fadeTop: true)
+                           level: 3, tint: .cool, edge: 8, fadeTop: true)
             m.addRect(layout.rect(CoreLayout.screen), level: 7, tint: .cool)
         }
         if lights.lampOn {
             // A pool on the desk under the shade, spilling up the wall behind it, and a halo round the bulb.
             m.addTrapezoid(top: shift(CoreLayout.lampConeTop), bottom: shift(CoreLayout.lampConeBottom),
-                           level: 7, tint: .warm, fadeTop: true)
-            m.addEllipse(layout.rect(PropArt.lampBulbRect).insetBy(-9, -7), level: 6, tint: .warm)
+                           level: 7, tint: .warm)
+            // What stands in the pool catches the light too: the lamp's own base, the riser's left end.
+            let lamp = layout.rect(PropArt.lampRect)
+            let baseRows = (CoreLayout.lampSwitch.y - PropArt.lampRect.y)..<PropArt.lampRect.h
+            m.addSprite(PropArt.lamp(on: true).image, at: lamp.origin, rows: baseRows, level: 7, tint: .warm)
+            m.addTrapezoid(top: (o.x + CoreLayout.riser.x, o.x + 222, o.y + CoreLayout.riser.y),
+                           bottom: (o.x + CoreLayout.riser.x, o.x + 224, o.y + 168), level: 6, tint: .warm, edge: 6)
+            m.addEllipse(layout.rect(PropArt.lampBulbRect).insetBy(-7, -6), level: 6, tint: .warm)
             m.addRect(layout.rect(PropArt.lampBulbRect), level: 7, tint: .warm)
         }
         m.addRect(layout.rect(CoreLayout.led), level: 7, tint: .cool)
         if lights.phoneFaceUp {
-            let p = CoreLayout.phone
-            m.addTrapezoid(top: (p.x + o.x - 2, p.maxX + o.x + 2, p.y + o.y + 4),
-                           bottom: (p.x + o.x - 8, p.maxX + o.x + 8, p.maxY + o.y + 6), level: 4, tint: .cool)
+            m.addEllipse(layout.rect(CoreLayout.phone).insetBy(-7, -3), level: 4, tint: .cool, edge: 6)
             m.addRect(layout.rect(PropArt.phoneScreenRect), level: 7, tint: .cool)
         }
         if time.isDark {

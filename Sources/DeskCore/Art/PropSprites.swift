@@ -125,7 +125,7 @@ public enum PropArt {
         var leaves = PixelCanvas(width: r.w, height: r.h)
         // (base x, tip x, tip y, half width)
         let blades: [(Int, Int, Int, Int)] = [
-            (8, 3, 6, 2), (16, 21, 4, 2), (11, 10, 0, 3), (14, 15, 3, 2), (6, 5, 12, 2), (18, 20, 11, 2),
+            (7, 2, 7, 2), (17, 22, 6, 2), (10, 8, 0, 2), (14, 16, 2, 2), (12, 12, 9, 2),
         ]
         let baseY = 23
         for (i, (bx, tx, ty, hw)) in blades.enumerated() {
@@ -142,10 +142,10 @@ public enum PropArt {
             for y in ty..<baseY {
                 let xs = (0..<r.w).filter { blade.ink(at: $0, y) == body }
                 guard let minX = xs.first, let maxX = xs.last else { continue }
-                blade.plot(minX, y, .green4)
-                if maxX > minX { blade.plot(maxX, y, .green1) }
-                if (y + i) % 4 == 0, maxX - minX >= 2 { blade.hline(x: minX + 1, y: y, length: maxX - minX - 1, .green1) }
-                if (y + i) % 4 == 2, maxX - minX >= 3 { blade.plot(minX + 1, y, .green5) }
+                blade.plot(minX, y, .green5)
+                if maxX > minX { blade.plot(maxX, y, .green4) }
+                if (y + i) % 5 == 0, maxX - minX >= 3 { blade.hline(x: minX + 1, y: y, length: maxX - minX - 1, .green1) }
+                if (y + i) % 5 == 2, maxX - minX >= 3 { blade.plot(minX + 1, y, .green3) }
             }
             leaves.blit(blade.buffer, at: .zero)
         }
@@ -242,7 +242,8 @@ public enum PropArt {
                 let p = SIMD2(Double(x) + 0.5, Double(y) + 0.5)
                 let d = p - bottomCentre
                 let s = simd_dot(d, perp), t = simd_dot(d, up)
-                let inWall = abs(s) <= R && t >= 0 && t <= H
+                let taper = R - 0.9 + 0.9 * min(max(t / H, 0), 1)
+                let inWall = abs(s) <= taper && t >= 0 && t <= H
                 let eb = (s / R) * (s / R) + (t / rm) * (t / rm)
                 let dt = p - topCentre
                 let ms = simd_dot(dt, perp), mt = simd_dot(dt, up)
@@ -251,18 +252,25 @@ public enum PropArt {
                     let inner = (ms / (R - 1.2)) * (ms / (R - 1.2)) + (mt / (rm - 0.7)) * (mt / (rm - 0.7))
                     body.plot(x, y, inner <= 1 ? (mt > 0 ? .blue0 : .blue1) : (ms < 0 ? .blue5 : .blue4))
                 } else if inWall || (eb <= 1 && t < 0) {
-                    let f = s / R
-                    let ink: Ink = f < -0.62 ? .blue4 : (f < -0.38 ? .blue5 : (f > 0.55 ? .blue2 : .blue3))
+                    let f = s / taper
+                    let ink: Ink = f < -0.66 ? .blue4 : (f < -0.42 ? .blue5 : (f > 0.5 ? .blue2 : .blue3))
                     body.plot(x, y, ink)
                 }
             }
         }
-        // Painted band and a dot motif.
+        // Two-tone dipped glaze: a pale band round the top with a darker lip under it.
         for y in 0..<size.h {
-            for x in 0..<size.w where body.ink(at: x, y) == .blue3 || body.ink(at: x, y) == .blue2 {
+            for x in 0..<size.w {
+                guard let ink = body.ink(at: x, y), [Ink.blue2, .blue3, .blue4, .blue5].contains(ink) else { continue }
                 let d = SIMD2(Double(x) + 0.5, Double(y) + 0.5) - bottomCentre
                 let t = simd_dot(d, up)
-                if t > 3.5 && t < 5 { body.plot(x, y, .neutral8) }
+                guard t > H - 5.5, t <= H else { continue }
+                let s = simd_dot(d, perp)
+                if t < H - 4.5 {
+                    body.plot(x, y, .blue1)
+                } else {
+                    body.plot(x, y, s < -2 ? .neutral9 : (s > 3 ? .neutral7 : .neutral8))
+                }
             }
         }
         c.blit(ArtKit.outline(body.buffer, .blue1).cropped(to: ArtRect(1, 1, size.w, size.h)), at: .zero)
@@ -332,7 +340,10 @@ public enum PropArt {
             if showsScreen {
                 c.roundedRectFill(inner, radius: 1, .neutral2)
                 let s = ArtRect(inner.x, inner.y + 1, inner.w, inner.h - 3)
-                c.gradientV(s, inks: [.purple2, .purple3, .blue3, .blue4])
+                c.fill(s, .blue3)
+                c.hline(x: s.x, y: s.maxY - 4, length: s.w, .blue2)
+                c.fill(ArtRect(s.x, s.maxY - 3, s.w, 3), .blue2)
+                c.plot(s.maxX - 3, s.y + 3, .purple4)
                 c.hline(x: s.x, y: s.y, length: s.w, .neutral3)
                 if face == .up {
                     for (i, m) in minis.prefix(6).enumerated() {

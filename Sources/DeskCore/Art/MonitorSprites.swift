@@ -125,29 +125,68 @@ public enum MonitorArt {
 
     public static var screenSize: ArtSize { CoreLayout.screen.size }
 
-    /// The built-in "DeskOS" wallpaper: a calm dithered sky over soft hills.
-    public static func deskOSWallpaper(size: ArtSize = CoreLayout.screen.size) -> PixelBuffer {
+    /// The built-in "DeskOS" wallpaper: a calm dithered sky over soft hills that follows the time of day
+    /// (like a dynamic desktop picture).
+    public static func deskOSWallpaper(sky: SkyVariant = .day, size: ArtSize = CoreLayout.screen.size) -> PixelBuffer {
         var c = PixelCanvas(width: size.w, height: size.h, artOrigin: CoreLayout.screen.origin)
-        c.gradientV(c.bounds, inks: [.blue2, .blue3, .blue3, .blue4, .blue4, .blue5])
-        // Soft cloud banks.
-        func cloud(_ x: Int, _ y: Int, _ w: Int) {
-            c.ellipseFill(ArtRect(x, y, w, w / 4 + 3), .blue5)
-            c.ellipseFill(ArtRect(x + w / 6, y - w / 8, w / 2, w / 4 + 1), .neutral9)
-            c.ellipseFill(ArtRect(x + w / 2, y - w / 12, w / 3, w / 5 + 1), .neutral9)
-            c.hline(x: x + 4, y: y + w / 4 + 2, length: w - 8, .blue4)
+        let skyInks: [Ink], cloud: (Ink, Ink, Ink), hills: (Ink, Ink, Ink, Ink)
+        switch sky {
+        case .day:
+            skyInks = [.blue2, .blue3, .blue3, .blue4, .blue4, .blue5]
+            cloud = (.neutral9, .blue5, .blue4)
+            hills = (.green3, .green2, .green4, .green3)
+        case .dusk:
+            skyInks = [.blue1, .purple1, .purple2, .purple3, .red4, .walnut4]
+            cloud = (.red5, .purple4, .purple3)
+            hills = (.purple1, .purple0, .purple2, .purple1)
+        case .dawn:
+            skyInks = [.blue3, .blue4, .blue5, .purple5, .oak5]
+            cloud = (.neutral9, .purple5, .purple4)
+            hills = (.blue2, .blue1, .blue3, .blue2)
+        case .night:
+            skyInks = [.blue0, .blue0, .purple0, .blue1, .blue1, .blue2]
+            cloud = (.blue3, .blue2, .blue1)
+            hills = (.blue1, .purple0, .blue2, .blue1)
         }
-        cloud(18, 26, 40)
-        cloud(118, 16, 34)
-        cloud(150, 44, 26)
+        c.gradientV(c.bounds, inks: skyInks)
+        if sky == .night {
+            for i in 0..<34 {
+                let x = ArtKit.noise(i, 1, seed: 91, size.w), y = ArtKit.noise(i, 2, seed: 91, size.h / 2)
+                c.plot(x, y, i % 3 == 0 ? .blue5 : .neutral8)
+            }
+            c.ellipseFill(ArtRect(size.w - 46, 12, 14, 14), .walnut5)
+            c.ellipseFill(ArtRect(size.w - 45, 13, 8, 8), .neutral9)
+            c.ellipseFill(ArtRect(size.w - 41, 10, 13, 13), .blue0)
+        } else if sky != .day {
+            c.ellipseFill(ArtRect(size.w / 2 - 9, size.h - 36, 18, 18), .walnut5)
+            c.ellipseFill(ArtRect(size.w / 2 - 6, size.h - 33, 12, 12), .neutral9)
+        }
+        // Soft cloud banks.
+        func bank(_ x: Int, _ y: Int, _ w: Int) {
+            c.ellipseFill(ArtRect(x, y, w, w / 4 + 3), cloud.1)
+            c.ellipseFill(ArtRect(x + w / 6, y - w / 8, w / 2, w / 4 + 1), cloud.0)
+            c.ellipseFill(ArtRect(x + w / 2, y - w / 12, w / 3, w / 5 + 1), cloud.0)
+            c.hline(x: x + 4, y: y + w / 4 + 2, length: w - 8, cloud.2)
+        }
+        bank(18, 26, 40)
+        bank(118, 16, 34)
+        bank(150, 44, 26)
         // Hills: a far ridge and a near slope.
         let h = size.h
         for x in 0..<size.w {
             let far = h - 22 - Int(6 * RoomArt.sine(Double(x) / 23) + 4 * RoomArt.sine(Double(x) / 9 + 1))
-            c.vline(x: x, y: far, length: h - far, .green3)
+            c.vline(x: x, y: far, length: h - far, hills.0)
             let near = h - 12 - Int(5 * RoomArt.sine(Double(x) / 31 + 2))
-            c.vline(x: x, y: near, length: h - near, .green2)
-            if (x + far) % 11 == 0 { c.plot(x, far, .green4) }
-            c.plot(x, near, .green3)
+            c.vline(x: x, y: near, length: h - near, hills.1)
+            if (x + far) % 11 == 0 { c.plot(x, far, hills.2) }
+            c.plot(x, near, hills.3)
+        }
+        if sky == .night {
+            // A few lit cottage windows on the far ridge.
+            for (i, x) in [36, 41, 140].enumerated() {
+                let far = h - 22 - Int(6 * RoomArt.sine(Double(x) / 23) + 4 * RoomArt.sine(Double(x) / 9 + 1))
+                c.fill(ArtRect(x, far + 3, 2, 2), i == 1 ? .walnut4 : .walnut5)
+            }
         }
         return c.buffer
     }

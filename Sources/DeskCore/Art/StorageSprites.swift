@@ -86,7 +86,7 @@ public enum StorageArt {
         guard r.h > 0 else { return }
         let (floor, wallLit, wallDark, back): (Ink, Ink, Ink, Ink) = wood
             ? (.walnut1, .walnut3, .walnut0, .walnut0)
-            : (.neutral3, .neutral6, .neutral2, .neutral1)
+            : (.neutral5, .neutral8, .neutral4, .neutral3)
         c.fill(r, floor)
         c.hline(x: r.x, y: r.y, length: r.w, back)
         if let contents {
@@ -96,7 +96,7 @@ public enum StorageArt {
         c.fill(ArtRect(r.x, r.y, 2, r.h), wallLit)
         c.vline(x: r.x + 1, y: r.y, length: r.h, wood ? .walnut2 : .neutral5)
         c.fill(ArtRect(r.maxX - 2, r.y, 2, r.h), wallDark)
-        if r.h >= 2 { c.hline(x: r.x + 2, y: r.y + 1, length: r.w - 4, wood ? .walnut0 : .neutral2) }
+        if r.h >= 2 { c.hline(x: r.x + 2, y: r.y + 1, length: r.w - 4, wood ? .walnut0 : .neutral4) }
     }
 
     /// Sheets of paper sticking up over a jammed drawer's front.
@@ -148,10 +148,10 @@ public enum StorageArt {
             let open = min(max(i < p.count ? p[i] : 0, 0), CoreLayout.cabinetTravels[i])
             drawCabinetDrawer(&c, front: front, open: open, index: i, jammed: i < jammed.count && jammed[i])
         }
-        // The desk's shadow on the top of the cabinet.
-        for y in 0..<(top + 5) {
-            for x in 0..<r.w where Dither.pick(x: x, y: y, fraction: 1 - Double(y) / Double(top + 5)) {
-                if let ink = c.ink(at: x, y), !ink.isClear { c.plot(x, y, ink.darker()) }
+        // The desk's shadow on the top of the cabinet: the top face and the first rows sit in shade.
+        for y in 0..<(top + 2) {
+            for x in 0..<r.w {
+                if let ink = c.ink(at: x, y), !ink.isClear { c.plot(x, y, ink.darker(y < top ? 2 : 1)) }
             }
         }
         var hits: [String: ArtRect] = [:]

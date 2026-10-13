@@ -98,8 +98,8 @@ public enum CoreLayout {
         return ArtRect(cabinet.x, y, cabinet.w, cabinetFrontHeights[i])
     }
 
-    /// Lamp light (core px): a pool on the desk under the shade, spilling a little up the wall behind it.
-    public static let lampConeTop = (x0: 132, x1: 220, y: 160)
+    /// Lamp light (core px): a pool on the desk top under the shade, from the back edge to the apron.
+    public static let lampConeTop = (x0: 128, x1: 224, y: 168)
     public static let lampConeBottom = (x0: 108, x1: 286, y: 236)
 
     /// Monitor glow on the keyboard and mat (core px): screen-wide under the chin, wider on the desk.

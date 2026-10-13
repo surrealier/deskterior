@@ -55,17 +55,23 @@ public enum RoomArt {
         let shadeBottom = layout.y(292)
         let apronBottom = layout.y(CoreLayout.apron.maxY)
         shade(&c, ArtRect(desk.x, apronBottom, desk.w, shadeBottom - apronBottom), steps: 1)
-        shade(&c, ArtRect(desk.x, apronBottom, desk.w, base + 12 - apronBottom), steps: 1)
-        for y in shadeBottom..<(shadeBottom + 8) where y < h {
-            for x in desk.minX..<desk.maxX where Dither.pick(x: x, y: y, fraction: 1 - Double(y - shadeBottom + 1) / 9, cell: 1) {
-                if let ink = c.ink(at: x, y), !ink.isClear { c.plot(x, y, ink.darker()) }
-            }
-        }
+        let deep = base + 12
+        shade(&c, ArtRect(desk.x, apronBottom, desk.w, deep - apronBottom), steps: 1)
+        softEdge(&c, y: deep, x: desk.minX..<desk.maxX)
+        softEdge(&c, y: shadeBottom, x: desk.minX..<desk.maxX)
 
         drawDeskTop(&c, desk)
         drawWallShadows(&c, layout)
         drawDeskShadows(&c, layout)
         return c.buffer
+    }
+
+    /// One half-dithered row under a shadow's edge, so it reads soft without a visible pattern band.
+    static func softEdge(_ c: inout PixelCanvas, y: Int, x range: Range<Int>) {
+        guard y >= 0, y < c.height else { return }
+        for x in range where (x + y) % 2 == 0 {
+            if let ink = c.ink(at: x, y), !ink.isClear { c.plot(x, y, ink.darker()) }
+        }
     }
 
     /// Darkens every pixel of `r` by `steps` ramp steps.
@@ -93,7 +99,7 @@ public enum RoomArt {
             var seg = 0
             while x < w {
                 let len = 58 + ArtKit.noise(row, seg, seed: seed, 40)
-                if ArtKit.noise(seg, row, seed: 99, 4) != 0 {
+                if ArtKit.noise(seg, row, seed: 99, 3) == 0 {
                     c.hline(x: x + 1, y: y, length: len - 2, floorLight)
                 }
                 if ArtKit.noise(seg, row, seed: 7, 3) == 0 {
@@ -149,8 +155,16 @@ public enum RoomArt {
             let y = d.y + 3 + ArtKit.noise(i, 1, seed: 11, d.h - 6)
             let x = d.x + ArtKit.noise(i, 2, seed: 11, d.w - 40)
             let len = min(16 + ArtKit.noise(i, 3, seed: 11, 52), d.maxX - 2 - x)
-            c.hline(x: x, y: y, length: len, Role.deskEdge)
-            if ArtKit.noise(i, 4, seed: 11, 3) == 0 { c.hline(x: x + len / 3, y: y + 1, length: len / 3, Role.deskEdge) }
+            // Broken streaks read as grain rather than scratches.
+            var gx = x
+            var k = 0
+            while gx < x + len {
+                let seg = 6 + ArtKit.noise(i, k, seed: 17, 14)
+                c.hline(x: gx, y: y, length: min(seg, x + len - gx), Role.deskEdge)
+                gx += seg + 3 + ArtKit.noise(k, i, seed: 19, 4)
+                k += 1
+            }
+            if ArtKit.noise(i, 4, seed: 11, 3) == 0 { c.hline(x: x + len / 3, y: y + 1, length: len / 4, Role.deskEdge) }
         }
         for i in 0..<8 {
             let y = d.y + 4 + ArtKit.noise(i, 5, seed: 13, d.h - 10)
@@ -589,11 +603,11 @@ public enum WindowArt {
         var x = -4
         var i = 0
         while x < size.w {
-            let r = 6 + ArtKit.noise(i, 1, seed: 21, 5)
-            let top = size.h - 6 - r - ArtKit.noise(i, 2, seed: 21, 4)
+            let r = 4 + ArtKit.noise(i, 1, seed: 21, 4)
+            let top = size.h - 4 - r - ArtKit.noise(i, 2, seed: 21, 3)
             c.ellipseFill(ArtRect(x, top, r * 2, r * 2 + 6), treeInks.0)
-            c.ellipseFill(ArtRect(x + 2, top + 1, r, r), treeInks.1)
-            x += r + 4
+            c.ellipseFill(ArtRect(x + 2, top + 1, r, r - 1), treeInks.1)
+            x += r + 3
             i += 1
         }
         c.fill(ArtRect(0, size.h - 4, size.w, 4), treeInks.0)
@@ -685,36 +699,43 @@ public enum DecorArt {
             c.plot(pic.x + 3, pic.y + 1, .oak3)
             x += 12
         }
-        // Pothos in a little pot at the right end, vines trailing down past the board.
-        let px = w - 13
-        c.fill(ArtRect(px, boardY - 7, 9, 7), .neutral8)
-        c.hline(x: px, y: boardY - 7, length: 9, .neutral9)
-        c.vline(x: px + 8, y: boardY - 6, length: 6, .neutral6)
-        c.vline(x: px, y: boardY - 6, length: 6, .neutral9)
-        c.hline(x: px + 1, y: boardY - 3, length: 7, .walnut4)
-        let leafSpots: [(Int, Int)] = [(-2, -10), (2, -12), (6, -11), (9, -9), (-4, -7), (10, -6)]
-        for (dx, dy) in leafSpots { leaf(&c, px + dx, boardY + dy) }
-        for (vx, len) in [(px + 1, 13), (px + 7, 9), (px - 2, 7)] {
+        // Pothos in a little white pot at the right end; two vines trail down past the board.
+        let px = w - 14
+        var foliage = PixelCanvas(width: w, height: size.h)
+        let mound: [(Int, Int)] = [(-3, -11), (0, -14), (4, -15), (8, -13), (10, -10), (-4, -8), (2, -11), (6, -10)]
+        for (dx, dy) in mound { leaf(&foliage, px + dx, boardY + dy) }
+        for (vx, len, dir) in [(px + 1, 14, -1), (px + 8, 10, 1)] {
             for i in 0..<len {
-                let y = boardY + 2 + i, xx = vx + (i / 3) % 2
-                c.plot(xx, y, .green1)
-                if i % 3 == 1 { leaf(&c, xx - (i % 2 == 0 ? 2 : 0), y) }
+                let y = boardY + 4 + i, xx = vx + ((i / 4) % 2 == 0 ? 0 : dir)
+                foliage.plot(xx, y, .green1)
+                if i % 3 == 1 { leaf(&foliage, i % 2 == 0 ? xx - 3 : xx + 1, y) }
             }
+            leaf(&foliage, vx - 1, boardY + 4 + len)
         }
+        c.blit(ArtKit.outline(foliage.buffer, .green0).cropped(to: ArtRect(1, 1, w, size.h)), at: .zero)
+        c.blit(foliage.buffer, at: .zero)
+        c.fill(ArtRect(px, boardY - 7, 10, 7), .neutral8)
+        c.fill(ArtRect(px + 1, boardY - 7, 6, 6), .neutral9)
+        c.hline(x: px, y: boardY - 7, length: 10, .neutral9)
+        c.vline(x: px + 9, y: boardY - 7, length: 7, .neutral6)
+        c.vline(x: px - 1, y: boardY - 6, length: 6, .neutral6)
+        c.hline(x: px + 1, y: boardY - 3, length: 8, .oak4)
         // Board drawn last so the books and pot stand on it.
         c.fill(ArtRect(0, boardY, w, 4), .oak3)
         c.hline(x: 0, y: boardY, length: w, .oak5)
         c.hline(x: 0, y: boardY + 1, length: w, .oak4)
         c.hline(x: 0, y: boardY + 3, length: w, .oak1)
         c.vline(x: w - 1, y: boardY, length: 4, .oak1)
-        for (vx, len) in [(px + 1, 13), (px + 7, 9)] { c.plot(vx, boardY + 2, .green1); _ = len }
+        for vx in [px + 1, px + 8] { c.vline(x: vx, y: boardY, length: 4, .green1) }
         return SpriteAsset("decor.shelf", c, anchor: .zero)
     }
 
+    /// A small heart-shaped pothos leaf (3×3).
     static func leaf(_ c: inout PixelCanvas, _ x: Int, _ y: Int) {
         c.fill(ArtRect(x, y, 3, 2), .green3)
         c.plot(x, y, .green4)
-        c.plot(x + 2, y + 1, .green1)
+        c.plot(x + 1, y, .green4)
+        c.plot(x + 2, y + 1, .green2)
         c.plot(x + 1, y + 2, .green2)
     }
 
@@ -822,22 +843,25 @@ public enum DecorArt {
         let w = size.w, h = size.h
         var leaves = PixelCanvas(width: w, height: h)
         let cx = w / 2
-        // Trunk.
-        for y in 10..<(h - 14) {
+        // Trunk with a couple of side branches.
+        for y in 8..<(h - 14) {
             let x = cx + Int(2 * RoomArt.sine(Double(y) / 13))
             leaves.plot(x, y, .walnut1)
             leaves.plot(x + 1, y, .walnut2)
         }
-        // Leaves: (dx from trunk, y, w, h).
+        // Big fiddle leaves: (centre dx, centre y as a fraction of 92, w, h); larger and denser toward the top.
         let spots: [(Int, Int, Int, Int)] = [
-            (-3, 2, 8, 10), (-12, 10, 9, 8), (3, 9, 9, 8), (-10, 20, 9, 9), (2, 22, 10, 8), (-5, 30, 8, 9),
-            (-14, 34, 9, 8), (4, 36, 9, 8), (-11, 46, 9, 8), (3, 48, 9, 8), (-6, 57, 8, 8), (5, 60, 8, 7),
+            (0, 6, 10, 11), (-8, 12, 10, 10), (8, 13, 10, 10), (-12, 22, 10, 9), (2, 20, 11, 10), (11, 25, 10, 9),
+            (-6, 31, 10, 10), (7, 34, 10, 9), (-11, 42, 9, 9), (2, 43, 10, 9), (10, 48, 9, 8), (-7, 53, 9, 9),
+            (4, 57, 9, 8), (-10, 63, 8, 8), (8, 66, 8, 7),
         ]
         for (i, s) in spots.enumerated() {
-            let x = cx + s.0 * w / 40, y = s.1 * h / 92
+            let x = cx + s.0 * w / 38 - s.2 / 2, y = s.1 * h / 92
             let r = ArtRect(x, y, s.2, s.3)
-            leaves.ellipseFill(r, i % 3 == 0 ? .green2 : .green3)
-            leaves.ellipseFill(ArtRect(r.x + 1, r.y + 1, r.w / 2 + 1, r.h / 2), i % 3 == 0 ? .green3 : .green4)
+            let dark = i % 3 == 1
+            leaves.ellipseFill(r, dark ? .green2 : .green3)
+            leaves.ellipseFill(ArtRect(r.x + 1, r.y + 1, r.w / 2 + 1, r.h / 2), dark ? .green3 : .green4)
+            leaves.plot(r.x + 2, r.y + 2, .green5)
             leaves.line(from: ArtPoint(r.midX, r.y + 2), to: ArtPoint(r.midX + (s.0 < 0 ? 1 : -1), r.maxY - 2), .green1)
         }
         var c = PixelCanvas(width: w, height: h)
