@@ -89,4 +89,30 @@ struct OperationLogTests {
         #expect(throws: OperationLog.Failure.self) { try log.append(Self.entry(1)) }
         #expect(try String(contentsOf: victim, encoding: .utf8) == "untouched")
     }
+
+    @Test("A FIFO planted at operations.log is refused at once instead of blocking every file action")
+    func plantedFIFO() throws {
+        let d = try TempDesk()
+        let log = try OperationLog(directory: d.url("State"), desktop: d.url("Desk"))
+        #expect(mkfifo(log.fileURL.path, 0o600) == 0)
+        let done = DispatchSemaphore(value: 0)
+        let results = Recorder<Bool>()
+        // A thread of its own, so a busy test run cannot delay it the way it can a GCD worker.
+        Thread.detachNewThread {
+            results.append((try? log.append(Self.entry(1))) == nil)
+            results.append(log.entries().isEmpty)
+            done.signal()
+        }
+        let finished = done.wait(timeout: .now() + 30) == .success
+        if !finished {
+            // Release a stuck open so the test run goes on.
+            for flags in [O_RDONLY | O_NONBLOCK, O_WRONLY | O_NONBLOCK] {
+                let fd = open(log.fileURL.path, flags)
+                if fd >= 0 { close(fd) }
+            }
+            _ = done.wait(timeout: .now() + 3)
+        }
+        #expect(finished)
+        #expect(results.all == [true, true])
+    }
 }

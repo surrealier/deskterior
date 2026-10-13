@@ -1,9 +1,9 @@
 import AppKit
 import Foundation
 
-/// Moves items to a trash (DESIGN §3.5). Only `FileOperator` calls it, after its own checks; nothing is ever
-/// deleted.
-public protocol Trasher: Sendable {
+/// Moves items to a trash (DESIGN §3.5). Internal: only `FileOperator` calls it, after its own checks (intent,
+/// confinement, identity); nothing is ever deleted. Callers pick one with `FileOperator.Trash`.
+protocol Trasher: Sendable {
     /// The one folder every item goes to, when there is one (`FakeTrasher`); nil for the system Trash, which is
     /// per volume. In demo and test modes `FileOperator` requires it inside a sandbox root.
     var trashFolder: URL? { get }
@@ -15,18 +15,16 @@ public protocol Trasher: Sendable {
 }
 
 /// The real Trash, through `NSWorkspace.recycle` (the Finder way, so Finder's Put Back works too).
-public struct SystemTrasher: Trasher {
-    public init() {}
+struct SystemTrasher: Trasher {
+    var trashFolder: URL? { nil }
 
-    public var trashFolder: URL? { nil }
-
-    public func trash(_ url: URL) async throws -> URL? {
+    func trash(_ url: URL) async throws -> URL? {
         let moved = try await NSWorkspace.shared.recycle([url])
         return moved[url] ?? (moved.count == 1 ? moved.first?.value : nil)
     }
 
     /// Path arithmetic only: the Trash is never listed or inspected.
-    public func contains(_ url: URL) -> Bool {
+    func contains(_ url: URL) -> Bool {
         Self.isTrashChild(url, homeTrash: FileManager.default.urls(for: .trashDirectory, in: .userDomainMask).first,
                           uid: getuid())
     }
@@ -46,13 +44,13 @@ public struct SystemTrasher: Trasher {
 /// with `RENAME_EXCL` under a free Finder-style name ("name 2"), so nothing in it is ever replaced. The folder
 /// must stay outside the desktop folder and the mirrored folder; that is checked when it is made and before
 /// every move.
-public struct FakeTrasher: Trasher {
-    public let folder: URL
+struct FakeTrasher: Trasher {
+    let folder: URL
     private let desktop: URL
     private let mirrored: URL?
 
     /// Refuses a folder inside the desktop folder or the mirrored folder; creates it otherwise.
-    public init(folder: URL, desktop: URL = DesktopLocator.defaultDesktopURL(), mirrored: URL? = nil) throws {
+    init(folder: URL, desktop: URL = DesktopLocator.defaultDesktopURL(), mirrored: URL? = nil) throws {
         let dir = URL(fileURLWithPath: DesktopLocator.canonicalPath(folder), isDirectory: true)
         try SafetyGuard.checkOwnFolder(dir, desktop: desktop, mirrored: mirrored)
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -61,9 +59,9 @@ public struct FakeTrasher: Trasher {
         self.mirrored = mirrored
     }
 
-    public var trashFolder: URL? { folder }
+    var trashFolder: URL? { folder }
 
-    public func trash(_ url: URL) async throws -> URL? {
+    func trash(_ url: URL) async throws -> URL? {
         try SafetyGuard.checkOwnFolder(folder, desktop: desktop, mirrored: mirrored)
         let item = url.standardizedFileURL
         switch FileMoves.renameToFreeName(
@@ -74,7 +72,7 @@ public struct FakeTrasher: Trasher {
         }
     }
 
-    public func contains(_ url: URL) -> Bool {
+    func contains(_ url: URL) -> Bool {
         SafetyGuard.isDirectChild(url, of: folder)
     }
 }

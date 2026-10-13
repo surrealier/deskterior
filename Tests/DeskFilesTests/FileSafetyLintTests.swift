@@ -27,6 +27,13 @@ struct FileSafetyLintTests {
         let strict = lint.violations(dirVar: "SRC", files: sources, ignoringAllowlists: true)
         #expect(strict.contains { $0.file == "DeskFiles/FileOperator.swift" && $0.label == "destructive" })
         #expect(strict.contains { $0.file == "DeskFiles/DesktopLocator.swift" && $0.label == "desktop-path" })
+        #expect(strict.contains { $0.file == "DeskFiles/ExplicitIntent.swift" && $0.label == "intent-spi" })
+        // Sources hold Swift only (the script's `check_foreign`).
+        let foreign = Set(try #require(lint.vars["FOREIGN_EXTENSIONS"]).split(separator: " ").map(String.init))
+        #expect(foreign.isSuperset(of: ["c", "m", "h", "modulemap"]))
+        let e = FileManager.default.enumerator(at: Self.repo.appendingPathComponent("Sources"), includingPropertiesForKeys: nil)
+        let stray = (e?.allObjects ?? []).compactMap { $0 as? URL }.filter { foreign.contains($0.pathExtension) }
+        #expect(stray.isEmpty, "\(stray.map(\.path))")
     }
 
     @Test("Every line of the script's Bypass fixtures is flagged and nothing in its clean fixtures")
@@ -53,21 +60,28 @@ struct FileSafetyLintTests {
         let lint = try Lint(script: String(contentsOf: Self.scriptURL, encoding: .utf8))
         let planted = """
             try FileManager.default.removeItem(at: url)
-            let intent = ExplicitIntent(origin: .drop, issuedAt: now)
+            let intent = ExplicitIntent(origin: .drop)
             _ = renamex_np(from, to, UInt32(RENAME_EXCL))
             // try FileManager.default.removeItem(at: url) in a comment is fine
             let pick = ExplicitIntent.Origin.drop
+            @_spi(IntentMinting) import DeskFiles
+            #expect(ExplicitIntent(origin: .drop) != nil)
+            func removeAll(_ p: String) -> Int32 { remove(p) }
             """
         func lines(_ dirVar: String, _ file: String) -> [Int] {
             lint.violations(dirVar: dirVar, files: [(file, planted)]).map(\.line).uniqued()
         }
-        #expect(lines("SRC", "DeskScene/Planted.swift") == [1, 2, 3])
-        #expect(lines("SRC", "DeskCore/Logic/Reducer.swift") == [1, 2, 3])
-        #expect(lines("SRC", "DeskFiles/FileOperator.swift") == [2])
-        #expect(lines("SRC", "DeskteriorApp/Store/EffectRunner.swift") == [1, 3])
-        #expect(lines("SRC", "DeskteriorApp/EffectRunner.swift") == [1, 2, 3])
-        #expect(lines("TESTS", "DeskSceneTests/Planted.swift") == [2])
+        #expect(lines("SRC", "DeskScene/Planted.swift") == [1, 2, 3, 6, 7, 8])
+        #expect(lines("SRC", "DeskCore/Logic/Reducer.swift") == [1, 2, 3, 6, 7, 8])
+        #expect(lines("SRC", "DeskFiles/FileOperator.swift") == [2, 6, 7])
+        #expect(lines("SRC", "DeskteriorApp/Store/EffectRunner.swift") == [1, 3, 8])
+        #expect(lines("SRC", "DeskteriorApp/EffectRunner.swift") == [1, 2, 3, 6, 7, 8])
+        #expect(lines("TESTS", "DeskSceneTests/Planted.swift") == [2, 6, 7])
         #expect(lines("TESTS", "DeskFilesTests/Planted.swift") == [])
+        // A shell script's `#` line is a comment.
+        let quit = "kill" + "all" // spelled apart: Tests are scanned too
+        let script = "# \(quit) Finder is never run\n\(quit) Dock\n"
+        #expect(lint.violations(dirVar: "SCRIPTS", files: [("tool.sh", script)]).map(\.line) == [2])
     }
 
     // MARK: Files
@@ -135,7 +149,11 @@ struct Lint {
     }
 
     var checks: [Check] = []
-    static let comment = try! NSRegularExpression(pattern: #"^[[:space:]]*(//|#)"#)
+    /// The script's variables, expanded.
+    var vars: [String: String] = [:]
+    /// Whole-line comments: `#` in shell scripts, `//` in Swift (where a line starting with `#` is code).
+    static let shellComment = try! NSRegularExpression(pattern: #"^[[:space:]]*#"#)
+    static let swiftComment = try! NSRegularExpression(pattern: #"^[[:space:]]*//"#)
 
     init(script: String) throws {
         let chars = Array(script)
@@ -172,8 +190,9 @@ struct Lint {
             guard words.count == 5 else { throw LintError.badCheck(words.joined(separator: " ")) }
             let patterns = try words[3].split(separator: "\n").map { line -> Pattern in
                 let parts = line.components(separatedBy: " !! ")
+                // `^` and `$` match at line ends, so the whole-text pre-check below agrees with the per-line scan.
                 return Pattern(
-                    source: parts[0], regex: try NSRegularExpression(pattern: parts[0]),
+                    source: parts[0], regex: try NSRegularExpression(pattern: parts[0], options: [.anchorsMatchLines]),
                     exclude: try parts.count > 1 ? NSRegularExpression(pattern: parts[1]) : nil
                 )
             }
@@ -185,6 +204,7 @@ struct Lint {
         guard checks.contains(where: { $0.dirVar == "SRC" }), checks.contains(where: { $0.dirVar == "TESTS" }) else {
             throw LintError.noChecks
         }
+        self.vars = vars
     }
 
     enum LintError: Error {
@@ -192,10 +212,12 @@ struct Lint {
         case noChecks
     }
 
-    /// Like `grep -rnE` per pattern, then the script's filters: whole-line comments, `!!` excludes, allowlists.
+    /// Like `grep -rnE` per pattern, then the script's filters: whole-line comments, `!!` excludes (the excluded
+    /// text is removed and the rest of the line matched again), allowlists.
     func violations(dirVar: String, files: [(String, String)], ignoringAllowlists: Bool = false) -> [Violation] {
         var out: [Violation] = []
         for check in checks where check.dirVar == dirVar {
+            let comment = check.suffix == ".sh" ? Self.shellComment : Self.swiftComment
             for (rel, text) in files where rel.hasSuffix(check.suffix) && !rel.hasSuffix("check-file-safety.sh") {
                 if !ignoringAllowlists, Self.isAllowed(rel, check.allow) { continue }
                 let whole = NSRange(text.startIndex..., in: text)
@@ -207,9 +229,13 @@ struct Lint {
                         let s = String(line)
                         let r = NSRange(s.startIndex..., in: s)
                         guard p.regex.firstMatch(in: s, options: [], range: r) != nil,
-                              Self.comment.firstMatch(in: s, options: [], range: r) == nil,
-                              p.exclude?.firstMatch(in: s, options: [], range: r) == nil
+                              comment.firstMatch(in: s, options: [], range: r) == nil
                         else { continue }
+                        if let exclude = p.exclude {
+                            let rest = exclude.stringByReplacingMatches(in: s, options: [], range: r, withTemplate: "")
+                            let rr = NSRange(rest.startIndex..., in: rest)
+                            guard p.regex.firstMatch(in: rest, options: [], range: rr) != nil else { continue }
+                        }
                         out.append(Violation(label: check.label, file: rel, line: n + 1, pattern: p.source))
                     }
                 }

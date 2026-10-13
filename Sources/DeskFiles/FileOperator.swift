@@ -8,6 +8,14 @@ import Foundation
 public enum FileRefusal: Error, Sendable, Equatable, CustomStringConvertible {
     /// The intent is older than `ExplicitIntent.maxAge`, or from the future.
     case staleIntent
+    /// The intent was spent by an earlier request, or was never issued (a copied or forged value).
+    case spentIntent
+    /// The intent's origin does not fit the request (a drop cannot trash, an undo cannot import).
+    case wrongOrigin
+    /// Undo: this operator did not issue the record, or it was replayed already.
+    case unknownRecord
+    /// The request's task was cancelled; a copy cut short leaves nothing behind.
+    case cancelled
     /// Demo and test modes: a path, the desktop folder or the trash lies outside every sandbox root.
     case outsideSandbox
     /// Not a direct child of the desktop folder.
@@ -16,7 +24,8 @@ public enum FileRefusal: Error, Sendable, Equatable, CustomStringConvertible {
     case notInTrash
     /// Nothing is there now.
     case missing
-    /// Time of check: the item there now is not the one the token stands for (volume or inode differ).
+    /// The item there is not the one the token stands for (volume or inode differ), right before acting or, when
+    /// it was swapped in between, right after (it is put straight back then).
     case identityChanged
     /// `trash` got a different number of URLs and expected identities.
     case mismatchedRequest
@@ -36,6 +45,10 @@ public enum FileRefusal: Error, Sendable, Equatable, CustomStringConvertible {
     public var description: String {
         switch self {
         case .staleIntent: "stale-intent"
+        case .spentIntent: "spent-intent"
+        case .wrongOrigin: "wrong-origin"
+        case .unknownRecord: "unknown-record"
+        case .cancelled: "cancelled"
         case .outsideSandbox: "outside-sandbox"
         case .outsideRoot: "outside-root"
         case .notInTrash: "not-in-trash"
@@ -141,23 +154,62 @@ public struct FileResult: Sendable, Equatable {
 
 // MARK: FileOperator
 
-/// The only code that changes user files (DESIGN §3.5–§3.7). Every mutating method takes a fresh
-/// `ExplicitIntent` and, item by item:
+/// The only code that changes user files (DESIGN §3.5–§3.7). Every mutating method spends a fresh
+/// `ExplicitIntent` whose origin fits it and, item by item:
 /// - confines targets to direct children of the realpath'd desktop folder (drop sources and trash URLs are the
 ///   only exceptions), and in demo and test modes every path to `sandboxRoots`;
-/// - re-stats the item right before acting and refuses when its volume or inode is not the expected one;
+/// - re-stats the item right before acting and refuses when its volume or inode is not the expected one, and
+///   checks again right after: an item swapped in between is put straight back and refused;
 /// - renames with `renamex_np(RENAME_EXCL)`, so nothing is ever replaced: a taken name becomes "name 2" … "name 100";
-/// - trashes, never deletes. The only removal is our own `.deskterior-partial-*` copy after a failed copy;
+/// - trashes, never deletes. The only removal is of its own staging folders for copies;
 /// - logs the outcome to `OperationLog`.
+/// Undo replays only records this operator issued, once each.
 public actor FileOperator {
+    /// Where trashed items go.
+    public enum Trash: Sendable {
+        /// The real Trash, through `NSWorkspace.recycle` (desk mode; refused in demo and test modes).
+        case system
+        /// A folder of our own (demo, headless and test modes). It must lie outside the desktop folder and the
+        /// mirrored folder, and in demo and test modes inside a sandbox root.
+        case folder(URL)
+    }
+
+    /// How far a drop-in copy has got.
+    public struct CopyProgress: Sendable, Equatable {
+        /// The dropped item, as the request named it.
+        public var source: URL
+        /// Files and folders started so far, the dropped item itself included.
+        public var items: Int
+    }
+
+    /// The user actions each request answers to.
+    enum Method {
+        case trash, importItems, undo, eject
+
+        var origins: Set<ExplicitIntent.Origin> {
+            switch self {
+            case .trash: [.menuItem, .sheetConfirm, .dragToTrash, .inventory]
+            case .importItems: [.drop]
+            case .undo: [.undo]
+            case .eject: [.menuItem, .inventory]
+            }
+        }
+    }
+
     /// The realpath'd desktop folder.
     public nonisolated let root: URL
     private let trasher: any Trasher
     private let log: OperationLog
     private let sandboxRoots: [String]?
     private let clock: @Sendable () -> Date
+    private let uptime: @Sendable () -> ContinuousClock.Instant
     private let volumeID: @Sendable (URL) -> String?
     private var hooks = Hooks()
+    /// Undo records issued and not replayed yet, oldest first.
+    private var openRecords: [FileUndoRecord] = []
+    static let maxOpenRecords = 256
+    /// Staging folders of copies in flight: the only folders this operator ever removes.
+    private var stagings: Set<String> = []
 
     /// Test seams for races.
     struct Hooks: Sendable {
@@ -165,14 +217,28 @@ public actor FileOperator {
         var beforeRename: (@Sendable (URL) -> Void)?
         /// Runs right before the time-of-check re-stat of an item.
         var beforeCheck: (@Sendable (URL) -> Void)?
+        /// Runs right after a copy finishes, with the staged copy.
+        var afterCopy: (@Sendable (URL) -> Void)?
     }
 
     /// `sandboxRoots` is non-nil in demo, headless and test modes: then every path touched (the desktop folder,
     /// drop sources, undo destinations, the trash folder) must lie inside one of them, the system Trash is never
-    /// used and nothing is ejected. `volumeID` names an item's volume (`TokenKey.volume`; same volume = move).
-    public init(
+    /// used and nothing is ejected. Throws when a trash folder lies inside the desktop or the mirrored folder.
+    public init(root: URL, trash: Trash, log: OperationLog, sandboxRoots: [URL]?) throws {
+        let trasher: any Trasher
+        switch trash {
+        case .system: trasher = SystemTrasher()
+        case let .folder(folder): trasher = try FakeTrasher(folder: folder, mirrored: root)
+        }
+        self.init(root: root, trasher: trasher, log: log, sandboxRoots: sandboxRoots)
+    }
+
+    /// `clock` stamps log lines, `uptime` measures intent freshness, and `volumeID` names an item's volume
+    /// (`TokenKey.volume`; same volume = move).
+    init(
         root: URL, trasher: any Trasher, log: OperationLog, sandboxRoots: [URL]?,
         clock: @escaping @Sendable () -> Date = { Date() },
+        uptime: @escaping @Sendable () -> ContinuousClock.Instant = { .now },
         volumeID: @escaping @Sendable (URL) -> String? = FileOperator.volumeUUID
     ) {
         self.root = URL(fileURLWithPath: DesktopLocator.canonicalPath(root), isDirectory: true)
@@ -180,6 +246,7 @@ public actor FileOperator {
         self.log = log
         self.sandboxRoots = sandboxRoots?.map { DesktopLocator.canonicalPath($0) }
         self.clock = clock
+        self.uptime = uptime
         self.volumeID = volumeID
     }
 
@@ -192,9 +259,10 @@ public actor FileOperator {
 
     // MARK: Trash
 
-    /// Moves each `urls[i]` to the trash if it is still `expecting[i]`.
+    /// Moves each `urls[i]` to the trash if it is still `expecting[i]`. Takes a `.menuItem`, `.sheetConfirm`,
+    /// `.dragToTrash` or `.inventory` intent.
     public func trash(_ urls: [URL], expecting: [TokenKey], _ intent: ExplicitIntent) async -> FileResult {
-        if let r = refusal(for: intent) ?? (urls.count == expecting.count ? nil : .mismatchedRequest) {
+        if let r = refusal(for: intent, .trash) ?? (urls.count == expecting.count ? nil : .mismatchedRequest) {
             let inodes = urls.count == expecting.count ? expecting.map { [$0.inode] } : nil
             return refuseAll(urls, r, op: .trash, intent: intent, inodes: inodes)
         }
@@ -206,34 +274,50 @@ public actor FileOperator {
             if let step { steps.append(step) }
             record(.trash, outcome, inodes: [key.inode], intent: intent)
         }
-        return FileResult(outcomes: outcomes, undo: steps.isEmpty ? nil : FileUndoRecord(kind: .trash, steps: steps))
+        return FileResult(outcomes: outcomes, undo: issue(.trash, steps))
     }
 
     private func trashOne(_ url: URL, expecting key: TokenKey) async -> (FileOutcome, FileUndoRecord.Step?) {
         if let r = trashRefusal() { return (.refused(url, r), nil) }
         guard let item = deskChild(url) else { return (.refused(url, .outsideRoot), nil) }
         if let r = check(item, is: key) { return (.refused(url, r), nil) }
+        switch await trashChecked(item, is: key) {
+        case let .success(trashed):
+            return (.trashed(url, to: trashed), .putBack(trashed: trashed, original: item, key: key))
+        case let .failure(r): return (.refused(url, r), nil)
+        }
+    }
+
+    /// Trashes `item`, then checks the trash got the item expected.
+    private func trashChecked(_ item: URL, is key: TokenKey) async -> Result<URL?, FileRefusal> {
         do {
             let trashed = try await trasher.trash(item)
-            return (.trashed(url, to: trashed), .putBack(trashed: trashed, original: item, key: key))
+            if let trashed, let r = verify(trashed, is: key, elseReturnTo: item) { return .failure(r) }
+            return .success(trashed)
         } catch {
-            return (.refused(url, FileRefusal.from(error)), nil)
+            return .failure(FileRefusal.from(error))
         }
     }
 
     // MARK: Import
 
-    /// Brings dropped items into the desktop folder. Same volume and `.move`: renamed in. Otherwise (another
-    /// volume, `.copy`, or a move the system refuses): copied to a hidden partial name in the desktop folder, then
-    /// renamed into place. A source is never deleted. Folders and packages go as one unit.
-    public func importItems(_ urls: [URL], op: ImportOp, _ intent: ExplicitIntent) async -> FileResult {
-        if let r = refusal(for: intent) ?? rootRefusal() {
+    /// Brings dropped items into the desktop folder. Takes a `.drop` intent. Same volume and `.move`: renamed in.
+    /// Otherwise (another volume, `.copy`, or a move the system refuses): copied into a staging folder on the
+    /// desk's volume, off the actor so other requests go on meanwhile, then renamed into place. A source is never
+    /// deleted. Folders and packages go as one unit. `progress` hears of each item a copy starts; cancelling the
+    /// calling task stops a copy and refuses what is left as `.cancelled`.
+    public func importItems(
+        _ urls: [URL], op: ImportOp, _ intent: ExplicitIntent, progress: (@Sendable (CopyProgress) -> Void)? = nil
+    ) async -> FileResult {
+        if let r = refusal(for: intent, .importItems) ?? rootRefusal() {
             return refuseAll(urls, r, op: op == .move ? .importMove : .importCopy, intent: intent)
         }
         var outcomes: [FileOutcome] = []
         var steps: [FileUndoRecord.Step] = []
         for url in urls {
-            let (outcome, step, inodes) = importOne(url, op: op)
+            let (outcome, step, inodes) = Task.isCancelled
+                ? (.refused(url, .cancelled), nil, [])
+                : await importOne(url, op: op, progress: progress)
             outcomes.append(outcome)
             if let step { steps.append(step) }
             let copied: Bool = switch outcome {
@@ -243,15 +327,21 @@ public actor FileOperator {
             }
             record(copied ? .importCopy : .importMove, outcome, inodes: inodes, intent: intent)
         }
-        return FileResult(outcomes: outcomes, undo: steps.isEmpty ? nil : FileUndoRecord(kind: .importItems, steps: steps))
+        return FileResult(outcomes: outcomes, undo: issue(.importItems, steps))
     }
 
-    private func importOne(_ url: URL, op: ImportOp) -> (FileOutcome, FileUndoRecord.Step?, [UInt64]) {
+    private func importOne(
+        _ url: URL, op: ImportOp, progress: (@Sendable (CopyProgress) -> Void)?
+    ) async -> (FileOutcome, FileUndoRecord.Step?, [UInt64]) {
         let source = url.standardizedFileURL
         guard inSandbox(source) else { return (.refused(url, .outsideSandbox), nil, []) }
-        if SafetyGuard.isDirectChild(source, of: root) { return (.unchanged(url), nil, []) }
+        if SafetyGuard.isDirectChild(source, of: root) || Self.sameItem(source.deletingLastPathComponent(), root) {
+            return (.unchanged(url), nil, [])
+        }
         let sourcePath = Self.parentResolvedPath(source)
-        if root.path == sourcePath || root.path.hasPrefix(sourcePath.hasSuffix("/") ? sourcePath : sourcePath + "/") {
+        if root.path == sourcePath || root.path.hasPrefix(sourcePath.hasSuffix("/") ? sourcePath : sourcePath + "/")
+            || holdsDesktop(source)
+        {
             return (.refused(url, .containsDesktop), nil, [])
         }
         if SafetyGuard.isVolumeRoot(source) { return (.refused(url, .volumeRoot), nil, []) }
@@ -267,64 +357,163 @@ public actor FileOperator {
         if op == .move, let sourceVolume, sourceVolume == volumeID(root) {
             switch FileMoves.renameToFreeName(source, in: root, name: name, splitsExtension: splits, before: hooks.beforeRename) {
             case let .success(placed):
-                let outcome: FileOutcome = placed.renamed ? .renamed(url, to: placed.url, op: .move) : .moved(url, to: placed.url)
                 let back = URL(fileURLWithPath: sourcePath, isDirectory: false)
+                if let r = verify(placed.url, is: key, elseReturnTo: back) { return (.refused(url, r), nil, [key.inode]) }
+                let outcome: FileOutcome = placed.renamed ? .renamed(url, to: placed.url, op: .move) : .moved(url, to: placed.url)
                 return (outcome, .moveBack(current: placed.url, source: back, key: key), [key.inode])
             case let .failure(.errno(e)) where e == EXDEV || e == EPERM || e == EACCES:
-                break // Another volume after all, or a protected folder (S12): copy instead.
+                break // Another volume after all, a protected folder (S12) or a locked item: copy instead.
             case let .failure(f):
                 return (.refused(url, f.refusal), nil, [key.inode])
             }
         }
-        return copyIn(url, from: source, name: name, splitsExtension: splits, sourceInode: key.inode)
+        return await copyIn(
+            url, from: source, name: name, splitsExtension: splits, sourceInode: key.inode, progress: progress
+        )
     }
 
-    /// Copies to `.deskterior-partial-<uuid>` in the desktop folder (hidden, so the scanner skips it), then
-    /// renames it into place. Any failure removes the partial copy.
+    /// The folder (not a symlink to one) at `url` is the desktop folder or one of its ancestors, compared by device
+    /// and inode, so no spelling (case, Unicode form, the /System/Volumes/Data firmlink) gets past it.
+    private func holdsDesktop(_ url: URL) -> Bool {
+        guard let item = Self.fileID(url, follow: false), item.isFolder else { return false }
+        var dir = root
+        while true {
+            if let d = Self.fileID(dir, follow: true), d.dev == item.dev, d.ino == item.ino { return true }
+            if dir.path == "/" { return false }
+            dir = dir.deletingLastPathComponent()
+        }
+    }
+
+    /// Copies into a fresh staging folder, then renames the copy into place. The staging folder goes in every
+    /// case, so a failed or cancelled copy leaves nothing on the desk.
     private func copyIn(
-        _ url: URL, from source: URL, name: String, splitsExtension: Bool, sourceInode: UInt64
-    ) -> (FileOutcome, FileUndoRecord.Step?, [UInt64]) {
-        let partial = root.appendingPathComponent(FileMoves.partialPrefix + UUID().uuidString, isDirectory: false)
+        _ url: URL, from source: URL, name: String, splitsExtension: Bool, sourceInode: UInt64,
+        progress: (@Sendable (CopyProgress) -> Void)?
+    ) async -> (FileOutcome, FileUndoRecord.Step?, [UInt64]) {
+        let staging: URL
         do {
-            try FileManager.default.copyItem(at: source, to: partial)
+            staging = try makeStaging()
         } catch {
-            removePartial(partial)
             return (.refused(url, FileRefusal.from(error)), nil, [sourceInode])
         }
-        let key: TokenKey
-        switch identity(of: partial) {
-        case let .success(k): key = k
-        case let .failure(r):
-            removePartial(partial)
-            return (.refused(url, r), nil, [sourceInode])
+        defer { removeStaging(staging) }
+        let staged = staging.appendingPathComponent(name, isDirectory: false)
+        let report = progress.map { progress in { @Sendable (n: Int) in progress(CopyProgress(source: url, items: n)) } }
+        do {
+            try await Self.copy(source, to: staged, report: report)
+        } catch {
+            return (.refused(url, FileRefusal.from(error)), nil, [sourceInode])
         }
-        switch FileMoves.renameToFreeName(partial, in: root, name: name, splitsExtension: splitsExtension, before: hooks.beforeRename) {
+        hooks.afterCopy?(staged)
+        let key: TokenKey
+        switch identity(of: staged) {
+        case let .success(k): key = k
+        case let .failure(r): return (.refused(url, r), nil, [sourceInode])
+        }
+        // A Finder-locked item cannot be renamed: the copy is unlocked for the rename and locked again in place.
+        let locks = Self.lockFlags(staged)
+        if locks != 0 { Self.changeFlags(staged, adding: 0, removing: locks) }
+        switch FileMoves.renameToFreeName(
+            staged, in: root, name: name, splitsExtension: splitsExtension, before: hooks.beforeRename
+        ) {
         case let .success(placed):
+            if locks != 0 { Self.changeFlags(placed.url, adding: locks, removing: 0) }
             let outcome: FileOutcome = placed.renamed ? .renamed(url, to: placed.url, op: .copy) : .copied(url, to: placed.url)
             return (outcome, .trashCopy(placed.url, key: key), [sourceInode, key.inode])
         case let .failure(f):
-            removePartial(partial)
             return (.refused(url, f.refusal), nil, [sourceInode])
         }
     }
 
-    /// Removes our own partial copy; nothing else is ever removed.
-    private func removePartial(_ url: URL) {
-        guard url.lastPathComponent.hasPrefix(FileMoves.partialPrefix), SafetyGuard.isDirectChild(url, of: root) else {
-            return
+    /// A new folder for one copy, on the desk's volume but outside the desk folder (the system's item-replacement
+    /// folder), so a copy cut short by a quit or crash never shows on the desk. When the system offers none on that
+    /// volume, a hidden `.deskterior-partial-<uuid>` folder in the desk folder stands in.
+    private func makeStaging() throws -> URL {
+        guard let desk = Self.fileID(root, follow: true) else { throw FileRefusal.missing }
+        if let dir = try? FileManager.default.url(
+            for: .itemReplacementDirectory, in: .userDomainMask, appropriateFor: root, create: true
+        ) {
+            if Self.fileID(dir, follow: true)?.dev == desk.dev, !DesktopLocator.isInsideDesktop(dir, desktop: root) {
+                stagings.insert(dir.path)
+                return dir
+            }
+            _ = rmdir(dir.path) // Ours and still empty.
         }
-        try? FileManager.default.removeItem(at: url)
+        let dir = root.appendingPathComponent(FileMoves.partialPrefix + UUID().uuidString, isDirectory: true)
+        guard mkdir(dir.path, 0o700) == 0 else { throw FileRefusal.from(errno: errno) }
+        stagings.insert(dir.path)
+        return dir
+    }
+
+    /// Removes one of our staging folders. When a plain removal fails (the copy brought read-only folders or
+    /// Finder-locked files along), everything inside is unlocked and made writable first; symlinks are never
+    /// followed.
+    private func removeStaging(_ dir: URL) {
+        guard stagings.remove(dir.path) != nil else { return }
+        if (try? FileManager.default.removeItem(at: dir)) != nil { return }
+        Self.unlockTree(dir.path)
+        try? FileManager.default.removeItem(at: dir)
+    }
+
+    private static func unlockTree(_ path: String) {
+        var st = stat()
+        guard lstat(path, &st) == 0 else { return }
+        let locks = st.st_flags & lockMask
+        if locks != 0 { _ = lchflags(path, st.st_flags & ~locks) }
+        guard st.st_mode & S_IFMT == S_IFDIR else { return }
+        if st.st_mode & S_IRWXU != S_IRWXU {
+            _ = fchmodat(AT_FDCWD, path, (st.st_mode & 0o7777) | S_IRWXU, AT_SYMLINK_NOFOLLOW)
+        }
+        for name in (try? FileManager.default.contentsOfDirectory(atPath: path)) ?? [] {
+            unlockTree((path as NSString).appendingPathComponent(name))
+        }
+    }
+
+    /// Finder's lock and the append-only flag (both stop a rename).
+    private static let lockMask = UInt32(UF_IMMUTABLE | UF_APPEND)
+
+    private static func lockFlags(_ url: URL) -> UInt32 {
+        var st = stat()
+        return lstat(url.path, &st) == 0 ? st.st_flags & lockMask : 0
+    }
+
+    private static func changeFlags(_ url: URL, adding: UInt32, removing: UInt32) {
+        var st = stat()
+        guard lstat(url.path, &st) == 0 else { return }
+        _ = lchflags(url.path, (st.st_flags & ~removing) | adding)
+    }
+
+    /// Copies on a GCD thread, so the actor serves other requests meanwhile (DESIGN §3.6). Cancelling the calling
+    /// task skips every item not started yet and throws `.cancelled`.
+    private nonisolated static func copy(
+        _ source: URL, to staged: URL, report: (@Sendable (Int) -> Void)?
+    ) async throws {
+        let gate = CopyGate(report: report)
+        try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { (done: CheckedContinuation<Void, any Error>) in
+                DispatchQueue.global(qos: .userInitiated).async {
+                    let files = FileManager()
+                    files.delegate = gate
+                    let result = Result { try files.copyItem(at: source, to: staged) }
+                    files.delegate = nil
+                    done.resume(with: gate.isCancelled ? .failure(FileRefusal.cancelled) : result)
+                }
+            }
+        } onCancel: {
+            gate.cancel()
+        }
     }
 
     // MARK: Undo
 
     /// Takes back a trash or an import, newest step first: renames out of the trash or back to the drop source
-    /// (`RENAME_EXCL`; a taken name becomes "name 2"), or trashes our copy. Every step re-checks the item's
-    /// identity first. A step the system refuses (the real Trash under privacy protection, S11) is refused with
-    /// `.notPermitted`; Finder's Put Back still works then.
+    /// (`RENAME_EXCL`; a taken name becomes "name 2"), or trashes our copy. Takes an `.undo` intent and a record
+    /// this operator issued and has not replayed yet (a refused intent leaves the record usable). Every step
+    /// re-checks the item's identity first. A step the system refuses (the real Trash under privacy protection,
+    /// S11) is refused with `.notPermitted`; Finder's Put Back still works then.
     public func undo(_ record: FileUndoRecord, _ intent: ExplicitIntent) async -> FileResult {
         let steps = Array(record.steps.reversed())
-        if let r = refusal(for: intent) ?? rootRefusal() {
+        if let r = refusal(for: intent, .undo) ?? rootRefusal() ?? (redeem(record) ? nil : .unknownRecord) {
             let outcomes = steps.map { FileOutcome.refused(Self.subject(of: $0), r) }
             for (step, outcome) in zip(steps, outcomes) {
                 self.record(Self.logOp(step), outcome, inodes: [step.key.inode], intent: intent)
@@ -348,32 +537,51 @@ public actor FileOperator {
             guard trasher.contains(trashed) else { return .refused(trashed, .notInTrash) }
             guard let back = deskChild(original) else { return .refused(trashed, .outsideRoot) }
             if let r = check(trashed, is: key) { return .refused(trashed, r) }
-            return place(trashed, in: root, name: back.lastPathComponent)
+            return place(trashed, in: root, name: back.lastPathComponent, expecting: key)
         case let .moveBack(current, source, key):
             let back = source.standardizedFileURL
             guard inSandbox(back) else { return .refused(current, .outsideSandbox) }
             guard let item = deskChild(current) else { return .refused(current, .outsideRoot) }
             if let r = check(item, is: key) { return .refused(current, r) }
-            return place(item, in: back.deletingLastPathComponent(), name: back.lastPathComponent)
+            return place(item, in: back.deletingLastPathComponent(), name: back.lastPathComponent, expecting: key)
         case let .trashCopy(url, key):
             if let r = trashRefusal() { return .refused(url, r) }
             guard let item = deskChild(url) else { return .refused(url, .outsideRoot) }
             if let r = check(item, is: key) { return .refused(url, r) }
-            do {
-                return .trashed(url, to: try await trasher.trash(item))
-            } catch {
-                return .refused(url, FileRefusal.from(error))
+            switch await trashChecked(item, is: key) {
+            case let .success(to): return .trashed(url, to: to)
+            case let .failure(r): return .refused(url, r)
             }
         }
     }
 
-    private func place(_ item: URL, in folder: URL, name: String) -> FileOutcome {
+    /// Renames `item` to `folder/name` (or a free numbered name), then checks the item that moved is still `key`.
+    private func place(_ item: URL, in folder: URL, name: String, expecting key: TokenKey) -> FileOutcome {
         switch FileMoves.renameToFreeName(
             item, in: folder, name: name, splitsExtension: FileMoves.splitsExtension(item), before: hooks.beforeRename
         ) {
-        case let .success(placed): placed.renamed ? .renamed(item, to: placed.url, op: .move) : .moved(item, to: placed.url)
-        case let .failure(f): .refused(item, f.refusal)
+        case let .success(placed):
+            if let r = verify(placed.url, is: key, elseReturnTo: item) { return .refused(item, r) }
+            return placed.renamed ? .renamed(item, to: placed.url, op: .move) : .moved(item, to: placed.url)
+        case let .failure(f):
+            return .refused(item, f.refusal)
         }
+    }
+
+    /// A record for what changed, kept open for one undo; nil when nothing did.
+    func issue(_ kind: FileUndoRecord.Kind, _ steps: [FileUndoRecord.Step]) -> FileUndoRecord? {
+        guard !steps.isEmpty else { return nil }
+        let record = FileUndoRecord(kind: kind, steps: steps)
+        openRecords.append(record)
+        if openRecords.count > Self.maxOpenRecords { openRecords.removeFirst(openRecords.count - Self.maxOpenRecords) }
+        return record
+    }
+
+    /// Closes `record` if this operator issued it and it is still open.
+    private func redeem(_ record: FileUndoRecord) -> Bool {
+        guard let i = openRecords.firstIndex(of: record) else { return false }
+        openRecords.remove(at: i)
+        return true
     }
 
     private static func subject(of step: FileUndoRecord.Step) -> URL {
@@ -394,10 +602,11 @@ public actor FileOperator {
 
     // MARK: Eject
 
-    /// Unmounts and ejects the volume mounted at `volume`. Never in demo and test modes.
+    /// Unmounts and ejects the volume mounted at `volume`. Takes a `.menuItem` or `.inventory` intent. Never in
+    /// demo and test modes.
     public func eject(_ volume: URL, _ intent: ExplicitIntent) async -> FileOutcome {
         let outcome: FileOutcome
-        if let r = refusal(for: intent) {
+        if let r = refusal(for: intent, .eject) {
             outcome = .refused(volume, r)
         } else if sandboxRoots != nil {
             outcome = .refused(volume, .outsideSandbox)
@@ -415,16 +624,41 @@ public actor FileOperator {
         return outcome
     }
 
-    /// A mount point that is not the startup volume.
+    /// A mount point the drive hub would offer to eject (`isEjectable`). The system's own volumes under
+    /// `/System/Volumes` and `/dev` never are.
     static func isEjectableVolume(_ url: URL) -> Bool {
-        let values = try? URL(fileURLWithPath: url.path).resourceValues(forKeys: [.isVolumeKey, .volumeIsRootFileSystemKey])
-        return values?.isVolume == true && values?.volumeIsRootFileSystem != true
+        let path = DesktopLocator.canonicalPath(url).lowercased()
+        let system = ["/", "/dev", "/system/volumes"]
+        if system.contains(path) || path.hasPrefix("/dev/") || path.hasPrefix("/system/volumes/") { return false }
+        let keys: Set<URLResourceKey> = [
+            .isVolumeKey, .volumeIsRootFileSystemKey, .volumeIsEjectableKey, .volumeIsRemovableKey, .volumeIsLocalKey,
+            .volumeIsBrowsableKey, .volumeIsInternalKey,
+        ]
+        guard let v = try? URL(fileURLWithPath: url.path).resourceValues(forKeys: keys), v.isVolume == true else {
+            return false
+        }
+        return isEjectable(VolumeWatcher.Facts(
+            isInternal: v.volumeIsInternal, isLocal: v.volumeIsLocal ?? true, isRemovable: v.volumeIsRemovable ?? false,
+            isEjectable: v.volumeIsEjectable ?? false, isBrowsable: v.volumeIsBrowsable ?? false,
+            isRoot: v.volumeIsRootFileSystem ?? true
+        ))
+    }
+
+    /// `VolumeWatcher`'s rule: a browsable volume other than the startup disk that is ejectable, removable or a
+    /// server.
+    static func isEjectable(_ f: VolumeWatcher.Facts) -> Bool {
+        !f.isRoot && f.isBrowsable && (f.isEjectable || f.isRemovable || !f.isLocal)
     }
 
     // MARK: Checks
 
-    private func refusal(for intent: ExplicitIntent) -> FileRefusal? {
-        intent.isFresh(at: clock()) ? nil : .staleIntent
+    /// Spends `intent`, then says why it does not let `method` act: stale (on the monotonic clock), spent or never
+    /// issued, or from an origin that does not fit.
+    private func refusal(for intent: ExplicitIntent, _ method: Method) -> FileRefusal? {
+        let unspent = IntentLedger.shared.spend(intent.id)
+        if !intent.isFresh(at: uptime()) { return .staleIntent }
+        if !unspent { return .spentIntent }
+        return method.origins.contains(intent.origin) ? nil : .wrongOrigin
     }
 
     private func rootRefusal() -> FileRefusal? {
@@ -461,6 +695,22 @@ public actor FileOperator {
             .appendingPathComponent(u.lastPathComponent)
     }
 
+    /// Device and inode of the item at `url` (`stat` when `follow`, else `lstat`), and whether it is a folder.
+    private static func fileID(_ url: URL, follow: Bool) -> (dev: dev_t, ino: ino_t, isFolder: Bool)? {
+        var st = stat()
+        let ok: Bool = url.withUnsafeFileSystemRepresentation { p in
+            guard let p else { return false }
+            return (follow ? stat(p, &st) : lstat(p, &st)) == 0
+        }
+        return ok ? (st.st_dev, st.st_ino, st.st_mode & S_IFMT == S_IFDIR) : nil
+    }
+
+    /// `a` and `b` (symlinks followed) are one item.
+    private static func sameItem(_ a: URL, _ b: URL) -> Bool {
+        guard let x = fileID(a, follow: true), let y = fileID(b, follow: true) else { return false }
+        return x.dev == y.dev && x.ino == y.ino
+    }
+
     /// Time of check: the item at `url` right now has identity `key`.
     private func check(_ url: URL, is key: TokenKey) -> FileRefusal? {
         hooks.beforeCheck?(url)
@@ -468,6 +718,19 @@ public actor FileOperator {
         case let .success(found): return found == key ? nil : .identityChanged
         case let .failure(r): return r
         }
+    }
+
+    /// After acting: the item now at `placed` is `key`. When it is not (another item was swapped in between the
+    /// check and the act, as an editor's safe-save does), it goes straight back to `original`, under a free
+    /// numbered name if that is taken now, and the act is refused. An item that cannot be stat'ed there (the
+    /// Trash under privacy protection) is taken as it is.
+    private func verify(_ placed: URL, is key: TokenKey, elseReturnTo original: URL) -> FileRefusal? {
+        guard case let .success(found) = identity(of: placed), found != key else { return nil }
+        _ = FileMoves.renameToFreeName(
+            placed, in: original.deletingLastPathComponent(), name: original.lastPathComponent,
+            splitsExtension: FileMoves.splitsExtension(placed)
+        )
+        return .identityChanged
     }
 
     /// The volume and inode of the item at `url` itself (`lstat`; a symlink is not followed). An item whose
@@ -504,6 +767,33 @@ public actor FileOperator {
     }
 }
 
+/// Gates the items of one copy and counts them: after `cancel()` every item not started yet is skipped.
+private final class CopyGate: NSObject, FileManagerDelegate, @unchecked Sendable {
+    private let lock = NSLock()
+    private var cancelled = false
+    private var started = 0
+    private let report: (@Sendable (Int) -> Void)?
+
+    init(report: (@Sendable (Int) -> Void)?) {
+        self.report = report
+    }
+
+    var isCancelled: Bool { lock.withLock { cancelled } }
+
+    func cancel() { lock.withLock { cancelled = true } }
+
+    func fileManager(_ fileManager: FileManager, shouldCopyItemAt srcURL: URL, to dstURL: URL) -> Bool {
+        let n: Int? = lock.withLock {
+            guard !cancelled else { return nil }
+            started += 1
+            return started
+        }
+        guard let n else { return false }
+        report?(n)
+        return !isCancelled
+    }
+}
+
 // MARK: Rename primitive
 
 /// The one rename every user-file move goes through (FileOperator and FakeTrasher): `renamex_np` with
@@ -511,6 +801,7 @@ public actor FileOperator {
 enum FileMoves {
     /// Names tried: the name itself, then up to "name 100".
     static let maxAttempts = 100
+    /// The hidden staging folder a copy uses when the system has no item-replacement folder on the desk's volume.
     static let partialPrefix = ".deskterior-partial-"
 
     enum Failure: Error, Equatable {

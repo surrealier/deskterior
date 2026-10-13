@@ -3,13 +3,22 @@
 #
 # Deskterior promises it never moves, renames or deletes user files on its own. This lint makes the
 # promise mechanical:
-#   - destructive file APIs (trash, move, rename, delete, link, attributes, tags, flags) appear only in the
-#     file-operation files; writing APIs only there and in our own writers (state, cache, artifacts, tools);
-#   - nothing shells out, writes other apps' preferences (`defaults write`, `killall`) or talks to the network;
-#   - ExplicitIntent is minted only in DeskteriorApp/Store/EffectRunner.swift (in tests, only in DeskFilesTests),
-#     and only DesktopLocator.swift names the Desktop path.
-# Tests are checked for the Desktop path, minting intents, shelling out and the network; scripts for killall,
-# defaults write, osascript and the Desktop path. Patterns allow whitespace before "(" and module-qualified C calls.
+#   - destructive file APIs (trash, move, rename, delete, link, attributes, tags, flags, times, iCloud
+#     eviction, icons), including C functions passed or bound as values, appear only in the file-operation
+#     files; writing APIs only there and in our own writers (state, cache, artifacts, tools);
+#   - nothing shells out, calls by name (@_silgen_name, @_extern, dlsym, string selectors), writes other apps'
+#     preferences (`defaults write`, `killall`) or talks to the network, and Sources hold no C/ObjC files;
+#   - ExplicitIntent's initializer is SPI: `@_spi(IntentMinting) import DeskFiles` is allowed only in
+#     DeskteriorApp/Store/EffectRunner.swift (in tests, only in DeskFilesTests), and `@testable` imports are
+#     not allowed in Sources at all (debug builds would open DeskFiles' internals). The SPI token cannot be
+#     split across lines, so this holds for every spelling of a call; the one-line `ExplicitIntent(` patterns
+#     below are a second net. FileOperator also refuses intents its ledger never issued or already spent;
+#   - only DesktopLocator.swift names the Desktop path.
+# Tests are checked for the Desktop path, minting intents, SPI imports, shelling out and the network; scripts
+# for killall, defaults write, osascript and the Desktop path. Patterns allow whitespace before "(" and
+# module-qualified C calls. A whole-line comment is skipped (`//` in Swift, `#` in shell scripts; a Swift line
+# starting with `#` is code: #expect, #selector). "PATTERN !! EXCLUDE" removes the text EXCLUDE matches (a
+# declaration such as `func remove`) and checks the rest of the line again.
 # The compiler adds a guard of its own: DeskCore and DeskScene cannot import DeskFiles, so they cannot name
 # ExplicitIntent at all.
 # Tests/DeskFilesTests/FileSafetyLintTests.swift reads the variables and `check` lines below and runs the same
@@ -44,51 +53,115 @@ _ = clonefile("a", "b", 0)
 _ = exchangedata("a", "b", 0)
 _ = setxattr("/x", "tags", nil, 0, 0, 0)
 _ = chflags("/x", 0)
+_ = fchmodat(AT_FDCWD, "/x", 0o777, 0)
+_ = removefile("/x", nil, removefile_flags_t(REMOVEFILE_RECURSIVE))
 try FileManager.default.setAttributes([:], ofItemAtPath: "/x")
 try FileManager.default.linkItem(atPath: "a", toPath: "b")
 try FileManager.default.createSymbolicLink(atPath: "a", withDestinationPath: "b")
+try FileManager.default.setUbiquitous(true, itemAt: u, destinationURL: d)
+try FileManager.default.evictUbiquitousItem(at: u)
+try NSFileVersion.removeOtherVersionsOfItem(at: u)
+_ = utimes("/x", &times)
+_ = setattrlist("/x", &attrs, &buf, 8, 0)
+NSWorkspace.shared.setIcon(img, forFile: "/x", options: [])
+NSWorkspace.shared.duplicate([u]) { _, _ in }
+#selector(FileManager.removeItem(at:))
+let s = Selector(("removeItemAtPath:error:"))
+func renameAll(_ a: String, _ b: String) -> Int32 { rename(a, b) }
+func removeIt(_ p: String) -> Int32 { remove(p) }
+let mv: (UnsafePointer<CChar>, UnsafePointer<CChar>) -> Int32 = rename
+let rm: (UnsafePointer<CChar>) -> Int32 = Darwin.remove
+let op = Darwin.open
+let o: (UnsafePointer<CChar>, Int32) -> Int32 = open
+apply(each, using: unlink)
+apply(each, rename)
+let ws: NSWorkspace = .shared; ws.duplicate([u]) { _, _ in }
+let runner: Process? = nil
 try "x".write(toFile: "/x", atomically: true, encoding: .utf8)
 _ = FileHandle(forWritingAtPath: "/x")
 _ = FileHandle(forUpdatingAtPath: "/x")
 _ = open("/x", O_WRONLY | O_TRUNC)
+_ = open("/x", 0x0001 | 0x0200 | 0x0400)
 _ = OutputStream(toFileAtPath: "/x", append: false)
+_ = mkfifo("/x", 0o600)
+_ = try FileManager.default.url(for: .itemReplacementDirectory, in: .userDomainMask, appropriateFor: u, create: true)
 let p = Process(); p.executableURL = URL(fileURLWithPath: "/bin/mv")
+let q = Process.self.init()
+let t = try NSUserAppleScriptTask(url: u)
+let up = NSUserUnixTask.self
+_ = execvP(file, searchPath, argv)
+_ = fork()
 _ = "killall Finder"
 _ = "defaults write com.apple.finder CreateDesktop false"
+@_silgen_name("rename") func sneakyMove(_ a: UnsafePointer<CChar>, _ b: UnsafePointer<CChar>) -> Int32
+@_extern(c, "unlink") func sneakyUnlink(_ a: UnsafePointer<CChar>) -> Int32
+_ = dlsym(handle, "rename")
+_ = FileManager.default.perform(NSSelectorFromString("moveItemAtPath:toPath:error:"), with: a, with: b)
 let s = URLSession.shared
 _ = NSHomeDirectory() + "/Desktop"
 _ = FileManager.SearchPathDirectory(rawValue: 12)
 _ = "~/Desktop/x"
-let i: ExplicitIntent = .init(origin: .menuItem, issuedAt: .now)
-let j = ExplicitIntent.init(origin: .menuItem, issuedAt: .now)
-let k = ExplicitIntent (origin: o, issuedAt: d)
-take(.init(origin: o, issuedAt: d))
-return Self(origin: o, issuedAt: d)
-let l = Intent(origin: o, issuedAt: d)
+let i: ExplicitIntent = .init(origin: .menuItem)
+let j = ExplicitIntent.init(origin: .menuItem)
+let k = ExplicitIntent (origin: o)
+let mint: (ExplicitIntent.Origin) -> ExplicitIntent = ExplicitIntent.init
+let forged = unsafeBitCast(t, to: ExplicitIntent.self)
+take(.init(origin: .dragToTrash))
+@_spi(IntentMinting) import DeskFiles
+@_spiOnly import DeskFiles
+@testable import DeskFiles
 SWIFT
   cat > "$tmp/Sources/DeskCore/Clean.swift" <<'SWIFT'
 var list = [1]; list.remove(at: 0)
 func remove(_ k: Int) {}
+func renameLayer(_ name: String) {}
 let r = CGRect(origin: .zero, size: .zero)
+let q: CGRect = .init(origin: .zero, size: .zero)
+#if DEBUG
+#endif
+let info = ProcessInfo.processInfo
+let undo = NSMenuItem(title: "Undo", action: Selector(("undo:")), keyEquivalent: "z")
+let shown = drawer.open
+drawInterior(&c, ArtRect(0, 0, size.w, open), wood: true)
+loop?.tick(link)
 let pictures = "/System/Library/Desktop Pictures"
 let key = "CreateDesktop"
 FileHandle.standardError.write(Data())
+NSWorkspace.shared.open(url)
+case let .open(urls): open(urls)
+func removeItems(at offsets: IndexSet) {}
+List { ForEach(items) { Text($0.name) }.onDelete(perform: remove) }
+Button("Rename", action: rename)
+foo() // Process every token once
+let pid = ProcessInfo.processInfo.processIdentifier
 func run(_ intent: ExplicitIntent) -> ExplicitIntent.Origin { intent.origin }
 SWIFT
+  cat > "$tmp/Sources/DeskCore/shim.c" <<'C'
+int shim(void) { return 0; }
+C
   cat > "$tmp/Sources/DeskteriorApp/Store/EffectRunner.swift" <<'SWIFT'
-let intent = ExplicitIntent(origin: .menuItem, issuedAt: now)
+@_spi(IntentMinting) import DeskFiles
+let intent = ExplicitIntent(origin: .menuItem)
 SWIFT
   cat > "$tmp/Tests/DeskSceneTests/Bypass.swift" <<'SWIFT'
-let i = ExplicitIntent(origin: .drop, issuedAt: now)
-let j: ExplicitIntent = .init(origin: .drop, issuedAt: now)
+let i = ExplicitIntent(origin: .drop)
+let j: ExplicitIntent = .init(origin: .drop)
+#expect(ExplicitIntent(origin: .drop) != nil)
+#expect(Process() != nil)
+@_spi(IntentMinting) import DeskFiles
 SWIFT
   cat > "$tmp/Tests/DeskFilesTests/Clean.swift" <<'SWIFT'
-let i = ExplicitIntent(origin: .drop, issuedAt: now)
+@_spi(IntentMinting) @testable import DeskFiles
+let i = ExplicitIntent(origin: .drop, issuedAt: now, instant: t)
 SWIFT
   out="$("$SELF" "$tmp/Sources" "$tmp/Tests" 2>&1 || true)"
   for rel in Sources/DeskCore/Bypass.swift Tests/DeskSceneTests/Bypass.swift; do
     expect_all_reported "$tmp" "$rel" "$out" || missing=$((missing + 1))
   done
+  if ! printf '%s\n' "$out" | grep -q "DeskCore/shim\.c"; then
+    echo "file-safety: self-test: Sources/DeskCore/shim.c was not reported" >&2
+    missing=$((missing + 1))
+  fi
   if printf '%s\n' "$out" | grep -qE "(Clean|EffectRunner)\.swift:"; then
     echo "file-safety: self-test: false positives:" >&2
     printf '%s\n' "$out" | grep -E "(Clean|EffectRunner)\.swift:" >&2
@@ -138,29 +211,38 @@ SRC="$(cd "$SRC" && pwd)"
 DESTRUCTIVE_ALLOW="DeskFiles/FileOperator.swift DeskFiles/Trasher.swift DeskFiles/OperationLog.swift"
 WRITE_ALLOW="$DESTRUCTIVE_ALLOW DeskFiles/StateStore.swift DeskFiles/IconCache.swift DeskFiles/ArtifactWriter.swift DeskAssetTool/"
 INTENT_ALLOW="DeskteriorApp/Store/EffectRunner.swift"
-# The `origin: … issuedAt:` labels also appear in the initializer's declaration.
-INTENT_LABELS_ALLOW="$INTENT_ALLOW DeskFiles/ExplicitIntent.swift"
+# The SPI also appears where the initializer is declared.
+SPI_ALLOW="$INTENT_ALLOW DeskFiles/ExplicitIntent.swift"
 TEST_INTENT_ALLOW="DeskFilesTests/"
 DESKTOP_PATH_ALLOW="DeskFiles/DesktopLocator.swift"
 TEST_DESKTOP_PATH_ALLOW="DeskFilesTests/SafetyGuardTests.swift"
 SCRIPT_DESKTOP_PATH_ALLOW="make-fixture-desktop.sh"
 NOWHERE=""
+# File extensions that may not appear under Sources (C, C++, Objective-C, assembly, module maps).
+FOREIGN_EXTENSIONS="c h m mm cc cpp cxx hpp s S modulemap"
 
-# Extended regexes (grep -E), one per line. "PATTERN !! EXCLUDE" skips hits whose code matches EXCLUDE.
-C_MUTATORS='remove|rename|renameat|renamex_np|renameatx_np|unlink|unlinkat|rmdir|truncate|ftruncate|link|linkat|symlink|symlinkat|chmod|fchmod|lchmod|chown|fchown|lchown|chflags|fchflags|lchflags|setxattr|fsetxattr|removexattr|fremovexattr|exchangedata|clonefile|clonefileat|fclonefileat|copyfile|fcopyfile|open|openat|creat|mkdir|mkdirat|system|popen'
+# Extended regexes (grep -E), one per line. "PATTERN !! EXCLUDE": the text EXCLUDE matches is removed and the
+# rest of the line checked again (EXCLUDE may not contain "/").
+# C functions that change files, run programs or look up symbols: any module-qualified mention is flagged.
+C_MUTATORS='remove|rename|renameat|renamex_np|renameatx_np|unlink|unlinkat|rmdir|truncate|ftruncate|link|linkat|symlink|symlinkat|chmod|fchmod|lchmod|fchmodat|chown|fchown|lchown|fchownat|chflags|fchflags|lchflags|setxattr|fsetxattr|removexattr|fremovexattr|exchangedata|clonefile|clonefileat|fclonefileat|copyfile|fcopyfile|removefile|open|openat|creat|mkdir|mkdirat|mkfifo|mknod|system|popen|setattrlist|fsetattrlist|setattrlistat|utimes|lutimes|futimes|utimensat|futimens|utime|execv|execve|execvp|fork|vfork|posix_spawn|posix_spawnp|dlsym|dlopen'
+# The ones never used as plain names here: bound or passed as a value (`= rename`, `(…, unlink)`) is flagged too
+# (not after a label, so SwiftUI's `perform: remove` stays clean).
+C_VALUES='remove|rename|renameat|renamex_np|renameatx_np|unlink|unlinkat|rmdir|truncate|ftruncate|linkat|symlink|symlinkat|chmod|fchmod|lchmod|fchmodat|chown|fchown|lchown|fchownat|chflags|fchflags|lchflags|setxattr|fsetxattr|removexattr|fremovexattr|exchangedata|clonefile|clonefileat|fclonefileat|copyfile|fcopyfile|removefile|openat|creat|mkdir|mkdirat|mkfifo|mknod|popen|setattrlist|fsetattrlist|setattrlistat|utimes|lutimes|futimes|utimensat|futimens'
 DESTRUCTIVE_PATTERNS='\brecycle[[:space:]]*\(
-\btrashItem\b
-\bmoveItem\b
-\bcopyItem\b
-\bremoveItem\b
-\breplaceItem(At)?\b
+\btrashItem(AtURL)?\b
+\b(move|copy|remove|link)Item(At(Path|URL))?\b
+\breplaceItem(At(URL)?)?\b
+\bduplicate[[:space:]]*\( !! (func|case)[[:space:]]+duplicate
 \brenamex?_np\b
 \brenameatx?_np\b
 \brenameat\b
-(^|[^.A-Za-z0-9_])rename[[:space:]]*\( !! func[[:space:]]+rename
-\b(Darwin|Glibc|Foundation)\.('"$C_MUTATORS"')[[:space:]]*\(
+(^|[^.A-Za-z0-9_])rename[[:space:]]*\( !! (func|case)[[:space:]]+rename
+\b(Darwin|Glibc|Foundation)\.('"$C_MUTATORS"')\b
+(=|\(|,|\[|\{|\breturn)[[:space:]]*('"$C_VALUES"')[[:space:]]*($|[),}]|\])
+=[[:space:]]*(open|link|system)[[:space:]]*$
 \bunlink(at)?\b
-(^|[^.A-Za-z0-9_])remove[[:space:]]*\( !! func[[:space:]]+remove
+(^|[^.A-Za-z0-9_])remove[[:space:]]*\( !! (func|case)[[:space:]]+remove
+\bremovefile\b
 \brmdir\b
 \bf?truncate[[:space:]]*\(
 \bf?copyfile\b
@@ -168,14 +250,24 @@ DESTRUCTIVE_PATTERNS='\brecycle[[:space:]]*\(
 \bexchangedata\b
 \bf?(set|remove)xattr\b
 \b[fl]?chflags\b
-\b[fl]?chmod\b
-\b[fl]?chown\b
+\b[fl]?chmod(at)?\b
+\b[fl]?chown(at)?\b
+\bf?setattrlist(at)?\b
+\b[lf]?utimes\b
+\butimensat\b
+\bfutimens\b
+\butime[[:space:]]*\(
+\bacl_set_(file|fd|link_np)\b
 \bsetAttributes\b
-\blinkItem\b
 \bcreateSymbolicLink\b
-(^|[^.A-Za-z0-9_])(sym)?link(at)?[[:space:]]*\( !! func[[:space:]]+(sym)?link
+(^|[^.A-Za-z0-9_])(sym)?link(at)?[[:space:]]*\( !! (func|case)[[:space:]]+(sym)?link
 \bsetResourceValues?\b
+\bsetUbiquitous\b
+\bevictUbiquitousItem\b
+\bNSFileVersion\b
+\bsetIcon\b
 \bunmountAndEjectDevice\b
+\bunmountVolume\b
 \bunmount[[:space:]]*\(
 \bDADisk(Unmount|Eject|Rename)\b
 \bperformFileOperation\b'
@@ -183,31 +275,46 @@ WRITE_PATTERNS='\bwrite[[:space:]]*\([[:space:]]*(to|toFile|toURL)[[:space:]]*:
 \bwriteTo(File|URL)\b
 \bcreateFile\b
 \bcreateDirectory\b
+\bitemReplacementDirectory\b
 \bFileHandle[[:space:]]*(\.init)?[[:space:]]*\([[:space:]]*for(Writing|Updating)
 \bOutputStream\b
 \bO_(WRONLY|RDWR|CREAT|TRUNC|APPEND)\b
+(^|[^.A-Za-z0-9_])open(at)?[[:space:]]*\([^)]*, !! (func|case)[[:space:]]+open
 \bf(re|d)?open\b
 \bcreat[[:space:]]*\(
-(^|[^.A-Za-z0-9_])mkdir(at)?[[:space:]]*\( !! func[[:space:]]+mkdir
+(^|[^.A-Za-z0-9_])mkdir(at)?[[:space:]]*\( !! (func|case)[[:space:]]+mkdir
+\bmk(fifo|nod)\b
 \bmk[sd]temps?\b
 \barchiveRootObject\b
 \bCGImageDestinationCreateWithURL\b
 \bCGPDFContextCreateWithURL\b
 \bCGDataConsumer[[:space:]]*\([[:space:]]*url:'
-SHELL_PATTERNS='\bProcess[[:space:]]*(\.init)?[[:space:]]*\(
+SHELL_PATTERNS='\bProcess[[:space:]]*(\(|\.|\?|!|>|\)|,|\]|$)
+(:|=|<|\bas[!?]?|\bis)[[:space:]]*\[?Process\b
 \bNSTask\b
 \bposix_spawnp?\b
-(^|[^.A-Za-z0-9_])system[[:space:]]*\( !! func[[:space:]]+system
+(^|[^.A-Za-z0-9_])system[[:space:]]*\( !! (func|case)[[:space:]]+system
 \bpopen\b
-\bexecv[pe]?[[:space:]]*\(
+\bexec(l|le|lp|v|ve|vp|vP|t)\b
+\bv?fork[[:space:]]*\(
 \bNSAppleScript\b
 \bOSAScript\b
-\bNSUserScriptTask\b
+\bNSUser[A-Za-z]*Task\b
+\bAuthorizationExecuteWithPrivileges\b
 killall
 defaults[[:space:]]+write
 \bCFPreferencesSet(App)?Value\b
 \bCFPreferencesSetMultiple\b
 suiteName:[[:space:]]*"com\.apple\.'
+# Calls by name, around every pattern above.
+DYNAMIC_PATTERNS='@_silgen_name
+@_extern\b
+\bdl(sym|open)\b
+\bNSSelectorFromString\b
+\bNSClassFromString\b
+\bobjc_msgSend
+\b(class_getMethodImplementation|class_replaceMethod|method_getImplementation|method_setImplementation|method_exchangeImplementations)\b
+\bSelector[[:space:]]*\(+[[:space:]]*"[^"]*([Rr]emove|[Mm]ove|[Cc]opy|[Tt]rash|[Rr]ename|[Ll]ink|[Rr]eplace|[Ww]rite|[Uu]nmount|[Ee]ject|[Dd]elete|[Rr]ecycle|[Aa]ttribute|[Cc]reate|[Dd]uplicate|[Ii]con|[Ll]aunch|[Ee]xec)'
 NETWORK_PATTERNS='\bURLSession\b
 \bNSURLConnection\b
 \bNWConnection\b
@@ -216,11 +323,14 @@ NETWORK_PATTERNS='\bURLSession\b
 \bCFSocketCreate
 \bCFStreamCreatePairWithSocket
 contentsOf:[[:space:]]*URL[[:space:]]*\([[:space:]]*string:'
+# One-line spellings of minting an intent; the SPI check below covers every spelling.
 INTENT_PATTERNS='\bExplicitIntent[[:space:]]*(\.init)?[[:space:]]*\(
 \bExplicitIntent[!?]?[[:space:]]*=[[:space:]]*\.init\b
-\.init[[:space:]]*\([[:space:]]*origin:[[:space:]]*\.'
-# Catches `.init(…)`, `Self(…)` and typealiases with the initializer's labels on one line.
-INTENT_LABEL_PATTERNS='\borigin:[^)]*\bissuedAt:'
+\bExplicitIntent[[:space:]]*\.[[:space:]]*(init|self)\b
+\.init[[:space:]]*\([[:space:]]*origin:[[:space:]]*\.(menuItem|sheetConfirm|drop|dragToTrash|undo|inventory)\b'
+# `@_spi(…)` and `@_spiOnly` imports or declarations.
+SPI_PATTERNS='(^|[^A-Za-z0-9_])_spi'
+TESTABLE_PATTERNS='@testable\b'
 DESKTOP_PATH_PATTERNS='\.desktopDirectory\b
 SearchPathDirectory[[:space:]]*(\.init)?[[:space:]]*\(
 "Desktop["/]
@@ -249,8 +359,13 @@ is_allowed() { # $1 = relative path, $2 = allowlist string
 
 # $1 = label, $2 = directory, $3 = file glob, $4 = newline-separated patterns, $5 = allowlist
 check() {
-  local label="$1" dir="$2" glob="$3" patterns="$4" allow="$5" line pat exclude hit file rel rest code
+  local label="$1" dir="$2" glob="$3" patterns="$4" allow="$5" line pat exclude hit file rel rest code comment
   [ -n "$dir" ] || return 0
+  # Whole-line comments: `#` in shell scripts, `//` in Swift (where a line starting with `#` is code).
+  case "$glob" in
+    *.sh) comment='^[[:space:]]*#' ;;
+    *) comment='^[[:space:]]*//' ;;
+  esac
   while IFS= read -r line; do
     [ -z "$line" ] && continue
     pat="${line%% !! *}"
@@ -262,9 +377,8 @@ check() {
       rest="${hit#*:}"      # "<line>:<code>"
       code="${rest#*:}"
       rel="${file#"$dir"/}"
-      # Ignore whole-line comments (Swift // and shell #).
-      if printf '%s' "$code" | grep -qE '^[[:space:]]*(//|#)'; then continue; fi
-      if [ -n "$exclude" ] && printf '%s' "$code" | grep -qE -e "$exclude"; then continue; fi
+      if printf '%s\n' "$code" | grep -qE -e "$comment"; then continue; fi
+      if [ -n "$exclude" ] && ! printf '%s\n' "$code" | sed -E "s/$exclude//g" | grep -qE -e "$pat"; then continue; fi
       if ! is_allowed "$rel" "$allow"; then
         echo "file-safety: [$label] /$pat/ not allowed in $rel:${rest%%:*}: $(printf '%s' "$code" | sed 's/^[[:space:]]*//')" >&2
         violations=$((violations + 1))
@@ -277,20 +391,39 @@ $patterns
 EOF
 }
 
+# $1 = directory: Swift only, so that no C or Objective-C file can call what the patterns forbid.
+check_foreign() {
+  local dir="$1" ext f
+  [ -n "$dir" ] || return 0
+  set --
+  for ext in $FOREIGN_EXTENSIONS; do set -- "$@" -o -name "*.$ext"; done
+  shift
+  while IFS= read -r f; do
+    [ -z "$f" ] && continue
+    echo "file-safety: [foreign-source] not allowed in ${f#"$dir"/}: Sources hold Swift only" >&2
+    violations=$((violations + 1))
+  done <<EOF
+$(find "$dir" -type f \( "$@" \) 2>/dev/null)
+EOF
+}
+
 check "destructive" "$SRC" '*.swift' "$DESTRUCTIVE_PATTERNS" "$DESTRUCTIVE_ALLOW"
 check "write" "$SRC" '*.swift' "$WRITE_PATTERNS" "$WRITE_ALLOW"
 check "shell" "$SRC" '*.swift' "$SHELL_PATTERNS" "$NOWHERE"
+check "dynamic" "$SRC" '*.swift' "$DYNAMIC_PATTERNS" "$NOWHERE"
 check "network" "$SRC" '*.swift' "$NETWORK_PATTERNS" "$NOWHERE"
 check "intent" "$SRC" '*.swift' "$INTENT_PATTERNS" "$INTENT_ALLOW"
-check "intent-labels" "$SRC" '*.swift' "$INTENT_LABEL_PATTERNS" "$INTENT_LABELS_ALLOW"
+check "intent-spi" "$SRC" '*.swift' "$SPI_PATTERNS" "$SPI_ALLOW"
+check "testable" "$SRC" '*.swift' "$TESTABLE_PATTERNS" "$NOWHERE"
 check "desktop-path" "$SRC" '*.swift' "$DESKTOP_PATH_PATTERNS" "$DESKTOP_PATH_ALLOW"
 check "test-shell" "$TESTS" '*.swift' "$SHELL_PATTERNS" "$NOWHERE"
 check "test-network" "$TESTS" '*.swift' "$NETWORK_PATTERNS" "$NOWHERE"
 check "test-desktop-path" "$TESTS" '*.swift' "$TEST_DESKTOP_PATH_PATTERNS" "$TEST_DESKTOP_PATH_ALLOW"
 check "test-intent" "$TESTS" '*.swift' "$INTENT_PATTERNS" "$TEST_INTENT_ALLOW"
-check "test-intent-labels" "$TESTS" '*.swift' "$INTENT_LABEL_PATTERNS" "$TEST_INTENT_ALLOW"
+check "test-intent-spi" "$TESTS" '*.swift' "$SPI_PATTERNS" "$TEST_INTENT_ALLOW"
 check "script" "$SCRIPTS" '*.sh' "$SCRIPT_PATTERNS" "$NOWHERE"
 check "script-desktop-path" "$SCRIPTS" '*.sh' "$SCRIPT_DESKTOP_PATTERNS" "$SCRIPT_DESKTOP_PATH_ALLOW"
+check_foreign "$SRC"
 
 if [ "$violations" -gt 0 ]; then
   echo "file-safety: $violations violation(s)" >&2

@@ -98,8 +98,10 @@ public final class OperationLog: @unchecked Sendable {
         decoder.dateDecodingStrategy = .iso8601
         return lock.withLock {
             [rotatedURL, fileURL].flatMap { url -> [Entry] in
-                guard let text = try? String(contentsOf: url, encoding: .utf8) else { return [] }
-                return text.split(separator: "\n").compactMap { try? decoder.decode(Entry.self, from: Data($0.utf8)) }
+                guard let data = Self.readRegularFile(url) else { return [] }
+                return data.split(separator: UInt8(ascii: "\n")).compactMap {
+                    try? decoder.decode(Entry.self, from: Data($0))
+                }
             }
         }
     }
@@ -111,11 +113,15 @@ public final class OperationLog: @unchecked Sendable {
         return (try? encoder.encode(entry)).map { String(decoding: $0, as: UTF8.self) } ?? "{}"
     }
 
-    /// `O_APPEND` without following a symlink, so a planted link cannot redirect the log.
+    /// `O_APPEND` without following a symlink, so a planted link cannot redirect the log, and without blocking:
+    /// anything but a regular file there (a planted FIFO) is refused instead of hanging the caller.
     private func appendBytes(_ data: Data) throws {
-        let fd = open(fileURL.path, O_WRONLY | O_APPEND | O_CREAT | O_NOFOLLOW | O_CLOEXEC, 0o644)
+        let fd = open(fileURL.path, O_WRONLY | O_APPEND | O_CREAT | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC, 0o644)
         guard fd >= 0 else { throw Failure.writeFailed(errno) }
         defer { close(fd) }
+        var st = stat()
+        guard fstat(fd, &st) == 0 else { throw Failure.writeFailed(errno) }
+        guard st.st_mode & S_IFMT == S_IFREG else { throw Failure.writeFailed(EFTYPE) }
         try data.withUnsafeBytes { (raw: UnsafeRawBufferPointer) in
             var offset = 0
             while offset < raw.count {
@@ -127,5 +133,15 @@ public final class OperationLog: @unchecked Sendable {
                 offset += n
             }
         }
+    }
+
+    /// The contents of the regular file at `url` (a symlink or FIFO there is not opened or not read), or nil.
+    private static func readRegularFile(_ url: URL) -> Data? {
+        let fd = open(url.path, O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC)
+        guard fd >= 0 else { return nil }
+        let handle = FileHandle(fileDescriptor: fd, closeOnDealloc: true)
+        var st = stat()
+        guard fstat(fd, &st) == 0, st.st_mode & S_IFMT == S_IFREG else { return nil }
+        return try? handle.readToEnd() ?? Data()
     }
 }

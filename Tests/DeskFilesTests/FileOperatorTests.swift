@@ -3,14 +3,20 @@ import Foundation
 import Testing
 @testable import DeskFiles
 
-/// A settable clock.
+/// A clock that moves only when told: wall time for log lines, monotonic time for intent freshness.
 final class TestClock: @unchecked Sendable {
     private let lock = NSLock()
-    private var t = Date(timeIntervalSince1970: 1_800_000_000)
+    private let date = Date(timeIntervalSince1970: 1_800_000_000)
+    private let start = ContinuousClock.now
+    private var offset: Duration = .zero
 
-    var now: Date {
-        get { lock.withLock { t } }
-        set { lock.withLock { t = newValue } }
+    var now: Date { lock.withLock { date.addingTimeInterval(Self.seconds(offset)) } }
+    var instant: ContinuousClock.Instant { lock.withLock { start + offset } }
+
+    func advance(_ seconds: Double) { lock.withLock { offset += .seconds(seconds) } }
+
+    static func seconds(_ d: Duration) -> Double {
+        Double(d.components.seconds) + Double(d.components.attoseconds) / 1e18
     }
 }
 
@@ -53,15 +59,26 @@ final class FileRig: @unchecked Sendable {
         let clock = clock
         op = FileOperator(
             root: desk, trasher: trasher, log: log, sandboxRoots: [temp.root], clock: { clock.now },
-            volumeID: volumeID ?? FileOperator.volumeUUID
+            uptime: { clock.instant }, volumeID: volumeID ?? FileOperator.volumeUUID
+        )
+    }
+
+    /// Another operator on this rig's log and clock.
+    func makeOperator(
+        root: URL? = nil, trasher: (any Trasher)? = nil, sandboxRoots: [URL]? = nil
+    ) -> FileOperator {
+        FileOperator(
+            root: root ?? desk, trasher: trasher ?? self.trasher, log: log, sandboxRoots: sandboxRoots ?? [temp.root],
+            clock: { [clock] in clock.now }, uptime: { [clock] in clock.instant }
         )
     }
 
     /// `dir/name` spelled as the operator spells results (no trailing slash for folders).
     func at(_ dir: URL, _ name: String) -> URL { dir.appendingPathComponent(name, isDirectory: false) }
 
-    func intent(_ origin: ExplicitIntent.Origin = .menuItem, age: TimeInterval = 0) -> ExplicitIntent {
-        ExplicitIntent(origin: origin, issuedAt: clock.now.addingTimeInterval(-age))
+    /// A freshly issued intent, `age` seconds old by this rig's clock.
+    func intent(_ origin: ExplicitIntent.Origin = .menuItem, age: Double = 0) -> ExplicitIntent {
+        ExplicitIntent(origin: origin, issuedAt: clock.now.addingTimeInterval(-age), instant: clock.instant - .seconds(age))
     }
 
     @discardableResult
@@ -331,9 +348,7 @@ struct FileOperatorTests {
 
         // A desktop folder outside the sandbox.
         let a = try rig.file(rig.desk, "a.txt")
-        let narrow = FileOperator(
-            root: rig.desk, trasher: rig.trasher, log: rig.log, sandboxRoots: [rig.elsewhere], clock: { rig.clock.now }
-        )
+        let narrow = rig.makeOperator(sandboxRoots: [rig.elsewhere])
         result = await narrow.trash([a], expecting: [rig.key(a)], rig.intent())
         #expect(result.outcomes == [.refused(a, .outsideSandbox)])
         result = await narrow.importItems([try rig.file(rig.elsewhere, "b.txt")], op: .move, rig.intent(.drop))
@@ -341,9 +356,7 @@ struct FileOperatorTests {
 
         // A trash folder outside the sandbox.
         let foreignTrash = try FakeTrasher(folder: other.url("Trash"), desktop: rig.desk)
-        let leaky = FileOperator(
-            root: rig.desk, trasher: foreignTrash, log: rig.log, sandboxRoots: [rig.temp.root], clock: { rig.clock.now }
-        )
+        let leaky = rig.makeOperator(trasher: foreignTrash)
         result = await leaky.trash([a], expecting: [rig.key(a)], rig.intent())
         #expect(result.outcomes == [.refused(a, .outsideSandbox)])
         #expect(rig.exists(a))
@@ -402,9 +415,9 @@ struct FileOperatorTests {
         #expect(rig.names(pkg) == ["TXT.rtf", "image.png"])
         #expect(rig.trashNames.isEmpty)
 
-        // Replaying the record finds nothing in the trash and changes nothing.
+        // A record is good for one undo; a replay changes nothing.
         let again = await rig.op.undo(record, rig.intent(.undo))
-        #expect(again.refusals == [.missing, .missing, .missing])
+        #expect(again.refusals == [.unknownRecord, .unknownRecord, .unknownRecord])
         #expect(urls.map { rig.key($0) } == before)
     }
 
@@ -420,7 +433,8 @@ struct FileOperatorTests {
             .trashCopy(stray, key: rig.key(stray)),
             .moveBack(current: onDesk, source: URL(fileURLWithPath: "/private/var/root/x.txt"), key: rig.key(onDesk)),
         ]
-        let result = await rig.op.undo(FileUndoRecord(kind: .trash, steps: steps), rig.intent(.undo))
+        let record = try #require(await rig.op.issue(.trash, steps))
+        let result = await rig.op.undo(record, rig.intent(.undo))
         #expect(result.refusals == [.outsideSandbox, .outsideRoot, .outsideRoot, .notInTrash, .notInTrash])
         #expect(rig.text(stray) == "stay")
         #expect(rig.exists(onDesk))
@@ -429,7 +443,8 @@ struct FileOperatorTests {
         let a = try rig.file(rig.desk, "a.txt")
         let trashed = await rig.op.trash([a], expecting: [rig.key(a)], rig.intent())
         guard case let .putBack(t?, _, key) = trashed.undo?.steps.first else { Issue.record("no step"); return }
-        let moved = FileUndoRecord(kind: .trash, steps: [.putBack(trashed: t, original: rig.at(rig.elsewhere, "a.txt"), key: key)])
+        let away = FileUndoRecord.Step.putBack(trashed: t, original: rig.at(rig.elsewhere, "a.txt"), key: key)
+        let moved = try #require(await rig.op.issue(.trash, [away]))
         let refused = await rig.op.undo(moved, rig.intent(.undo))
         #expect(refused.refusals == [.outsideRoot])
         #expect(rig.trashNames == ["a.txt"])
