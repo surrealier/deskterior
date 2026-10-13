@@ -28,6 +28,38 @@
    rounded square" and "16–1024" in §6.
 6. **Test toolchain on CLT:** `scripts/swift-test.sh` adds the Testing framework search paths and
    `-disable-cross-import-overlays` (the CLT ship `_Testing_Foundation.framework` without its module).
+7. **Scene composition (M3).**
+   - §1.3 chair rect is `196,228,72,84`, with `chairTravel` `64...432`, so it stays clear of the mat.
+   - §1.2: when no Dock strip is reserved, `SceneLayout.coreOrigin` rises by `floorLift` (up to 14 px), so at
+     least 14 floor rows show. `PixelGrid.coreOrigin` is unchanged. Room objects are placed from
+     `SceneLayout`/`Anchors`, never from the grid.
+   - Tall walls get a ceiling plane, crown, pendant and hanging plant (cords ≤ 72 px). Medium walls get a
+     picture rail that the string lights hang from.
+8. **Light shapes (M3).** These supersede the §1.4 rows.
+   - The lamp light is an ellipse pool (`CoreLayout.lampPool`): a level-7 warm core and a level-6 ring, plus a
+     painted highlight overlay and a bulb bloom. It shows only at ambient ≤ 5.
+   - The monitor glow is a level-5 cool band in front of the riser, fading over 20 rows (level 3–4 turns oak into
+     the felt greys).
+   - The phone glow is level 5.
+9. **Persisted names (wave-3 integration).**
+   - `LightsMode` raw values are `auto|day|night|lamp`. Lamp Only is stored as `"lamp"`, the `--lights`
+     spelling.
+   - `mat` (§13) gains an optional `"keyboard": [x, d]`. `particles` may be absent (lay a fresh mat from
+     `origin`/`size`/`angle`).
+   - Restore a mat with `ClothSim.restore(state:piles:)`, which does coverage, then bumps, then cloth.
+10. **Mat gestures (M8).** These refine §2.2 E9.
+    - A peel stays folded only if it turned past 120° and the held point crossed the mat's midline; otherwise it
+      lays back.
+    - Rotate and size are fitted: the mat turns or grows only as far as it fits the desk.
+      `canTransform`/`fittedTransform` disable menu items that can't do anything.
+    - Grabbing an underside-up flap and dragging it toward its flat place unpeels it.
+11. **Identity and backups (M4).** These refine §3.2 and §4.8.
+    - Snapshots carry `continuous`. A same-name swap re-keys in place only in a continuous scan.
+    - A name-only match needs the removal to be 0–2 s ago, or size and creation date to agree.
+    - Nothing enters the wastebasket by a name match.
+    - A scan that would remove > 50 % (and > 20) of the tokens is held and confirmed by a rescan 2 s later.
+    - Backups rotate by age: `.bak1` hourly, `.bak2` daily, `.bak3` weekly.
+    - Switching the mirrored folder parks its layout as `desk.<sha1(rootPath)>.json`.
 
 ---
 
