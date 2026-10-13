@@ -58,6 +58,17 @@
     { "expect": { "token:todo.txt": "cell:0,6,4" } },
     { "key": "cmd+f" },
     { "expect": { "command": "inventory" } },
-    { "snapshot": "06-after-undo-redo" }
+    { "snapshot": "06-after-undo-redo" },
+
+    { "click": "token:IMG_0001.png" },
+    { "click": { "at": "token:IMG_0002.png", "mods": ["cmd"] } },
+    { "click": { "at": "token:diagram.png", "mods": ["cmd"] } },
+    { "drag": { "from": "token:IMG_0002.png", "to": "cell:5,4", "duration": 0.3, "hold": true } },
+    { "snapshot": "07-carry-stack" },
+    { "release": true },
+    { "wait": 0.05 },
+    { "snapshot": "08-pour" },
+    { "waitIdle": 2 },
+    { "expect": { "token:IMG_0002.png": "cell:0,5,4", "token:IMG_0001.png": "screen", "selection": 3, "undo": "Move 3 Items" } }
   ]
 }

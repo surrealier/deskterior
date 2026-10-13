@@ -216,7 +216,10 @@ final class DeskSession {
         effects = EffectRunner(host: host, folder: configuration.folder, dryRun: dryRun)
         mirror = MirrorController(configuration: configuration, store: store, stateStore: stateStore)
         effects.mirror = mirror
-        effects.onAccessGranted = { [weak self] in self?.store.dispatch(.accessGranted) }
+        effects.onAccessGranted = { [weak self] in
+            self?.store.dispatch(.accessGranted)
+            self?.mirror.connect()
+        }
         let bundleID = AppIdentity.bundleID
         store.effects = { [weak self] in self?.effects.run($0) }
         store.willDispatch = { action, state in

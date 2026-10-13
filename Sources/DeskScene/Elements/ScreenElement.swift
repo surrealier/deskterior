@@ -362,13 +362,12 @@ public final class ScreenElement: DeskElement {
             TokenArt.drawDropTarget(&c, local(cellRect(target.col, target.row)))
         }
         for t in tokens {
+            // A token waiting for its turn to print in is not there yet.
+            if let age = printIn[t.key], age < 0 { continue }
             let icon = local(iconRect(t.cell.col, t.cell.row))
             if selection.contains(t.key) { TokenArt.drawSelectionBackdrop(&c, icon) }
             var image = TokenArt.icon(t.key, t.meta, context)
-            if let age = printIn[t.key] {
-                guard age >= 0 else { continue }
-                image = TokenArt.printing(image, progress: age / Self.printInDuration)
-            }
+            if let age = printIn[t.key] { image = TokenArt.printing(image, progress: age / Self.printInDuration) }
             c.blit(image, at: icon.origin)
             if let tag = TokenArt.tagInk(t.meta.tags) {
                 c.blit(KindIcons.tagStripe(tag, width: 12).image, at: ArtPoint(icon.x + 2, icon.maxY))
@@ -380,19 +379,22 @@ public final class ScreenElement: DeskElement {
         }
         if let m = marquee { TokenArt.drawMarquee(&c, local(m.intersection(screen))) }
         guard let font = context.font else { return c.buffer }
-        // Labels last, over neighbouring icons: the primary selection's pill, then the hovered token's.
-        var labelled = Set<TokenKey>()
-        for (key, selected) in [(selection.primary, true), (hovered, false)] {
-            guard let key, labelled.insert(key).inserted, let t = tokens.first(where: { $0.key == key }) else { continue }
-            let isSelected = selected || selection.contains(key)
-            let label = TokenArt.label(t.meta, selected: isSelected, font: font)
+        // Labels last, over neighbouring icons: the primary selection's pill and the hovered token's label; when
+        // they would overlap, the hovered one wins.
+        var labels: [(image: PixelBuffer, at: ArtPoint)] = []
+        for (key, selected) in [(hovered, false), (selection.primary, true)] {
+            guard let key, let t = tokens.first(where: { $0.key == key }), printIn[key].map({ $0 >= 0 }) ?? true
+            else { continue }
+            if selected, key == hovered { continue }
+            let label = TokenArt.label(t.meta, selected: selected || selection.contains(key), font: font)
             let icon = local(iconRect(t.cell.col, t.cell.row))
-            var x = icon.midX - label.width / 2
-            var y = icon.maxY + 1
-            x = min(max(x, 1), c.width - 1 - label.width)
-            y = min(y, c.height - label.height)
-            c.blit(label, at: ArtPoint(x, y))
+            let x = min(max(icon.midX - label.width / 2, 1), c.width - 1 - label.width)
+            let y = min(icon.maxY + 1, c.height - label.height)
+            let r = ArtRect(x, y, label.width, label.height)
+            if labels.contains(where: { ArtRect(origin: $0.at, size: $0.image.size).intersects(r) }) { continue }
+            labels.append((label, ArtPoint(x, y)))
         }
+        for l in labels.reversed() { c.blit(l.image, at: l.at) }
         return c.buffer
     }
 }
