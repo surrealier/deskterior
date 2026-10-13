@@ -5,8 +5,12 @@ credited and keeps its own terms.
 
 ## Galmuri (font)
 - Author: Lee Minseo (quiple) — https://github.com/quiple/galmuri
-- License: SIL Open Font License 1.1 (see `Resources/Fonts/OFL-Galmuri.txt`). No Reserved Font Name.
-- Bundled file(s): `Galmuri9.ttf` (version and checksum recorded below when added).
+- License: SIL Open Font License 1.1 (see `Resources/Fonts/OFL-Galmuri.txt`, a verbatim copy of the
+  release's `LICENSE.txt`). Copyright (c) 2019–2025 Lee Minseo. No Reserved Font Name.
+- Version: v2.40.4, from https://github.com/quiple/galmuri/releases/download/v2.40.4/Galmuri-v2.40.4.zip
+  (zip sha256 `c8b3d9861a62ae73c8b1178091401cd79994812437ef386413f6dd54856e60e7`).
+- Bundled file(s): `Resources/Fonts/Galmuri9.ttf` — the outline TrueType (not the "Bitmap" variant), unmodified,
+  4,649,144 bytes, sha256 `e84e821b18be15b9e3a907ceb83cfba25fabf51c80b7edf0d2921cf8f8e1a11d`.
 
 ## Apollo palette
 - Author: AdamCYounis — https://lospec.com/palette-list/apollo
