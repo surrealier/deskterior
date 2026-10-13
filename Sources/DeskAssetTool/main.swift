@@ -4,18 +4,28 @@ import Foundation
 
 // `deskterior-assets` dev tool. Writes review images and generated assets; never touches user files.
 //
-//   deskterior-assets review <out-dir> [--scale N]   palette/light-ramp swatches + canvas primitives sheet
+//   deskterior-assets review <out-dir> [--scale N]    palette/light-ramp swatches + canvas primitives sheet
+//   deskterior-assets icon --out <dir> [--all-sizes]  AppIcon.iconset (for iconutil), AppIcon-master.png and
+//                                                     AppIcon-preview.png in <dir>; --all-sizes adds the
+//                                                     16/32-px slots (see AppIconArt)
 
 let args = Array(CommandLine.arguments.dropFirst())
 
 func usage() -> Never {
-    print("usage: deskterior-assets review <out-dir> [--scale N]")
+    print("""
+        usage: deskterior-assets review <out-dir> [--scale N]
+               deskterior-assets icon --out <dir> [--all-sizes]
+        """)
     exit(2)
 }
 
+func value(of name: String) -> String? {
+    guard let i = args.firstIndex(of: name), i + 1 < args.count else { return nil }
+    return args[i + 1]
+}
+
 func option(_ name: String, default d: Int) -> Int {
-    guard let i = args.firstIndex(of: name), i + 1 < args.count, let v = Int(args[i + 1]) else { return d }
-    return v
+    value(of: name).flatMap { Int($0) } ?? d
 }
 
 func write(_ buffer: PixelBuffer, _ name: String, in dir: URL, scale: Int) throws {
@@ -77,13 +87,54 @@ func primitivesSheet() -> PixelBuffer {
     return c.buffer
 }
 
-guard args.first == "review", args.count >= 2 else { usage() }
-let outDir = URL(fileURLWithPath: args[1], isDirectory: true)
-let scale = option("--scale", default: 4)
+/// The icon as people see it: the 16- and 32-px sprites, then the 64- and 128-px slots, bottom-aligned on a
+/// light and a dark row.
+func iconPreviewSheet() -> PixelBuffer {
+    let slots = AppIconArt.allSlots
+    let tiles = [16, 32, 64, 128].compactMap { px in slots.first { $0.pixels == px }?.render() }
+    let pad = 8
+    let width = tiles.reduce(pad) { $0 + $1.width + pad }
+    let rowHeight = (tiles.map(\.height).max() ?? 0) + 2 * pad
+    var sheet = PixelBuffer(width: width, height: 2 * rowHeight)
+    for (row, background) in [Role.wallDay, Ink.neutral1].enumerated() {
+        let top = row * rowHeight
+        sheet.fill(ArtRect(0, top, width, rowHeight), background.color)
+        var x = pad
+        for tile in tiles {
+            sheet.blit(tile, at: ArtPoint(x, top + rowHeight - pad - tile.height))
+            x += tile.width + pad
+        }
+    }
+    return sheet
+}
+
+/// Writes `<dir>/AppIcon.iconset/*.png` (`AppIconArt.iconset`, or every slot with `allSizes`),
+/// `<dir>/AppIcon-master.png` and `<dir>/AppIcon-preview.png`.
+func writeIcon(to dir: URL, allSizes: Bool) throws {
+    let iconset = dir.appendingPathComponent("AppIcon.iconset", isDirectory: true)
+    try FileManager.default.createDirectory(at: iconset, withIntermediateDirectories: true)
+    for image in allSizes ? AppIconArt.allSlots : AppIconArt.iconset {
+        try write(image.render(), image.name, in: iconset, scale: 1)
+    }
+    try write(AppIconArt.master.render(), "AppIcon-master.png", in: dir, scale: 1)
+    try write(iconPreviewSheet(), "AppIcon-preview.png", in: dir, scale: 2)
+}
+
 do {
-    try FileManager.default.createDirectory(at: outDir, withIntermediateDirectories: true)
-    try write(lightRampSheet(), "light-ramp.png", in: outDir, scale: scale)
-    try write(primitivesSheet(), "primitives.png", in: outDir, scale: scale)
+    switch args.first {
+    case "review":
+        guard args.count >= 2 else { usage() }
+        let outDir = URL(fileURLWithPath: args[1], isDirectory: true)
+        let scale = option("--scale", default: 4)
+        try FileManager.default.createDirectory(at: outDir, withIntermediateDirectories: true)
+        try write(lightRampSheet(), "light-ramp.png", in: outDir, scale: scale)
+        try write(primitivesSheet(), "primitives.png", in: outDir, scale: scale)
+    case "icon":
+        guard let out = value(of: "--out") else { usage() }
+        try writeIcon(to: URL(fileURLWithPath: out, isDirectory: true), allSizes: args.contains("--all-sizes"))
+    default:
+        usage()
+    }
 } catch {
     FileHandle.standardError.write(Data("error: \(error)\n".utf8))
     exit(1)

@@ -1,0 +1,2 @@
+/* 바탕화면 폴더 접근 요청 (docs/DESIGN.md §11). */
+"NSDesktopFolderUsageDescription" = "Deskterior는 바탕화면 파일을 픽셀 아트 책상 위 물건으로 보여줍니다. 폴더를 읽기만 하며, 직접 요청할 때만 파일을 옮기거나 휴지통으로 보냅니다.";

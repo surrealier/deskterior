@@ -1,0 +1,2 @@
+/* Desktop folder access prompt (docs/DESIGN.md §11). */
+"NSDesktopFolderUsageDescription" = "Deskterior shows the files on your Desktop as objects on a pixel-art desk. It only reads the folder; files are moved or trashed only when you explicitly ask.";

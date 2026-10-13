@@ -1,0 +1,82 @@
+name: Release
+
+# Pushing a tag vX.Y.Z builds the universal app, attests the zip and publishes a GitHub release
+# (docs/DESIGN.md §6). Signing is ad-hoc unless the optional SIGNING_P12_* secrets exist (docs/SIGNING.md).
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  test:
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v5
+      - name: Toolchain
+        run: swift --version && xcode-select -p
+      - name: Build
+        run: swift build
+      - name: Test
+        run: scripts/swift-test.sh
+      - name: File-safety lint
+        run: scripts/check-file-safety.sh
+
+  release:
+    needs: test
+    runs-on: macos-26
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    env:
+      # Secrets cannot appear in `if:` directly.
+      HAS_P12: ${{ secrets.SIGNING_P12_BASE64 != '' }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0 # CFBundleVersion = git rev-list --count HEAD
+
+      - name: Import signing identity
+        if: env.HAS_P12 == 'true'
+        env:
+          SIGNING_P12_BASE64: ${{ secrets.SIGNING_P12_BASE64 }}
+          SIGNING_P12_PASSWORD: ${{ secrets.SIGNING_P12_PASSWORD }}
+        run: scripts/ci-import-identity.sh
+
+      - name: Build universal app
+        run: ARCHS="arm64 x86_64" ZIP=1 scripts/build-app.sh --version "${GITHUB_REF_NAME#v}"
+
+      - name: Verify
+        run: |
+          codesign --verify --strict --verbose=2 build/Deskterior.app
+          codesign -d -r - build/Deskterior.app
+          lipo -info build/Deskterior.app/Contents/MacOS/Deskterior
+          plutil -lint build/Deskterior.app/Contents/Info.plist
+          (cd build && shasum -a 256 -c Deskterior-*.zip.sha256)
+
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: build/Deskterior-*.zip
+
+      - name: Release notes
+        run: |
+          sed -e '/^<!-- Template/d' -e "s|__VERSION__|${GITHUB_REF_NAME#v}|g" \
+            -e "s|__REPO__|${GITHUB_REPOSITORY}|g" .github/release-notes.md > "$RUNNER_TEMP/release-notes.md"
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          gh release create "$GITHUB_REF_NAME" build/Deskterior-*
+          --notes-file "$RUNNER_TEMP/release-notes.md" --generate-notes --verify-tag
+
+      - name: Delete signing keychain
+        if: always()
+        run: scripts/ci-import-identity.sh cleanup

@@ -1,5 +1,8 @@
 # Deskterior developer tasks. Scripts live in scripts/; every target works with Command Line Tools only.
-.PHONY: build release test lint app install run clean
+# `make app VERSION=0.1.0` sets the bundle version (default: latest git tag, else 0.0.0-dev).
+.PHONY: build release test lint check app universal install icon run clean
+
+APP_ARGS = $(if $(VERSION),--version $(VERSION))
 
 build:
 	swift build
@@ -16,11 +19,17 @@ lint:
 check: build test lint
 
 app:
-	scripts/build-app.sh
+	scripts/build-app.sh $(APP_ARGS)
+
+universal:
+	ARCHS="arm64 x86_64" scripts/build-app.sh $(APP_ARGS)
 
 install: app
 	rm -rf /Applications/Deskterior.app
 	ditto build/Deskterior.app /Applications/Deskterior.app
+
+icon:
+	scripts/make-icon.sh
 
 run:
 	swift run Deskterior --windowed
