@@ -93,16 +93,17 @@ struct PostPassTests {
 
     @Test("Upscale with a real PixelGrid crop equals PixelGrid.deviceRect mapping")
     func upscaleGrid() throws {
+        // 1540 = 3·513 + 1 and 964 = 3·321 + 1: S 3 with a 1-px crop on every side and whole 512×320 art px visible.
         let grid = PixelGrid(display: DisplayGeometry(
-            frameWidthPx: 1537, frameHeightPx: 961, visibleRectPx: DeviceRect(0, 0, 1537, 961), backingScale: 1
+            frameWidthPx: 1540, frameHeightPx: 964, visibleRectPx: DeviceRect(0, 0, 1540, 964), backingScale: 1
         ))
         #expect(grid.scale == 3 && grid.cropLeft == 1 && grid.cropTop == 1)
         var art = PixelBuffer(width: grid.artSize.w, height: grid.artSize.h)
         for y in 0..<art.height {
             for x in 0..<art.width { art[x, y] = Apollo.colors[(x * 5 + y * 11) % Apollo.count] }
         }
-        let out = try gpu.upscale(art, width: 1537, height: 961, params: UpscaleParams(grid: grid))
-        let expected = art.scaledNearest(3).cropped(to: ArtRect(grid.cropLeft, grid.cropTop, 1537, 961))
+        let out = try gpu.upscale(art, width: 1540, height: 964, params: UpscaleParams(grid: grid))
+        let expected = art.scaledNearest(3).cropped(to: ArtRect(grid.cropLeft, grid.cropTop, 1540, 964))
         #expect(out == expected, "\(diffCount(out, expected)) px differ")
         let probe = ArtPoint(100, 57)
         let r = grid.deviceRect(forArt: ArtRect(probe.x, probe.y, 1, 1))

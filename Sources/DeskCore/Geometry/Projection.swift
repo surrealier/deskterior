@@ -25,6 +25,24 @@ public struct DeskProjection: Hashable, Sendable, Codable {
     /// The §1.3 desk: front edge at Y 232, depth halved.
     public static let standard = DeskProjection()
 
+    private enum CodingKeys: String, CodingKey {
+        case frontY, k
+    }
+
+    /// Decodes and validates like `init(frontY:k:)`: `k` must be positive, and both values finite.
+    public init(from decoder: any Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        let frontY = try c.decode(Float.self, forKey: .frontY)
+        let k = try c.decode(Float.self, forKey: .k)
+        guard frontY.isFinite else {
+            throw DecodingError.dataCorruptedError(forKey: .frontY, in: c, debugDescription: "frontY must be finite")
+        }
+        guard k > 0, k.isFinite else {
+            throw DecodingError.dataCorruptedError(forKey: .k, in: c, debugDescription: "k must be positive and finite, got \(k)")
+        }
+        self.init(frontY: frontY, k: k)
+    }
+
     /// Desk `(x, d, z)` → core art `(X, Y)`.
     @inlinable
     public func project(_ p: SIMD3<Float>) -> SIMD2<Float> {

@@ -85,7 +85,8 @@ public struct DisplayGeometry: Hashable, Sendable, Codable {
 /// ```
 /// S_target = round(frameHeightPx / T)
 /// S_fit    = floor(min(visibleWidthPx / 512, visibleHeightPx / 320))
-/// S        = max(1, min(S_target, S_fit))
+/// S        = max(1, min(S_target, S_fit)), then lowered while the visible rect holds fewer than 512×320
+///            *whole* art pixels (the art grid need not line up with the visible rect's edges)
 /// artW = ceil(frameWidthPx / S), artH = ceil(frameHeightPx / S)
 /// ```
 /// The core's floor line (core y 312) sits on the visible rect's bottom edge, i.e. just above a bottom Dock;
@@ -143,23 +144,23 @@ public struct PixelGrid: Hashable, Sendable {
         let vx0 = min(max(v.x, 0), fw), vy0 = min(max(v.y, 0), fh)
         let vx1 = min(max(v.maxX, vx0), fw), vy1 = min(max(v.maxY, vy0), fh)
 
-        let s = max(1, min(
+        var s = max(1, min(
             Self.targetScale(frameHeightPx: fh, pixelSize: pixelSize),
             Self.fitScale(visibleWidthPx: vx1 - vx0, visibleHeightPx: vy1 - vy0)
         ))
+        var layout = Self.layout(scale: s, frameWidthPx: fw, frameHeightPx: fh, visible: (vx0, vy0, vx1, vy1))
+        while s > 1 && (layout.visible.w < Self.coreSize.w || layout.visible.h < Self.coreSize.h) {
+            s -= 1
+            layout = Self.layout(scale: s, frameWidthPx: fw, frameHeightPx: fh, visible: (vx0, vy0, vx1, vy1))
+        }
         scale = s
-        let aw = Self.ceilDiv(fw, s), ah = Self.ceilDiv(fh, s)
-        artSize = ArtSize(aw, ah)
-        let cropX = aw * s - fw, cropY = ah * s - fh
-        cropLeft = cropX / 2
-        cropRight = cropX - cropX / 2
-        cropTop = cropY / 2
-        cropBottom = cropY - cropY / 2
-
-        // Fully visible art pixels: [ceil(edge0 / S), floor(edge1 / S)) in canvas device px.
-        let ax0 = Self.ceilDiv(vx0 + cropLeft, s), ax1 = Self.floorDiv(vx1 + cropLeft, s)
-        let ay0 = Self.ceilDiv(vy0 + cropTop, s), ay1 = Self.floorDiv(vy1 + cropTop, s)
-        let visible = ArtRect(ax0, ay0, max(0, ax1 - ax0), max(0, ay1 - ay0))
+        let aw = layout.artSize.w
+        artSize = layout.artSize
+        cropLeft = layout.cropX / 2
+        cropRight = layout.cropX - layout.cropX / 2
+        cropTop = layout.cropY / 2
+        cropBottom = layout.cropY - layout.cropY / 2
+        let visible = layout.visible
         visibleArtRect = visible
 
         let core = Self.coreSize
@@ -179,9 +180,22 @@ public struct PixelGrid: Hashable, Sendable {
         return (2 * max(0, frameHeightPx) + t) / (2 * t)
     }
 
-    /// `floor(min(visibleWidthPx / 512, visibleHeightPx / 320))`.
+    /// `floor(min(visibleWidthPx / 512, visibleHeightPx / 320))`: an upper bound on `S`, before whole-pixel
+    /// alignment is taken into account.
     public static func fitScale(visibleWidthPx: Int, visibleHeightPx: Int) -> Int {
         min(max(0, visibleWidthPx) / coreSize.w, max(0, visibleHeightPx) / coreSize.h)
+    }
+
+    /// Canvas, total crop and fully visible art rect at scale `s` (`visible` in frame device px, clipped).
+    private static func layout(
+        scale s: Int, frameWidthPx fw: Int, frameHeightPx fh: Int, visible v: (x0: Int, y0: Int, x1: Int, y1: Int)
+    ) -> (artSize: ArtSize, cropX: Int, cropY: Int, visible: ArtRect) {
+        let aw = ceilDiv(fw, s), ah = ceilDiv(fh, s)
+        let cropX = aw * s - fw, cropY = ah * s - fh
+        // Fully visible art pixels: [ceil(edge0 / S), floor(edge1 / S)) in canvas device px.
+        let ax0 = ceilDiv(v.x0 + cropX / 2, s), ax1 = floorDiv(v.x1 + cropX / 2, s)
+        let ay0 = ceilDiv(v.y0 + cropY / 2, s), ay1 = floorDiv(v.y1 + cropY / 2, s)
+        return (ArtSize(aw, ah), cropX, cropY, ArtRect(ax0, ay0, max(0, ax1 - ax0), max(0, ay1 - ay0)))
     }
 
     // MARK: Conversions

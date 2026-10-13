@@ -7,9 +7,10 @@ import Foundation
 /// smoothing and subpixel positioning off, then thresholded to **binary alpha**.
 ///
 /// Text is NFC-normalized first (Galmuri has no conjoining jamo) and laid out one `Character` at a time on
-/// integer advances, without kerning, so `measure` always equals the rendered width and matches
-/// `TextLayout`'s per-character model. Characters the font lacks fall back to the system font at the same size
-/// (also without anti-aliasing; then its non-colour cascade fonts), then to a hollow box.
+/// integer advances, without kerning, so `measure` matches `TextLayout`'s per-character model. The rendered
+/// width is `measure` plus any ink that overhangs the ends (`overhang(of:)`, e.g. a leading "ĥ"). Characters
+/// the font lacks fall back to the system font at the same size (also without anti-aliasing; then its
+/// non-colour cascade fonts), then to a hollow box.
 ///
 /// Verified against Galmuri9's BDF: CoreText reproduces the designed bitmaps exactly (ASCII, Latin-1/Ext-A,
 /// kana, all 11,172 Hangul syllables). Glyph bitmaps are cached and the type is thread-safe (`CTFont` is
@@ -26,17 +27,27 @@ public final class PixelFont: @unchecked Sendable {
     public let pixelSize: Int
     /// Height of every rendered line (and of `render`'s buffer).
     public let lineHeight: Int
-    /// Rows above the baseline in a line: glyphs stand on the top edge of row `baseline`.
+    /// Rows above the baseline in a line: glyphs stand on the top edge of row `baseline`. The rows below it
+    /// hold the font's deepest descent (its bounding box), so cedillas, ogoneks and "¿" are never cut.
     public let baseline: Int
 
     private let primary: CTFont
     private let fallback: CTFont?
     private let cache = FontRegistry.LockedCache<Character, Glyph>()
 
-    /// Galmuri9 (10 px, line height 12) from `Resources/Fonts`; nil if the font file cannot be found or loaded.
+    /// Galmuri9 (10 px; 15-px line, baseline 12) from `Resources/Fonts`; nil if the font file cannot be found or
+    /// loaded, which is reported through `ResourceLocator.reportMissing`.
+    ///
+    /// The line box holds 12 rows above the baseline (accented capitals, "Ǻ", Vietnamese "ấ") and 3 below
+    /// ("ç", "ą", "¿", "ș"); only stacked capital Vietnamese marks such as "Ấ" (13–14 rows) lose their top.
     public static let galmuri9: PixelFont? = {
-        guard let url = ResourceLocator.fontURL(named: "Galmuri9.ttf") else { return nil }
-        return PixelFont(url: url, pixelSize: 10, lineHeight: 12)
+        guard let url = ResourceLocator.fontURL(named: "Galmuri9.ttf"),
+              let font = PixelFont(url: url, pixelSize: 10, lineHeight: 15)
+        else {
+            ResourceLocator.reportMissing("Galmuri9.ttf")
+            return nil
+        }
+        return font
     }()
 
     /// Loads the font file at `url` (see `FontRegistry`); nil if it is not a readable font.
@@ -52,8 +63,9 @@ public final class PixelFont: @unchecked Sendable {
         self.lineHeight = lineHeight
         self.primary = font
         self.fallback = CTFontCreateUIFontForLanguage(.system, CGFloat(pixelSize), nil)
-        // Galmuri9: ascent 10 + descent 1 in a 12-px line → baseline 11 (accented capitals reach row 0).
-        let descent = Int(CTFontGetDescent(font).rounded())
+        // The bounding box, not the descent metric (Galmuri9: descent 1, but glyphs reach 3 rows below).
+        // Pixel fonts have whole-pixel bounds; Galmuri9 → 3 rows below, baseline 12 in a 15-px line.
+        let descent = Int((-CTFontGetBoundingBox(font).minY).rounded())
         self.baseline = min(lineHeight, max(0, lineHeight - descent))
     }
 
@@ -64,9 +76,16 @@ public final class PixelFont: @unchecked Sendable {
         TextLayout.nfc(String(c)).reduce(0) { $0 + glyph($1).advance }
     }
 
-    /// Width of `s` in px; always equals `render(s, color:).width`.
+    /// Width of `s` in px: the sum of its advances. `render(s, color:).width` adds `overhang(of: s)`.
     public func measure(_ s: String) -> Int {
         TextLayout.nfc(s).reduce(0) { $0 + glyph($1).advance }
+    }
+
+    /// Columns of ink that `s` draws left of its first pen position and right of its last advance (usually
+    /// zero; a leading "ĥ" or "Į" overhangs 1 px to the left).
+    public func overhang(of s: String) -> (left: Int, right: Int) {
+        let line = layout(s)
+        return (line.left, line.right)
     }
 
     /// Which font draws `c` (after NFC normalization).
@@ -76,17 +95,32 @@ public final class PixelFont: @unchecked Sendable {
 
     // MARK: Rendering
 
-    /// One line of text in `color` on transparent: width = `measure(s)`, height = `lineHeight`.
+    /// One line of text in `color` on transparent, `lineHeight` tall and `measure(s)` wide plus the ink that
+    /// overhangs either end (`overhang(of:)`). The pen starts at x = `overhang(of: s).left`, so place the buffer
+    /// that many px left of where the text should start.
     public func render(_ s: String, color: RGBA8) -> PixelBuffer {
-        let glyphs = TextLayout.nfc(s).map(glyph)
-        let width = glyphs.reduce(0) { $0 + $1.advance }
-        var out = PixelBuffer(width: width, height: lineHeight)
-        var pen = 0
-        for g in glyphs {
+        let line = layout(s)
+        var out = PixelBuffer(width: line.left + line.advance + line.right, height: lineHeight)
+        var pen = line.left
+        for g in line.glyphs {
             g.stamp(into: &out, penX: pen, color: color)
             pen += g.advance
         }
         return out
+    }
+
+    /// Glyphs of `s`, their total advance and the ink overhanging each end.
+    private func layout(_ s: String) -> (glyphs: [Glyph], advance: Int, left: Int, right: Int) {
+        let glyphs = TextLayout.nfc(s).map(glyph)
+        var pen = 0, minInk = 0, maxInk = 0
+        for g in glyphs {
+            if let ink = g.ink {
+                minInk = min(minInk, pen + ink.lowerBound)
+                maxInk = max(maxInk, pen + ink.upperBound)
+            }
+            pen += g.advance
+        }
+        return (glyphs, pen, -minInk, max(0, maxInk - pen))
     }
 
     /// `render` plus an optional 1-px drop shadow down-right; with a shadow the buffer is 1 px wider and taller.
@@ -106,21 +140,36 @@ public final class PixelFont: @unchecked Sendable {
     // MARK: Glyphs
 
     /// Extra columns kept on each side of a glyph's advance cell for ink that overhangs it (combining marks).
-    private static let overhang = 4
+    private static let cellMargin = 4
     private static let maxCachedGlyphs = 8192
 
     private struct Glyph: Sendable {
         let advance: Int
-        /// `(advance + 2 * overhang) × lineHeight`, row-major from the top; true = ink.
+        /// `(advance + 2 * cellMargin) × lineHeight`, row-major from the top; true = ink.
         let mask: [Bool]
         let maskWidth: Int
         let source: GlyphSource
+        /// Columns holding ink, relative to the pen (may start below 0 or end past `advance`); nil if blank.
+        let ink: Range<Int>?
+
+        init(advance: Int, mask: [Bool], maskWidth: Int, source: GlyphSource) {
+            self.advance = advance
+            self.mask = mask
+            self.maskWidth = maskWidth
+            self.source = source
+            let inked = (0..<maskWidth).filter { x in stride(from: x, to: mask.count, by: maskWidth).contains { mask[$0] } }
+            if let first = inked.first, let last = inked.last {
+                ink = (first - PixelFont.cellMargin)..<(last + 1 - PixelFont.cellMargin)
+            } else {
+                ink = nil
+            }
+        }
 
         func stamp(into out: inout PixelBuffer, penX: Int, color: RGBA8) {
             let height = mask.count / max(1, maskWidth)
             for y in 0..<min(height, out.height) {
                 for mx in 0..<maskWidth where mask[y * maskWidth + mx] {
-                    out.set(penX - PixelFont.overhang + mx, y, color)
+                    out.set(penX - PixelFont.cellMargin + mx, y, color)
                 }
             }
         }
@@ -166,12 +215,12 @@ public final class PixelFont: @unchecked Sendable {
             pen += max(0, Int(a.width.rounded()))
         }
 
-        let cellWidth = pen + 2 * Self.overhang
+        let cellWidth = pen + 2 * Self.cellMargin
         guard let ctx = CGBridge.makeContext(width: cellWidth, height: lineHeight) else { return nil }
         Self.disableSmoothing(ctx)
         ctx.setFillColor(CGColor(colorSpace: CGBridge.colorSpace, components: [1, 1, 1, 1])!)
         // Integer baseline: CG is y-up, so the baseline sits `lineHeight − baseline` px above the bottom.
-        ctx.translateBy(x: CGFloat(Self.overhang), y: CGFloat(lineHeight - baseline))
+        ctx.translateBy(x: CGFloat(Self.cellMargin), y: CGFloat(lineHeight - baseline))
         CTFontDrawGlyphs(font, ids, positions, ids.count, ctx)
 
         guard let data = ctx.data else { return nil }
@@ -190,12 +239,12 @@ public final class PixelFont: @unchecked Sendable {
         let boxH = max(3, min(baseline, pixelSize - 1))
         let boxW = max(3, (boxH * 7 + 4) / 9)
         let advance = boxW + 1
-        let cellWidth = advance + 2 * Self.overhang
+        let cellWidth = advance + 2 * Self.cellMargin
         var mask = [Bool](repeating: false, count: cellWidth * lineHeight)
         let top = baseline - boxH
         for y in top..<baseline where y >= 0 && y < lineHeight {
             for x in 0..<boxW where y == top || y == baseline - 1 || x == 0 || x == boxW - 1 {
-                mask[y * cellWidth + Self.overhang + x] = true
+                mask[y * cellWidth + Self.cellMargin + x] = true
             }
         }
         return Glyph(advance: advance, mask: mask, maskWidth: cellWidth, source: .box)

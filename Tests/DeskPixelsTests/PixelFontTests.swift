@@ -1,3 +1,4 @@
+import CoreGraphics
 import CoreText
 import Testing
 @testable import DeskCore
@@ -22,8 +23,9 @@ struct PixelFontTests {
         #expect(ResourceLocator.fontURL(named: "NoSuchFont.ttf") == nil)
 
         // This test file lives in <repo>/Tests/DeskPixelsTests/, so the repo fallback is <repo>/Resources/Fonts.
+        // Debug builds only (release binaries carry no source paths).
         let repoFonts = TestSupport.standardized(TestSupport.repoRoot() + "/Resources/Fonts")
-        #expect(ResourceLocator.repoFontsDirectory.path == repoFonts)
+        #expect(ResourceLocator.repoFontsDirectory?.path == repoFonts)
         #expect(ResourceLocator.fontDirectoryCandidates().last?.path == repoFonts)
         if TestSupport.environment("DESKTERIOR_RESOURCES") == nil {
             #expect(url.path == repoFonts + "/Galmuri9.ttf")
@@ -47,10 +49,10 @@ struct PixelFontTests {
         #expect(FontRegistry.font(at: missing, size: 10) == nil)
     }
 
-    @Test("Metrics: 10 px font, 12 px line, baseline 11; Galmuri advances")
+    @Test("Metrics: 10 px font, 15 px line, baseline 12; Galmuri advances")
     func metrics() throws {
         let f = try font()
-        #expect(f.pixelSize == 10 && f.lineHeight == 12 && f.baseline == 11)
+        #expect(f.pixelSize == 10 && f.lineHeight == 15 && f.baseline == 12)
         #expect(f.advance(of: "가") == 10)
         #expect(f.advance(of: "a") == 6)
         #expect(f.advance(of: " ") == 4)
@@ -69,7 +71,7 @@ struct PixelFontTests {
         let fromNFC = f.render(Self.report, color: Self.ink)
         let fromNFD = f.render(nfd, color: Self.ink)
         #expect(fromNFD == fromNFC)
-        #expect(fromNFC.height == 12)
+        #expect(fromNFC.height == 15)
         expectBinaryAlpha(fromNFC)
         #expect(fromNFC.opaqueBounds().w > 70)
         #expect(Golden.match(fromNFC, "galmuri9-report-pdf"))
@@ -92,7 +94,7 @@ struct PixelFontTests {
         #expect(fitted.hasSuffix(".pages") && fitted.contains("…"))
         #expect(f.measure(fitted) <= 200)
         let label = f.renderLabel(fitted, color: Self.ink, shadow: Self.shadow)
-        #expect(label.width == f.measure(fitted) + 1 && label.height == 13)
+        #expect(label.width == f.measure(fitted) + 1 && label.height == 16)
         expectBinaryAlpha(label)
         #expect(Golden.match(label, "galmuri9-label-truncated"))
     }
@@ -133,22 +135,44 @@ struct PixelFontTests {
         for s in samples {
             let b = f.render(s, color: Self.ink)
             #expect(b.width == f.measure(s), "\(s)")
-            #expect(b.height == 12)
+            #expect(b.height == 15)
             expectBinaryAlpha(b)
             #expect(b.pixels.allSatisfy { $0 == .clear || $0 == Self.ink }, "\(s)")
             #expect(f.measure(s) == TextLayout.width(TextLayout.nfc(s), advance: f.advance(of:)), "\(s)")
         }
     }
 
-    @Test("Glyphs sit on the baseline; Hangul fills rows 2–10")
+    @Test("Glyphs sit on the baseline; Hangul fills rows 3–11")
     func baselinePlacement() throws {
         let f = try font()
         let a = f.render("A", color: Self.ink).opaqueBounds()
-        #expect(a.maxY == 11 && a.minY == 2)                       // cap height 9 above the baseline
+        #expect(a.maxY == 12 && a.minY == 3)                       // cap height 9 above the baseline
         let g = f.render("g", color: Self.ink).opaqueBounds()
-        #expect(g.maxY == 12)                                       // 1-px descender
+        #expect(g.maxY == 13)                                       // 1-px descender
         let ga = f.render("가", color: Self.ink).opaqueBounds()
-        #expect(ga.minY == 2 && ga.maxY == 11 && ga.minX == 0 && ga.w == 9)
+        #expect(ga.minY == 3 && ga.maxY == 12 && ga.minX == 0 && ga.w == 9)
+    }
+
+    @Test("Nothing is clipped: marks below and above, and ink left of the pen (M1 review F3, F9)")
+    func noClipping() throws {
+        let f = try font()
+        let marks: [Character] = [
+            "ç", "Ç", "ą", "Ę", "ş", "Ţ", "ų", "µ", "¡", "¿", "Ș", "ș", "Ț", "ț",  // 2–3 rows below the baseline
+            "À", "Å", "Ǻ", "ấ", "ầ", "ế", "ố", "Ẻ", "Ủ",                             // 11–12 rows above
+            "ĥ", "Ĩ", "ĩ", "Į", "į", "Ľ", "ľ", "Ƒ", "Ɲ",                              // ink left of the pen
+        ]
+        for c in marks {
+            let b = f.render(String(c), color: Self.ink)
+            #expect(inkCount(b) == referenceInkCount(c), "\(c) lost ink")
+            #expect(b.width == f.measure(String(c)) + f.overhang(of: String(c)).left + f.overhang(of: String(c)).right)
+        }
+        // A string keeps its advances: the pen starts after the left overhang.
+        let s = "ĥat Façade ¿Qué? Ștefan"
+        let b = f.render(s, color: Self.ink)
+        #expect(f.overhang(of: s) == (left: 1, right: 0))
+        #expect(b.width == f.measure(s) + 1)
+        #expect(inkCount(b) == s.reduce(0) { $0 + referenceInkCount($1) })
+        #expect(f.overhang(of: "Façade") == (left: 0, right: 0) && f.render("Façade", color: Self.ink).width == f.measure("Façade"))
     }
 
     @Test("renderLabel adds a 1-px down-right shadow")
@@ -213,16 +237,52 @@ struct PixelFontTests {
     private func sheet(_ f: PixelFont) -> PixelBuffer {
         let lines = [
             "보고서 final.pdf", "Deskterior 0.1", "가나다라마바사 ABC abc 0123456789",
-            "한글 파일 이름.hwp · 스크린샷 2026-10-14.png", "Ünïcödé façade ÀÉÎ ¡¿ ‘quotes’",
+            "한글 파일 이름.hwp · 스크린샷 2026-10-14.png", "Ünïcödé façade ÀÉÎ ¡¿ ‘quotes’ Ștefan Ǻ ĥ",
             "fallback: ⌘ ✓ ₿  box: 😀 👨‍👩‍👧",
             TextLayout.middleTruncate("2026 3분기 사업 계획서 최종본 (수정) 진짜 최종.pages", maxWidth: 200,
                                       advance: f.advance(of:)),
         ]
         let rendered = lines.map { f.renderLabel($0, color: Self.ink, shadow: Self.shadow) }
         let w = rendered.map(\.width).max() ?? 0
-        var out = PixelBuffer(width: w, height: rendered.count * 14)
-        for (i, b) in rendered.enumerated() { out.blit(b, at: ArtPoint(0, i * 14)) }
+        let pitch = f.lineHeight + 1
+        var out = PixelBuffer(width: w, height: rendered.count * pitch)
+        for (i, b) in rendered.enumerated() { out.blit(b, at: ArtPoint(0, i * pitch)) }
         return out
+    }
+
+    private func inkCount(_ b: PixelBuffer) -> Int {
+        b.pixels.filter { $0.a != 0 }.count
+    }
+
+    /// Opaque pixels of `c` drawn by CoreText with `PixelFont`'s settings in a roomy context (nothing clipped).
+    private func referenceInkCount(_ c: Character) -> Int {
+        guard let url = ResourceLocator.fontURL(named: "Galmuri9.ttf"),
+              let font = FontRegistry.font(at: url, size: 10) else { return -1 }
+        let units = Array(String(c).utf16)
+        var ids = [CGGlyph](repeating: 0, count: units.count)
+        guard CTFontGetGlyphsForCharacters(font, units, &ids, units.count) else { return -1 }
+        ids = ids.filter { $0 != 0 }
+        var advances = [CGSize](repeating: .zero, count: ids.count)
+        CTFontGetAdvancesForGlyphs(font, .horizontal, ids, &advances, ids.count)
+        var positions: [CGPoint] = []
+        var pen = 0
+        for a in advances {
+            positions.append(CGPoint(x: pen, y: 0))
+            pen += max(0, Int(a.width.rounded()))
+        }
+        guard let ctx = CGBridge.makeContext(width: 64, height: 64) else { return -1 }
+        ctx.setShouldSmoothFonts(false)
+        ctx.setAllowsFontSmoothing(false)
+        ctx.setShouldSubpixelPositionFonts(false)
+        ctx.setAllowsFontSubpixelPositioning(false)
+        ctx.setShouldSubpixelQuantizeFonts(false)
+        ctx.setAllowsFontSubpixelQuantization(false)
+        ctx.textMatrix = .identity
+        ctx.setFillColor(CGColor(colorSpace: CGBridge.colorSpace, components: [1, 1, 1, 1])!)
+        ctx.translateBy(x: 24, y: 24)
+        CTFontDrawGlyphs(font, ids, positions, ids.count, ctx)
+        guard let b = CGBridge.pixelBuffer(from: ctx) else { return -1 }
+        return b.pixels.filter { $0.a >= 128 }.count
     }
 
     private func expectBinaryAlpha(_ b: PixelBuffer, sourceLocation: SourceLocation = #_sourceLocation) {

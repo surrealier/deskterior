@@ -47,9 +47,31 @@ private func isEightConnected(_ p: [ArtPoint]) -> Bool {
         #expect(LineRaster.points(from: ArtPoint(0, 0), to: ArtPoint(5, 2))
             == pts([(0, 0), (1, 0), (2, 1), (3, 1), (4, 2), (5, 2)]))
         #expect(LineRaster.points(from: ArtPoint(0, 0), to: ArtPoint(2, 6)).map(\.x) == [0, 0, 1, 1, 1, 2, 2])
-        // Exact halves (x = 4 → y = 1.5) round toward the canonical start.
+        // Exact halves (x = 4 → y = 1.5) round toward the top endpoint.
         let tie = LineRaster.points(from: ArtPoint(0, 0), to: ArtPoint(8, 3))
         #expect(tie.map(\.y) == [0, 0, 1, 1, 1, 2, 2, 3, 3])
+        let up = LineRaster.points(from: ArtPoint(0, 3), to: ArtPoint(8, 0))
+        #expect(up.map(\.y) == [3, 3, 2, 2, 1, 1, 1, 0, 0])
+        // Steep: the tie at y = −4 (x = 0.5) goes to the top endpoint's column.
+        #expect(LineRaster.points(from: ArtPoint(0, 0), to: ArtPoint(1, -8)).map(\.x) == [0, 0, 0, 0, 1, 1, 1, 1, 1])
+    }
+
+    @Test func mirrorImagesRasterizeAsMirrorImages() {
+        // M1 review F8: 1:00 and 11:00 clock hands, lamp cones and other symmetric art.
+        for dx in -12...12 {
+            for dy in -12...12 {
+                let line = LineRaster.points(from: .zero, to: ArtPoint(dx, dy))
+                let mirrored = LineRaster.points(from: .zero, to: ArtPoint(-dx, dy))
+                #expect(mirrored == line.map { ArtPoint(-$0.x, $0.y) }, "(\(dx), \(dy))")
+            }
+        }
+        for a in Self.endpoints {
+            for b in Self.endpoints {
+                let line = LineRaster.points(from: a, to: b)
+                let mirrored = LineRaster.points(from: ArtPoint(-a.x, a.y), to: ArtPoint(-b.x, b.y))
+                #expect(mirrored == line.map { ArtPoint(-$0.x, $0.y) })
+            }
+        }
     }
 
     @Test func endpointsCountAndConnectivity() {

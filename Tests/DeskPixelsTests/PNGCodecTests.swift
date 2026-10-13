@@ -79,6 +79,36 @@ struct PNGCodecTests {
         #expect(PixelBuffer(cgImage: image)?.pixels == [RGBA8(255, 0, 0, 128)])
     }
 
+    @Test("pixelBuffer(from:) reads only its own RGBA layout (M1 review F15)")
+    func contextLayoutIsChecked() throws {
+        let own = try #require(CGBridge.makeContext(width: 2, height: 1))
+        own.setFillColor(CGColor(colorSpace: CGBridge.colorSpace, components: [1, 0, 0, 1])!)
+        own.fill(CGRect(x: 0, y: 0, width: 1, height: 1))
+        #expect(CGBridge.pixelBuffer(from: own)?.pixels == [Self.red, .clear])
+
+        // Same depth, other layouts: reading them as RGBA would swap channels or misread alpha.
+        let layouts: [(CGColorSpace, UInt32)] = [
+            (CGBridge.colorSpace, CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue),
+            (CGBridge.colorSpace, CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Big.rawValue),
+            (CGBridge.colorSpace, CGImageAlphaInfo.premultipliedLast.rawValue | CGBitmapInfo.byteOrder32Little.rawValue),
+            (CGBridge.colorSpace, CGImageAlphaInfo.noneSkipLast.rawValue | CGBitmapInfo.byteOrder32Big.rawValue),
+            (CGColorSpace(name: CGColorSpace.displayP3)!,
+             CGImageAlphaInfo.premultipliedLast.rawValue | CGBitmapInfo.byteOrder32Big.rawValue),
+        ]
+        for (space, info) in layouts {
+            let ctx = try #require(CGContext(
+                data: nil, width: 2, height: 1, bitsPerComponent: 8, bytesPerRow: 8, space: space, bitmapInfo: info))
+            #expect(CGBridge.pixelBuffer(from: ctx) == nil, "bitmapInfo \(info) in \(String(describing: space.name))")
+        }
+        // premultipliedLast with the default byte order is the same RGBA memory layout.
+        let defaultOrder = try #require(CGContext(
+            data: nil, width: 1, height: 1, bitsPerComponent: 8, bytesPerRow: 4, space: CGBridge.colorSpace,
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+        defaultOrder.setFillColor(CGColor(colorSpace: CGBridge.colorSpace, components: [0, 0, 1, 1])!)
+        defaultOrder.fill(CGRect(x: 0, y: 0, width: 1, height: 1))
+        #expect(CGBridge.pixelBuffer(from: defaultOrder)?.pixels == [Self.blue])
+    }
+
     @Test("Empty and invalid input")
     func invalid() {
         let empty = PNGCodec.encode(PixelBuffer(width: 0, height: 0))

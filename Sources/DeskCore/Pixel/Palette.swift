@@ -85,6 +85,20 @@ public struct Ink: Hashable, Sendable, Codable, CustomStringConvertible {
 
     public var description: String { raw == 0 ? "clear" : "ink\(Int(raw) - 1)" }
 
+    private enum CodingKeys: String, CodingKey {
+        case raw
+    }
+
+    /// Decodes `{"raw": n}` and rejects `n` > 46 (the initializer's precondition, as a decoding error).
+    public init(from decoder: any Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        let raw = try c.decode(UInt8.self, forKey: .raw)
+        guard Int(raw) <= Apollo.count else {
+            throw DecodingError.dataCorruptedError(forKey: .raw, in: c, debugDescription: "ink out of range: \(raw)")
+        }
+        self.init(raw: raw)
+    }
+
     // Named inks: ramp + step (0 = darkest).
     public static let blue0 = Ink(palette: 0), blue1 = Ink(palette: 1), blue2 = Ink(palette: 2)
     public static let blue3 = Ink(palette: 3), blue4 = Ink(palette: 4), blue5 = Ink(palette: 5)

@@ -169,6 +169,80 @@ struct PixelGridTests {
         }
     }
 
+    @Test("S_fit counts only whole visible art pixels (M1 review F4)")
+    func fitScaleUsesWholeArtPixels() {
+        // 1352×878@2 (a 14" MacBook Pro mode) with a 72-pt left Dock: the 2560 visible px are exactly 512·5,
+        // but the art grid is misaligned with them, so only 511 whole columns are visible at S 5.
+        let mbp = DisplayGeometry(widthPt: 1352, heightPt: 878, backingScale: 2, topInsetPt: 37, leftInsetPt: 72)
+        #expect(mbp.visibleRectPx == DeviceRect(144, 74, 2560, 1682))
+        let grid = PixelGrid(display: mbp)
+        #expect(grid.scale == 4)
+        #expect(grid.visibleArtRect.w >= 512)
+        expectCoreFits(grid)
+        expectCoreClearsDock(grid)
+
+        let reported: [(DisplayGeometry, PixelSize)] = [
+            (DisplayGeometry(widthPt: 1600, heightPt: 1000, backingScale: 2, topInsetPt: 25, leftInsetPt: 63), .chunky),
+            (DisplayGeometry(widthPt: 1600, heightPt: 1000, backingScale: 2, topInsetPt: 25, rightInsetPt: 64), .chunky),
+            (DisplayGeometry(widthPt: 1147, heightPt: 745, backingScale: 2, topInsetPt: 37, leftInsetPt: 122), .normal),
+            (DisplayGeometry(widthPt: 1147, heightPt: 745, backingScale: 2, topInsetPt: 37, rightInsetPt: 123), .normal),
+        ]
+        for (display, size) in reported {
+            let g = PixelGrid(display: display, pixelSize: size)
+            #expect(g.visibleArtRect.w >= 512 && g.visibleArtRect.h >= 320, "\(display.visibleRectPx) S \(g.scale)")
+            expectCoreFits(g)
+            expectCoreClearsDock(g)
+        }
+    }
+
+    @Test("71- and 72-pt Docks on every side keep the core clear of them", arguments: pixelGridDesignTable)
+    func oddDockWidths(_ row: PixelGridTableRow) {
+        for dockPt in [71.0, 72.0] {
+            for (left, right, bottom) in [(dockPt, 0.0, 0.0), (0, dockPt, 0), (0, 0, dockPt)] {
+                let display = DisplayGeometry(widthPt: row.widthPt, heightPt: row.heightPt, backingScale: row.backing,
+                                              topInsetPt: row.menuBarPt, bottomInsetPt: bottom,
+                                              leftInsetPt: left, rightInsetPt: right)
+                for size in PixelSize.allCases {
+                    let grid = PixelGrid(display: display, pixelSize: size)
+                    expectCoreFits(grid)
+                    expectCoreClearsDock(grid)
+                }
+            }
+        }
+    }
+
+    @Test("Sweep: whenever S > 1 the whole-pixel visible rect holds the core")
+    func sweepRealisticDisplays() {
+        let modes: [(Double, Double, Double)] = [
+            (1470, 956, 2), (1280, 832, 2), (1512, 982, 2), (1710, 1112, 2), (1920, 1080, 1), (2560, 1440, 1),
+            (2560, 1440, 2), (1920, 1080, 2), (1080, 1920, 1), (1440, 900, 2), (1352, 878, 2), (1147, 745, 2),
+            (1600, 1000, 2), (1728, 1117, 2), (1496, 967, 2), (1168, 755, 2), (1024, 768, 1), (3440, 1440, 1),
+        ]
+        var failures: [String] = []
+        for (w, h, backing) in modes {
+            for menu in [25.0, 37] {
+                for side in 0..<3 {
+                    for dock in stride(from: 0.0, through: 140, by: 1) {
+                        let display = DisplayGeometry(
+                            widthPt: w, heightPt: h, backingScale: backing, topInsetPt: menu,
+                            bottomInsetPt: side == 0 ? dock : 0, leftInsetPt: side == 1 ? dock : 0,
+                            rightInsetPt: side == 2 ? dock : 0)
+                        for size in PixelSize.allCases {
+                            let g = PixelGrid(display: display, pixelSize: size)
+                            let fits = g.visibleArtRect.w >= 512 && g.visibleArtRect.h >= 320
+                            let device = g.deviceRect(forArt: g.coreStageRect), v = display.visibleRectPx
+                            let clear = device.x >= v.x && device.maxX <= v.maxX && device.y >= v.y && device.maxY <= v.maxY
+                            if (g.scale > 1 && !fits) || (fits && (!g.visibleArtRect.contains(g.coreStageRect) || !clear)) {
+                                failures.append("\(w)x\(h)@\(backing) menu \(menu) side \(side) dock \(dock) \(size): S \(g.scale)")
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        #expect(failures.isEmpty, "\(failures.count) failures, e.g. \(failures.prefix(5))")
+    }
+
     @Test("Pixel-size settings")
     func pixelSizes() {
         let mba = pixelGridDesignTable[0].display()
@@ -265,6 +339,13 @@ struct PixelGridTests {
         #expect(cropY >= 0 && cropY < grid.scale, sourceLocation: sourceLocation)
         #expect(grid.cropLeft == cropX / 2 && grid.cropLeft + grid.cropRight == cropX, sourceLocation: sourceLocation)
         #expect(grid.cropTop == cropY / 2 && grid.cropTop + grid.cropBottom == cropY, sourceLocation: sourceLocation)
+    }
+
+    /// The core stage's device pixels lie inside the visible rect (nothing under the Dock or menu bar).
+    private func expectCoreClearsDock(_ grid: PixelGrid, sourceLocation: SourceLocation = #_sourceLocation) {
+        let device = grid.deviceRect(forArt: grid.coreStageRect), v = grid.display.visibleRectPx
+        #expect(device.x >= v.x && device.maxX <= v.maxX && device.y >= v.y && device.maxY <= v.maxY,
+                "\(device) not in \(v)", sourceLocation: sourceLocation)
     }
 
     private func expectCoreFits(_ grid: PixelGrid, sourceLocation: SourceLocation = #_sourceLocation) {

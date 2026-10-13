@@ -86,7 +86,8 @@ public struct IndexedSprite: Hashable, Sendable, CustomStringConvertible {
     }
 
     /// Parses an animation strip: frames are separated by lines that are exactly `---` (after trimming).
-    /// Every frame must be non-empty; frames may differ in size. Traps on malformed art, naming the frame.
+    /// Separators before the first frame or after the last one are ignored; every other frame must be
+    /// non-empty. Frames may differ in size. Traps on malformed art, naming the frame.
     public static func frames(
         _ art: String,
         key: [Character: Ink] = SpriteKey.standard,
@@ -199,6 +200,8 @@ public struct IndexedSprite: Hashable, Sendable, CustomStringConvertible {
         art.split(omittingEmptySubsequences: false, whereSeparator: \.isNewline).map(trimmed)
     }
 
+    /// Frames' rows, split on `---` lines. Empty chunks at either end are dropped (an all-separator strip
+    /// keeps one, so it still fails as `.empty`).
     private static func frameChunks(of art: String) -> [[Substring]] {
         var chunks: [[Substring]] = [[]]
         for line in lines(of: art) {
@@ -208,6 +211,8 @@ public struct IndexedSprite: Hashable, Sendable, CustomStringConvertible {
                 chunks[chunks.count - 1].append(line)
             }
         }
+        while chunks.count > 1, chunks[0].isEmpty { chunks.removeFirst() }
+        while chunks.count > 1, chunks[chunks.count - 1].isEmpty { chunks.removeLast() }
         return chunks
     }
 

@@ -117,6 +117,23 @@ import Testing
         #expect(try IndexedSprite.parsingFrames("kb\n---\nbk", key: key).map(\.inks) == [[.neutral0, .blue3], [.blue3, .neutral0]])
     }
 
+    @Test func separatorsAroundTheStripAreIgnored() throws {
+        // M1 review F13: a `---` before the first frame or after the last one is not an empty frame.
+        let one = try IndexedSprite.parsingFrames("---\nkk\nkk\n---", key: key)
+        #expect(one.map(\.inks) == [[.neutral0, .neutral0, .neutral0, .neutral0]])
+        let framed = IndexedSprite.frames("""
+            ---
+            kb
+            ---
+            bk
+            ---
+
+            """, key: key)
+        #expect(framed.map(\.inks) == [[.neutral0, .blue3], [.blue3, .neutral0]])
+        #expect(throws: SpriteError.empty) { try IndexedSprite.parsingFrames("---\n---", key: key) }
+        #expect(throws: SpriteError.empty) { try IndexedSprite.parsingFrames("", key: key) }
+    }
+
     @Test func emptyOrBadFramesThrow() {
         #expect(throws: SpriteError.empty) { try IndexedSprite.parsingFrames("kb\n---\n---\nbk", key: key) }
         #expect(throws: SpriteError.ragged(row: 1, expected: 2, got: 1)) {

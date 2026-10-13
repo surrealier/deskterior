@@ -141,12 +141,13 @@ public enum Quantizer {
         return result.sorted()
     }
 
-    /// Clears opaque pixels that have no opaque 4-neighbour.
+    /// Clears opaque pixels that have no opaque 8-neighbour. Diagonal neighbours count, so 1-px diagonal
+    /// strokes (ticks, arrows, pen nibs) survive; only isolated specks go.
     public static func removeOrphans(_ b: PixelBuffer) -> PixelBuffer {
         var out = b
         for y in 0..<b.height {
             for x in 0..<b.width where b.pixels[y * b.width + x].a != 0 {
-                if !hasOpaqueNeighbour(b, x, y) { out.pixels[y * b.width + x] = .clear }
+                if !hasOpaqueNeighbour(b, x, y, diagonals: true) { out.pixels[y * b.width + x] = .clear }
             }
         }
         return out
@@ -158,7 +159,7 @@ public enum Quantizer {
         var out = b
         for y in 0..<b.height {
             for x in 0..<b.width where b.pixels[y * b.width + x].a == 0 {
-                if hasOpaqueNeighbour(b, x, y) { out.pixels[y * b.width + x] = color }
+                if hasOpaqueNeighbour(b, x, y, diagonals: false) { out.pixels[y * b.width + x] = color }
             }
         }
         return out
@@ -202,7 +203,12 @@ public enum Quantizer {
         return (n.first, n.second, t)
     }
 
-    private static func hasOpaqueNeighbour(_ b: PixelBuffer, _ x: Int, _ y: Int) -> Bool {
-        b.pixel(x - 1, y).a != 0 || b.pixel(x + 1, y).a != 0 || b.pixel(x, y - 1).a != 0 || b.pixel(x, y + 1).a != 0
+    /// Whether a 4-neighbour (or, with `diagonals`, an 8-neighbour) of `(x, y)` is opaque.
+    private static func hasOpaqueNeighbour(_ b: PixelBuffer, _ x: Int, _ y: Int, diagonals: Bool) -> Bool {
+        if b.pixel(x - 1, y).a != 0 || b.pixel(x + 1, y).a != 0 || b.pixel(x, y - 1).a != 0 || b.pixel(x, y + 1).a != 0 {
+            return true
+        }
+        return diagonals && (b.pixel(x - 1, y - 1).a != 0 || b.pixel(x + 1, y - 1).a != 0
+            || b.pixel(x - 1, y + 1).a != 0 || b.pixel(x + 1, y + 1).a != 0)
     }
 }

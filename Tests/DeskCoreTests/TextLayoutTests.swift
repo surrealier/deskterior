@@ -82,6 +82,56 @@ struct TextLayoutTests {
                 == "abc..ij")
     }
 
+    @Test("Only a short, space-free final suffix counts as an extension (M1 review F1)")
+    func derivedExtension() {
+        // Dots inside ordinary names (dates, versions) must not seed the tail.
+        for name in ["Meeting notes 10.14 with the design team and more", "Project v2.Final draft of everything we did"] {
+            let r = TextLayout.middleTruncate(name, maxWidth: 200, advance: Self.advance)
+            let head = r.prefix { $0 != "…" }, tail = r.drop { $0 != "…" }.dropFirst()
+            #expect(head.count >= 15 && abs(width(String(head)) - width(String(tail))) <= 10, "\(r)")
+            #expect(width(r) <= 200)
+            #expect(r == TextLayout.middleTruncate(name, maxWidth: 200, advance: Self.advance, extension: ""))
+        }
+        // Real extensions still stay whole; only the last suffix counts.
+        let shot = TextLayout.middleTruncate("Screenshot 2026-10-14 at 9.41.03 AM.png", maxWidth: 100, advance: Self.advance)
+        #expect(shot.hasSuffix(" AM.png") && shot.contains("…"), "\(shot)")
+        let gz = TextLayout.middleTruncate("archive of the old backups.tar.gz", maxWidth: 80, advance: Self.advance)
+        #expect(gz.hasSuffix(".gz"), "\(gz)")
+        // More than 8 characters after the dot is not an extension.
+        let long = "abcdefghijklmnop.abcdefghi"
+        #expect(TextLayout.middleTruncate(long, maxWidth: 70, advance: Self.advance)
+                == TextLayout.middleTruncate(long, maxWidth: 70, advance: Self.advance, extension: ""))
+        #expect(TextLayout.middleTruncate("abcdefghijklmnop.abcdefgh", maxWidth: 70, advance: Self.advance)
+                .hasSuffix(".abcdefgh"))
+    }
+
+    @Test("The caller can pass the extension, or none for folders (M1 review F1)")
+    func explicitExtension() {
+        let name = "Quarterly planning notes final v2.key"
+        // A folder with dots: no extension, balanced.
+        let folder = TextLayout.middleTruncate("Photos 2026.10.14 trip to the coast", maxWidth: 90, advance: Self.advance,
+                                               extension: "")
+        #expect(folder == "Photos …e coast")
+        // The file model's extension wins over the heuristic, e.g. a long one.
+        let pkg = "Some project archive.xcarchive2"
+        let kept = TextLayout.middleTruncate(pkg, maxWidth: 100, advance: Self.advance, extension: "xcarchive2")
+        #expect(kept.hasSuffix(".xcarchive2") && kept.hasPrefix("S"), "\(kept)")
+        // An extension the name does not end with is ignored; a leading dot and NFD are accepted.
+        #expect(TextLayout.middleTruncate(name, maxWidth: 90, advance: Self.advance, extension: "pdf")
+                == TextLayout.middleTruncate(name, maxWidth: 90, advance: Self.advance, extension: ""))
+        #expect(TextLayout.middleTruncate(name, maxWidth: 90, advance: Self.advance, extension: ".key")
+                == TextLayout.middleTruncate(name, maxWidth: 90, advance: Self.advance, extension: "key"))
+        let hangul = "보고서 최종 최최종 정말 마지막.한글"
+        let r = TextLayout.middleTruncate(TestSupport.nfd(hangul), maxWidth: 60, advance: Self.advance,
+                                          extension: TestSupport.nfd("한글"))
+        #expect(r.hasSuffix(".한글"), "\(r)")
+        // wrap passes the extension through to its last line.
+        let backup = "Holiday photos from the coast.backup"
+        #expect(TextLayout.wrap(backup, maxWidth: 70, maxLines: 2, advance: Self.advance) == ["Holiday", "pho….backup"])
+        #expect(TextLayout.wrap(backup, maxWidth: 70, maxLines: 2, advance: Self.advance, extension: "")
+                == ["Holiday", "photo…ackup"])
+    }
+
     @Test("Wrap: breaks at spaces, last line middle-truncated")
     func wrapReport() {
         #expect(TextLayout.wrap(reportNFC, maxWidth: 40, maxLines: 2, advance: Self.advance) == ["보고서", "f….pdf"])
@@ -109,6 +159,10 @@ struct TextLayoutTests {
         #expect(TextLayout.wrap("abcdefghij", maxWidth: 25, maxLines: 3, advance: Self.advance)
                 == ["abcd", "efgh", "ij"])
         #expect(TextLayout.wrap("a  b", maxWidth: 6, maxLines: 3, advance: Self.advance) == ["a", "b"])
+        // A leading space must not cost a line (M1 review F12).
+        #expect(TextLayout.wrap(" 나 b", maxWidth: 12, maxLines: 2, advance: Self.advance) == ["나", "b"])
+        #expect(TextLayout.wrap("   abcdef", maxWidth: 12, maxLines: 3, advance: Self.advance) == ["ab", "cd", "ef"])
+        #expect(TextLayout.wrap(" ab", maxWidth: 40, maxLines: 2, advance: Self.advance) == [" ab"])
         #expect(TextLayout.wrap("", maxWidth: 40, maxLines: 2, advance: Self.advance).isEmpty)
         #expect(TextLayout.wrap("abc", maxWidth: 40, maxLines: 0, advance: Self.advance).isEmpty)
 

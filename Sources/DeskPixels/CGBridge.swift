@@ -26,9 +26,11 @@ public enum CGBridge {
         return ctx
     }
 
-    /// Reads a context created by `makeContext` back into a buffer, un-premultiplying partial alpha.
+    /// Reads a context created by `makeContext` back into a buffer, un-premultiplying partial alpha. Nil for
+    /// any other layout (BGRA, alpha first, no alpha, float components, a colour space other than sRGB), whose
+    /// bytes would be misread; draw such images into a `makeContext` context first (`PixelBuffer(cgImage:)`).
     public static func pixelBuffer(from ctx: CGContext) -> PixelBuffer? {
-        guard let data = ctx.data, ctx.bitsPerPixel == 32, ctx.bitsPerComponent == 8 else { return nil }
+        guard let data = ctx.data, hasOwnLayout(ctx) else { return nil }
         let w = ctx.width, h = ctx.height, rowBytes = ctx.bytesPerRow
         let src = data.bindMemory(to: UInt8.self, capacity: rowBytes * h)
         var px = [RGBA8](repeating: .clear, count: w * h)
@@ -40,6 +42,16 @@ public enum CGBridge {
             }
         }
         return PixelBuffer(width: w, height: h, pixels: px)
+    }
+
+    /// sRGB, 8 bpc, 32 bpp, integer, premultiplied alpha last, bytes in R, G, B, A order.
+    static func hasOwnLayout(_ ctx: CGContext) -> Bool {
+        let order = ctx.bitmapInfo.intersection(.byteOrderMask)
+        return ctx.bitsPerPixel == 32 && ctx.bitsPerComponent == 8
+            && ctx.alphaInfo == .premultipliedLast
+            && (order == .byteOrder32Big || order == [])
+            && !ctx.bitmapInfo.contains(.floatComponents)
+            && ctx.colorSpace?.name == CGColorSpace.sRGB
     }
 
     @inline(__always)

@@ -20,8 +20,13 @@ public enum TextLayout {
     /// the tail are kept as balanced as possible, and the tail keeps the whole extension (".pdf") whenever it
     /// fits next to at least one head character. Returns the NFC string unchanged when it already fits, and
     /// `""` when not even the ellipsis fits.
+    ///
+    /// `extension` is the name's extension without the dot, as the file model knows it (`"pdf"`; `""` for
+    /// folders and other names without one). It only counts when `s` ends with it. When nil, it is guessed
+    /// conservatively: the text after the last dot, if that dot is not the first character and the text is 1–8
+    /// characters with no whitespace, so dates and versions ("notes 10.14 with the team") are not extensions.
     public static func middleTruncate(
-        _ s: String, maxWidth: Int, advance: (Character) -> Int, ellipsis: String = "…"
+        _ s: String, maxWidth: Int, advance: (Character) -> Int, ellipsis: String = "…", extension ext: String? = nil
     ) -> String {
         let chars = Array(nfc(s))
         let widths = chars.map(advance)
@@ -35,9 +40,9 @@ public enum TextLayout {
         var headW = 0, tailW = 0
 
         // Seed the tail with the extension when it leaves room for a head character.
-        if let dot = chars.lastIndex(of: "."), dot > 0, dot < chars.count - 1 {
-            let extCount = chars.count - dot
-            let extW = widths[dot...].reduce(0, +)
+        let extCount = extensionLength(chars, ext.map { Array(nfc($0)) })
+        if extCount > 0 {
+            let extW = widths[(chars.count - extCount)...].reduce(0, +)
             if extW + widths[0] <= budget {
                 tail = extCount
                 tailW = extW
@@ -66,15 +71,18 @@ public enum TextLayout {
     /// Wraps `s` into at most `maxLines` lines of at most `maxWidth`. Lines break after spaces (which are
     /// dropped at the break), before or after any CJK/Hangul character, and — for a run with no break
     /// opportunity that is wider than a line — anywhere. If the text needs more lines, the last line holds the
-    /// rest of the text middle-truncated (so the extension stays visible). Empty input gives no lines.
-    public static func wrap(_ s: String, maxWidth: Int, maxLines: Int, advance: (Character) -> Int) -> [String] {
+    /// rest of the text middle-truncated (so the extension stays visible; `extension` as in `middleTruncate`).
+    /// Leading spaces are kept only when they share the first line with text. Empty input gives no lines.
+    public static func wrap(
+        _ s: String, maxWidth: Int, maxLines: Int, advance: (Character) -> Int, extension ext: String? = nil
+    ) -> [String] {
         var rest = Array(nfc(s))
         guard maxLines > 0, !rest.isEmpty else { return [] }
 
         var lines: [String] = []
         while !rest.isEmpty {
             if lines.count == maxLines - 1 {
-                lines.append(middleTruncate(String(rest), maxWidth: maxWidth, advance: advance))
+                lines.append(middleTruncate(String(rest), maxWidth: maxWidth, advance: advance, extension: ext))
                 break
             }
             if width(rest, advance: advance) <= maxWidth {
@@ -84,7 +92,7 @@ public enum TextLayout {
             let cut = breakIndex(rest, maxWidth: maxWidth, advance: advance)
             var line = rest[0..<cut]
             while let last = line.last, last == " " { line.removeLast() }
-            lines.append(String(line))
+            if !line.isEmpty { lines.append(String(line)) }   // leading spaces that would fill a line are dropped
             rest = Array(rest[cut...].drop { $0 == " " })
         }
         return lines
@@ -103,6 +111,25 @@ public enum TextLayout {
         default:
             return false
         }
+    }
+
+    /// Longest extension guessed from a name: 1–8 characters after the final dot, no whitespace.
+    private static let maxGuessedExtensionLength = 8
+
+    /// Character count of the `.ext` suffix of `chars` (dot included), or 0 when there is none. `ext` nil
+    /// guesses it (see `middleTruncate`); otherwise it must be what `chars` ends with, minus the dot.
+    private static func extensionLength(_ chars: [Character], _ ext: [Character]?) -> Int {
+        if var ext {
+            if ext.first == "." { ext.removeFirst() }
+            let n = ext.count + 1
+            guard !ext.isEmpty, n < chars.count, chars[chars.count - n] == ".", chars.suffix(ext.count).elementsEqual(ext)
+            else { return 0 }
+            return n
+        }
+        guard let dot = chars.lastIndex(of: "."), dot > 0 else { return 0 }
+        let n = chars.count - 1 - dot
+        guard n >= 1, n <= maxGuessedExtensionLength, !chars[(dot + 1)...].contains(where: \.isWhitespace) else { return 0 }
+        return n + 1
     }
 
     /// Where to end the next line of `chars`: the largest non-empty break opportunity

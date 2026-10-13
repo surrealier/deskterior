@@ -1,27 +1,30 @@
 /// Integer line rasterization (Bresenham-equivalent) for clock hands, the lamp arm and other 1-px strokes.
 ///
 /// Lines are 8-connected with exactly `max(|dx|, |dy|) + 1` points: each pixel sits on the nearest row
-/// (or column) to the ideal line, with ties broken the same way for every line. A segment is always
-/// rasterized from a canonical endpoint, so `points(from: a, to: b) == points(from: b, to: a).reversed()`.
+/// (or column) to the ideal line. Exact ties go toward the top endpoint (the left one for horizontal
+/// lines), which makes two kinds of symmetry hold:
+/// - reversal: `points(from: a, to: b) == points(from: b, to: a).reversed()`;
+/// - left–right mirroring: mirrored endpoints give the mirrored pixels, so 1:00 and 11:00 clock hands or the
+///   two edges of a lamp cone match.
 public enum LineRaster {
     /// Pixels of the segment `a`–`b`, both endpoints included, ordered from `a` to `b`.
     public static func points(from a: ArtPoint, to b: ArtPoint) -> [ArtPoint] {
-        // Canonical direction: left to right; vertical lines top to bottom.
-        let forward = a.x < b.x || (a.x == b.x && a.y <= b.y)
+        // Canonical direction: from the top endpoint; horizontal lines left to right.
+        let forward = a.y < b.y || (a.y == b.y && a.x <= b.x)
         let p = forward ? a : b, q = forward ? b : a
-        let dx = q.x - p.x  // >= 0
-        let dy = q.y - p.y
-        let sy = dy < 0 ? -1 : 1
-        let ady = abs(dy)
+        let dy = q.y - p.y  // >= 0
+        let dx = q.x - p.x
+        let sx = dx < 0 ? -1 : 1
+        let adx = abs(dx)
         var out: [ArtPoint] = []
-        out.reserveCapacity(max(dx, ady) + 1)
-        if dx >= ady {
-            for i in 0...dx {
-                out.append(ArtPoint(p.x + i, p.y + sy * roundedRatio(i * ady, dx)))
+        out.reserveCapacity(max(adx, dy) + 1)
+        if adx >= dy {
+            for i in 0...adx {
+                out.append(ArtPoint(p.x + sx * i, p.y + roundedRatio(i * dy, adx)))
             }
         } else {
-            for j in 0...ady {
-                out.append(ArtPoint(p.x + roundedRatio(j * dx, ady), p.y + sy * j))
+            for j in 0...dy {
+                out.append(ArtPoint(p.x + sx * roundedRatio(j * adx, dy), p.y + j))
             }
         }
         if !forward { out.reverse() }

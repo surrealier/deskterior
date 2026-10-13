@@ -168,13 +168,45 @@ import Testing
             "x....",
         ], o)
         let out = Quantizer.removeOrphans(src)
+        // Diagonal neighbours count, so the (1,2)–(2,3) pair survives.
         #expect(out == grid([
             "....x",
             "....x",
-            ".....",
-            ".....",
+            ".x...",
+            "..x..",
             ".....",
         ], o))
+    }
+
+    @Test func diagonalStrokesSurviveOrphanRemoval() {
+        // M1 review F2: 1-px diagonal strokes (ticks, alias arrows, pen nibs) are not orphans.
+        let o = Apollo.colors[9]
+        let diagonal = grid([
+            "x.....",
+            ".x....",
+            "..x...",
+            "...x..",
+            "....x.",
+            "......",
+        ], o)
+        #expect(Quantizer.removeOrphans(diagonal) == diagonal)
+        let check = grid([
+            "........",
+            ".......x",
+            "......x.",
+            ".x...x..",
+            "..x.x...",
+            "...x....",
+        ], o)
+        #expect(Quantizer.removeOrphans(check) == check)
+        #expect(Quantizer.removeOrphans(check).pixels.filter { $0.a != 0 }.count == 7)
+        // A pixel with no neighbour in any of the 8 directions still goes.
+        let lone = grid([
+            "x.x",
+            "...",
+            "x.x",
+        ], o)
+        #expect(Quantizer.removeOrphans(lone) == PixelBuffer(width: 3, height: 3))
     }
 
     @Test func outlineRing() {

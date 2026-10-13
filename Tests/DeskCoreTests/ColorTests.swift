@@ -162,6 +162,44 @@ import Testing
         #expect(checked > 1000)
     }
 
+    @Test func everySampledBinMatchesTheNearestColourSearch() {
+        // The fast builder must agree with `Apollo.nearestIndex` wherever rule 3 applies.
+        var driftBins = Set<Int>()
+        for c in Apollo.colors {
+            for d in driftOffsets() { driftBins.insert(IndexLUT.offset(of: drift(c, d))) }
+        }
+        var checked = 0
+        for o in stride(from: 0, to: IndexLUT.byteCount, by: 11) where !driftBins.contains(o) {
+            let r6 = o % 64, g6 = (o / 64) % 64, b6 = o / 4096
+            let centre = OKLab(
+                linearR: OKLab.srgbToLinear((Double(r6) * 4 + 1.5) / 255),
+                g: OKLab.srgbToLinear((Double(g6) * 4 + 1.5) / 255),
+                b: OKLab.srgbToLinear((Double(b6) * 4 + 1.5) / 255)
+            )
+            if Int(lut.bytes[o]) != Apollo.nearestIndex(to: centre) {
+                Issue.record("bin \(r6),\(g6),\(b6): \(lut.bytes[o]) != \(Apollo.nearestIndex(to: centre))")
+            }
+            checked += 1
+        }
+        #expect(checked > 23_000)
+    }
+
+    @Test func buildingIsCheapEnoughForLaunch() {
+        // M1 review F5: the debug build of the table took 1.5 s on the main thread.
+        let clock = ContinuousClock()
+        var table: [UInt8] = []
+        let elapsed = clock.measure { table = IndexLUT().bytes }
+        #expect(table == lut.bytes)
+        #expect(elapsed < .milliseconds(500), "IndexLUT build took \(elapsed)")
+    }
+
+    @Test func prewarmBuildsTheSharedTables() async {
+        IndexLUT.prewarm()
+        LightRamp.prewarm()
+        #expect(IndexLUT.shared.bytes.count == IndexLUT.byteCount)
+        #expect(LightRamp.shared.gpuBytes.count == 2 * 8 * Apollo.count)
+    }
+
     private func driftOffsets() -> [(Int, Int, Int)] {
         var out: [(Int, Int, Int)] = []
         for dr in -1...1 { for dg in -1...1 { for db in -1...1 { out.append((dr, dg, db)) } } }
@@ -242,10 +280,46 @@ import Testing
     }
 
     @Test func tintsDiverge() {
-        // Moonlight pulls toward blue (b < 0), lamplight toward orange (b > 0).
+        // At night (level 1, DESIGN §1.4) moonlight pulls the wall toward blue (b < 0), lamplight toward
+        // orange (b > 0). Higher levels keep the wall's own neutral ramp.
         let wall = Ink.neutral8.paletteIndex!
-        #expect(Apollo.oklab[ramp.map(wall, level: 2, tint: .cool)].b < Apollo.oklab[ramp.map(wall, level: 2, tint: .warm)].b)
+        #expect(Apollo.oklab[ramp.map(wall, level: 1, tint: .cool)].b < 0)
         #expect(Apollo.oklab[ramp.map(wall, level: 1, tint: .warm)].b > 0)
+        let white = Ink.neutral9.paletteIndex!
+        #expect(Apollo.ramp(of: ramp.map(white, level: 1, tint: .cool)) == .blue)
+        #expect(Apollo.ramp(of: ramp.map(white, level: 1, tint: .warm)) == .walnut)
+    }
+
+    /// Moonlight drifts toward blue/purple, lamplight toward walnut/oak; nothing jumps to an unrelated hue.
+    static func allowedRamps(for index: Int, tint: Tint) -> Set<Apollo.Ramp> {
+        var ramps: Set<Apollo.Ramp> = [Apollo.ramp(of: index)]
+        ramps.formUnion(tint == .cool ? [.blue, .purple] : [.walnut, .oak])
+        return ramps
+    }
+
+    @Test(arguments: Tint.allCases)
+    func huesStayCoherent(tint: Tint) {
+        let darkNeutrals = Set(36...39)
+        for i in 0..<Apollo.count {
+            for level in 0..<7 {
+                let j = ramp.map(i, level: level, tint: tint)
+                let ok = darkNeutrals.contains(j) || Self.allowedRamps(for: i, tint: tint).contains(Apollo.ramp(of: j))
+                #expect(ok, "index \(i) (\(Apollo.ramp(of: i))) level \(level) → \(j) (\(Apollo.ramp(of: j)))")
+            }
+        }
+    }
+
+    @Test(arguments: Tint.allCases)
+    func columnsNeverStepBack(tint: Tint) {
+        // Own ramp → tint ramps → dark neutrals, one way, so a column's hue cannot flicker as the light falls.
+        func stage(_ j: Int, own: Apollo.Ramp) -> Int {
+            (36...39).contains(j) ? 2 : (Apollo.ramp(of: j) == own ? 0 : 1)
+        }
+        for i in 0..<Apollo.count {
+            let own = Apollo.ramp(of: i)
+            let stages = stride(from: 7, through: 0, by: -1).map { stage(ramp.map(i, level: $0, tint: tint), own: own) }
+            #expect(stages == stages.sorted(), "index \(i): \(stages)")
+        }
     }
 
     @Test func isDeterministic() {
@@ -287,20 +361,20 @@ import Testing
 private enum LightRampGolden {
     static let rows: [String] = [
         "0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 41 42 43 44 45", // cool 7
-        "0 1 2 3 4 4 6 7 8 8 9 11 12 13 14 14 15 16 18 12 13 21 21 22 24 25 26 27 28 21 30 31 32 32 33 35 36 37 38 39 40 41 42 42 43 44", // cool 6
-        "0 1 1 2 3 42 6 6 7 8 9 42 18 19 13 14 14 15 24 12 19 20 14 15 24 18 12 26 20 14 30 31 31 32 33 34 36 37 37 38 39 40 41 42 42 43", // cool 5
-        "37 0 1 2 41 42 38 6 7 7 8 42 18 12 13 13 41 42 24 18 12 13 20 14 37 24 25 19 13 20 30 30 31 32 32 13 36 37 37 38 39 40 41 41 42 42", // cool 4
-        "37 0 1 1 2 41 38 6 6 7 41 41 24 18 40 40 41 41 37 18 12 19 13 41 37 24 18 12 19 13 37 30 31 31 31 13 36 36 37 38 39 1 40 40 41 41", // cool 3
-        "37 0 0 1 1 40 37 38 6 6 40 40 37 30 39 40 40 40 37 24 18 12 40 40 36 37 24 18 12 12 37 30 30 31 31 31 36 36 37 37 0 39 1 40 40 2", // cool 2
-        "36 37 0 0 1 1 37 38 38 39 39 39 37 38 0 39 39 1 36 37 38 0 39 39 36 37 37 24 30 39 36 37 30 30 30 30 36 36 36 37 37 0 0 39 1 1", // cool 1
-        "36 36 37 37 0 0 36 36 37 37 0 0 36 37 37 37 0 0 36 36 37 37 0 0 36 36 36 37 37 37 36 36 37 37 37 30 36 36 36 36 36 37 37 0 0 0", // cool 0
+        "0 1 2 3 4 4 6 7 8 8 9 11 12 13 14 14 15 16 18 19 20 21 21 22 24 25 26 27 28 29 30 31 32 32 33 35 36 37 38 39 40 41 42 42 43 44", // cool 6
+        "0 1 1 2 3 4 6 6 7 8 9 9 12 12 13 14 14 15 18 18 19 20 21 21 24 24 25 26 27 28 30 31 31 32 33 34 36 37 37 38 39 40 41 42 42 43", // cool 5
+        "0 0 1 2 2 3 6 6 7 7 8 8 12 12 13 13 14 14 18 18 19 20 20 21 24 24 25 26 26 27 30 30 31 32 32 32 36 37 37 38 39 40 41 41 42 42", // cool 4
+        "0 0 1 1 2 2 6 6 6 7 7 7 38 12 12 13 13 13 18 18 18 19 20 20 24 24 25 25 26 26 30 30 31 31 31 32 36 36 37 38 39 39 40 40 41 41", // cool 3
+        "0 0 0 1 1 2 37 6 6 6 7 7 37 30 12 12 12 13 37 18 18 18 19 19 24 24 24 25 25 25 30 30 30 31 31 31 36 36 37 37 38 39 39 40 40 40", // cool 2
+        "36 0 0 0 1 1 37 38 38 6 6 6 37 38 0 39 39 1 36 37 38 0 39 39 36 37 24 24 24 25 36 30 30 30 30 30 36 36 36 37 37 38 39 39 39 1", // cool 1
+        "36 36 37 37 0 0 36 36 37 37 0 0 36 37 37 37 38 0 36 36 37 37 37 38 36 36 36 37 37 37 36 36 37 37 37 30 36 36 36 36 36 37 37 37 38 0", // cool 0
         "0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 41 42 43 44 45", // warm 7
-        "0 1 2 3 4 43 6 7 8 9 9 11 12 13 14 14 15 16 18 19 20 21 21 22 24 25 26 27 28 21 30 31 32 33 33 35 36 37 38 39 40 41 42 42 43 44", // warm 6
-        "38 39 1 2 42 42 6 7 7 8 9 15 18 19 20 14 14 15 18 12 19 20 21 15 24 18 19 26 27 21 24 25 31 32 33 14 36 37 37 38 6 40 41 42 42 43", // warm 5
-        "37 39 1 40 41 42 38 6 7 8 8 14 18 19 20 20 14 14 18 12 19 20 20 14 24 18 19 19 20 20 37 18 25 26 26 13 36 36 37 38 6 40 41 41 42 42", // warm 4
-        "37 38 39 40 40 41 38 6 7 7 8 20 18 12 19 20 20 20 18 18 19 20 20 20 37 18 25 19 19 20 37 18 25 19 26 13 36 36 37 38 6 6 40 13 41 14", // warm 3
-        "37 38 39 6 40 40 37 6 6 7 7 20 18 18 19 19 13 20 24 18 18 19 19 20 36 18 18 19 19 19 36 24 18 25 19 19 36 36 36 37 18 6 12 40 13 13", // warm 2
-        "36 37 18 6 6 6 36 37 6 6 6 19 18 18 18 12 19 19 36 18 18 18 19 19 36 36 18 18 19 19 36 24 18 18 18 12 36 36 36 36 37 18 18 12 12 19", // warm 1
-        "36 36 36 37 18 18 36 36 36 18 18 18 36 36 18 18 18 18 36 36 18 18 18 18 36 36 36 18 18 18 36 36 36 18 18 18 36 36 36 36 36 36 18 18 18 18", // warm 0
+        "0 1 2 3 4 4 6 7 8 9 9 11 12 13 14 14 15 16 18 19 20 21 21 22 24 25 26 27 28 29 30 31 32 33 33 35 36 37 38 39 40 41 42 42 43 44", // warm 6
+        "0 0 1 2 3 4 6 7 7 8 9 9 12 12 13 14 14 15 18 19 19 20 21 21 24 25 26 26 27 28 30 31 31 32 33 34 36 37 37 38 39 40 41 42 42 43", // warm 5
+        "0 0 1 2 2 3 6 6 7 8 8 8 12 12 13 13 14 14 18 18 19 20 20 21 24 24 25 26 27 20 30 30 31 32 32 13 36 36 37 38 39 40 41 41 42 42", // warm 4
+        "0 0 0 1 2 2 6 6 7 7 8 8 12 12 13 13 13 13 18 18 19 20 20 20 24 24 25 26 26 20 30 30 31 31 19 13 36 36 37 38 39 40 40 40 41 41", // warm 3
+        "37 0 0 39 12 13 37 6 6 7 7 7 18 12 12 12 13 13 18 18 18 19 19 20 24 24 25 25 19 19 36 30 18 31 19 19 36 36 36 37 38 39 40 40 40 13", // warm 2
+        "36 37 0 39 39 12 36 6 6 6 6 6 18 18 12 12 12 12 36 18 18 18 19 19 36 24 18 18 19 19 36 30 18 18 18 12 36 36 36 36 37 38 18 12 12 19", // warm 1
+        "36 36 36 37 37 18 36 36 36 18 18 18 36 36 18 18 18 18 36 36 18 18 18 18 36 36 36 18 18 18 36 36 36 18 18 18 36 36 36 36 36 36 18 18 18 18", // warm 0
     ]
 }

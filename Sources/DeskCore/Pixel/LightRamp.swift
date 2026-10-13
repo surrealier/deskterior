@@ -10,23 +10,32 @@ public enum Tint: Int, Sendable, CaseIterable {
 ///
 /// Level 7 is the identity. Lower levels compress OKLab lightness toward the palette's floor, fade
 /// chroma, and blend a/b toward the tint's hue with a weight that grows as the level drops; the target
-/// is snapped to Apollo (OKLab, chroma weighted ×2 so hue families survive). Each `(index, tint)` column
-/// is then made monotonic: a level is never lighter than the level above it.
+/// is snapped to Apollo (OKLab, chroma weighted ×2). To keep hue families coherent, a colour may only
+/// snap to its own ramp, the tint's ramps (blue and purple for `cool`, walnut and oak for `warm`) or the
+/// four darkest neutrals; leaving the own ramp costs a bias that fades with the level, and a column moves
+/// one way only (own ramp → tint ramps → dark neutrals). Each `(index, tint)` column is also monotonic: a
+/// level is never lighter than the level above it.
 public struct LightRamp: Sendable {
     /// Number of light levels (0…7).
     public static let levelCount = 8
     /// The identity level.
     public static let maxLevel = 7
 
-    /// The table, built on first use.
+    /// The table, built on first use (cheap: 46 × 7 × 2 snaps). `prewarm()` builds it off the main thread.
     public static let shared = LightRamp()
+
+    /// Builds `shared` on a background queue. Safe to call more than once.
+    public static func prewarm() {
+        DispatchQueue.global(qos: .userInitiated).async { _ = LightRamp.shared }
+    }
 
     /// Flattened table, one palette index per byte at offset `((tint * 8) + level) * 46 + index`.
     /// Upload as a 2D `.r8Uint` texture of width 46 (index) × height 16 (row `tint * 8 + level`),
     /// `bytesPerRow` 46; the lit pass reads `ramp.read(uint2(index, tint * 8 + level))`.
     public let gpuBytes: [UInt8]
 
-    public init() {
+    /// Builds a fresh table; use `shared`.
+    init() {
         gpuBytes = LightRamp.build()
     }
 
@@ -93,26 +102,59 @@ public struct LightRamp: Sendable {
         )
     }
 
-    private static func snap(_ t: OKLab) -> Int {
-        var best = 0, bestD = Double.infinity
-        for (i, p) in Apollo.oklab.enumerated() {
+    /// Snap penalty (squared OKLab units) for leaving the source's own ramp, scaled by level / 7: hue
+    /// families hold through the mid levels and the tint takes over only as the light fails.
+    private static let ownRampBias = 0.02
+
+    /// Where a candidate sits on a column's one-way path: the source's own ramp (0), then the tint's ramps (1),
+    /// then the dark-neutral floor (2). A column never steps back, so its hue cannot flicker.
+    private static func stage(of candidate: Int, ownRamp: Apollo.Ramp) -> Int {
+        if darkNeutrals.contains(candidate) { return 2 }
+        return Apollo.ramp(of: candidate) == ownRamp ? 0 : 1
+    }
+
+    /// The four darkest neutrals (`090a14` … `202e37`), allowed for every colour.
+    private static let darkNeutrals = Apollo.Ramp.neutral.indices.prefix(4)
+
+    /// Palette indices `index` may become under `tint`, ascending: its own ramp, the tint's ramps (blue and
+    /// purple for `cool`, walnut and oak for `warm`) and the four darkest neutrals.
+    static func candidates(for index: Int, tint: Tint) -> [Int] {
+        let tintRamps: [Apollo.Ramp] = tint == .cool ? [.blue, .purple] : [.walnut, .oak]
+        var set = Set(Apollo.ramp(of: index).indices).union(darkNeutrals)
+        for ramp in tintRamps { set.formUnion(ramp.indices) }
+        return set.sorted()
+    }
+
+    /// The candidate nearest `t` (L, plus a/b weighted by `chromaSnapWeight`) at or past `minStage`, with
+    /// `ownRampBias` added outside the own ramp; ties go to the lowest index.
+    private static func snap(
+        _ t: OKLab, level: Int, among candidates: [Int], ownRamp: Apollo.Ramp, minStage: Int
+    ) -> Int {
+        var best = -1, bestD = Double.infinity
+        for i in candidates where stage(of: i, ownRamp: ownRamp) >= minStage {
+            let p = Apollo.oklab[i]
             let dL = t.L - p.L, da = t.a - p.a, db = t.b - p.b
-            let d = dL * dL + chromaSnapWeight * (da * da + db * db)
+            var d = dL * dL + chromaSnapWeight * (da * da + db * db)
+            if Apollo.ramp(of: i) != ownRamp { d += ownRampBias * Double(level) / Double(maxLevel) }
             if d < bestD { (best, bestD) = (i, d) }
         }
         return best
     }
 
-    private static func build() -> [UInt8] {
+    static func build() -> [UInt8] {
         var table = [UInt8](repeating: 0, count: Tint.allCases.count * levelCount * Apollo.count)
         for tint in Tint.allCases {
             for index in 0..<Apollo.count {
-                var above = index
+                let ownRamp = Apollo.ramp(of: index)
+                let allowed = candidates(for: index, tint: tint)
+                var above = index, minStage = 0
                 table[offset(index: index, level: maxLevel, tint: tint)] = UInt8(index)
                 for level in stride(from: maxLevel - 1, through: 0, by: -1) {
-                    var j = snap(target(Apollo.oklab[index], level: level, tint: tint))
+                    let t = target(Apollo.oklab[index], level: level, tint: tint)
+                    var j = snap(t, level: level, among: allowed, ownRamp: ownRamp, minStage: minStage)
                     if Apollo.oklab[j].L > Apollo.oklab[above].L { j = above }
                     table[offset(index: index, level: level, tint: tint)] = UInt8(j)
+                    minStage = max(minStage, stage(of: j, ownRamp: ownRamp))
                     above = j
                 }
             }
