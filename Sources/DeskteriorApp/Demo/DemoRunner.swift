@@ -460,10 +460,46 @@ final class DemoRunner {
             case "minis": check(key, String(scene.containerMinis.count), value)
             case "chair.blocksCabinet":
                 check(key, String(DrawerSim.cabinetOpenLimit(travel: 12, chairX: s.chair.x) < 12), value)
+            // MARK: lighting (M10)
+            case "lights.mode", "lights.room", "lights.lamp", "ambient", "phase", "clock", "glow.monitor",
+                 "glow.phone", "glow.lamp", "hover.part", "keyboard.key", "plant.jiggle":
+                check(key, lightingValue(key, s), value)
+            case let k where k.hasPrefix("lit:"):
+                // Whether a 16-px token drawn at the target would be seen (and so hovered and picked).
+                let p = try point(String(k.dropFirst(4)))
+                let r = ArtRect(Int(p.x.rounded(.down)) - 8, Int(p.y.rounded(.down)) - 8, 16, 16)
+                check(key, String(scene.isTokenLit(r)), value)
+            case let k where k.hasPrefix("light:"):
+                let p = try point(String(k.dropFirst(6)))
+                check(key, String(scene.lightLevel(at: ArtPoint(Int(p.x.rounded(.down)), Int(p.y.rounded(.down))))), value)
             default:
                 throw ScriptError(description: "unknown expectation '\(key)'")
             }
         }
         return out
+    }
+
+    /// The lights, glows, clock and decor the `07-night-lamp` expectations read (model and scene).
+    private func lightingValue(_ key: String, _ s: DeskState) -> String {
+        let scene = host.scene
+        let room = scene.roomState
+        let lit = room?.effectiveLights
+        func onOff(_ b: Bool?) -> String { b == true ? "on" : "off" }
+        switch key {
+        case "lights.mode": return s.lights.mode.rawValue
+        case "lights.room": return onOff(s.lights.roomLightOn)
+        case "lights.lamp": return onOff(s.lights.lampLit)
+        case "ambient": return room.map { String($0.timeOfDay.ambientLevel) } ?? "none"
+        case "phase": return room?.timeOfDay.phase.rawValue ?? "none"
+        case "clock": return room.map { String(format: "%02d:%02d", $0.time.hour, $0.time.minute) } ?? "none"
+        case "glow.monitor": return onOff(lit.map { $0.monitorOn && $0.monitorGlows })
+        case "glow.phone": return onOff(lit?.phoneFaceUp)
+        case "glow.lamp": return onOff(lit?.lampOn)
+        case "hover.part": return scene.hoveredHit.map { $0.part ?? $0.element } ?? "none"
+        case "keyboard.key":
+            return (scene.roomElement("keyboard") as? KeyboardElement)?.pressedKey.map { "\($0.row),\($0.col)" } ?? "none"
+        case "plant.jiggle": return String((scene.roomElement("plant") as? PlantElement)?.isJiggling ?? false)
+        default: return "none"
+        }
     }
 }

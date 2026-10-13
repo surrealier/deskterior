@@ -101,6 +101,45 @@ public struct LightMask: Hashable, Sendable {
         }
     }
 
+    /// A pool of light whose level falls off with the distance from the centre of the ellipse inscribed in `r`
+    /// (`n` = 1 on its rim): `stops` give the level at increasing `n`, linear between them. A fractional level is
+    /// Bayer-dithered (blocks of `cell` px) between the whole levels on either side, so the falloff reads as bands
+    /// with dithered seams while every pixel keeps a whole level. Nothing is lit beyond the last stop, outside
+    /// `clip`, nor where the level comes out at 1 or less (the room is never darker than that).
+    public mutating func addFalloff(ellipse r: ArtRect, stops: [(n: Double, level: Double)], tint: Tint,
+                                    cell: Int = LightMask.cell, clip: ArtRect? = nil) {
+        guard !r.isEmpty, let first = stops.first, let last = stops.last else { return }
+        let cx = Double(r.x) + Double(r.w) / 2, cy = Double(r.y) + Double(r.h) / 2
+        let rx = Double(r.w) / 2, ry = Double(r.h) / 2
+        let area = (clip ?? ArtRect(0, 0, size.w, size.h)).intersection(ArtRect(0, 0, size.w, size.h))
+        let x0 = max(Int((cx - rx * last.n).rounded(.down)) - 1, area.minX)
+        let x1 = min(Int((cx + rx * last.n).rounded(.up)) + 1, area.maxX)
+        let y0 = max(Int((cy - ry * last.n).rounded(.down)) - 1, area.minY)
+        let y1 = min(Int((cy + ry * last.n).rounded(.up)) + 1, area.maxY)
+        guard x0 < x1, y0 < y1 else { return }
+        for y in y0..<y1 {
+            for x in x0..<x1 {
+                let dx = (Double(x) + 0.5 - cx) / rx, dy = (Double(y) + 0.5 - cy) / ry
+                let n = (dx * dx + dy * dy).squareRoot()
+                guard n <= last.n else { continue }
+                var v = first.level
+                if n > first.n, let k = stops.firstIndex(where: { $0.n >= n }) {
+                    let (a, b) = (stops[k - 1], stops[k])
+                    v = a.level + (b.level - a.level) * (n - a.n) / max(b.n - a.n, 1e-9)
+                }
+                lightDithered(x, y, level: v, tint: tint, cell: cell)
+            }
+        }
+    }
+
+    /// Lights `(x, y)` at `floor(level)`, or one level up where the Bayer threshold falls under the fraction; levels
+    /// of 1 or less light nothing.
+    private mutating func lightDithered(_ x: Int, _ y: Int, level v: Double, tint: Tint, cell: Int) {
+        var whole = Int(v.rounded(.down))
+        if Dither.pick(x: x, y: y, fraction: v - Double(whole), cell: cell) { whole += 1 }
+        if whole > 1 { light(x, y, level: min(whole, LightRamp.maxLevel), tint: tint) }
+    }
+
     /// Lights each point.
     public mutating func addPoints(_ points: [ArtPoint], level: Int, tint: Tint) {
         for p in points { light(p.x, p.y, level: level, tint: tint) }
@@ -137,13 +176,18 @@ public struct LightMask: Hashable, Sendable {
 /// Which room lights are on (the lamp, the monitor, the phone screen, the room light).
 public struct RoomLightState: Hashable, Sendable {
     public var lampOn: Bool
+    /// The monitor's glass is lit (on, or mid power transition: the CRT collapse and bloom glow on the glass).
     public var monitorOn: Bool
+    /// The monitor casts its glow on the wall and desk: the display is on and not collapsing (E1, M10).
+    public var monitorGlows: Bool
     public var phoneFaceUp: Bool
     public var roomLightOn: Bool
 
-    public init(lampOn: Bool = true, monitorOn: Bool = true, phoneFaceUp: Bool = true, roomLightOn: Bool = true) {
+    public init(lampOn: Bool = true, monitorOn: Bool = true, phoneFaceUp: Bool = true, roomLightOn: Bool = true,
+                monitorGlows: Bool? = nil) {
         self.lampOn = lampOn
         self.monitorOn = monitorOn
+        self.monitorGlows = monitorGlows ?? monitorOn
         self.phoneFaceUp = phoneFaceUp
         self.roomLightOn = roomLightOn
     }
@@ -166,26 +210,25 @@ extension LightMask {
     /// and the string lights after dark.
     public static func room(_ layout: SceneLayout, lights: RoomLightState, time: TimeOfDay) -> LightMask {
         var m = LightMask(size: layout.canvas)
-        let o = layout.coreOrigin
-        func shift(_ e: (x0: Int, x1: Int, y: Int)) -> (x0: Int, x1: Int, y: Int) {
-            (e.x0 + o.x, e.x1 + o.x, e.y + o.y)
-        }
         // Only the glass glows: the mullion and the blind cord stay at the room's level.
         let win = layout.rect(CoreLayout.window)
         m.addPoints(WindowArt.skyPixels().map { $0 + win.origin }, level: 7, tint: .cool)
-        if lights.monitorOn {
+        if lights.monitorOn && lights.monitorGlows {
             m.addEllipse(layout.rect(CoreLayout.monitorBody).insetBy(-14, -10), level: 2, tint: .cool, edge: 12)
-            m.addTrapezoid(top: shift(CoreLayout.monitorGlowTop), bottom: shift(CoreLayout.monitorGlowBottom),
-                           level: 5, tint: .cool, edge: 8, bottomEdge: CoreLayout.monitorGlowFade)
-            m.addRect(layout.rect(CoreLayout.screen), level: 7, tint: .cool)
+            // On the desk in front of the riser: brightest under the middle of the screen, stepping down over the
+            // keyboard and toward the riser's ends (above the riser's foot it would be hidden behind the riser).
+            let riser = layout.rect(CoreLayout.riser)
+            let reach = CoreLayout.monitorGlowFade + 14
+            let glow = ArtRect(riser.x - 16, riser.maxY - reach, riser.w + 32, 2 * reach)
+            m.addFalloff(ellipse: glow, stops: Self.monitorGlowFalloff, tint: .cool,
+                         clip: ArtRect(0, riser.maxY, layout.canvas.w, layout.canvas.h - riser.maxY))
         }
+        if lights.monitorOn { m.addRect(layout.rect(CoreLayout.screen), level: 7, tint: .cool) }
         if lights.lampOn {
             if RoomArt.lampGlows(time) {
-                // A pool under the shade: a bright core, one falloff ring, a dithered edge that spills onto the
-                // apron and the chair back; the lamp's own base and the riser's end catch it too.
-                let pool = layout.rect(CoreLayout.lampPool)
-                m.addEllipse(pool, level: 6, tint: .warm, edge: 3)
-                m.addEllipse(RoomArt.lampPoolCore(pool), level: 7, tint: .warm, edge: 4)
+                // A pool under the shade: a bright core and a ring, then bands that step down into the dark and
+                // spill onto the apron and the chair back; the lamp's own base and the riser's end catch it too.
+                m.addFalloff(ellipse: layout.rect(CoreLayout.lampPool), stops: Self.lampPoolFalloff, tint: .warm)
                 let lamp = layout.rect(PropArt.lampRect)
                 let baseRows = (CoreLayout.lampSwitch.y - PropArt.lampRect.y)..<PropArt.lampRect.h
                 m.addSprite(PropArt.lamp(on: true).image, at: lamp.origin, rows: baseRows, level: 7, tint: .warm)
@@ -198,7 +241,7 @@ extension LightMask {
         }
         m.addRect(layout.rect(CoreLayout.led), level: 7, tint: .cool)
         if lights.phoneFaceUp {
-            m.addEllipse(layout.rect(CoreLayout.phone).insetBy(-7, -3), level: 5, tint: .cool, edge: 6)
+            m.addFalloff(ellipse: layout.rect(CoreLayout.phone).insetBy(-7, -3), stops: Self.phoneGlowFalloff, tint: .cool)
             m.addRect(layout.rect(PropArt.phoneScreenRect), level: 7, tint: .cool)
         }
         if time.isDark && lights.roomLightOn {
@@ -214,6 +257,42 @@ extension LightMask {
             }
         }
         return m
+    }
+}
+
+extension LightMask {
+    /// The lamp's pool (`CoreLayout.lampPool`, `n` = 1 on its rim, Errata 8): a level-7 core and a level-6 ring
+    /// inside the rim, then bands at 5, 4, 3 and 2, each held a little and dithered into the next.
+    public static let lampPoolFalloff: [(n: Double, level: Double)] = [
+        (0.48, 7), (0.6, 6), (0.82, 6), (0.92, 5), (1.0, 5), (1.08, 4), (1.13, 4), (1.2, 3), (1.25, 3), (1.33, 2),
+        (1.37, 2), (1.46, 1),
+    ]
+    /// The monitor's glow on the desk (an ellipse centred on the riser's foot, its lower half showing): level 5
+    /// under the screen's middle, stepping down to 2 (Errata 8's level-5 band, softened).
+    public static let monitorGlowFalloff: [(n: Double, level: Double)] = [
+        (0.5, 5), (0.62, 4), (0.74, 4), (0.84, 3), (0.92, 3), (1.02, 2), (1.08, 2), (1.16, 1),
+    ]
+    /// A face-up phone's glow: level 5 round the stand, stepping down to 2.
+    public static let phoneGlowFalloff: [(n: Double, level: Double)] = [
+        (0.7, 5), (0.82, 4), (0.94, 4), (1.04, 3), (1.12, 3), (1.22, 2), (1.3, 2), (1.38, 1),
+    ]
+
+    /// The level the lit pass gives `(x, y)` under `ambient`: the mask's, or the ambient where that is brighter.
+    public func effectiveLevel(_ x: Int, _ y: Int, ambient: Int) -> Int {
+        max(ambient, level(x, y))
+    }
+
+    /// The share (0…1) of `r`'s on-canvas pixels lit to at least `minimum` under `ambient` (0 when `r` is off the
+    /// canvas).
+    public func litFraction(_ r: ArtRect, atLeast minimum: Int, ambient: Int) -> Double {
+        let c = r.intersection(ArtRect(0, 0, size.w, size.h))
+        guard !c.isEmpty else { return 0 }
+        if ambient >= minimum { return 1 }
+        var lit = 0
+        for y in c.minY..<c.maxY {
+            for x in c.minX..<c.maxX where Int(bytes[y * size.w + x] & 7) >= minimum { lit += 1 }
+        }
+        return Double(lit) / Double(c.w * c.h)
     }
 }
 

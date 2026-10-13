@@ -81,11 +81,15 @@ public final class MonitorElement: DeskElement {
         if before == .off || before == .poweringOff, machine?.phase == .poweringOn {
             crtOn = MonitorArt.powerOnFrames(to: picture(withTokens: false))
         }
+        // Reduce Motion: no CRT collapse or bloom, the screen is simply off or on (M10).
+        if context.reduceMotion, machine?.phase == .poweringOff || machine?.phase == .poweringOn { machine?.settle() }
         refresh()
     }
 
     /// The screen glows (lit pass): on, or mid-transition.
     var isEmissive: Bool { machine.map { $0.phase != .off } ?? true }
+    /// The screen lights the wall and desk: on or blooming, never while it collapses (M10).
+    var glows: Bool { machine.map { $0.phase == .on || $0.phase == .poweringOn } ?? true }
 
     /// The full picture: wallpaper, then the card or the tokens.
     private func picture(withTokens: Bool) -> PixelBuffer {

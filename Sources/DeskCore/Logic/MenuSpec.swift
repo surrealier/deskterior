@@ -283,10 +283,9 @@ extension MenuSpec {
             MenuItem("lights.night", "Night", .lightsMode(.night), checked: m == .night),
             MenuItem("lights.lamp", "Lamp Only", .lightsMode(.lampOnly), checked: m == .lampOnly),
             .separator,
-            MenuItem("lights.room", "Room Light", .roomLight(!s.lights.room), enabled: m != .lampOnly,
-                     checked: s.lights.room && m != .lampOnly),
-            MenuItem("lights.deskLamp", "Desk Lamp", .deskLamp(!s.lights.lamp), enabled: m != .lampOnly,
-                     checked: s.lights.lamp || m == .lampOnly),
+            // The switches stay live in Lamp Only: turning one leaves it for Night (`LightsState.settled`).
+            MenuItem("lights.room", "Room Light", .roomLight(!s.lights.roomLightOn), checked: s.lights.roomLightOn),
+            MenuItem("lights.deskLamp", "Desk Lamp", .deskLamp(!s.lights.lampLit), checked: s.lights.lampLit),
         ]
     }
 

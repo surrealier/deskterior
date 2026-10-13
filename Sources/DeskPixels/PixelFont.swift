@@ -10,7 +10,9 @@ import Foundation
 /// integer advances, without kerning, so `measure` matches `TextLayout`'s per-character model. The rendered
 /// width is `measure` plus any ink that overhangs the ends (`overhang(of:)`, e.g. a leading "ĥ"). Characters
 /// the font lacks fall back to the system font at the same size (also without anti-aliasing; then its
-/// non-colour cascade fonts), then to a hollow box.
+/// non-colour cascade fonts); colour emoji are drawn large, area-averaged down to a small square on the
+/// baseline and snapped to Apollo with binary alpha (they keep their own colours whatever the text colour); a
+/// hollow box stands in for anything that still draws nothing.
 ///
 /// Verified against Galmuri9's BDF: CoreText reproduces the designed bitmaps exactly (ASCII, Latin-1/Ext-A,
 /// kana, all 11,172 Hangul syllables). Glyph bitmaps are cached and the type is thread-safe (`CTFont` is
@@ -20,6 +22,8 @@ public final class PixelFont: @unchecked Sendable {
     public enum GlyphSource: Sendable, Equatable {
         case primary
         case systemFallback
+        /// A colour emoji, pixelated to Apollo (its own colours, not the text's).
+        case colorFallback
         case box
     }
 
@@ -124,6 +128,7 @@ public final class PixelFont: @unchecked Sendable {
     }
 
     /// `render` plus an optional 1-px drop shadow down-right; with a shadow the buffer is 1 px wider and taller.
+    /// (Colour emoji keep their own colours; only their silhouette casts the shadow.)
     public func renderLabel(_ s: String, color: RGBA8, shadow: RGBA8?) -> PixelBuffer {
         let text = render(s, color: color)
         guard let shadow else { return text }
@@ -149,14 +154,17 @@ public final class PixelFont: @unchecked Sendable {
         let mask: [Bool]
         let maskWidth: Int
         let source: GlyphSource
+        /// The glyph's own colour per mask cell (colour emoji); nil draws the text colour.
+        let colors: [RGBA8]?
         /// Columns holding ink, relative to the pen (may start below 0 or end past `advance`); nil if blank.
         let ink: Range<Int>?
 
-        init(advance: Int, mask: [Bool], maskWidth: Int, source: GlyphSource) {
+        init(advance: Int, mask: [Bool], maskWidth: Int, source: GlyphSource, colors: [RGBA8]? = nil) {
             self.advance = advance
             self.mask = mask
             self.maskWidth = maskWidth
             self.source = source
+            self.colors = colors
             let inked = (0..<maskWidth).filter { x in stride(from: x, to: mask.count, by: maskWidth).contains { mask[$0] } }
             if let first = inked.first, let last = inked.last {
                 ink = (first - PixelFont.cellMargin)..<(last + 1 - PixelFont.cellMargin)
@@ -169,7 +177,7 @@ public final class PixelFont: @unchecked Sendable {
             let height = mask.count / max(1, maskWidth)
             for y in 0..<min(height, out.height) {
                 for mx in 0..<maskWidth where mask[y * maskWidth + mx] {
-                    out.set(penX - PixelFont.cellMargin + mx, y, color)
+                    out.set(penX - PixelFont.cellMargin + mx, y, colors?[y * maskWidth + mx] ?? color)
                 }
             }
         }
@@ -190,12 +198,90 @@ public final class PixelFont: @unchecked Sendable {
             // The system font's cascade (other scripts), skipping colour fonts: emoji become boxes.
             let s = String(c) as CFString
             let cascade = CTFontCreateForString(fallback, s, CFRange(location: 0, length: CFStringGetLength(s)))
-            if !CTFontGetSymbolicTraits(cascade).contains(.traitColorGlyphs),
-               let g = rasterize(c, font: cascade, source: .systemFallback) {
+            if !CTFontGetSymbolicTraits(cascade).contains(.traitColorGlyphs) {
+                if let g = rasterize(c, font: cascade, source: .systemFallback) { return g }
+            } else if let g = rasterizeColor(c, font: cascade) {
                 return g
             }
         }
         return boxGlyph()
+    }
+
+    /// Colour emoji are drawn at this many times their final size, then area-averaged down.
+    private static let colorOversample = 6
+
+    /// A colour emoji (`font` is a colour font, e.g. Apple Color Emoji): drawn large through a `CTLine` (so ZWJ
+    /// sequences, flags and skin tones shape as one picture), trimmed to its ink, reduced into a `pixelSize`
+    /// square standing on the baseline (`featureAverage`, so eyes and outlines survive), alpha thresholded and
+    /// snapped to Apollo. Nil when nothing is drawn.
+    private func rasterizeColor(_ c: Character, font: CTFont) -> Glyph? {
+        let box = max(3, min(baseline, pixelSize))
+        let big = CTFontCreateCopyWithAttributes(font, CGFloat(box * Self.colorOversample), nil, nil)
+        let text = NSAttributedString(string: String(c), attributes: [NSAttributedString.Key(kCTFontAttributeName as String): big])
+        let line = CTLineCreateWithAttributedString(text)
+        var ascent: CGFloat = 0, descent: CGFloat = 0, leading: CGFloat = 0
+        let width = CTLineGetTypographicBounds(line, &ascent, &descent, &leading)
+        let pad = 4
+        let w = Int(width.rounded(.up)) + 2 * pad, h = Int((ascent + descent).rounded(.up)) + 2 * pad
+        guard width > 0, let ctx = CGBridge.makeContext(width: w, height: h) else { return nil }
+        ctx.setShouldAntialias(true)
+        ctx.setAllowsAntialiasing(true)
+        ctx.interpolationQuality = .high
+        ctx.textPosition = CGPoint(x: CGFloat(pad), y: CGFloat(pad) + descent)
+        CTLineDraw(line, ctx)
+        guard let drawn = CGBridge.pixelBuffer(from: ctx) else { return nil }
+        let bounds = IconPixelator.alphaBounds(drawn, minAlpha: 32)
+        guard !bounds.isEmpty else { return nil }
+        let fit = IconPixelator.fitted(bounds.size, into: ArtSize(box, box))
+        let snapped = Quantizer.mapToPalette(Self.featureAverage(drawn.cropped(to: bounds), to: fit))
+        guard !snapped.opaqueBounds().isEmpty else { return nil }
+
+        let advance = fit.w + 1
+        let cellWidth = advance + 2 * Self.cellMargin
+        var mask = [Bool](repeating: false, count: cellWidth * lineHeight)
+        var colors = [RGBA8](repeating: .clear, count: cellWidth * lineHeight)
+        let top = baseline - fit.h
+        for y in 0..<fit.h where top + y >= 0 && top + y < lineHeight {
+            for x in 0..<fit.w {
+                let px = snapped.pixel(x, y)
+                guard px.a != 0 else { continue }
+                let i = (top + y) * cellWidth + Self.cellMargin + x
+                mask[i] = true
+                colors[i] = px
+            }
+        }
+        return Glyph(advance: advance, mask: mask, maskWidth: cellWidth, source: .colorFallback, colors: colors)
+    }
+
+    /// Area-averages `big` down to `size` with binary alpha (`IconPixelator.alphaThreshold`), except that a pixel
+    /// whose source block holds a dark feature (at least a fifth of it more than 0.25 OKLab L below the block's
+    /// average: an eye, a mouth, an outline) takes that feature's average colour, so it is not washed out.
+    static func featureAverage(_ big: PixelBuffer, to size: ArtSize) -> PixelBuffer {
+        var out = Quantizer.thresholdAlpha(Quantizer.areaAverage(big, to: size), at: IconPixelator.alphaThreshold)
+        for y in 0..<size.h {
+            for x in 0..<size.w where out.pixel(x, y).a != 0 {
+                let x0 = x * big.width / size.w, x1 = max(x0 + 1, (x + 1) * big.width / size.w)
+                let y0 = y * big.height / size.h, y1 = max(y0 + 1, (y + 1) * big.height / size.h)
+                let mean = OKLab(out.pixel(x, y)).L
+                var n = 0, dark = 0, r = 0, g = 0, b = 0
+                for yy in y0..<y1 {
+                    for xx in x0..<x1 {
+                        let c = big.pixel(xx, yy)
+                        guard c.a > 128 else { continue }
+                        n += 1
+                        guard OKLab(c).L < mean - 0.25 else { continue }
+                        dark += 1
+                        r += Int(c.r)
+                        g += Int(c.g)
+                        b += Int(c.b)
+                    }
+                }
+                if n > 0, dark * 5 >= n {
+                    out[x, y] = RGBA8(UInt8(r / dark), UInt8(g / dark), UInt8(b / dark))
+                }
+            }
+        }
+        return out
     }
 
     /// Draws every glyph of `c` on integer advances; nil when `font` lacks any of its code units.

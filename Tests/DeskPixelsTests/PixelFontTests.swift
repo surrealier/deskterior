@@ -99,16 +99,15 @@ struct PixelFontTests {
         #expect(Golden.match(label, "galmuri9-label-truncated"))
     }
 
-    @Test("Emoji: box glyph, binary alpha, no crash; golden")
+    @Test("Emoji take the colour fallback (details and golden in GlyphFallbackTests): binary alpha, no crash")
     func emoji() throws {
         let f = try font()
-        #expect(f.source(of: "😀") == .box)
-        #expect(f.source(of: "👨‍👩‍👧") == .box)
+        #expect(f.source(of: "😀") == .colorFallback)
+        #expect(f.source(of: "👨‍👩‍👧") == .colorFallback)
         let s = "memo 😀👨‍👩‍👧.txt"
         let b = f.render(s, color: Self.ink)
         #expect(b.width == f.measure(s))
         expectBinaryAlpha(b)
-        #expect(Golden.match(b, "galmuri9-emoji-box"))
     }
 
     @Test("Missing glyphs fall back to the system font without anti-aliasing")
@@ -137,7 +136,8 @@ struct PixelFontTests {
             #expect(b.width == f.measure(s), "\(s)")
             #expect(b.height == 15)
             expectBinaryAlpha(b)
-            #expect(b.pixels.allSatisfy { $0 == .clear || $0 == Self.ink }, "\(s)")
+            // Colour emoji keep their own (Apollo) colours.
+            #expect(b.pixels.allSatisfy { $0 == .clear || $0 == Self.ink || (s == "😀" && Apollo.index(of: $0) != nil) }, "\(s)")
             #expect(f.measure(s) == TextLayout.width(TextLayout.nfc(s), advance: f.advance(of:)), "\(s)")
         }
     }
@@ -238,7 +238,7 @@ struct PixelFontTests {
         let lines = [
             "보고서 final.pdf", "Deskterior 0.1", "가나다라마바사 ABC abc 0123456789",
             "한글 파일 이름.hwp · 스크린샷 2026-10-14.png", "Ünïcödé façade ÀÉÎ ¡¿ ‘quotes’ Ștefan Ǻ ĥ",
-            "fallback: ⌘ ✓ ₿  box: 😀 👨‍👩‍👧",
+            "fallback: ⌘ ✓ ₿  emoji: 😀 👨‍👩‍👧 🇰🇷",
             TextLayout.middleTruncate("2026 3분기 사업 계획서 최종본 (수정) 진짜 최종.pages", maxWidth: 200,
                                       advance: f.advance(of:)),
         ]

@@ -134,9 +134,7 @@ public enum Reducer {
             return [.persist, .wakeLoop]
 
         case let .lights(lights):
-            guard lights != s.lights else { return [] }
-            s.lights = lights
-            return [.persist, .wakeLoop]
+            return reduceLights(&s, lights)
 
         case let .takeAllOut(id):
             let keys = id.map { s.tokens.members(of: $0) }

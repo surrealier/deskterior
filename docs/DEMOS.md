@@ -94,6 +94,12 @@ Every step is an object with one key.
 | `phone` | `faceUp` / `faceDown` (the model). |
 | `minis` | Count: tokens the containers show as selectable minis (open drawers, the cubby, the face-up phone). |
 | `chair.blocksCabinet` | `true` while the model's chair overlaps the cabinet fronts by more than 16 px. |
+| `lights.mode` / `lights.room` / `lights.lamp` | The model's Lights: `auto`/`day`/`night`/`lamp`; `on`/`off` as the room shows them. |
+| `ambient` / `phase` / `clock` | The room's ambient level (0–7), phase (`dawn`/`day`/`dusk`/`night`) and the time the clock shows (`HH:MM`, a preview included). |
+| `glow.monitor` / `glow.phone` / `glow.lamp` | Whether the monitor's glow, the phone's glow and the lamp (a flicker frame included) light the room: `on`/`off`. |
+| `lit:<target>` / `light:<target>` | Whether a 16-px token drawn at the target would be seen, hovered and picked (`true`/`false`, `DarkHit`); the light level there. |
+| `hover.part` | The part the pointer rests on (`token`, `token.dark` for a token in the dark, `lamp.switch`…) or `none`. |
+| `keyboard.key` / `plant.jiggle` | The keyboard key drawn pressed (`row,col`) or `none`; whether the plant jiggles. |
 
 ## The demos
 
@@ -104,4 +110,5 @@ Every step is an object with one key.
 | `02-monitor-power` | First run: connect prompt, DESKTOP HIDDEN, connect; INPUT static, OSD and the AV logo; the CRT collapse, files arriving while off (amber LED, +N), the bloom and pop-in; NO SIGNAL with its buttons. |
 | `03-drawers` | The riser: a chomp into the shut left drawer, a stack of eight leaving it overfull and ajar, a scroll peek, click open (minis, hover name, select), five more jamming it (a click shut boings off the paper; the next drop bonks). The cubby's silhouettes, one dragged back out. The chair rolled in front of the cabinet: a pull opens 3 px and thunks it aside, then opens fully. Four into the file drawer (the chomp shuts the open top drawer: interlocked), its folder tabs; spring-loading the middle drawer. The right drawer opened from its menu and flicked shut (slam), then Take All Out (the emptied drawer slides shut). |
 | `08-phone` | Drops become 5×5 app minis with a sparkle; six fill it and a seventh bonks; hover and select a mini; a click on the stand flips it face down (three edge frames; the minis hide and drops bonk), Turn Face Up from its menu, and a mini carried back to the screen. |
+| `07-night-lamp` | Dusk; the clock's minute hand dragged to 19:10 (night falls, the room light warms the room) and its spring back; Lights ▸ Lamp Only from the wall menu; only the lamp's pool, the monitor's glow and the phone light a token (`lit:`); the wall switch in and out of Lamp Only; the lamp's three-frame flicker and the room without it; the monitor's glow leaving with the CRT; a key press and the plant's jiggle; Lights ▸ Auto. |
 | `09-fs-events` | Finder-side changes within a second: a new file prints in, a rename keeps its cell, a removal poofs, a new folder. |

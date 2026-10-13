@@ -123,7 +123,7 @@ struct ArtReviewTests {
         #expect(inks(lit, in: ArtRect(centre.x - 10, centre.y - 4, 20, 8)).contains(.walnut5))
         let m = LightMask.room(mac, lights: dark.effectiveLights, time: dark.timeOfDay)
         #expect(m.level(centre.x, centre.y) == 7 && m.tint(centre.x, centre.y) == .warm)
-        #expect(m.level(pool.x + 6, centre.y) == 6)
+        #expect((5...6).contains(m.level(pool.x + 6, centre.y)), "inside the rim: the ring stepping down to 5 (M10)")
 
         let roomLit = RoomState(time: WallTime(hour: 22, minute: 0))
         #expect(roomLit.timeOfDay.ambientLevel == 6)

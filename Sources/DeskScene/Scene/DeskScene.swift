@@ -72,6 +72,10 @@ public final class DeskScene: SKScene {
     public var pointsPerArtPx: Double = 0 {
         didSet { room?.router.setPointsPerArtPx(pointsPerArtPx) }
     }
+    /// Reduce Motion: elements skip flickers, jiggles, spring-backs and the CRT (`SceneContext.reduceMotion`).
+    public var reduceMotion = false {
+        didSet { room?.context.reduceMotion = reduceMotion }
+    }
     /// The committed model (nil: the bare room).
     public private(set) var deskState: DeskState?
     /// Real icons by token, kept across content rebuilds.
@@ -135,6 +139,7 @@ public final class DeskScene: SKScene {
             room = r
             r.menuContext = menuContext
             r.router.setPointsPerArtPx(pointsPerArtPx)
+            r.context.reduceMotion = reduceMotion
             wireRoom()
             for (k, v) in icons { r.showIcon(k, v) }
             if let deskState { r.apply(deskState) }
@@ -146,6 +151,7 @@ public final class DeskScene: SKScene {
         guard let room else { return }
         room.context.onAction = { [weak self] in self?.onAction?($0) }
         room.context.onRequest = { [weak self] in self?.onRequest?($0) }
+        room.context.lightOverrides.onChange = { [weak self] in self?.refreshState() }
     }
 
     /// The room state for the clock, the lights setting and (when known) the model's lamps, phone and drawers;
@@ -155,7 +161,8 @@ public final class DeskScene: SKScene {
         guard let s else { return r }
         r.lights = RoomLightState(
             lampOn: s.lights.lamp, monitorOn: room?.monitor.isEmissive ?? (s.monitor.power == .on),
-            phoneFaceUp: !s.phone.faceDown, roomLightOn: s.lights.room
+            phoneFaceUp: !s.phone.faceDown, roomLightOn: s.lights.room,
+            monitorGlows: room?.monitor.glows ?? (s.monitor.power == .on)
         )
         r.riserOpen = [ContainerID.riserLeft, .riserRight].map { Int(s.drawerOpening($0).rounded()) }
         r.cabinetOpen = [ContainerID.cabinetTop, .cabinetMiddle, .cabinetFile].map { Int(s.drawerOpening($0).rounded()) }
@@ -242,6 +249,7 @@ public final class DeskScene: SKScene {
         var s = deskState == nil ? room.state : roomState(for: deskState)
         s.time = clock.now()
         s.lightsMode = lightsMode
+        room.adjustLighting(&s)
         let changed = room.setState(s)
         if changed { pushLighting() }
         return changed
@@ -320,7 +328,8 @@ public final class DeskScene: SKScene {
         calibration?.step(dt)
         guard let room else { return }
         room.step(dt)
-        if deskState != nil, room.state.lights.monitorOn != room.monitor.isEmissive { refreshState() }
+        if deskState != nil, room.state.lights.monitorOn != room.monitor.isEmissive
+            || room.state.lights.monitorGlows != room.monitor.glows { refreshState() }
         syncLighting()
     }
 

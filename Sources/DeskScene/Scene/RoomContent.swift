@@ -29,6 +29,12 @@ public final class SceneContext {
     var placementZs: [String: CGFloat] = [:]
     var dropOrder: () -> [any DeskElement] = { [] }
 
+    // MARK: lighting
+    /// Reduce Motion (system setting or the app's): flickers, jiggles, spring-backs and the CRT jump to their end.
+    public internal(set) var reduceMotion = false
+    /// What the lamp, room switch and clock show before the model or the clock catch up (flicker, time preview).
+    let lightOverrides = SceneLightOverrides()
+
     init(layout: SceneLayout, font: PixelFont?) {
         self.layout = layout
         space = ArtSpace(canvas: layout.canvas)
@@ -116,6 +122,7 @@ final class RoomContent: GestureTarget {
         context.onToast = { [unowned self] key in showToast(key) }
         install([screen, monitor], inSlotOf: "monitor")
         installContainers()
+        installRoomControls()
         rebuild()
     }
 
@@ -400,7 +407,7 @@ final class RoomContent: GestureTarget {
 
     func target(at p: ArtPoint) -> (hit: Hit, element: any DeskElement)? {
         for e in routing {
-            if let hit = e.hitTest(p) { return (hit, e) }
+            if let hit = e.hitTest(p) { return darkFiltered(hit, e) }
         }
         return nil
     }
@@ -466,6 +473,7 @@ final class RoomContent: GestureTarget {
     }
 
     func menu(at p: SIMD2<Float>, hit: Hit?, element: (any DeskElement)?) {
+        if element is DarkTokenElement { return }
         let spec = hit.flatMap { h in element?.menu(h) } ?? MenuSpec.desk(context.state ?? DeskState(), menuContext)
         context.request(.menu(spec, at: p))
     }

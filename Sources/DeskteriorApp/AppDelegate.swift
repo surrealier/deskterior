@@ -15,6 +15,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var session: DeskSession?
     private var inventory: InventoryWindowController?
     private var resignKeyObserver: (any NSObjectProtocol)?
+    private var reduceMotion: ReduceMotionObserver?
     private(set) var isUserPaused = false
 
     init(options: LaunchOptions) {
@@ -43,6 +44,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.session = session
         session.start()
         host.scene.startClock()
+        reduceMotion = ReduceMotionObserver(scene: host.scene, forced: options.reduceMotion)
         host.loop.renderOnce()
 
         statusMenu = StatusMenu(
@@ -83,6 +85,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         session?.stop()
         observers?.invalidate()
+        reduceMotion?.invalidate()
         displays?.invalidate()
         if let resignKeyObserver { NotificationCenter.default.removeObserver(resignKeyObserver) }
     }
@@ -311,6 +314,7 @@ extension AppDelegate {
         host.scene.setContent(options.calibration ? .calibration : .room)
         host.scene.clock = options.sceneClock
         host.scene.lightsMode = options.lights
+        host.scene.reduceMotion = options.reduceMotion
         host.scene.connect(presenter: host.presenter)
     }
 

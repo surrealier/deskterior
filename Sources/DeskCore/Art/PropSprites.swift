@@ -484,41 +484,77 @@ public enum PropArt {
         c.hline(x: 2, y: 0, length: r.w - 4, .neutral9)
         c.hline(x: 1, y: r.h - 2, length: r.w - 2, .neutral5)
         c.hline(x: 2, y: r.h - 1, length: r.w - 4, .neutral3)
-        // Rows of (width) keys; 0 = default 4.
-        // Key widths per row (1-px gaps) fill the 90-px plate exactly.
-        let rows: [[Int]] = [
-            Array(repeating: 4, count: 16) + [10],
-            [7] + Array(repeating: 4, count: 14) + [12],
-            [8] + Array(repeating: 4, count: 14) + [11],
-            [5, 5, 5, 45, 5, 5, 4, 4, 4],
-        ]
-        for (ri, row) in rows.enumerated() {
-            var x = 3
-            let y = 1 + ri * 3
-            for (ki, w0) in row.enumerated() {
-                // The last key of each row stretches to the plate's right edge.
-                let kw = ki == row.count - 1 ? r.w - 3 - x : w0
-                let isPressed = pressed.map { $0.row == ri && $0.col == ki } ?? false
-                var cap: Ink = .neutral9, side: Ink = .neutral6
-                if ri == 0 && ki == 0 { (cap, side) = (.red4, .red2) }
-                if ri == 2 && ki == row.count - 1 { (cap, side) = (.walnut4, .walnut2) }
-                if ri == 3 && ki != 3 { (cap, side) = (.neutral8, .neutral5) }
-                if isPressed {
-                    c.hline(x: x, y: y, length: kw, .neutral5)
-                    c.hline(x: x, y: y + 1, length: kw, cap)
-                    c.hline(x: x, y: y + 2, length: kw, cap.darker())
-                } else {
-                    c.hline(x: x, y: y, length: kw, cap)
-                    c.hline(x: x, y: y + 1, length: kw, cap == .neutral9 ? .neutral8 : cap)
-                    c.plot(x, y, cap == .neutral9 ? .neutral9 : cap.lighter())
-                    c.hline(x: x, y: y + 2, length: kw, side)
-                }
-                x += kw + 1
+        for key in keyboardKeys {
+            let (ri, ki, x, y, kw) = (key.row, key.col, key.rect.x, key.rect.y, key.rect.w)
+            let isPressed = pressed.map { $0.row == ri && $0.col == ki } ?? false
+            var cap: Ink = .neutral9, side: Ink = .neutral6
+            if ri == 0 && ki == 0 { (cap, side) = (.red4, .red2) }
+            if ri == 2 && ki == keyboardRows[ri].count - 1 { (cap, side) = (.walnut4, .walnut2) }
+            if ri == 3 && ki != 3 { (cap, side) = (.neutral8, .neutral5) }
+            if isPressed {
+                c.hline(x: x, y: y, length: kw, .neutral5)
+                c.hline(x: x, y: y + 1, length: kw, cap)
+                c.hline(x: x, y: y + 2, length: kw, cap.darker())
+            } else {
+                c.hline(x: x, y: y, length: kw, cap)
+                c.hline(x: x, y: y + 1, length: kw, cap == .neutral9 ? .neutral8 : cap)
+                c.plot(x, y, cap == .neutral9 ? .neutral9 : cap.lighter())
+                c.hline(x: x, y: y + 2, length: kw, side)
             }
         }
         // Status LEDs.
         c.plot(r.w - 6, 13, .green4)
         return SpriteAsset(pressed == nil ? "keyboard" : "keyboard.pressed", c, anchor: ArtPoint(r.w / 2, r.h))
+    }
+
+    /// Key widths per keyboard row (1-px gaps); the last key of each row stretches to the plate's right edge.
+    static let keyboardRows: [[Int]] = [
+        Array(repeating: 4, count: 16) + [10],
+        [7] + Array(repeating: 4, count: 14) + [12],
+        [8] + Array(repeating: 4, count: 14) + [11],
+        [5, 5, 5, 45, 5, 5, 4, 4, 4],
+    ]
+
+    /// Every key cap of `keyboard()`: row, column and its 3-px-tall rect in sprite px (E14 presses one).
+    public static let keyboardKeys: [(row: Int, col: Int, rect: ArtRect)] = {
+        let w = CoreLayout.keyboard.w
+        var out: [(row: Int, col: Int, rect: ArtRect)] = []
+        for (ri, row) in keyboardRows.enumerated() {
+            var x = 3
+            for (ki, w0) in row.enumerated() {
+                let kw = ki == row.count - 1 ? w - 3 - x : w0
+                out.append((ri, ki, ArtRect(x, 1 + ri * 3, kw, 3)))
+                x += kw + 1
+            }
+        }
+        return out
+    }()
+
+    /// The key under sprite-local `p`, if any (the 1-px gaps between caps count for the key on their left).
+    public static func keyboardKey(at p: ArtPoint) -> (row: Int, col: Int)? {
+        keyboardKeys.first { k in
+            p.y >= k.rect.minY && p.y < k.rect.maxY && p.x >= k.rect.minX && p.x <= k.rect.maxX
+        }.map { ($0.row, $0.col) }
+    }
+
+    // MARK: Plant jiggle
+
+    /// The plant poked (E14): frame 0…3 of a 4-frame jiggle. The blade tips sway right, left, right by 1 px (the
+    /// middle of the blades follows only to the right), then rest; the pot stays put.
+    public static func plantJiggle(_ frame: Int) -> PixelBuffer {
+        let still = plant().image
+        let sway = [1, -1, 1, 0][min(max(frame, 0), 3)]
+        guard sway != 0 else { return still }
+        var out = PixelBuffer(width: still.width, height: still.height)
+        for y in 0..<still.height {
+            let shift = y < 9 ? sway : (y < 16 && sway > 0 ? 1 : 0)
+            for x in 0..<still.width {
+                let c = still.pixel(x, y)
+                guard c.a != 0 else { continue }
+                out.set(x + shift, y, c)
+            }
+        }
+        return out
     }
 
     // MARK: Chair

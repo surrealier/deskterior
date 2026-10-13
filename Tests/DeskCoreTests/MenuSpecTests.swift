@@ -106,9 +106,9 @@ struct MenuSpecTests {
             Issue.record("lights mode is a lights action")
         }
         if case let .lights(l)? = MenuCommand.roomLight(true).action(s) { #expect(l.room && l.mode == .night) }
-        // Lamp Only owns both switches.
+        // In Lamp Only the switches stay live: turning one leaves it for Night (LightingInteractionTests).
         s.lights.mode = .lampOnly
-        #expect(MenuSpec.desk(s).item("lights.room")?.isEnabled == false)
+        #expect(MenuSpec.desk(s).item("lights.room")?.isEnabled == true)
     }
 
     @Test("App commands have no model action; nothing on the desk menus changes files")

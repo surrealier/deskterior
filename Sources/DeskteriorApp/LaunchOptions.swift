@@ -96,6 +96,8 @@ struct LaunchOptions: Equatable {
     var calibration = false
     /// `--lights auto|day|night|lamp`.
     var lights = LightsMode.auto
+    /// `--reduce-motion`: skip flickers, jiggles, spring-backs and the CRT, whatever the system says.
+    var reduceMotion = false
 
     var mode: Mode { headless || demo != nil ? .headless : (windowed != nil ? .windowed : .desk) }
     /// The scene's time source.
@@ -114,6 +116,7 @@ struct LaunchOptions: Equatable {
           --pixel-size chunky|normal|fine
           --clock HH:MM|ISO8601      fixed room time (sky, light, clock face)
           --lights auto|day|night|lamp   lights mode (lamp = Lamp Only)
+          --reduce-motion            no flickers, jiggles, spring-backs or CRT animation
           --calibration              show the M2 calibration card instead of the room
           --print-window-id          print the window number (for screencapture -l)
           --exit-after SECONDS       quit after this long
@@ -241,6 +244,7 @@ struct LaunchOptions: Equatable {
             o.lights = mode
         },
         Spec(names: ["--calibration"], arity: .switch) { o, _ in o.calibration = true },
+        Spec(names: ["--reduce-motion"], arity: .switch) { o, _ in o.reduceMotion = true },
         Spec(names: ["--desktop-folder"], arity: .value) { o, v in o.desktopFolder = v },
         Spec(names: ["--demo"], arity: .value) { o, v in o.demo = v },
         Spec(names: ["--seed"], arity: .value) { o, v in

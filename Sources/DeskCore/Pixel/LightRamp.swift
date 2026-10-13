@@ -9,8 +9,10 @@ public enum Tint: Int, Sendable, CaseIterable {
 /// Precomputed relighting table (DESIGN §1.4): palette index × light level 0…7 × tint → palette index.
 ///
 /// Level 7 is the identity. Lower levels compress OKLab lightness toward the palette's floor, fade
-/// chroma, and blend a/b toward the tint's hue with a weight that grows as the level drops; the target
-/// is snapped to Apollo (OKLab, chroma weighted ×2). To keep hue families coherent, a colour may only
+/// chroma, and blend a/b toward the tint's hue with a weight that grows as the level drops; lamplight
+/// (`warm`) also lifts wood, walls, paper and felt along its hue at the bright levels 3–6, so a lamp-lit
+/// desk reads warm, not merely dimmer. The target is snapped to Apollo (OKLab, chroma weighted ×2). To keep
+/// hue families coherent, a colour may only
 /// snap to its own ramp, the tint's ramps (blue and purple for `cool`, walnut and oak for `warm`) or the
 /// four darkest neutrals; leaving the own ramp costs a bias that fades with the level, and a column moves
 /// one way only (own ramp → tint ramps → dark neutrals). Each `(index, tint)` column is also monotonic: a
@@ -88,18 +90,36 @@ public struct LightRamp: Sendable {
     private static let coolHue = OKLab(RGBA8(hex: 0x253a5e))
     private static let warmHue = OKLab(RGBA8(hex: 0xde9e41))
 
-    private static func target(_ lab: OKLab, level: Int, tint: Tint) -> OKLab {
+    private static func target(_ lab: OKLab, level: Int, tint: Tint, ownRamp: Apollo.Ramp) -> OKLab {
         let L = lab.L > lightnessFloor
             ? lightnessFloor + (lab.L - lightnessFloor) * lightnessScale(level: level)
             : lab.L
         let fade = lab.L > 0 ? pow(L / lab.L, chromaExponent) : 1
         let (hue, maxWeight) = tint == .cool ? (coolHue, 0.9) : (warmHue, 0.6)
         let w = maxWeight * pow(1 - Double(level) / Double(maxLevel), tintExponent)
+        let glow = tint == .warm && warmFriendly(ownRamp) ? warmGlow[level] : 0
         return OKLab(
             L: L,
-            a: lab.a * fade * (1 - w) + hue.a * w,
-            b: lab.b * fade * (1 - w) + hue.b * w
+            a: lab.a * fade * (1 - w) + hue.a * w + glow * warmDirection.a,
+            b: lab.b * fade * (1 - w) + hue.b * w + glow * warmDirection.b
         )
+    }
+
+    /// Lamplight's lift per level (OKLab chroma along the warm hue, levels 0…7): the tint blend alone fades out
+    /// toward level 7, so without it a lamp-lit desk at 5–6 is only a darker desk.
+    private static let warmGlow: [Double] = [0, 0, 0, 0.04, 0.06, 0.07, 0.06, 0]
+    /// Under warm light, leaving the own ramp for walnut or oak costs only this share of `ownRampBias`.
+    private static let warmBiasScale = 0.3
+    /// The warm hue's a/b direction (unit length).
+    private static let warmDirection: (a: Double, b: Double) = {
+        let n = (warmHue.a * warmHue.a + warmHue.b * warmHue.b).squareRoot()
+        return (warmHue.a / n, warmHue.b / n)
+    }()
+
+    /// Ramps lamplight visibly warms (wood, walnut, red, the greys of walls, paper, metal and felt); blue, green
+    /// and purple only dim.
+    private static func warmFriendly(_ ramp: Apollo.Ramp) -> Bool {
+        ramp == .oak || ramp == .walnut || ramp == .red || ramp == .neutral
     }
 
     /// Snap penalty (squared OKLab units) for leaving the source's own ramp, scaled by level / 7: hue
@@ -128,14 +148,18 @@ public struct LightRamp: Sendable {
     /// The candidate nearest `t` (L, plus a/b weighted by `chromaSnapWeight`) at or past `minStage`, with
     /// `ownRampBias` added outside the own ramp; ties go to the lowest index.
     private static func snap(
-        _ t: OKLab, level: Int, among candidates: [Int], ownRamp: Apollo.Ramp, minStage: Int
+        _ t: OKLab, level: Int, tint: Tint, among candidates: [Int], ownRamp: Apollo.Ramp, minStage: Int
     ) -> Int {
         var best = -1, bestD = Double.infinity
+        let warmScale = tint == .warm && warmFriendly(ownRamp) ? warmBiasScale : 1
         for i in candidates where stage(of: i, ownRamp: ownRamp) >= minStage {
             let p = Apollo.oklab[i]
             let dL = t.L - p.L, da = t.a - p.a, db = t.b - p.b
             var d = dL * dL + chromaSnapWeight * (da * da + db * db)
-            if Apollo.ramp(of: i) != ownRamp { d += ownRampBias * Double(level) / Double(maxLevel) }
+            if Apollo.ramp(of: i) != ownRamp {
+                let scale = darkNeutrals.contains(i) ? 1 : warmScale
+                d += ownRampBias * Double(level) / Double(maxLevel) * scale
+            }
             if d < bestD { (best, bestD) = (i, d) }
         }
         return best
@@ -150,8 +174,8 @@ public struct LightRamp: Sendable {
                 var above = index, minStage = 0
                 table[offset(index: index, level: maxLevel, tint: tint)] = UInt8(index)
                 for level in stride(from: maxLevel - 1, through: 0, by: -1) {
-                    let t = target(Apollo.oklab[index], level: level, tint: tint)
-                    var j = snap(t, level: level, among: allowed, ownRamp: ownRamp, minStage: minStage)
+                    let t = target(Apollo.oklab[index], level: level, tint: tint, ownRamp: ownRamp)
+                    var j = snap(t, level: level, tint: tint, among: allowed, ownRamp: ownRamp, minStage: minStage)
                     if Apollo.oklab[j].L > Apollo.oklab[above].L { j = above }
                     table[offset(index: index, level: level, tint: tint)] = UInt8(j)
                     minStage = max(minStage, stage(of: j, ownRamp: ownRamp))
