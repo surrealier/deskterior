@@ -242,6 +242,9 @@ do {
     case "cloth-review":
         guard let out = value(of: "--out") else { usage() }
         try ClothReview.run(outDir: URL(fileURLWithPath: out, isDirectory: true))
+    case "sims-review":
+        guard let out = value(of: "--out") else { usage() }
+        try SimsReview.run(outDir: URL(fileURLWithPath: out, isDirectory: true))
     case "icon":
         guard let out = value(of: "--out") else { usage() }
         try writeIcon(to: URL(fileURLWithPath: out, isDirectory: true), allSizes: args.contains("--all-sizes"))
