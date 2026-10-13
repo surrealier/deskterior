@@ -6,10 +6,14 @@
 #   - destructive file APIs (trash, move, rename, delete, link, attributes, tags, flags) appear only in the
 #     file-operation files; writing APIs only there and in our own writers (state, cache, artifacts, tools);
 #   - nothing shells out, writes other apps' preferences (`defaults write`, `killall`) or talks to the network;
-#   - ExplicitIntent is minted only in EffectRunner.swift, and only DesktopLocator.swift names the Desktop path.
-# Tests are checked for the Desktop path, shelling out and the network; scripts for killall, defaults write,
-# osascript and the Desktop path. Patterns allow whitespace before "(" and module-qualified C calls.
-# The compiler is the stronger guard: keep ExplicitIntent's initializer private to DeskFiles (M11).
+#   - ExplicitIntent is minted only in DeskteriorApp/Store/EffectRunner.swift (in tests, only in DeskFilesTests),
+#     and only DesktopLocator.swift names the Desktop path.
+# Tests are checked for the Desktop path, minting intents, shelling out and the network; scripts for killall,
+# defaults write, osascript and the Desktop path. Patterns allow whitespace before "(" and module-qualified C calls.
+# The compiler adds a guard of its own: DeskCore and DeskScene cannot import DeskFiles, so they cannot name
+# ExplicitIntent at all.
+# Tests/DeskFilesTests/FileSafetyLintTests.swift reads the variables and `check` lines below and runs the same
+# scan in Swift: keep every pattern and allowlist in a variable, and every `check` call on one line.
 #
 # Usage: scripts/check-file-safety.sh [SOURCES_DIR [TESTS_DIR [SCRIPTS_DIR]]]
 #        scripts/check-file-safety.sh --self-test
@@ -21,12 +25,12 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SELF="$ROOT/scripts/$(basename "${BASH_SOURCE[0]}")"
 
-# Every line of Bypass.swift must be reported and nothing in Clean.swift; run on a scratch copy.
+# Every line of each Bypass.swift must be reported and nothing in the Clean.swift files; run on a scratch copy.
 self_test() {
-  local tmp out n i missing=0
+  local tmp out missing=0
   tmp="$(mktemp -d "${TMPDIR:-/tmp}/file-safety-selftest.XXXXXX")"
-  mkdir -p "$tmp/DeskCore"
-  cat > "$tmp/DeskCore/Bypass.swift" <<'SWIFT'
+  mkdir -p "$tmp/Sources/DeskCore" "$tmp/Sources/DeskteriorApp/Store" "$tmp/Tests/DeskSceneTests" "$tmp/Tests/DeskFilesTests"
+  cat > "$tmp/Sources/DeskCore/Bypass.swift" <<'SWIFT'
 try FileManager.default.removeItem (at: u)
 let f = FileManager.removeItem(at:)
 NSWorkspace.shared.recycle([u]) { _, _ in }
@@ -55,37 +59,58 @@ let s = URLSession.shared
 _ = NSHomeDirectory() + "/Desktop"
 _ = FileManager.SearchPathDirectory(rawValue: 12)
 _ = "~/Desktop/x"
-let i: ExplicitIntent = .init(origin: .menu, issuedAt: .now)
-let j = ExplicitIntent.init(origin: .menu, issuedAt: .now)
+let i: ExplicitIntent = .init(origin: .menuItem, issuedAt: .now)
+let j = ExplicitIntent.init(origin: .menuItem, issuedAt: .now)
+let k = ExplicitIntent (origin: o, issuedAt: d)
+take(.init(origin: o, issuedAt: d))
+return Self(origin: o, issuedAt: d)
+let l = Intent(origin: o, issuedAt: d)
 SWIFT
-  cat > "$tmp/DeskCore/Clean.swift" <<'SWIFT'
+  cat > "$tmp/Sources/DeskCore/Clean.swift" <<'SWIFT'
 var list = [1]; list.remove(at: 0)
 func remove(_ k: Int) {}
 let r = CGRect(origin: .zero, size: .zero)
 let pictures = "/System/Library/Desktop Pictures"
 let key = "CreateDesktop"
 FileHandle.standardError.write(Data())
+func run(_ intent: ExplicitIntent) -> ExplicitIntent.Origin { intent.origin }
 SWIFT
-  out="$("$SELF" "$tmp" 2>&1 || true)"
-  n="$(wc -l < "$tmp/DeskCore/Bypass.swift" | tr -d ' ')"
-  i=1
-  while [ "$i" -le "$n" ]; do
-    if ! printf '%s
-' "$out" | grep -q "Bypass.swift:$i:"; then
-      echo "file-safety: self-test: Bypass.swift line $i was not reported: $(sed -n "${i}p" "$tmp/DeskCore/Bypass.swift")" >&2
-      missing=$((missing + 1))
-    fi
-    i=$((i + 1))
+  cat > "$tmp/Sources/DeskteriorApp/Store/EffectRunner.swift" <<'SWIFT'
+let intent = ExplicitIntent(origin: .menuItem, issuedAt: now)
+SWIFT
+  cat > "$tmp/Tests/DeskSceneTests/Bypass.swift" <<'SWIFT'
+let i = ExplicitIntent(origin: .drop, issuedAt: now)
+let j: ExplicitIntent = .init(origin: .drop, issuedAt: now)
+SWIFT
+  cat > "$tmp/Tests/DeskFilesTests/Clean.swift" <<'SWIFT'
+let i = ExplicitIntent(origin: .drop, issuedAt: now)
+SWIFT
+  out="$("$SELF" "$tmp/Sources" "$tmp/Tests" 2>&1 || true)"
+  for rel in Sources/DeskCore/Bypass.swift Tests/DeskSceneTests/Bypass.swift; do
+    expect_all_reported "$tmp" "$rel" "$out" || missing=$((missing + 1))
   done
-  if printf '%s
-' "$out" | grep -q "Clean.swift:"; then
+  if printf '%s\n' "$out" | grep -qE "(Clean|EffectRunner)\.swift:"; then
     echo "file-safety: self-test: false positives:" >&2
-    printf '%s
-' "$out" | grep "Clean.swift:" >&2
+    printf '%s\n' "$out" | grep -E "(Clean|EffectRunner)\.swift:" >&2
     missing=$((missing + 1))
   fi
   rm -rf "$tmp"
   [ "$missing" -eq 0 ]
+}
+
+# $1 = scratch root, $2 = file relative to it (<Sources|Tests>/<rest>), $3 = lint output. Reports use <rest>.
+expect_all_reported() {
+  local file="$1/$2" rest="${2#*/}" out="$3" n i bad=0
+  n="$(wc -l < "$file" | tr -d ' ')"
+  i=1
+  while [ "$i" -le "$n" ]; do
+    if ! printf '%s\n' "$out" | grep -q "$rest:$i:"; then
+      echo "file-safety: self-test: $2 line $i was not reported: $(sed -n "${i}p" "$file")" >&2
+      bad=1
+    fi
+    i=$((i + 1))
+  done
+  [ "$bad" -eq 0 ]
 }
 
 if [ "${1:-}" = "--self-test" ]; then
@@ -112,7 +137,10 @@ SRC="$(cd "$SRC" && pwd)"
 # Allowlists: space-separated paths relative to the checked directory. A trailing "/" allows a whole directory.
 DESTRUCTIVE_ALLOW="DeskFiles/FileOperator.swift DeskFiles/Trasher.swift DeskFiles/OperationLog.swift"
 WRITE_ALLOW="$DESTRUCTIVE_ALLOW DeskFiles/StateStore.swift DeskFiles/IconCache.swift DeskFiles/ArtifactWriter.swift DeskAssetTool/"
-INTENT_ALLOW="DeskteriorApp/EffectRunner.swift"
+INTENT_ALLOW="DeskteriorApp/Store/EffectRunner.swift"
+# The `origin: … issuedAt:` labels also appear in the initializer's declaration.
+INTENT_LABELS_ALLOW="$INTENT_ALLOW DeskFiles/ExplicitIntent.swift"
+TEST_INTENT_ALLOW="DeskFilesTests/"
 DESKTOP_PATH_ALLOW="DeskFiles/DesktopLocator.swift"
 TEST_DESKTOP_PATH_ALLOW="DeskFilesTests/SafetyGuardTests.swift"
 SCRIPT_DESKTOP_PATH_ALLOW="make-fixture-desktop.sh"
@@ -191,11 +219,16 @@ contentsOf:[[:space:]]*URL[[:space:]]*\([[:space:]]*string:'
 INTENT_PATTERNS='\bExplicitIntent[[:space:]]*(\.init)?[[:space:]]*\(
 \bExplicitIntent[!?]?[[:space:]]*=[[:space:]]*\.init\b
 \.init[[:space:]]*\([[:space:]]*origin:[[:space:]]*\.'
+# Catches `.init(…)`, `Self(…)` and typealiases with the initializer's labels on one line.
+INTENT_LABEL_PATTERNS='\borigin:[^)]*\bissuedAt:'
 DESKTOP_PATH_PATTERNS='\.desktopDirectory\b
 SearchPathDirectory[[:space:]]*(\.init)?[[:space:]]*\(
 "Desktop["/]
 /Desktop["/]
 "~/Desktop'
+TEST_DESKTOP_PATH_PATTERNS='\.desktopDirectory\b
+SearchPathDirectory[[:space:]]*(\.init)?[[:space:]]*\(
+(NSHomeDirectory|homeDirectoryForCurrentUser|"HOME"|"~/).*Desktop'
 SCRIPT_PATTERNS='killall
 defaults[[:space:]]+write
 osascript'
@@ -249,12 +282,13 @@ check "write" "$SRC" '*.swift' "$WRITE_PATTERNS" "$WRITE_ALLOW"
 check "shell" "$SRC" '*.swift' "$SHELL_PATTERNS" "$NOWHERE"
 check "network" "$SRC" '*.swift' "$NETWORK_PATTERNS" "$NOWHERE"
 check "intent" "$SRC" '*.swift' "$INTENT_PATTERNS" "$INTENT_ALLOW"
+check "intent-labels" "$SRC" '*.swift' "$INTENT_LABEL_PATTERNS" "$INTENT_LABELS_ALLOW"
 check "desktop-path" "$SRC" '*.swift' "$DESKTOP_PATH_PATTERNS" "$DESKTOP_PATH_ALLOW"
 check "test-shell" "$TESTS" '*.swift' "$SHELL_PATTERNS" "$NOWHERE"
 check "test-network" "$TESTS" '*.swift' "$NETWORK_PATTERNS" "$NOWHERE"
-check "test-desktop-path" "$TESTS" '*.swift' '\.desktopDirectory\b
-SearchPathDirectory[[:space:]]*(\.init)?[[:space:]]*\(
-(NSHomeDirectory|homeDirectoryForCurrentUser|"HOME"|"~/).*Desktop' "$TEST_DESKTOP_PATH_ALLOW"
+check "test-desktop-path" "$TESTS" '*.swift' "$TEST_DESKTOP_PATH_PATTERNS" "$TEST_DESKTOP_PATH_ALLOW"
+check "test-intent" "$TESTS" '*.swift' "$INTENT_PATTERNS" "$TEST_INTENT_ALLOW"
+check "test-intent-labels" "$TESTS" '*.swift' "$INTENT_LABEL_PATTERNS" "$TEST_INTENT_ALLOW"
 check "script" "$SCRIPTS" '*.sh' "$SCRIPT_PATTERNS" "$NOWHERE"
 check "script-desktop-path" "$SCRIPTS" '*.sh' "$SCRIPT_DESKTOP_PATTERNS" "$SCRIPT_DESKTOP_PATH_ALLOW"
 
