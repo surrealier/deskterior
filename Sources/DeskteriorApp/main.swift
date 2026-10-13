@@ -20,6 +20,10 @@ if options.showVersion {
     print("Deskterior \(DeskCore.version)")
     exit(0)
 }
+// Build the colour tables off the main thread while the window and scene come up, so the first lit frame
+// does not stall on them.
+IndexLUT.prewarm()
+LightRamp.prewarm()
 if options.mode == .headless {
     exit(AppDelegate.runHeadless(options))
 }

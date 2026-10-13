@@ -228,7 +228,8 @@ struct ClothSimTests {
         #expect(restored.positions.map(\.z.bitPattern) == cloth.positions.map(\.z.bitPattern))
         #expect(MatState.encodeParticles(restored.positions) == state.particles)
         // About 8 KB of base64 for 525 particles.
-        #expect(state.particles.utf8.count == (525 * 12 + 2) / 3 * 4)
+        let expectedLength = (525 * 12 + 2) / 3 * 4
+        #expect(state.particles?.utf8.count == expectedLength)
 
         var bad = state
         bad.particles = "not base64!"

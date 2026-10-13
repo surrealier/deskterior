@@ -279,10 +279,6 @@ public struct ChairState: Codable, Sendable, Equatable {
     }
 }
 
-public enum LightsMode: String, Codable, CaseIterable, Sendable {
-    case auto, day, night, lampOnly
-}
-
 public struct LightsState: Codable, Sendable, Equatable {
     public var mode: LightsMode = .auto
     public var room: Bool = true
@@ -311,19 +307,40 @@ public struct BrushState: Codable, Sendable, Equatable {
     public init(pos: SIMD2<Float> = [442, 60]) { self.pos = pos }
 }
 
-/// The desk mat (E9). The cloth (M8/M9) owns `particles` (base64 Float32 LE xyz).
-public struct MatState: Codable, Sendable, Equatable {
+/// The persisted desk mat (E9, `desk.json` → `"mat"`, DESIGN §13). The cloth (DeskCore/Cloth) writes it with
+/// `ClothSim.matState()` and reads it back with `ClothSim.restore(state:piles:)`.
+public struct MatState: Codable, Sendable, Hashable {
     public var pattern: String = "felt"
     public var mode: String = "cloth"
+    /// Desk-plane `[x, d]` of the mat's uv (0, 0) corner (best-fit frame).
     public var origin: SIMD2<Float> = [154, 8]
+    /// Rest `[width, depth]`.
     public var size: SIMD2<Float> = [204, 84]
+    /// Radians, counter-clockwise in the x/d plane.
     public var angle: Float = 0
+    /// `[cols, rows]`.
     public var grid: [Int] = [35, 15]
+    /// Every particle as base64 Float32 little-endian `x, d, z` triples (`MatState.encodeParticles`); nil until the
+    /// cloth has settled once, in which case the scene lays a fresh flat mat from the frame above.
     public var particles: String?
+    /// Desk-plane `[x, d]` centre of the keyboard weighing the mat (it rides along with carries), if any.
+    public var keyboard: SIMD2<Float>?
 
     public init() {}
 
-    private enum CodingKeys: String, CodingKey { case pattern, mode, origin, size, angle, grid, particles }
+    public init(pattern: String = "felt", mode: String = "cloth", origin: SIMD2<Float>, size: SIMD2<Float>,
+                angle: Float, grid: [Int], particles: String?, keyboard: SIMD2<Float>? = nil) {
+        self.pattern = pattern
+        self.mode = mode
+        self.origin = origin
+        self.size = size
+        self.angle = angle
+        self.grid = grid
+        self.particles = particles
+        self.keyboard = keyboard
+    }
+
+    private enum CodingKeys: String, CodingKey { case pattern, mode, origin, size, angle, grid, particles, keyboard }
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -335,6 +352,7 @@ public struct MatState: Codable, Sendable, Equatable {
         angle = c.lenient(.angle, default: d.angle)
         grid = c.lenient(.grid, default: d.grid)
         particles = c.lenient(.particles, default: nil)
+        keyboard = c.lenient(.keyboard, default: nil)
     }
 }
 

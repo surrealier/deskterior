@@ -79,8 +79,9 @@ public enum SkyVariant: String, Hashable, Sendable, CaseIterable {
     case day, dusk, dawn, night
 }
 
-/// The Lights setting (DESIGN §4.9): follow the clock, force a phase, or Lamp Only.
-public enum LightsMode: String, Hashable, Sendable, CaseIterable {
+/// The Lights setting (DESIGN §4.9): follow the clock, force a phase, or Lamp Only. Persisted in `desk.json`
+/// (`lights.mode`) and the settings by raw value, which is also the `--lights` launch flag spelling.
+public enum LightsMode: String, Codable, Hashable, Sendable, CaseIterable {
     case auto, day, night
     /// Night, room light off, lamp on.
     case lampOnly = "lamp"

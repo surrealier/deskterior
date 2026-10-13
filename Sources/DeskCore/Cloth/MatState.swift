@@ -1,50 +1,6 @@
 import Foundation
 
-/// The persisted desk mat (`desk.json` → `"mat"`, DESIGN §13): frame, pattern, grid and every particle position
-/// as base64 Float32 little-endian `x, d, z` triples.
-public struct MatState: Codable, Hashable, Sendable {
-    public var pattern: String
-    public var mode: String
-    /// Desk-plane `[x, d]` of the mat's uv (0, 0) corner (best-fit frame).
-    public var origin: [Float]
-    /// Rest `[width, depth]`.
-    public var size: [Float]
-    /// Radians, counter-clockwise in the x/d plane.
-    public var angle: Float
-    /// `[cols, rows]`.
-    public var grid: [Int]
-    public var particles: String
-    /// Desk-plane `[x, d]` centre of the keyboard weighing the mat (it rides along with carries), if any.
-    public var keyboard: [Float]?
-
-    public init(pattern: String = "felt", mode: String = "cloth", origin: [Float], size: [Float], angle: Float,
-                grid: [Int], particles: String, keyboard: [Float]? = nil) {
-        self.pattern = pattern
-        self.mode = mode
-        self.origin = origin
-        self.size = size
-        self.angle = angle
-        self.grid = grid
-        self.particles = particles
-        self.keyboard = keyboard
-    }
-
-    public enum CodingKeys: String, CodingKey {
-        case pattern, mode, origin, size, angle, grid, particles, keyboard
-    }
-
-    public init(from decoder: Decoder) throws {
-        let c = try decoder.container(keyedBy: CodingKeys.self)
-        pattern = try c.decodeIfPresent(String.self, forKey: .pattern) ?? "felt"
-        mode = try c.decodeIfPresent(String.self, forKey: .mode) ?? "cloth"
-        origin = try c.decode([Float].self, forKey: .origin)
-        size = try c.decode([Float].self, forKey: .size)
-        angle = try c.decode(Float.self, forKey: .angle)
-        grid = try c.decode([Int].self, forKey: .grid)
-        particles = try c.decode(String.self, forKey: .particles)
-        keyboard = try c.decodeIfPresent([Float].self, forKey: .keyboard)
-    }
-
+extension MatState {
     /// Packs positions as Float32 LE `x, d, z` and base64-encodes them.
     public static func encodeParticles(_ positions: [SIMD3<Float>]) -> String {
         var bytes = [UInt8]()
@@ -92,9 +48,9 @@ extension ClothSim {
     public func matState(pattern: String = "felt", mode: String = "cloth") -> MatState {
         let f = matFrame()
         return MatState(
-            pattern: pattern, mode: mode, origin: [f.origin.x, f.origin.y], size: [restSize.x, restSize.y],
+            pattern: pattern, mode: mode, origin: f.origin, size: restSize,
             angle: f.angle, grid: [cols, rows], particles: MatState.encodeParticles(positions),
-            keyboard: keyboardCenter.map { [$0.x, $0.y] }
+            keyboard: keyboardCenter
         )
     }
 
@@ -123,7 +79,7 @@ extension ClothSim {
         }
         var coverage = CoverageTracker()
         for p in piles { coverage.setCovered(p.id, covered.contains(p.id)) }
-        if let size = keyboardSize, let k = state.keyboard, k.count == 2, k[0].isFinite, k[1].isFinite {
+        if let size = keyboardSize, let k = state.keyboard, k.isFinite {
             cloth.setKeyboard(DeskPlaneRect(x: k[0] - size.x / 2, d: k[1] - size.y / 2, width: size.x, depth: size.y))
             cloth.forceSleep()
         }
@@ -131,14 +87,14 @@ extension ClothSim {
     }
 
     /// Restores the cloth alone (asleep) from its persisted form over `bumps`, which must already hold the bumps of
-    /// the piles it covers (prefer `restore(state:piles:)`); nil when the state is malformed. Positions are clamped
+    /// the piles it covers (prefer `restore(state:piles:)`); nil when the state is malformed or has no particles yet. Positions are clamped
     /// to the desk bounds.
     public init?(state: MatState, bumps: BumpField? = nil, params: ClothParams = .standard) {
-        guard state.grid.count == 2, state.size.count == 2 else { return nil }
+        guard state.grid.count == 2, let particles = state.particles else { return nil }
         let cols = state.grid[0], rows = state.grid[1]
         guard cols >= 3, rows >= 3, cols * rows <= 4096,
               state.size[0].isFinite, state.size[1].isFinite, state.size[0] > 0, state.size[1] > 0,
-              var pos = MatState.decodeParticles(state.particles, count: cols * rows)
+              var pos = MatState.decodeParticles(particles, count: cols * rows)
         else { return nil }
         for i in pos.indices {
             pos[i].x = min(max(pos[i].x, params.xRange.lowerBound), params.xRange.upperBound)

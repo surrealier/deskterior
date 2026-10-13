@@ -164,7 +164,10 @@ extension AppDelegate {
                 + "frames \(options.frames)")
             if let dir = options.snapshotDir {
                 let url = URL(fileURLWithPath: (dir as NSString).expandingTildeInPath, isDirectory: true)
-                let writer = try ArtifactWriter(directory: url)
+                let mirrored = options.desktopFolder.map {
+                    URL(fileURLWithPath: ($0 as NSString).expandingTildeInPath, isDirectory: true)
+                }
+                let writer = try ArtifactWriter(directory: url, mirrored: mirrored)
                 let name = snapshotName(options, time: options.sceneClock.now())
                 for png in Snapshotter.pngs(frame, name: name, scale: options.snapshotScale) {
                     print("wrote \(try writer.write(png.data, named: png.name).path)")
