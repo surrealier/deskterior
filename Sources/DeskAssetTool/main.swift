@@ -245,6 +245,10 @@ do {
     case "icon":
         guard let out = value(of: "--out") else { usage() }
         try writeIcon(to: URL(fileURLWithPath: out, isDirectory: true), allSizes: args.contains("--all-sizes"))
+    case "fixture":
+        try MirrorTools.fixture(Array(args.dropFirst()))
+    case "mirror-dump":
+        try MirrorTools.mirrorDump(Array(args.dropFirst()))
     default:
         usage()
     }

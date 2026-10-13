@@ -32,7 +32,7 @@ let package = Package(
             swiftSettings: mainActorByDefault
         ),
         // Dev tool: app icon, sprite contact sheets, fixture files.
-        .executableTarget(name: "DeskAssetTool", dependencies: ["DeskCore", "DeskPixels"]),
+        .executableTarget(name: "DeskAssetTool", dependencies: ["DeskCore", "DeskPixels", "DeskFiles"]),
 
         // DeskPixels is a test-only dependency here: PNG goldens for core rasterizers.
         .testTarget(name: "DeskCoreTests", dependencies: ["DeskCore", "DeskPixels"], exclude: ["Goldens"]),
