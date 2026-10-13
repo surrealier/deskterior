@@ -72,6 +72,14 @@ public enum DeskAction: Sendable {
     case closeContainer(ContainerID)
     /// The phone face down or up: absolute, so a repeated or late commit never flips it the wrong way.
     case phoneFace(down: Bool)
+    // MARK: physics
+    /// Tokens set down on the bare desk (a drop, a fling's landing) join `pile` at desk-plane point `at`: a new pile
+    /// is made there, and a pile the drop takes whole moves there; an existing pile keeps its place. Journaled.
+    case dropOnDesk([TokenKey], pile: PileID, at: SIMD2<Float>)
+    /// The pen cup's or the wastebasket's Tip Over / Stand Up menu item: the scene plays it and commits the result
+    /// (`cupState`/`basketState`, then `settle`).
+    case tipOver(ContainerID)
+    case standUp(ContainerID)
 
     /// Explicit user requests. Only these may produce file effects (`Effect.touchesFiles`).
     public var isRequest: Bool {

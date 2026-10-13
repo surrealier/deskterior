@@ -181,7 +181,10 @@ struct InteractionTests {
         let screen = try #require(scene.screen)
         let layout = try #require(scene.layout)
         let wall = SIMD2<Float>(Float(layout.coreOrigin.x + 260), Float(layout.coreOrigin.y + 4))
-        p.drag(F.centre(try #require(screen.iconRect(of: F.key(1)))), wall)
+        // Let go at rest on the bare wall (a fling would fly, M7): it springs home.
+        p.drag(F.centre(try #require(screen.iconRect(of: F.key(1)))), wall, hold: true)
+        p.frames(6)
+        _ = p.event(.up, wall, count: 1)
         let b = try #require(screen.iconRect(of: F.key(2)))
         p.drag(F.centre(b), wall, steps: 2, hold: true)
         #expect(screen.carried == [F.key(1), F.key(2)])

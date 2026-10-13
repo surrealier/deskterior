@@ -46,7 +46,7 @@ struct ArtCatalogTests {
         #expect(PropArt.driveHub().size == CoreLayout.driveHub.size)
         #expect(PropArt.wastebasketFront().size == CoreLayout.wastebasket.size)
         #expect(PropArt.paperBall(0).size == ArtSize(8, 8))
-        #expect(PropArt.heapSlots.count == 24)
+        #expect(InteriorRaster.basketSlots.count == ContainerSpec.wastebasket.hardCap)
         #expect(WindowArt.window(sky: .day, minuteOfDay: 0).size == CoreLayout.window.size)
         #expect(RoomArt.clock(hour: 1, minute: 2).size == CoreLayout.clock.size)
         #expect(RoomArt.calendar(WallTime(hour: 1, minute: 0)).size == CoreLayout.calendar.size)

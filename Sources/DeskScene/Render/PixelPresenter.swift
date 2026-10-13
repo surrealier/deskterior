@@ -81,8 +81,12 @@ public final class PixelPresenter {
 
     /// Advances SpriteKit (actions, physics, `update(_:)`) to `time`.
     public func update(atTime time: TimeInterval) {
-        renderer.update(atTime: time)
+        renderer.update(atTime: Self.timeOrigin + time)
     }
+
+    /// Added to every time given to `SKRenderer`: it reads a time of exactly 0 as "now" (the media clock) and then
+    /// skips every update until the time passes that, so a simulation starting at 0 would never step its physics.
+    static let timeOrigin: TimeInterval = 1
 
     /// Encodes the art and lit passes.
     public func encodeFrame(_ cmd: any MTLCommandBuffer) {

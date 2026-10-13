@@ -484,8 +484,7 @@ public enum InteriorRaster {
     }
 
     /// Heap slots (basket-local top-left of each 8-px ball), filling bottom-up: ten fill the basket up to its
-    /// mouth, and from the 11th (`WastebasketMachine.aboveRimCount`) the heap rises above the rim. Supersedes
-    /// `PropArt.heapSlots`.
+    /// mouth, and from the 11th (`WastebasketMachine.aboveRimCount`) the heap rises above the rim.
     public static let basketSlots: [ArtPoint] = {
         let rows: [(y: Int, xs: [Int])] = [
             (28, [4, 12, 20]), (20, [7, 15, 22]), (12, [5, 18]), (4, [9, 17]),

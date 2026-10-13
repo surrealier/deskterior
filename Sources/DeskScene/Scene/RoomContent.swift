@@ -28,6 +28,8 @@ public final class SceneContext {
     var onToast: ((ToastKey) -> Void)?
     var placementZs: [String: CGFloat] = [:]
     var dropOrder: () -> [any DeskElement] = { [] }
+    /// The desk plane: piles, flights, the cup, the basket, the floor (M7; `RoomContent+Physics`).
+    var physics: PhysicsHub?
 
     // MARK: lighting
     /// Reduce Motion (system setting or the app's): flickers, jiggles, spring-backs and the CRT jump to their end.
@@ -129,6 +131,7 @@ final class RoomContent: GestureTarget {
         install([screen, monitor], inSlotOf: "monitor")
         installContainers()
         installRoomControls()
+        installPhysics()
         rebuild()
     }
 
@@ -308,12 +311,14 @@ final class RoomContent: GestureTarget {
     func showIcon(_ key: TokenKey, _ icon: PixelBuffer?) {
         context.icons[key] = icon
         if let s = context.state, s.tokens.location(of: key)?.isScreen == true { screen.apply(s) }
+        physicsIconChanged(key)
     }
 
     // MARK: Animations
 
     /// Plays a model-requested animation (`Effect.play`).
     func play(_ id: AnimationID, _ target: AnimTarget) {
+        if playPhysics(id, target) { return }
         switch (id, target) {
         case let (.printIn, .tokens(keys)), let (.parade, .tokens(keys)):
             screen.playPrintIn(keys)

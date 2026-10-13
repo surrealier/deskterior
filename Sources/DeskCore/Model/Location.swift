@@ -70,7 +70,7 @@ public enum Location: Hashable, Sendable, Codable, CustomStringConvertible {
     case container(ContainerID, order: Int)
     /// Covered-ness is derived from the cloth, never stored.
     case desk(pile: PileID, order: Int)
-    /// Core x on the floor line.
+    /// Core x of the token's **centre** on the floor line (`FloorLine`, DESIGN Errata 13).
     case floor(x: Int)
     /// Transient while a token is being carried; never persisted.
     case carried

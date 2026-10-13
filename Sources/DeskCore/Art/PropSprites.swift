@@ -716,18 +716,6 @@ public enum PropArt {
         ])
     }
 
-    /// Heap slots (basket-local top-left of each 8-px ball), filling bottom-up; from slot 11 the heap rises
-    /// above the rim.
-    public static let heapSlots: [ArtPoint] = {
-        var out: [ArtPoint] = []
-        let rows: [(y: Int, xs: [Int])] = [
-            (28, [4, 12, 20]), (22, [3, 11, 19]), (16, [6, 14, 21]), (10, [2, 10, 18]), (3, [5, 13, 21]),
-            (-3, [1, 9, 17, 23]), (-8, [5, 13, 20]), (-13, [9, 16]),
-        ]
-        for row in rows { for x in row.xs { out.append(ArtPoint(x, row.y)) } }
-        return Array(out.prefix(24))
-    }()
-
     /// A crumpled paper ball (8×8), three variants.
     public static func paperBall(_ variant: Int) -> SpriteAsset {
         var c = PixelCanvas(width: 8, height: 8)

@@ -335,6 +335,11 @@ public final class DeskScene: SKScene {
         syncLighting()
     }
 
+    /// Desk-plane zone tests and settles, right after SpriteKit stepped the physics (DESIGN §4.6 step 5; M7).
+    public override func didSimulatePhysics() {
+        physicsDidSimulate()
+    }
+
     /// Routes an input event; true when something visible changed.
     @discardableResult
     public func handle(_ event: InputEvent) -> Bool {

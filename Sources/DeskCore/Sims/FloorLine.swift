@@ -12,6 +12,23 @@ public enum FloorLine {
         CoreLayout.wastebasket.minX..<CoreLayout.wastebasket.maxX, CoreLayout.cabinet.minX..<CoreLayout.cabinet.maxX,
     ]
 
+    /// The floor furniture for a basket in `basket`'s state: tipped, it lies beside its upright spot
+    /// (`WastebasketMachine.tippedRect`) and frees that spot.
+    public static func furniture(basket: BasketState) -> [Range<Int>] {
+        let lying: ArtRect
+        switch basket.state {
+        case WastebasketMachine.tippedLeftName: lying = WastebasketMachine.tippedRect(right: false)
+        case WastebasketMachine.tippedRightName: lying = WastebasketMachine.tippedRect(right: true)
+        default: return furniture
+        }
+        return [lying.minX..<lying.maxX, CoreLayout.cabinet.minX..<CoreLayout.cabinet.maxX]
+    }
+
+    /// The spans floor tokens centred at `centres` stand on (so others land beside them).
+    public static func spans(_ centres: [Int]) -> [Range<Int>] {
+        centres.map { ($0 - tokenWidth / 2)..<($0 + tokenWidth / 2) }
+    }
+
     /// Whether a token centred at `x` stands inside the core and clear of `avoiding`.
     public static func isFree(_ x: Int, avoiding: [Range<Int>] = furniture) -> Bool {
         centres.contains(x) && blocker(x, avoiding) == nil

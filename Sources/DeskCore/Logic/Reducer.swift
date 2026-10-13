@@ -49,7 +49,7 @@ public enum Reducer {
             return move(&s, keys.map(s.currentKey), to: to, grid: env.grid)
 
         case let .settle(report):
-            // TODO(M7): landing squash/puff effects per move.
+            // Landings squash and puff in the scene, which flew them there.
             var changed = false
             for m in report.moves {
                 let key = s.currentKey(for: m.key)
@@ -204,6 +204,9 @@ public enum Reducer {
         // MARK: containers (M6)
         case .openContainer, .closeContainer, .phoneFace:
             return reduceContainer(&s, a)
+        // MARK: physics
+        case .dropOnDesk, .tipOver, .standUp:
+            return reducePhysics(&s, a, env)
         }
     }
 
@@ -296,7 +299,10 @@ public enum Reducer {
             let start = min(max(order, 0), s.tokens.members(of: pile).count)
             for (i, k) in movers.enumerated() { s.tokens.move(k, to: .desk(pile: pile, order: start + i), grid: grid) }
         case let .floor(x):
-            for (i, k) in movers.enumerated() { s.tokens.move(k, to: .floor(x: x + i * Placement.floorSpacing)) }
+            let others = s.tokens.keys { if case .floor = $0 { true } else { false } }.filter { !seen.contains($0) }
+                .compactMap { k -> Int? in if case let .floor(x)? = s.tokens.location(of: k) { x } else { nil } }
+            let spots = floorSpots(near: x, count: movers.count, basket: s.wastebasket, occupied: others)
+            for (k, spot) in zip(movers, spots) { s.tokens.move(k, to: .floor(x: spot)) }
         case .carried:
             break
         }

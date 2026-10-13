@@ -344,7 +344,7 @@ final class DemoRunner {
         if target.hasPrefix("token:") {
             let name = String(target.dropFirst(6))
             guard let key = tokenKey(named: name) else { throw ScriptError(description: "no token named '\(name)'") }
-            guard let r = screen.iconRect(of: key) ?? host.scene.miniRect(of: key) else {
+            guard let r = screen.iconRect(of: key) ?? host.scene.miniRect(of: key) ?? host.scene.deskTokenRect(key) else {
                 throw ScriptError(description: "token '\(name)' is not on show")
             }
             return center(r)
@@ -370,6 +370,8 @@ final class DemoRunner {
             guard let r = screen.firstEmptyCell() else { throw ScriptError(description: "no empty cell on the page") }
             return center(r)
         }
+        // Desk-plane objects that move (the pen cup) answer where they are now.
+        if let r = host.scene.physicsAnchor(target) { return center(r) }
         guard let r = host.scene.liveAnchor(target) ?? layout.anchors[target] else {
             throw ScriptError(description: "unknown target '\(target)'")
         }
@@ -473,7 +475,10 @@ final class DemoRunner {
                 let p = try point(String(k.dropFirst(6)))
                 check(key, String(scene.lightLevel(at: ArtPoint(Int(p.x.rounded(.down)), Int(p.y.rounded(.down))))), value)
             default:
-                throw ScriptError(description: "unknown expectation '\(key)'")
+                guard let actual = scene.physicsExpectation(key) else {
+                    throw ScriptError(description: "unknown expectation '\(key)'")
+                }
+                check(key, actual, value)
             }
         }
         return out

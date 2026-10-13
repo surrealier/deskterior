@@ -130,6 +130,10 @@ public enum MenuCommand: Sendable, Equatable {
     case closeContainer(ContainerID)
     /// Container ▸ Take All Out.
     case takeAllOut(ContainerID)
+    // MARK: physics
+    /// The pen cup or the wastebasket: Tip Over, Stand Up.
+    case tipOver(ContainerID)
+    case standUp(ContainerID)
 
     /// The model action this command dispatches; nil for app commands.
     public func action(_ s: DeskState) -> DeskAction? {
@@ -158,6 +162,9 @@ public enum MenuCommand: Sendable, Equatable {
         case let .openContainer(id): .openContainer(id)
         case let .closeContainer(id): .closeContainer(id)
         case let .takeAllOut(id): .takeAllOut(id)
+        // MARK: physics
+        case let .tipOver(id): .tipOver(id)
+        case let .standUp(id): .standUp(id)
         }
     }
 }

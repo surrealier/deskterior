@@ -52,6 +52,9 @@ public enum ConfirmKind: Sendable, Equatable {
 /// One-shot scene animations requested by the model.
 public enum AnimationID: String, Sendable {
     case printIn, poof, bonk, pulse, parade, crtOn, crtOff, ledAmber, staticNoise, osd, handleWiggle, peekMat
+    // MARK: physics
+    /// The pen cup or the wastebasket tips over / stands back up (`.container`).
+    case tipOver, standUp
 }
 
 public enum AnimTarget: Sendable, Equatable {

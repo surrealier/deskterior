@@ -15,6 +15,9 @@ final class CarrySession: DragController {
         /// Flying home from `from` (canvas top-left of the lead icon), `t` in 0…1.
         case springing(from: SIMD2<Float>, t: Double)
         case done
+        // MARK: physics
+        /// Left the hand on an arc (`PhysicsHub.release`): the flight draws it and lands it (`landed()`).
+        case flying
     }
 
     static let lift = 2
@@ -79,6 +82,8 @@ final class CarrySession: DragController {
         guard phase == .carrying else { return }
         moved(to: p, mods: mods)
         context.screen?.dropTarget = nil
+        // M7: drops on the bare desk, flings and falls leave the hand on an arc.
+        if context.physics?.release(self, at: p, velocity: velocity) == true { return }
         let lead = topLeft(of: p)
         switch verdict?.verdict {
         case let .accept(.container(id, _))?
@@ -138,14 +143,34 @@ final class CarrySession: DragController {
                 }
                 place(from + (to - from) * e)
             }
-        case .done:
+        case .done, .flying:
             break
         }
     }
 
-    /// Hard sleep or teardown: the tokens are home at once.
+    /// Hard sleep or teardown: the tokens are home at once (or, in the air, land now).
     func finishNow() {
         if phase == .carrying { context.screen?.dropTarget = nil }
+        if phase == .flying { context.physics?.landNow(self) }
+        finish()
+    }
+
+    // MARK: physics
+
+    /// Canvas point of the lead icon's base (bottom centre) with the pointer at `p`: where a release falls from.
+    func basePoint(at p: SIMD2<Float>) -> SIMD2<Float> {
+        topLeft(of: p) + SIMD2(8, 16)
+    }
+
+    /// The physics hub took the release: the stack's sprite gives way to the flight's.
+    func handOff() {
+        phase = .flying
+        springLoad = nil
+        node.isHidden = true
+    }
+
+    /// The flight landed (and committed where).
+    func landed() {
         finish()
     }
 

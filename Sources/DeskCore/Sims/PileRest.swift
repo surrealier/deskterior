@@ -151,8 +151,9 @@ public struct PileFreezer: Sendable, Equatable {
     }
 }
 
-/// Watchdog policy (DESIGN §4.7): a pile whose position is not finite, that left the desk, or that stayed awake
-/// longer than `awakeLimit` snaps to the nearest valid desk spot, or to the monitor when the desk has none.
+/// Watchdog policy (DESIGN §4.7): a pile whose position is not finite, whose centre left the desk (a pile may hang
+/// over an edge; one whose centre goes over leaves on an arc before this sees it), or that stayed awake longer
+/// than `awakeLimit` snaps to the nearest valid desk spot, or to the monitor when the desk has none.
 public struct PileWatchdog: Sendable, Equatable {
     public struct Params: Hashable, Sendable {
         public var awakeLimit: Float = 10
@@ -200,7 +201,7 @@ public struct PileWatchdog: Sendable, Equatable {
         let reason: Reason
         if !position.isFinite {
             reason = .notFinite
-        } else if !inBounds(position) {
+        } else if !isOnDesk(position) {
             reason = .outOfBounds
         } else {
             lastGood[pile] = position
@@ -222,6 +223,12 @@ public struct PileWatchdog: Sendable, Equatable {
     public mutating func retain(_ piles: Set<PileID>) {
         awake = awake.filter { piles.contains($0.key) }
         lastGood = lastGood.filter { piles.contains($0.key) }
+    }
+
+    /// A pile centre over the desk top (its body may hang over an edge).
+    public func isOnDesk(_ p: SIMD2<Float>) -> Bool {
+        let b = params.desk
+        return p.isFinite && p.x >= b.x && p.x <= b.x + b.width && p.y >= b.d && p.y <= b.d + b.depth
     }
 
     /// A pile centre that keeps its whole body on the desk.
