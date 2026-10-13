@@ -78,6 +78,10 @@ final class RoomContent: GestureTarget {
     private let hoverNode = SKSpriteNode()
     /// Drags that ended but still animate home.
     private var settling: [any DragController] = []
+    /// Interactive elements and the placed object whose hit-test slot they fill (front first).
+    private var installed: [(slot: String, elements: [any DeskElement])] = []
+    /// Every installed element.
+    private var extras: [any DeskElement] { installed.flatMap(\.elements) }
 
     static let hoverInk = Role.selection
 
@@ -103,8 +107,6 @@ final class RoomContent: GestureTarget {
         hoverNode.zPosition = CGFloat(RoomLayer.ui.rawValue * 1000)
         hoverNode.isHidden = true
         root.addChild(hoverNode)
-        root.addChild(screen.root)
-        root.addChild(monitor.root)
         root.addChild(context.fx.root)
         root.addChild(context.carryLayer)
         root.addChild(tooltip.node)
@@ -112,7 +114,23 @@ final class RoomContent: GestureTarget {
         router = InputRouter(target: self)
         context.dropOrder = { [unowned self] in routing }
         context.onToast = { [unowned self] key in showToast(key) }
+        install([screen, monitor], inSlotOf: "monitor")
         rebuild()
+    }
+
+    /// Puts `elements` (front first) in the hit-test slot of the placed object `slot`: they answer its hits, drops,
+    /// gestures and menus, and get layout, state and frames; the placed sprites keep drawing until an element draws
+    /// its own. The screen and monitor take the monitor's slot; drawers, phone, cup, basket and mat elements plug
+    /// in the same way (waves 4b/5).
+    func install(_ elements: [any DeskElement], inSlotOf slot: String) {
+        installed.removeAll { $0.slot == slot }
+        installed.append((slot, elements))
+        for e in elements where e.root.parent == nil { root.addChild(e.root) }
+        if !self.elements.isEmpty {
+            for e in elements { e.layout(layout) }
+            if let s = context.state { for e in elements { e.apply(s) } }
+            rebuildRouting()
+        }
     }
 
     // MARK: Building
@@ -146,22 +164,20 @@ final class RoomContent: GestureTarget {
         context.layout = layout
         context.space = space
         context.fx.space = space
-        screen.layout(layout)
-        monitor.layout(layout)
+        for e in extras { e.layout(layout) }
         rebuildRouting()
         updateLighting()
         setHover(nil, element: nil)
         router.resetHover()
     }
 
-    /// Placed elements front to back, the monitor's slot taken by the screen's tokens and then the monitor, the
-    /// bare wall last.
+    /// Placed elements front to back, each slot with installed elements taken by them (the monitor's: the
+    /// screen's tokens, then the monitor), the bare wall last.
     private func rebuildRouting() {
         var out: [any DeskElement] = []
         for e in elements.sorted(by: { maxZ($0) > maxZ($1) }) where e.id != "room" {
-            if e.id == "monitor" {
-                out.append(screen)
-                out.append(monitor)
+            if let slot = installed.first(where: { $0.slot == e.id }) {
+                out += slot.elements
             } else {
                 out.append(e)
             }
@@ -257,8 +273,7 @@ final class RoomContent: GestureTarget {
     /// Adopts committed model state into every interactive element.
     func apply(_ s: DeskState) {
         context.state = s
-        screen.apply(s)
-        monitor.apply(s)
+        for e in extras { e.apply(s) }
         for e in elements { e.apply(s) }
         router.refreshHover()
     }
@@ -319,7 +334,7 @@ final class RoomContent: GestureTarget {
 
     /// Everything that moves here is scripted and bounded, or a drag in hand.
     var scriptedAnimating: Bool {
-        screen.needsFrames || monitor.needsFrames || router.drag != nil || !settling.isEmpty
+        extras.contains { $0.needsFrames } || router.drag != nil || !settling.isEmpty
             || context.fx.needsFrames || toast.needsFrames || context.shakeFrames > 0
             || elements.contains { $0.needsFrames }
     }
@@ -328,8 +343,7 @@ final class RoomContent: GestureTarget {
         router.drag?.step(dt)
         for d in settling { d.step(dt) }
         settling.removeAll { $0.isFinished }
-        screen.step(dt)
-        monitor.step(dt)
+        for e in extras { e.step(dt) }
         for e in elements where e.needsFrames { e.step(dt) }
         context.fx.step(dt)
         toast.step(dt, space: space)
@@ -342,8 +356,7 @@ final class RoomContent: GestureTarget {
     /// Hard sleep: every animation jumps to its end.
     func forceRest() {
         finishSettling()
-        screen.settle()
-        monitor.settle()
+        for e in extras { e.settle() }
         for e in elements { e.settle() }
         context.fx.clear()
         toast.hide()

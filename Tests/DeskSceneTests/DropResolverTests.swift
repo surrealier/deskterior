@@ -75,3 +75,19 @@ struct DropResolverTests {
         #expect(DropResolver.resolve(k, at: cell, elements: room.routing)?.verdict == .bonk(nil))
     }
 }
+
+@Suite("Installing elements")
+struct InstallTests {
+    @Test("An installed element takes a placed object's hit-test slot, drops and frames")
+    func install() throws {
+        let scene = SceneFixture.scene()
+        let room = try #require(scene.room)
+        let hub = try #require(scene.layout?.anchors["hub"])
+        let stub = StubElement("hub2", hub, verdict: .accept(.container(.phone, order: 0)))
+        room.install([stub], inSlotOf: "hub")
+        #expect(scene.hitTest(hub.center)?.element == "hub2")
+        #expect(DropResolver.resolve([SceneFixture.key(1)], at: hub.center, elements: room.routing)?.element == "hub2")
+        #expect(room.routing.contains { $0.id == "screen" } && !room.routing.contains { $0.id == "hub" })
+        #expect(stub.root.parent === room.root)
+    }
+}

@@ -35,7 +35,9 @@ public nonisolated struct Hit: Hashable, Sendable {
 /// - `accessibilityItems` lists what VoiceOver should offer.
 ///
 /// Elements change the model only by dispatching `DeskAction`s through their `SceneContext`; continuous motion
-/// stays in the scene until it settles.
+/// stays in the scene until it settles. An interactive element joins the room with
+/// `RoomContent.install(_:inSlotOf:)`, taking over a placed object's place in the hit-test order (the screen and
+/// monitor take the monitor's).
 public protocol DeskElement: AnyObject {
     var id: String { get }
     var root: SKNode { get }
