@@ -57,7 +57,8 @@ struct CalibrationSnapshotTests {
     /// The scene after a click on a swatch, a hover on another and 30 fixed frames.
     func renderCalibration() throws -> (OffscreenDriver, PixelBuffer) {
         let host = try SceneHost(grid: grid, device: gpu.device)
-        let swatches = host.scene.calibration.swatchRects
+        host.scene.setContent(.calibration)
+        let swatches = host.scene.calibration!.swatchRects
         func centre(_ i: Int) -> SIMD2<Float> { SIMD2(Float(swatches[i].center.x), Float(swatches[i].center.y)) }
         host.handle(InputEvent(.down, art: centre(27), clickCount: 1))
         host.handle(InputEvent(.move, art: centre(40)))
@@ -96,6 +97,7 @@ struct CalibrationSnapshotTests {
     @Test("A grid change resizes the scene, the targets and the snapshot")
     func regrid() throws {
         let host = try SceneHost(grid: grid, device: gpu.device)
+        host.scene.setContent(.calibration)
         let small = PixelGrid(display: DisplayGeometry(widthPt: 1280, heightPt: 832, backingScale: 2, topInsetPt: 33))
         try host.setGrid(small)
         #expect(host.grid == small)

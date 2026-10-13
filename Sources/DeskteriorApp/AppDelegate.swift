@@ -30,6 +30,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             Self.fail("could not start the desk: \(error)")
         }
         self.displays = displays
+        if let host = displays.host {
+            Self.configure(host, options)
+            host.scene.onRenderRequest = { [weak host] in host?.loop.renderOnce() }
+            host.scene.startClock()
+            host.loop.renderOnce()
+        }
 
         statusMenu = StatusMenu(
             isPaused: { [weak self] in self?.isUserPaused ?? false },
@@ -121,8 +127,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 }
 
 extension AppDelegate {
+    /// Applies the scene flags (`--calibration`, `--clock`, `--lights`) and connects the lit pass.
+    static func configure(_ host: SceneHost, _ options: LaunchOptions) {
+        host.scene.setContent(options.calibration ? .calibration : .room)
+        host.scene.clock = options.sceneClock
+        host.scene.lightsMode = options.lights
+        host.scene.connect(presenter: host.presenter)
+    }
+
+    /// The snapshot base name: `calibration`, or `room-<display>-<HHMM>[-<lights>]`.
+    static func snapshotName(_ options: LaunchOptions, time: WallTime) -> String {
+        if options.calibration { return "calibration" }
+        let hhmm = String(format: "%02d%02d", time.hour, time.minute)
+        let lights = options.lights == .auto ? "" : "-\(options.lights.rawValue)"
+        return "room-\(options.emulatedDisplay)-\(hhmm)\(lights)"
+    }
+
     /// `--headless`: steps `--frames` fixed frames offscreen on the emulated display and, with
-    /// `--snapshot-dir`, writes `calibration.png` (art px) and `calibration@<N>x.png`. Returns the exit code.
+    /// `--snapshot-dir`, writes `<name>.png` (art px) and `<name>@<N>x.png` (see `snapshotName`). Returns the
+    /// exit code.
     static func runHeadless(_ options: LaunchOptions) -> Int32 {
         let display = options.emulatedDisplay
         let grid = PixelGrid(display: display.geometry(), pixelSize: options.pixelSize)
@@ -132,6 +155,7 @@ extension AppDelegate {
         }
         do {
             let host = try SceneHost(grid: grid, device: device)
+            configure(host, options)
             let driver = OffscreenDriver(host: host)
             driver.run(frames: options.frames)
             let frame = try driver.snapshot()
@@ -141,7 +165,8 @@ extension AppDelegate {
             if let dir = options.snapshotDir {
                 let url = URL(fileURLWithPath: (dir as NSString).expandingTildeInPath, isDirectory: true)
                 let writer = try ArtifactWriter(directory: url)
-                for png in Snapshotter.pngs(frame, name: "calibration", scale: options.snapshotScale) {
+                let name = snapshotName(options, time: options.sceneClock.now())
+                for png in Snapshotter.pngs(frame, name: name, scale: options.snapshotScale) {
                     print("wrote \(try writer.write(png.data, named: png.name).path)")
                 }
             }

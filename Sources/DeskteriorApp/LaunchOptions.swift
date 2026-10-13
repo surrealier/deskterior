@@ -1,4 +1,5 @@
 import DeskCore
+import DeskScene
 import Foundation
 
 /// Command-line flags (DESIGN §4.11). Every flag can also come from `DESKTERIOR_<FLAG>` in the environment
@@ -79,8 +80,16 @@ struct LaunchOptions: Equatable {
     var stateDir: String?
     var showHelp = false
     var showVersion = false
+    /// `--clock HH:MM` (today's date) or an ISO 8601 local date-time; nil follows the real clock.
+    var clock: WallTime?
+    /// `--calibration`: the M2 calibration card instead of the room.
+    var calibration = false
+    /// `--lights auto|day|night|lamp`.
+    var lights = LightsMode.auto
 
     var mode: Mode { headless ? .headless : (windowed != nil ? .windowed : .desk) }
+    /// The scene's time source.
+    var sceneClock: SceneClock { clock.map { .fixed($0) } ?? .live }
     /// The display `--windowed` and `--headless` emulate.
     var emulatedDisplay: EmulatedDisplay { windowed ?? .standard }
 
@@ -89,10 +98,13 @@ struct LaunchOptions: Equatable {
           --windowed [WxH[@scale]]   titled window emulating a display (default 1470x956@2)
           --headless                 render offscreen and exit (with --snapshot-dir to write PNGs)
           --frames N                 headless: fixed frames to step (default 30)
-          --snapshot-dir DIR         headless: write calibration.png and calibration@<N>x.png here
+          --snapshot-dir DIR         headless: write room-<display>-<HHMM>.png (and @<N>x) here
           --snapshot-scale N         headless: nearest-neighbour factor of the second PNG (default 3)
           --level icon+1|icon+3|normal   desk window level (default icon+1)
           --pixel-size chunky|normal|fine
+          --clock HH:MM|ISO8601      fixed room time (sky, light, clock face)
+          --lights auto|day|night|lamp   lights mode (lamp = Lamp Only)
+          --calibration              show the M2 calibration card instead of the room
           --print-window-id          print the window number (for screencapture -l)
           --exit-after SECONDS       quit after this long
           --desktop-folder DIR, --state-dir DIR   (reserved; unused in this build)
@@ -202,6 +214,19 @@ struct LaunchOptions: Equatable {
             }
             o.pixelSize = size
         },
+        Spec(names: ["--clock"], arity: .value) { o, v in
+            guard let v, let t = WallTime(parsing: v, date: SceneClock.live.now()) else {
+                throw UsageError(description: "--clock expects HH:MM or an ISO 8601 date-time")
+            }
+            o.clock = t
+        },
+        Spec(names: ["--lights"], arity: .value) { o, v in
+            guard let v, let mode = LightsMode(rawValue: v) else {
+                throw UsageError(description: "--lights expects auto, day, night or lamp")
+            }
+            o.lights = mode
+        },
+        Spec(names: ["--calibration"], arity: .switch) { o, _ in o.calibration = true },
         Spec(names: ["--desktop-folder"], arity: .value) { o, v in o.desktopFolder = v },
         Spec(names: ["--state-dir"], arity: .value) { o, v in o.stateDir = v },
         Spec(names: ["--help", "-h"], arity: .switch) { o, _ in o.showHelp = true },

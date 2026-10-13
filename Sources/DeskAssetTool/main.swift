@@ -8,6 +8,9 @@ import Foundation
 //   deskterior-assets icon --out <dir> [--all-sizes]  AppIcon.iconset (for iconutil), AppIcon-master.png and
 //                                                     AppIcon-preview.png in <dir>; --all-sizes adds the
 //                                                     16/32-px slots (see AppIconArt)
+//   deskterior-assets contact-sheet --out <dir> [--scale N] [--rooms]
+//                                                     every sprite and frame on labelled sheets (×3 nearest);
+//                                                     --rooms adds CPU-lit room previews per display × light
 
 let args = Array(CommandLine.arguments.dropFirst())
 
@@ -15,6 +18,7 @@ func usage() -> Never {
     print("""
         usage: deskterior-assets review <out-dir> [--scale N]
                deskterior-assets icon --out <dir> [--all-sizes]
+               deskterior-assets contact-sheet --out <dir> [--scale N] [--rooms]
         """)
     exit(2)
 }
@@ -120,6 +124,77 @@ func writeIcon(to dir: URL, allSizes: Bool) throws {
     try write(iconPreviewSheet(), "AppIcon-preview.png", in: dir, scale: 2)
 }
 
+/// One labelled sheet per catalog section: each sprite's frames side by side over a grey tile, name below.
+func contactSheet(_ section: ArtCatalog.Section, maxWidth: Int = 720) -> PixelBuffer {
+    let font = PixelFont.galmuri9
+    let pad = 6, gap = 2, labelH = 12
+    struct Tile { var image: PixelBuffer; var origin = ArtPoint.zero }
+    var tiles: [Tile] = []
+    for sprite in section.sprites {
+        let fw = sprite.size.w, fh = sprite.size.h
+        let n = sprite.frames.count
+        let label = font?.render("\(sprite.name) \(fw)x\(fh)" + (n > 1 ? " ×\(n)" : ""), color: Ink.neutral9.color)
+        let stripW = n * fw + (n - 1) * gap
+        let w = max(stripW, label?.width ?? 0) + 4, h = fh + 4 + labelH
+        var c = PixelCanvas(width: w, height: h, fill: .neutral2)
+        for (i, f) in sprite.frames.enumerated() {
+            let r = ArtRect(2 + i * (fw + gap), 2, fw, fh)
+            c.fill(r, .neutral6)
+            c.blit(f, at: r.origin)
+        }
+        if let label { c.blit(label, at: ArtPoint(2, fh + 4)) }
+        tiles.append(Tile(image: c.buffer))
+    }
+    var x = pad, y = pad, rowH = 0, width = pad
+    for i in tiles.indices {
+        let t = tiles[i].image
+        if x + t.width + pad > maxWidth, x > pad {
+            x = pad
+            y += rowH + pad
+            rowH = 0
+        }
+        tiles[i].origin = ArtPoint(x, y)
+        x += t.width + pad
+        rowH = max(rowH, t.height)
+        width = max(width, x)
+    }
+    var sheet = PixelBuffer(width: max(width, 1), height: y + rowH + pad, fill: Ink.neutral1.color)
+    for t in tiles { sheet.blit(t.image, at: t.origin, alphaTest: false) }
+    return sheet
+}
+
+/// Displays for room previews (DESIGN §1.2 table, Dock hidden like this Mac, plus a bottom-Dock variant).
+let previewDisplays: [(String, DisplayGeometry)] = [
+    ("1470x956@2", DisplayGeometry(widthPt: 1470, heightPt: 956, backingScale: 2, topInsetPt: 33)),
+    ("1470x956@2-dock", DisplayGeometry(widthPt: 1470, heightPt: 956, backingScale: 2, topInsetPt: 37, bottomInsetPt: 70)),
+    ("1280x832@2", DisplayGeometry(widthPt: 1280, heightPt: 832, backingScale: 2, topInsetPt: 37)),
+    ("1512x982@2", DisplayGeometry(widthPt: 1512, heightPt: 982, backingScale: 2, topInsetPt: 37)),
+    ("1710x1112@2", DisplayGeometry(widthPt: 1710, heightPt: 1112, backingScale: 2, topInsetPt: 37)),
+    ("1920x1080@1", DisplayGeometry(widthPt: 1920, heightPt: 1080, backingScale: 1, topInsetPt: 25)),
+    ("2560x1440@2", DisplayGeometry(widthPt: 2560, heightPt: 1440, backingScale: 2, topInsetPt: 25)),
+    ("1280x800@1", DisplayGeometry(widthPt: 1280, heightPt: 800, backingScale: 1, topInsetPt: 25)),
+    ("1080x1920@1", DisplayGeometry(widthPt: 1080, heightPt: 1920, backingScale: 1, topInsetPt: 25)),
+]
+
+func writeContactSheets(to dir: URL, scale: Int, rooms: Bool) throws {
+    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    for section in ArtCatalog.sections() {
+        try write(contactSheet(section), "contact-\(section.title).png", in: dir, scale: scale)
+    }
+    guard rooms else { return }
+    let lights: [(String, WallTime, LightsMode)] = [
+        ("day", WallTime(hour: 10, minute: 0), .auto), ("dusk", WallTime(hour: 18, minute: 0), .auto),
+        ("night", WallTime(hour: 22, minute: 0), .auto), ("lamp", WallTime(hour: 22, minute: 0), .lampOnly),
+    ]
+    for (name, display) in previewDisplays {
+        let layout = LayoutSolver.solve(display: display)
+        for (phase, time, mode) in lights {
+            let image = RoomPlan.render(layout, RoomState(time: time, lightsMode: mode))
+            try write(image, "room-\(name)-\(phase).png", in: dir, scale: 2)
+        }
+    }
+}
+
 do {
     switch args.first {
     case "review":
@@ -129,6 +204,10 @@ do {
         try FileManager.default.createDirectory(at: outDir, withIntermediateDirectories: true)
         try write(lightRampSheet(), "light-ramp.png", in: outDir, scale: scale)
         try write(primitivesSheet(), "primitives.png", in: outDir, scale: scale)
+    case "contact-sheet":
+        guard let out = value(of: "--out") else { usage() }
+        try writeContactSheets(to: URL(fileURLWithPath: out, isDirectory: true), scale: option("--scale", default: 3),
+                               rooms: args.contains("--rooms"))
     case "icon":
         guard let out = value(of: "--out") else { usage() }
         try writeIcon(to: URL(fileURLWithPath: out, isDirectory: true), allSizes: args.contains("--all-sizes"))
