@@ -8,7 +8,8 @@ EXTRA=()
 if [[ "$DEV_DIR" == *CommandLineTools* ]]; then
   F="$DEV_DIR/Library/Developer/Frameworks"
   if [ -d "$F/Testing.framework" ]; then
-    EXTRA=(-Xswiftc -F -Xswiftc "$F" -Xlinker -F -Xlinker "$F" -Xlinker -rpath -Xlinker "$F")
+    EXTRA=(-Xswiftc -F -Xswiftc "$F" -Xlinker -F -Xlinker "$F" -Xlinker -rpath -Xlinker "$F"
+           -Xswiftc -Xfrontend -Xswiftc -disable-cross-import-overlays)
   fi
 fi
 exec swift test --disable-xctest ${EXTRA[@]+"${EXTRA[@]}"} "$@"

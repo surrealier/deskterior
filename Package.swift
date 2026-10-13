@@ -35,12 +35,13 @@ let package = Package(
         .executableTarget(name: "DeskAssetTool", dependencies: ["DeskCore", "DeskPixels"]),
 
         // DeskPixels is a test-only dependency here: PNG goldens for core rasterizers.
-        .testTarget(name: "DeskCoreTests", dependencies: ["DeskCore", "DeskPixels"]),
-        .testTarget(name: "DeskPixelsTests", dependencies: ["DeskCore", "DeskPixels"]),
+        .testTarget(name: "DeskCoreTests", dependencies: ["DeskCore", "DeskPixels"], exclude: ["Goldens"]),
+        .testTarget(name: "DeskPixelsTests", dependencies: ["DeskCore", "DeskPixels"], exclude: ["Goldens"]),
         .testTarget(name: "DeskFilesTests", dependencies: ["DeskCore", "DeskFiles"]),
         .testTarget(
             name: "DeskSceneTests",
             dependencies: ["DeskCore", "DeskPixels", "DeskScene"],
+            exclude: ["Goldens"],
             swiftSettings: mainActorByDefault
         ),
     ]
