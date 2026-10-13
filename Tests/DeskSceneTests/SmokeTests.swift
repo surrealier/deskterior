@@ -3,5 +3,6 @@ import Testing
 import DeskCore
 
 @Test func moduleLinks() {
-    #expect(DeskSceneModule.coreVersion == DeskCore.version)
+    #expect(ArtSpace.unitsPerPixel == 4)
+    #expect(!DeskCore.version.isEmpty)
 }
