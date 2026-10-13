@@ -224,6 +224,37 @@ struct ReducerTests {
         #expect(s.piles[PileID("P1")] == [9, 9])
     }
 
+    @Test("Non-finite numbers from the scene are refused, so the layout always encodes")
+    func nonFiniteRefused() throws {
+        var s = F.mirrored(["a"])
+        _ = reduce(&s, .move([F.key(1)], to: .desk(pile: "P1", order: 0)), env)
+        for bad in [Float.nan, .infinity, -.infinity] {
+            #expect(reduce(&s, .drawerSettled(.riserLeft, bad), env).isEmpty)
+            #expect(reduce(&s, .cupState(PenCupState(state: "lying", pos: [bad, 1])), env).isEmpty)
+            var mat = MatState()
+            mat.angle = bad
+            #expect(reduce(&s, .matSettled(mat), env).isEmpty)
+            #expect(reduce(&s, .pilesSettled(["P1": [1, bad]]), env).isEmpty)
+            #expect(reduce(&s, .settle(SettleReport(piles: ["P1": [bad, 0]])), env).isEmpty)
+            #expect(reduce(&s, .chair(bad, 1), env).isEmpty)
+        }
+        // Openings are clamped to the drawer's travel.
+        _ = reduce(&s, .drawerSettled(.riserLeft, 99), env)
+        #expect(s.drawerOpening(.riserLeft) == 10)
+        _ = try DeskDocument(state: s, savedAt: F.t0).encoded()
+    }
+
+    @Test("snapshot: metadata-only changes wake the scene but do not save")
+    func metadataOnlyDoesNotPersist() {
+        var s = F.mirrored(["a.txt"])
+        var grown = F.entry("a.txt", 1)
+        grown.meta.size = 5000
+        #expect(reduce(&s, .snapshot(F.snapshot([grown]), now: F.t0), env) == [.wakeLoop])
+        #expect(s.tokens.meta(of: F.key(1))?.size == 5000)
+        let renamed = F.entry("b.txt", 1)
+        #expect(reduce(&s, .snapshot(F.snapshot([renamed]), now: F.t0), env) == [.persist, .wakeLoop])
+    }
+
     // MARK: Take out
 
     @Test("takeAllOut: a container's tokens parade to the first free cells in name order")

@@ -50,30 +50,46 @@ public struct DeskDocument: Codable, Sendable, Equatable {
 
     public init() {}
 
-    /// The persisted form of `state`. A carried token (a carry interrupted by a quit) is written to its
-    /// nearest valid spot: the first free monitor cell.
+    /// The persisted form of `state`. A carried token (a carry interrupted by a quit) is written at its origin
+    /// (or the first free monitor cell when it has none). Non-finite numbers, which JSON cannot hold, fall back
+    /// to defaults, so encoding never fails.
     public init(state: DeskState, savedAt: Date, app: String = DeskCore.version, grid: ScreenGrid = .standard) {
         self.savedAt = savedAt
         self.app = app
         root = state.root
         hostDisplayUUID = state.hostDisplayUUID
         monitor = state.monitor
-        drawers = Dictionary(uniqueKeysWithValues: state.drawers.map { ($0.key.rawValue, $0.value) })
+        drawers = Dictionary(uniqueKeysWithValues: state.drawers.map {
+            ($0.key.rawValue, $0.value.p.isFinite ? $0.value : DrawerState())
+        })
         phone = state.phone
         penCup = state.penCup
+        if !penCup.pos.isFinite { penCup.pos = PenCupState().pos }
         wastebasket = state.wastebasket
         chair = state.chair
+        if !chair.x.isFinite { chair.x = ChairState().x }
         lights = state.lights
-        brush = state.brush
+        brush = state.brush.pos.isFinite ? state.brush : BrushState()
         mat = state.mat
-        piles = state.piles.keys.sorted().map { PileEntry(id: $0, pos: state.piles[$0]!) }
+        if !mat.isFinite {
+            let d = MatState()
+            (mat.origin, mat.size, mat.angle) = (d.origin, d.size, d.angle)
+        }
+        piles = state.piles.keys.sorted().map {
+            PileEntry(id: $0, pos: state.piles[$0]!.isFinite ? state.piles[$0]! : Placement.defaultPilePos)
+        }
         var allocator = ScreenGrid.Allocator(grid: grid, occupied: state.tokens.occupiedCells)
         tokens = state.tokens.sortedKeys.map { key in
             let r = state.tokens[key]!
-            let loc = r.location == .carried ? allocator.next().location : r.location
+            var loc = state.tokens.restingLocation(of: key)!
+            if loc == .carried { loc = allocator.next().location }
             return TokenEntry(key: key, meta: r.meta, loc: loc)
         }
-        tombstones = state.tombstones.sorted { ($0.until, $0.key) < ($1.until, $1.key) }
+        tombstones = state.tombstones.sorted { ($0.until, $0.key) < ($1.until, $1.key) }.map {
+            var t = $0
+            if t.pilePos?.isFinite == false { t.pilePos = nil }
+            return t
+        }
         flags = state.flags
     }
 
@@ -180,8 +196,13 @@ public struct DeskDocument: Codable, Sendable, Equatable {
         brush = c.lenient(.brush, default: d.brush)
         mat = c.lenient(.mat, default: d.mat)
         piles = c.lenient(.piles, default: Lossy<PileEntry>()).elements
-        // A token list that is not an array at all means the file is damaged: fail and use a backup.
-        tokens = try c.decodeIfPresent(Lossy<TokenEntry>.self, forKey: .tokens)?.elements ?? []
+        // A token list that is not an array at all, or of which no token can be read, means the file is damaged:
+        // fail and use a backup.
+        let list = try c.decodeIfPresent(Lossy<TokenEntry>.self, forKey: .tokens)
+        if let list, list.elements.isEmpty, list.skipped > 0 {
+            throw DecodingError.dataCorruptedError(forKey: .tokens, in: c, debugDescription: "no token could be read")
+        }
+        tokens = list?.elements ?? []
         tombstones = c.lenient(.tombstones, default: Lossy<Tombstone>()).elements
         flags = c.lenient(.flags, default: d.flags)
     }
@@ -226,6 +247,8 @@ extension DeskState: Codable {
 /// Decodes an array element by element, skipping elements that do not decode.
 struct Lossy<Element: Decodable>: Decodable {
     var elements: [Element] = []
+    /// Elements that did not decode.
+    var skipped = 0
 
     init() {}
 
@@ -236,6 +259,7 @@ struct Lossy<Element: Decodable>: Decodable {
                 elements.append(e)
             } else {
                 _ = try c.decode(Skip.self)
+                skipped += 1
             }
         }
     }
@@ -245,16 +269,38 @@ struct Lossy<Element: Decodable>: Decodable {
     }
 }
 
-/// ISO 8601 dates with optional fractional seconds (UTC). Value-type format styles keep this Sendable.
+/// ISO 8601 dates in UTC with optional milliseconds. Formatting and parsing are exact to the millisecond
+/// (`wholeMilliseconds(d)` survives a round trip unchanged); the system format style alone truncates.
 enum ISODate {
-    private static let fractional = Date.ISO8601FormatStyle(includingFractionalSeconds: true)
     private static let whole = Date.ISO8601FormatStyle()
 
+    /// `date` rounded to whole milliseconds.
+    static func wholeMilliseconds(_ date: Date) -> Date {
+        let t = date.timeIntervalSince1970
+        guard t.isFinite, abs(t) < 1e15 else { return date }
+        return Date(timeIntervalSince1970: Double(Int64((t * 1000).rounded())) / 1000)
+    }
+
     static func format(_ date: Date) -> String {
-        date.timeIntervalSince1970.rounded() == date.timeIntervalSince1970 ? whole.format(date) : fractional.format(date)
+        let t = date.timeIntervalSince1970
+        guard t.isFinite, abs(t) < 1e15 else { return whole.format(date) }
+        let total = Int64((t * 1000).rounded())
+        let seconds = total >= 0 ? total / 1000 : -((-total + 999) / 1000)
+        let ms = Int(total - seconds * 1000)
+        let base = whole.format(Date(timeIntervalSince1970: Double(seconds)))
+        guard ms != 0, base.hasSuffix("Z") else { return base }
+        return String(base.dropLast()) + "." + String(format: "%03d", ms) + "Z"
     }
 
     static func parse(_ s: String) -> Date? {
-        (try? fractional.parse(s)) ?? (try? whole.parse(s))
+        guard let dot = s.firstIndex(of: ".") else { return try? whole.parse(s) }
+        guard s.hasSuffix("Z") else { return nil }
+        let digits = s[s.index(after: dot)..<s.index(before: s.endIndex)]
+        guard !digits.isEmpty, digits.allSatisfy(\.isASCII), digits.allSatisfy(\.isNumber),
+              let base = try? whole.parse(String(s[..<dot]) + "Z")
+        else { return nil }
+        let ms = Int64(String((digits + "00").prefix(3)))!
+        let seconds = Int64(base.timeIntervalSince1970.rounded())
+        return Date(timeIntervalSince1970: Double(seconds * 1000 + ms) / 1000)
     }
 }

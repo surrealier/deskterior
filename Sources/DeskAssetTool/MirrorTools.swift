@@ -163,7 +163,9 @@ enum MirrorTools {
             exit(error.exitCode)
         }
         let store = try value("--state-dir", in: args).map {
-            try StateStore(directory: URL(fileURLWithPath: ($0 as NSString).expandingTildeInPath, isDirectory: true))
+            try StateStore(
+                directory: URL(fileURLWithPath: ($0 as NSString).expandingTildeInPath, isDirectory: true), mirrored: folder
+            )
         }
 
         var state = store?.load().document?.makeState() ?? DeskState()
@@ -171,6 +173,7 @@ enum MirrorTools {
         let t0 = Date()
         let snapshot = try scanner.scan()
         let t1 = Date()
+        try store?.switchRoot(&state, to: snapshot.rootPath, now: snapshot.scannedAt)
         let effects = reduce(&state, .snapshot(snapshot, now: snapshot.scannedAt), ReduceEnv(now: snapshot.scannedAt))
         let t2 = Date()
         try store?.save(state)
@@ -240,6 +243,7 @@ enum MirrorTools {
         case let .removed(_, loc, n): return "- \(TextLayout.nfc(n)) from \(loc)"
         case let .renamed(k, from, to): return "~ \(TextLayout.nfc(from)) → \(TextLayout.nfc(to)) at \(after.tokens.location(of: k)!)"
         case let .rekeyed(old, new): return "= \(name(new, after)) re-keyed \(old) → \(new) (safe save)"
+        case let .moved(k, loc): return "> \(name(k, after)) took over \(loc) (backup-style save)"
         case let .updated(k): return "* \(name(k, after)) updated"
         case .reset: return "! folder changed; layout reset"
         }

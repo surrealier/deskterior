@@ -1,17 +1,30 @@
 import Foundation
 
 /// "A file called `name` that appears soon belongs at `location`": registered by our own operations (drops,
-/// undo) so the reconciler puts the new file exactly where it was dropped (DESIGN §3.3).
+/// undo) so the reconciler puts the new file exactly where it was dropped (DESIGN §3.3). When the operation
+/// knows the file's identity (`key` for a same-volume move, `size` for a copy) only a matching file takes the
+/// hint; a name-only hint never places a file in the wastebasket.
 public struct PlacementHint: Sendable, Equatable {
     /// NFC file name.
     public var name: String
     public var location: Location
     public var expires: Date
+    public var key: TokenKey?
+    public var size: Int64?
 
-    public init(name: String, location: Location, expires: Date) {
+    public init(name: String, location: Location, expires: Date, key: TokenKey? = nil, size: Int64? = nil) {
         self.name = TextLayout.nfc(name)
         self.location = location
         self.expires = expires
+        self.key = key
+        self.size = size
+    }
+
+    /// Whether `entry` may take this hint.
+    public func accepts(_ entry: DesktopEntry) -> Bool {
+        if let key, key != entry.key { return false }
+        if let size, size != entry.meta.size { return false }
+        return location.container != .wastebasket || key != nil || size != nil
     }
 }
 
@@ -25,25 +38,44 @@ public enum Placement {
     /// Spacing of several tokens dropped on the floor at once.
     public static let floorSpacing = 18
 
+    /// True when `date` lies within the safe-save window before `now` (a clock that stepped back is not recent).
+    public static func isRecent(_ date: Date?, now: Date) -> Bool {
+        guard let date else { return false }
+        return (0...safeSaveWindow).contains(now.timeIntervalSince(date))
+    }
+
+    /// Name-only hints (`key`/`size` nil) for files our own operations create.
     public static func register(_ names: [String: Location], into hints: inout [PlacementHint], now: Date) {
-        for (name, location) in names.sorted(by: { $0.key < $1.key }) {
-            let hint = PlacementHint(name: name, location: location, expires: now.addingTimeInterval(hintLifetime))
+        register(
+            names.sorted(by: { $0.key < $1.key }).map {
+                PlacementHint(name: $0.key, location: $0.value, expires: now.addingTimeInterval(hintLifetime))
+            },
+            into: &hints
+        )
+    }
+
+    /// Adds `new` hints, replacing older hints for the same names.
+    public static func register(_ new: [PlacementHint], into hints: inout [PlacementHint]) {
+        for hint in new {
             hints.removeAll { $0.name == hint.name }
             hints.append(hint)
         }
     }
 
-    /// Removes and returns the unexpired hint for `name` (compared in NFC).
-    public static func takeHint(named name: String, from hints: inout [PlacementHint], now: Date) -> Location? {
-        let nfc = TextLayout.nfc(name)
-        guard let i = hints.lastIndex(where: { $0.name == nfc && $0.expires > now }) else { return nil }
+    /// Removes and returns the unexpired hint `entry` may take (names compared in NFC).
+    public static func takeHint(for entry: DesktopEntry, from hints: inout [PlacementHint], now: Date) -> Location? {
+        let nfc = entry.meta.displayName
+        guard let i = hints.lastIndex(where: { $0.name == nfc && $0.expires > now && $0.accepts(entry) }) else {
+            return nil
+        }
         return hints.remove(at: i).location
     }
 
-    /// Drops expired hints and tombstones; returns how many tombstones went.
+    /// Drops expired hints, tombstones and reconcile memory; returns how many tombstones went.
     @discardableResult
     public static func expire(_ state: inout DeskState, now: Date) -> Int {
         state.hints.removeAll { $0.expires <= now }
+        state.memory.expire(now: now)
         let before = state.tombstones.count
         state.tombstones.removeAll { $0.until <= now }
         return before - state.tombstones.count
@@ -87,9 +119,9 @@ public enum Placement {
             .map(\.key)
     }
 
-    /// Forgets positions of piles that hold no token.
+    /// Forgets positions of piles that hold no token (and that no carried token was picked up from).
     public static func pruneEmptyPiles(_ state: inout DeskState) {
-        let used = Set(state.tokens.piles)
+        let used = Set(state.tokens.piles).union(state.tokens.originPiles)
         state.piles = state.piles.filter { used.contains($0.key) }
     }
 }

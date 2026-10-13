@@ -27,11 +27,12 @@ public struct DesktopScanner: Sendable {
     public static let resourceKeys: [URLResourceKey] = [
         .fileIdentifierKey, .volumeUUIDStringKey, .isDirectoryKey, .isPackageKey, .localizedNameKey,
         .hasHiddenExtensionKey, .contentTypeKey, .addedToDirectoryDateKey, .contentModificationDateKey,
-        .fileSizeKey, .tagNamesKey, .isAliasFileKey, .ubiquitousItemDownloadingStatusKey,
+        .creationDateKey, .fileSizeKey, .tagNamesKey, .isAliasFileKey, .ubiquitousItemDownloadingStatusKey,
     ]
 
     /// Everything but the iCloud status. Asking for `.ubiquitousItemDownloadingStatusKey` in the same
-    /// `URL.resourceValues` call drops `tagNames` (macOS 26), so the status is read on its own.
+    /// `URL.resourceValues` call drops `tagNames` (macOS 26), so the status is read on its own, and only when the
+    /// folder is in iCloud (elsewhere the `SF_DATALESS` flag still catches file-provider placeholders).
     static let localKeys = Set(resourceKeys).subtracting([.ubiquitousItemDownloadingStatusKey])
 
     /// Extended attribute Finder sets on screenshots and screen recordings.
@@ -59,7 +60,9 @@ public struct DesktopScanner: Sendable {
         } catch {
             throw Self.failure(error, path: path)
         }
-        let rootVolume = (try? root.resourceValues(forKeys: [.volumeUUIDStringKey]))?.volumeUUIDString ?? ""
+        let rootValues = try? root.resourceValues(forKeys: [.volumeUUIDStringKey, .isUbiquitousItemKey])
+        let rootVolume = rootValues?.volumeUUIDString ?? ""
+        let inCloud = rootValues?.isUbiquitousItem ?? false
         var entries: [DesktopEntry] = []
         entries.reserveCapacity(urls.count)
         for url in urls {
@@ -67,7 +70,9 @@ public struct DesktopScanner: Sendable {
             guard let values = try? url.resourceValues(forKeys: Self.localKeys), let inode = values.fileIdentifier else {
                 continue
             }
-            let status = (try? url.resourceValues(forKeys: [.ubiquitousItemDownloadingStatusKey]))?.ubiquitousItemDownloadingStatus
+            let status = inCloud
+                ? (try? url.resourceValues(forKeys: [.ubiquitousItemDownloadingStatusKey]))?.ubiquitousItemDownloadingStatus
+                : nil
             entries.append(Self.entry(url: url, values: values, status: status, inode: inode, rootVolume: rootVolume))
         }
         entries.sort { $0.meta.name < $1.meta.name }
@@ -107,7 +112,7 @@ public struct DesktopScanner: Sendable {
         )
         let meta = TokenMeta(
             name: name, kind: kind, added: values.addedToDirectoryDate, modified: values.contentModificationDate,
-            size: values.fileSize.map(Int64.init), tags: values.tagNames ?? [], isPackage: isPackage,
+            created: values.creationDate, size: values.fileSize.map(Int64.init), tags: values.tagNames ?? [], isPackage: isPackage,
             isDataless: isDataless, isAlias: values.isAliasFile ?? false, hidesExtension: values.hasHiddenExtension ?? false
         )
         let volume = values.volumeUUIDString ?? (rootVolume.isEmpty ? "unknown" : rootVolume)

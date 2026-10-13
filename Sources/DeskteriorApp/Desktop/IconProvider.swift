@@ -7,7 +7,8 @@ import QuickLookThumbnailing
 /// Real icons for tokens (DESIGN §3.4): Quick Look thumbnails (`.thumbnail`, 64 px) for images, video and
 /// PDF; `NSWorkspace.icon(forFile:)` for everything else; then `IconPixelator` at 16 and 12 px, cached in
 /// `IconCache`. At most `maxInFlight` requests run at once, visible tokens first. Dataless iCloud items get
-/// `.kindOnly` without touching the file, so nothing is ever downloaded.
+/// `.kindOnly` without touching the file, so nothing is ever downloaded. A file that was renamed or replaced
+/// while its icon rendered comes back `.stale` (nothing is cached for it); request it again at its new URL.
 final class IconProvider {
     struct Request: Sendable, Hashable {
         var key: TokenKey
@@ -32,6 +33,8 @@ final class IconProvider {
         case pixels(icon: PixelBuffer, mini: PixelBuffer)
         /// Use the hand-drawn kind icon.
         case kindOnly
+        /// The file left `url` while rendering; nothing was cached.
+        case stale
     }
 
     static let maxInFlight = 4
@@ -40,7 +43,9 @@ final class IconProvider {
     /// Delivered on the main actor, once per request.
     var onIcon: (TokenKey, Result) -> Void
     private let cache: IconCache?
+    /// Waiting requests from `head` on (a queue without O(n) removals).
     private var pending: [Request] = []
+    private var head = 0
     private var queued = Set<TokenKey>()
     private var inFlight = 0
 
@@ -54,23 +59,36 @@ final class IconProvider {
         let fresh = requests.filter { queued.insert($0.key).inserted }
         let front = fresh.filter { visible.contains($0.key) }
         let back = fresh.filter { !visible.contains($0.key) }
-        pending = front + pending + back
+        pending = front + pending[head...] + back
+        head = 0
         pump()
     }
 
     /// Drops everything not yet started.
     func cancelPending() {
-        for r in pending { queued.remove(r.key) }
+        for r in pending[head...] { queued.remove(r.key) }
         pending.removeAll()
+        head = 0
     }
 
     // MARK: Private
 
+    /// Starts requests up to `maxInFlight`. Dataless items are answered in the loop (no recursion, however many).
     private func pump() {
-        while inFlight < Self.maxInFlight, !pending.isEmpty {
-            let r = pending.removeFirst()
+        while inFlight < Self.maxInFlight, head < pending.count {
+            let r = pending[head]
+            head += 1
+            if r.isDataless {
+                queued.remove(r.key)
+                onIcon(r.key, .kindOnly)
+                continue
+            }
             inFlight += 1
             start(r)
+        }
+        if head > 64, head * 2 > pending.count {
+            pending.removeFirst(head)
+            head = 0
         }
     }
 
@@ -82,10 +100,6 @@ final class IconProvider {
     }
 
     private func start(_ r: Request) {
-        if r.isDataless {
-            finish(r, .kindOnly)
-            return
-        }
         let cache = cache
         DispatchQueue.global(qos: .utility).async {
             if let cached = Self.cached(r, cache) {
@@ -111,7 +125,7 @@ final class IconProvider {
         )
         QLThumbnailGenerator.shared.generateBestRepresentation(for: request) { representation, _ in
             if let image = representation?.cgImage, let source = PixelBuffer(cgImage: image) {
-                Self.deliver(self, r, Self.pixelate(source, r, cache))
+                Self.deliver(self, r, Self.isStillAt(r) ? Self.pixelate(source, r, cache) : .stale)
             } else {
                 DispatchQueue.main.async {
                     MainActor.assumeIsolated { self.finishWithWorkspaceIcon(r) }
@@ -122,6 +136,11 @@ final class IconProvider {
 
     private func finishWithWorkspaceIcon(_ r: Request) {
         let cache = cache
+        // `icon(forFile:)` draws a generic icon for a missing path; never cache that under the token's key.
+        guard Self.isStillAt(r) else {
+            finish(r, .stale)
+            return
+        }
         let image = NSWorkspace.shared.icon(forFile: r.url.path)
         var rect = CGRect(x: 0, y: 0, width: Self.sourcePixels, height: Self.sourcePixels)
         guard let cg = image.cgImage(forProposedRect: &rect, context: nil, hints: nil),
@@ -131,8 +150,14 @@ final class IconProvider {
             return
         }
         DispatchQueue.global(qos: .utility).async {
-            Self.deliver(self, r, Self.pixelate(source, r, cache))
+            Self.deliver(self, r, Self.isStillAt(r) ? Self.pixelate(source, r, cache) : .stale)
         }
+    }
+
+    /// The request's file is still at its URL (same inode).
+    nonisolated private static func isStillAt(_ r: Request) -> Bool {
+        var st = stat()
+        return lstat(r.url.path, &st) == 0 && UInt64(st.st_ino) == r.key.inode
     }
 
     /// Images, video and PDF show their content; everything else its Finder icon.

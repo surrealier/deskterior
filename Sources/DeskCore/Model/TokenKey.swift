@@ -35,7 +35,8 @@ public enum FileKind: String, Codable, CaseIterable, Sendable {
 }
 
 /// Mutable facts about a token's file. `displayName` is always the NFC form of `name`; matching uses the raw
-/// `name` and the key.
+/// `name` and the key. Dates are kept to whole milliseconds (what `desk.json` stores), so a reloaded layout
+/// compares equal to a fresh scan.
 public struct TokenMeta: Codable, Sendable, Equatable {
     /// The file name as stored on disk (may be NFD).
     public var name: String {
@@ -46,6 +47,8 @@ public struct TokenMeta: Codable, Sendable, Equatable {
     public var kind: FileKind
     public var added: Date?
     public var modified: Date?
+    /// Creation date: survives renames, safe-saves and copies, so it corroborates a returning file.
+    public var created: Date?
     public var size: Int64?
     public var tags: [String]
     public var isPackage: Bool
@@ -56,15 +59,16 @@ public struct TokenMeta: Codable, Sendable, Equatable {
     public var hidesExtension: Bool
 
     public init(
-        name: String, kind: FileKind, added: Date? = nil, modified: Date? = nil, size: Int64? = nil,
-        tags: [String] = [], isPackage: Bool = false, isDataless: Bool = false, isAlias: Bool = false,
-        hidesExtension: Bool = false
+        name: String, kind: FileKind, added: Date? = nil, modified: Date? = nil, created: Date? = nil,
+        size: Int64? = nil, tags: [String] = [], isPackage: Bool = false, isDataless: Bool = false,
+        isAlias: Bool = false, hidesExtension: Bool = false
     ) {
         self.name = name
         self.displayName = TextLayout.nfc(name)
         self.kind = kind
-        self.added = added
-        self.modified = modified
+        self.added = added.map(ISODate.wholeMilliseconds)
+        self.modified = modified.map(ISODate.wholeMilliseconds)
+        self.created = created.map(ISODate.wholeMilliseconds)
         self.size = size
         self.tags = tags
         self.isPackage = isPackage
@@ -73,8 +77,16 @@ public struct TokenMeta: Codable, Sendable, Equatable {
         self.hidesExtension = hidesExtension
     }
 
+    /// Raw names compare by scalars, so an NFD → NFC respelling on disk counts as a change and is stored.
+    public static func == (a: TokenMeta, b: TokenMeta) -> Bool {
+        a.name.unicodeScalars.elementsEqual(b.name.unicodeScalars) && a.kind == b.kind && a.added == b.added
+            && a.modified == b.modified && a.created == b.created && a.size == b.size && a.tags == b.tags
+            && a.isPackage == b.isPackage && a.isDataless == b.isDataless && a.isAlias == b.isAlias
+            && a.hidesExtension == b.hidesExtension
+    }
+
     private enum CodingKeys: String, CodingKey {
-        case name, kind, added, modified, size, tags, isPackage, isDataless, isAlias, hidesExtension
+        case name, kind, added, modified, created, size, tags, isPackage, isDataless, isAlias, hidesExtension
     }
 
     /// Only `name` is required; everything else defaults (schema-1 documents list just name, kind and added).
@@ -85,6 +97,7 @@ public struct TokenMeta: Codable, Sendable, Equatable {
             kind: try c.decodeIfPresent(FileKind.self, forKey: .kind) ?? .unknown,
             added: try c.decodeIfPresent(Date.self, forKey: .added),
             modified: try c.decodeIfPresent(Date.self, forKey: .modified),
+            created: try c.decodeIfPresent(Date.self, forKey: .created),
             size: try c.decodeIfPresent(Int64.self, forKey: .size),
             tags: try c.decodeIfPresent([String].self, forKey: .tags) ?? [],
             isPackage: try c.decodeIfPresent(Bool.self, forKey: .isPackage) ?? false,
@@ -101,6 +114,7 @@ public struct TokenMeta: Codable, Sendable, Equatable {
         try c.encode(kind, forKey: .kind)
         try c.encodeIfPresent(added, forKey: .added)
         try c.encodeIfPresent(modified, forKey: .modified)
+        try c.encodeIfPresent(created, forKey: .created)
         try c.encodeIfPresent(size, forKey: .size)
         if !tags.isEmpty { try c.encode(tags, forKey: .tags) }
         if isPackage { try c.encode(true, forKey: .isPackage) }
@@ -130,12 +144,17 @@ public struct DesktopSnapshot: Sendable, Equatable {
     /// Entries sorted by raw name.
     public var entries: [DesktopEntry]
     public var scannedAt: Date
+    /// The scan follows the previous one under an uninterrupted watch, so every change it shows happened within
+    /// one watcher batch before `scannedAt`. False for a first scan (launch), a rescan on request, and the scan
+    /// after dropped events or a root change: then nothing is known about when files vanished.
+    public var continuous: Bool
 
-    public init(rootPath: String, rootVolume: String, entries: [DesktopEntry], scannedAt: Date) {
+    public init(rootPath: String, rootVolume: String, entries: [DesktopEntry], scannedAt: Date, continuous: Bool = false) {
         self.rootPath = rootPath
         self.rootVolume = rootVolume
         self.entries = entries
         self.scannedAt = scannedAt
+        self.continuous = continuous
     }
 }
 

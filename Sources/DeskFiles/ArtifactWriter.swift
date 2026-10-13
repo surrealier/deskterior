@@ -20,23 +20,29 @@ public struct ArtifactWriter: Sendable {
     /// The (standardized) output directory.
     public let directory: URL
     private let desktop: URL
+    private let mirrored: URL?
 
-    /// Throws `.insideDesktop` when `directory` resolves inside `desktop`; otherwise creates it (with parents).
-    public init(directory: URL, desktop: URL = DesktopLocator.defaultDesktopURL()) throws {
+    /// Throws `.insideDesktop` when `directory` resolves inside `desktop` or inside the `mirrored` folder (a
+    /// `--desktop-folder` override); otherwise creates it (with parents).
+    public init(directory: URL, desktop: URL = DesktopLocator.defaultDesktopURL(), mirrored: URL? = nil) throws {
         let dir = directory.standardizedFileURL
-        guard !DesktopLocator.isInsideDesktop(dir, desktop: desktop) else { throw Failure.insideDesktop(dir.path) }
+        guard !Self.isInside(dir, desktop, mirrored) else { throw Failure.insideDesktop(dir.path) }
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         self.directory = dir
         self.desktop = desktop
+        self.mirrored = mirrored
+    }
+
+    private static func isInside(_ dir: URL, _ desktop: URL, _ mirrored: URL?) -> Bool {
+        DesktopLocator.isInsideDesktop(dir, desktop: desktop)
+            || mirrored.map { DesktopLocator.isInsideDesktop(dir, desktop: $0) } == true
     }
 
     /// Atomically writes `data` to `<directory>/<name>` (replacing an older artifact) and returns its URL.
     @discardableResult
     public func write(_ data: Data, named name: String) throws -> URL {
         guard !name.isEmpty, name != ".", name != "..", !name.contains("/") else { throw Failure.invalidName(name) }
-        guard !DesktopLocator.isInsideDesktop(directory, desktop: desktop) else {
-            throw Failure.insideDesktop(directory.path)
-        }
+        guard !Self.isInside(directory, desktop, mirrored) else { throw Failure.insideDesktop(directory.path) }
         let url = directory.appendingPathComponent(name, isDirectory: false)
         try data.write(to: url, options: .atomic)
         return url

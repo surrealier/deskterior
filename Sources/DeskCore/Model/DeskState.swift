@@ -18,6 +18,8 @@ public struct TokenStore: Sendable, Equatable {
     public private(set) var records: [TokenKey: TokenRecord] = [:]
     private var cells: [ScreenCell: TokenKey] = [:]
     private var groups: [Location.Group: [TokenKey]] = [:]
+    /// Where each carried token was picked up (DESIGN §13: an interrupted carry commits to its origin).
+    private var origins: [TokenKey: Location] = [:]
 
     public init() {}
 
@@ -30,6 +32,15 @@ public struct TokenStore: Sendable, Equatable {
     public func contains(_ key: TokenKey) -> Bool { records[key] != nil }
     public func location(of key: TokenKey) -> Location? { records[key]?.location }
     public func meta(of key: TokenKey) -> TokenMeta? { records[key]?.meta }
+    /// Where a carried token was picked up (nil when it is not carried or was inserted carried).
+    public func origin(of key: TokenKey) -> Location? { origins[key] }
+    /// The token's place for persistence and tombstones: its origin while it is carried.
+    public func restingLocation(of key: TokenKey) -> Location? {
+        guard let loc = records[key]?.location else { return nil }
+        return loc == .carried ? origins[key] ?? .carried : loc
+    }
+    /// Piles that carried tokens were picked up from (kept so an interrupted carry can return there).
+    public var originPiles: Set<PileID> { Set(origins.values.compactMap(\.pile)) }
 
     public var occupiedCells: Set<ScreenCell> { Set(cells.keys) }
     public func occupant(of cell: ScreenCell) -> TokenKey? { cells[cell] }
@@ -77,6 +88,7 @@ public struct TokenStore: Sendable, Equatable {
     public mutating func remove(_ key: TokenKey) -> TokenRecord? {
         guard let record = records[key] else { return nil }
         detach(key, record.location)
+        origins[key] = nil
         return records.removeValue(forKey: key)
     }
 
@@ -91,6 +103,11 @@ public struct TokenStore: Sendable, Equatable {
             guard canAccept(location, grid: grid) else { return false }
         }
         detach(key, record.location)
+        if location == .carried {
+            if record.location != .carried { origins[key] = record.location }
+        } else {
+            origins[key] = nil
+        }
         records[key]!.location = location
         attach(key, location)
         return true
@@ -107,6 +124,7 @@ public struct TokenStore: Sendable, Equatable {
         records[new] = TokenRecord(meta: meta, location: record.location)
         if let c = record.location.cell { cells[c] = new }
         if let g = record.location.group, let i = groups[g]?.firstIndex(of: old) { groups[g]![i] = new }
+        if let origin = origins.removeValue(forKey: old) { origins[new] = origin }
         return true
     }
 
@@ -137,6 +155,7 @@ public struct TokenStore: Sendable, Equatable {
             if case let .container(id) = g, members.count > id.spec.hardCap { out.append("\(id) over its hard cap") }
         }
         if seenGroups.count != groups.count { out.append("group index out of sync") }
+        for key in origins.keys where records[key]?.location != .carried { out.append("origin kept for uncarried \(key)") }
         return out
     }
 
@@ -319,6 +338,15 @@ public struct MatState: Codable, Sendable, Equatable {
     }
 }
 
+extension MatState {
+    /// Every coordinate is a finite number (JSON cannot store NaN or infinity).
+    public var isFinite: Bool { origin.isFinite && size.isFinite && angle.isFinite }
+}
+
+extension SIMD2<Float> {
+    public var isFinite: Bool { x.isFinite && y.isFinite }
+}
+
 public struct DeskFlags: Codable, Sendable, Equatable {
     public var onboardingStep: Int = 0
     public var askedCoverDisplays: Bool = false
@@ -346,9 +374,14 @@ public struct DesktopRoot: Codable, Sendable, Equatable {
 }
 
 /// A removed token's last place, kept 7 days so a returning file goes back there (DESIGN §3.2).
+///
+/// A file that returns under its old key is the same file. One that returns under a new key matches by NFC name
+/// and kind only when that is safe: within `Placement.safeSaveWindow` of a known removal time (a safe-save), or
+/// when its size and creation date agree (a copy brought back). Name matches never restore into the wastebasket.
 public struct Tombstone: Codable, Sendable, Equatable {
     public static let lifetime: TimeInterval = 7 * 24 * 3600
-    /// The newest tombstones kept, so a churning desktop cannot grow `desk.json` without bound.
+    /// The tombstones kept, so a churning desktop cannot grow `desk.json` without bound. Screen places are
+    /// dropped before hidden ones, then the oldest.
     public static let maxCount = 2000
 
     public var key: TokenKey
@@ -359,18 +392,26 @@ public struct Tombstone: Codable, Sendable, Equatable {
     public var until: Date
     /// The pile's desk-plane position at removal, so an emptied pile can come back.
     public var pilePos: SIMD2<Float>?
+    /// When the file vanished, to within one watcher batch; nil when it was found missing by a launch or
+    /// recovery scan (unknown, so never "recent").
+    public var removedAt: Date?
+    public var size: Int64?
+    public var created: Date?
 
-    public init(key: TokenKey, name: String, kind: FileKind, loc: Location, until: Date, pilePos: SIMD2<Float>? = nil) {
+    public init(
+        key: TokenKey, name: String, kind: FileKind, loc: Location, until: Date, pilePos: SIMD2<Float>? = nil,
+        removedAt: Date? = nil, size: Int64? = nil, created: Date? = nil
+    ) {
         self.key = key
         self.name = name
         self.kind = kind
         self.loc = loc
         self.until = until
         self.pilePos = pilePos
+        self.removedAt = removedAt
+        self.size = size
+        self.created = created
     }
-
-    /// When the file disappeared.
-    public var removedAt: Date { until.addingTimeInterval(-Self.lifetime) }
 }
 
 // MARK: - DeskState
@@ -401,6 +442,8 @@ public struct DeskState: Sendable, Equatable {
     /// Placement hints registered by our own operations (name → location, 10 s TTL).
     public var hints: [PlacementHint] = []
     public var volumes: [VolumeEntry] = []
+    /// Short-lived identity memory of the reconciler (recent renames, backup swaps, re-key aliases).
+    public var memory = MirrorMemory()
 
     public init() {}
 
@@ -409,19 +452,44 @@ public struct DeskState: Sendable, Equatable {
     /// Monitor pages in use (HDMI 1…n): trailing empty pages are not counted; page 0 always is.
     public func pageCount(grid: ScreenGrid = .standard) -> Int { grid.pageCount(tokens.occupiedCells) }
 
-    /// The URL of a token's file, when the root is known.
+    /// The URL of a token's file while the mirror is current (connected), so a stale layout never resolves a
+    /// name to some other file. Names that are not a single path component are refused.
     public func url(of key: TokenKey) -> URL? {
-        guard let root, let meta = tokens.meta(of: key) else { return nil }
+        guard access == .connected, let root, let meta = tokens.meta(of: key), Self.isPlainName(meta.name) else {
+            return nil
+        }
         return URL(fileURLWithPath: root.path, isDirectory: true)
             .appendingPathComponent(meta.name, isDirectory: meta.kind == .folder)
     }
 
-    /// A pile id not in use (`P1`, `P2`, …).
+    /// A single, non-empty path component.
+    public static func isPlainName(_ name: String) -> Bool {
+        !name.isEmpty && name != "." && name != ".." && !name.contains("/") && !name.unicodeScalars.contains("\0")
+    }
+
+    /// The live key for `key`, following recent re-keys (a gesture that started before a safe-save).
+    public func currentKey(for key: TokenKey) -> TokenKey {
+        tokens.contains(key) ? key : memory.current(key)
+    }
+
+    /// A pile id never used by a live pile, a token or a tombstone (`P<n>` past the highest in use), so a
+    /// returning file cannot join an unrelated new pile.
     public func makePileID() -> PileID {
-        var n = 1
-        let used = Set(piles.keys).union(tokens.piles)
-        while used.contains(PileID("P\(n)")) { n += 1 }
-        return PileID("P\(n)")
+        var used = Set(piles.keys).union(tokens.piles).union(tokens.originPiles)
+        for t in tombstones { if let p = t.loc.pile { used.insert(p) } }
+        let highest = used.compactMap { $0.raw.hasPrefix("P") ? Int($0.raw.dropFirst()) : nil }.max() ?? 0
+        return PileID("P\(highest + 1)")
+    }
+
+    /// Takes `other`'s token layout (root, tokens, piles, tombstones, monitor page) and keeps this desk's element
+    /// states, so switching back to a folder mirrored before restores where its files were.
+    public mutating func adoptLayout(of other: DeskState, grid: ScreenGrid = .standard) {
+        root = other.root
+        tokens = other.tokens
+        piles = other.piles
+        tombstones = other.tombstones
+        memory = MirrorMemory()
+        monitor.page = min(max(0, other.monitor.page), pageCount(grid: grid) - 1)
     }
 
     /// Model invariant violations (empty when consistent).
@@ -429,7 +497,8 @@ public struct DeskState: Sendable, Equatable {
         var out = tokens.violations(grid: grid)
         let used = Set(tokens.piles)
         for p in used where piles[p] == nil { out.append("pile \(p) has no position") }
-        for p in piles.keys where !used.contains(p) { out.append("pile \(p) is empty") }
+        let origins = tokens.originPiles
+        for p in piles.keys where !used.contains(p) && !origins.contains(p) { out.append("pile \(p) is empty") }
         for t in tombstones where tokens.contains(t.key) { out.append("tombstone for live token \(t.key)") }
         if monitor.page < 0 || monitor.page >= pageCount(grid: grid) { out.append("monitor page \(monitor.page) out of range") }
         return out

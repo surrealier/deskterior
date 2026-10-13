@@ -175,6 +175,65 @@ struct DeskDocumentTests {
         #expect(!String(decoding: try doc.encoded(), as: UTF8.self).contains("carried"))
     }
 
+    @Test("A carry interrupted by a quit commits the token to its origin")
+    func carriedSavesOrigin() throws {
+        var s = F.mirrored(["a.txt", "b.txt", "c.txt"])
+        _ = reduce(&s, .move([F.key(1)], to: .container(.phone, order: 0)), ReduceEnv(now: F.t0))
+        _ = reduce(&s, .move([F.key(1)], to: .carried), ReduceEnv(now: F.t0))
+        _ = reduce(&s, .move([F.key(2)], to: .desk(pile: "P1", order: 0)), ReduceEnv(now: F.t0))
+        _ = reduce(&s, .pilesSettled(["P1": [120, 30]]), ReduceEnv(now: F.t0))
+        _ = reduce(&s, .move([F.key(2)], to: .carried), ReduceEnv(now: F.t0))
+        #expect(s.piles[PileID("P1")] == [120, 30], "the emptied pile waits for its carried token")
+        #expect(s.violations().isEmpty)
+        let restored = try DeskDocument.decode(DeskDocument(state: s, savedAt: F.t0).encoded()).makeState()
+        #expect(restored.tokens.location(of: F.key(1)) == .container(.phone, order: 0))
+        #expect(restored.tokens.location(of: F.key(2)) == .desk(pile: "P1", order: 0))
+        #expect(restored.piles[PileID("P1")] == [120, 30])
+        // Dropping it elsewhere forgets the origin, and the empty pile goes.
+        _ = reduce(&s, .move([F.key(2)], to: .floor(x: 30)), ReduceEnv(now: F.t0))
+        #expect(s.piles.isEmpty && s.violations().isEmpty)
+    }
+
+    @Test("Non-finite element state is written as defaults, never as an encoding failure")
+    func nonFiniteEncodes() throws {
+        var s = Self.richState()
+        s.drawers[.riserLeft] = DrawerState(p: .nan)
+        s.penCup.pos = [.infinity, 1]
+        s.chair.x = .nan
+        s.brush.pos = [1, .nan]
+        s.mat.angle = .nan
+        s.piles["P2"] = [.nan, 0]
+        s.tombstones[0].pilePos = [.nan, .nan]
+        let doc = try DeskDocument.decode(DeskDocument(state: s, savedAt: F.t0).encoded())
+        #expect(doc.drawers["riserLeft"] == DrawerState())
+        #expect(doc.penCup.pos == PenCupState().pos && doc.chair.x == ChairState().x && doc.brush == BrushState())
+        #expect(doc.mat.angle == MatState().angle)
+        #expect(doc.piles.first { $0.id == "P2" }?.pos == Placement.defaultPilePos)
+        #expect(doc.tombstones[0].pilePos == nil)
+    }
+
+    @Test("A token list of which nothing can be read is damage, not an empty desk")
+    func allTokensBad() {
+        #expect(throws: (any Error).self) {
+            try DeskDocument.decode(Self.json(#"{"schema":1,"tokens":[{"key":7},{"loc":{}}]}"#))
+        }
+        #expect((try? DeskDocument.decode(Self.json(#"{"schema":1,"tokens":[]}"#)))?.tokens.isEmpty == true)
+    }
+
+    @Test("Dates round-trip exactly to the millisecond, so a reloaded layout equals a fresh scan")
+    func exactMilliseconds() throws {
+        for i in 0..<2000 {
+            let d = ISODate.wholeMilliseconds(Date(timeIntervalSince1970: 1_790_000_000 + Double(i) * 0.0137))
+            #expect(ISODate.parse(ISODate.format(d)) == d, "\(ISODate.format(d))")
+        }
+        #expect(ISODate.parse("2026-09-21T14:13:20.5Z") == Date(timeIntervalSince1970: 1_790_000_000.5))
+        #expect(ISODate.parse("2026-09-21T14:13:20.Z") == nil)
+        let meta = TokenMeta(name: "a", kind: .text, modified: Date(timeIntervalSince1970: 1_790_000_000.123456), created: F.t0 + 0.0004)
+        let back = try DeskDocument.makeDecoder().decode(TokenMeta.self, from: DeskDocument.makeEncoder().encode(meta))
+        #expect(back == meta)
+        #expect(back.created == F.t0)
+    }
+
     @Test("Dates keep milliseconds and print whole seconds plainly")
     func dates() {
         let whole = Date(timeIntervalSince1970: 1_790_000_000)

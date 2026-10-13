@@ -70,9 +70,11 @@ struct ReconcilerTests {
         #expect(s.tokens.location(of: F.key(5)) == .container(.phone, order: 0))
     }
 
-    @Test("Safe-save across batches within 2 s is silent; later it is a tombstone restore")
+    @Test("Safe-save across batches within 2 s is silent; later only a corroborated copy is restored")
     func safeSaveAcrossBatches() {
-        var s = F.mirrored(["doc.txt", "x.txt"])
+        let born = F.t0 - 86400
+        var s = DeskState()
+        Reconciler.reconcile(&s, F.snapshot([F.entry("doc.txt", 1, created: born), F.entry("x.txt", 2)]), now: F.t0 - 3600)
         s.tokens.move(F.key(1), to: .container(.cabinetFile, order: 0))
         let removed = Reconciler.reconcile(&s, F.snapshot([F.entry("x.txt", 2)]), now: F.t0)
         #expect(removed == [.removed(F.key(1), .container(.cabinetFile, order: 0), name: "doc.txt")])
@@ -85,11 +87,18 @@ struct ReconcilerTests {
         #expect(back == [.added(F.key(9), .container(.cabinetFile, order: 0), .safeSave)])
         #expect(quick.tombstones.isEmpty)
 
+        // A minute later: a copy with the same size and creation date goes back; another file of that name is new.
         var later = s
         let restored = Reconciler.reconcile(
-            &later, F.snapshot([F.entry("doc.txt", 9), F.entry("x.txt", 2)]), now: F.t0.addingTimeInterval(60)
+            &later, F.snapshot([F.entry("doc.txt", 9, created: born), F.entry("x.txt", 2)]), now: F.t0.addingTimeInterval(60)
         )
         #expect(restored == [.added(F.key(9), .container(.cabinetFile, order: 0), .restored)])
+        var other = s
+        let fresh = Reconciler.reconcile(
+            &other, F.snapshot([F.entry("doc.txt", 9, created: F.t0 + 50), F.entry("x.txt", 2)]), now: F.t0.addingTimeInterval(60)
+        )
+        #expect(fresh == [.added(F.key(9), .screen(page: 0, col: 0, row: 0), .new)])
+        #expect(other.tombstones.map(\.key) == [F.key(1)])
     }
 
     @Test("A deleted file that comes back within 7 days returns to its hidden place")
@@ -123,12 +132,17 @@ struct ReconcilerTests {
     @Test("Big swaps stay fast: 1000 files leave while 1000 others (some returning) arrive")
     func largeBatchPerformance() {
         var s = DeskState()
-        let first = (0..<1000).map { F.entry("old \($0).txt", UInt64($0 + 1)) }
+        let born = F.t0 - 86400
+        let first = (0..<1000).map { F.entry("old \($0).txt", UInt64($0 + 1), created: born + Double($0)) }
         Reconciler.reconcile(&s, F.snapshot(first), now: F.t0)
         Reconciler.reconcile(&s, F.snapshot([]), now: F.t0 + 60)
         #expect(s.tombstones.count == 1000)
-        // Half return under new inodes (tombstone by name), half are new; a volume change re-keys everything.
-        let second = (0..<1000).map { F.entry($0 % 2 == 0 ? "old \($0).txt" : "new \($0).txt", UInt64(5000 + $0)) }
+        // Half return as copies under new inodes (tombstone by name, corroborated), half are new.
+        let second = (0..<1000).map { (i: Int) -> DesktopEntry in
+            let inode = UInt64(5000 + i)
+            if i % 2 == 1 { return F.entry("new \(i).txt", inode) }
+            return F.entry("old \(i).txt", inode, created: born + Double(i))
+        }
         let start = Date()
         let events = Reconciler.reconcile(&s, F.snapshot(second), now: F.t0 + 120)
         #expect(Date().timeIntervalSince(start) < 1)
@@ -137,16 +151,19 @@ struct ReconcilerTests {
         #expect(s.violations().isEmpty)
     }
 
-    @Test("Only the newest tombstones are kept")
+    @Test("The tombstone cap drops screen places first, then the oldest")
     func tombstoneCap() {
-        var s = F.mirrored(["a.txt"])
+        var s = F.mirrored(["a.txt", "b.txt"])
+        s.tokens.move(F.key(2), to: .container(.phone, order: 0))
         s.tombstones = (0..<Tombstone.maxCount).map {
             Tombstone(key: F.key(UInt64(1000 + $0)), name: "old\($0)", kind: .text, loc: .floor(x: 0), until: F.t0 + Double($0))
         }
         Reconciler.reconcile(&s, F.snapshot([]), now: F.t0)
         #expect(s.tombstones.count == Tombstone.maxCount)
-        #expect(s.tombstones.contains { $0.key == F.key(1) })
+        #expect(!s.tombstones.contains { $0.key == F.key(1) })
+        #expect(s.tombstones.contains { $0.key == F.key(2) })
         #expect(!s.tombstones.contains { $0.key == F.key(1000) })
+        #expect(s.tombstones.contains { $0.key == F.key(1001) })
     }
 
     @Test("A pile that emptied comes back at its old desk position")
@@ -276,12 +293,13 @@ enum ModelFixture {
 
     static func key(_ inode: UInt64) -> TokenKey { TokenKey(volume: volume, inode: inode) }
 
-    static func entry(_ name: String, _ inode: UInt64, kind: FileKind = .text) -> DesktopEntry {
-        DesktopEntry(key: key(inode), meta: TokenMeta(name: name, kind: kind, added: t0, modified: t0, size: 1))
+    static func entry(_ name: String, _ inode: UInt64, kind: FileKind = .text, created: Date? = nil, size: Int64 = 1) -> DesktopEntry {
+        DesktopEntry(key: key(inode), meta: TokenMeta(name: name, kind: kind, added: t0, modified: t0, created: created, size: size))
     }
 
-    static func snapshot(_ entries: [DesktopEntry], at date: Date = t0) -> DesktopSnapshot {
-        DesktopSnapshot(rootPath: rootPath, rootVolume: volume, entries: entries, scannedAt: date)
+    /// A scan by a running watcher (`continuous`) unless told otherwise (a launch or recovery scan).
+    static func snapshot(_ entries: [DesktopEntry], at date: Date = t0, continuous: Bool = true) -> DesktopSnapshot {
+        DesktopSnapshot(rootPath: rootPath, rootVolume: volume, entries: entries, scannedAt: date, continuous: continuous)
     }
 
     /// A state that has mirrored `names` (inodes 1…n) onto the screen.

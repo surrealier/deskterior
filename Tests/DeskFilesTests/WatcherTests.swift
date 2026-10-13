@@ -175,6 +175,40 @@ struct WatcherTests {
         #expect(await waitUntil { log.latestNames() == ["a.txt", "b.txt"] })
     }
 
+    @Test("Snapshots say whether they follow the previous one: the first and requested rescans do not")
+    func continuity() async throws {
+        let (d, w, log) = try await started()
+        defer { w.stop() }
+        #expect(log.latest?.continuous == false)
+        try d.write("a.txt")
+        #expect(await waitUntil { log.latestNames() == ["a.txt"] })
+        #expect(log.latest?.continuous == true)
+        var seen = log.count
+        w.rescanNow()
+        #expect(await waitUntil { log.count > seen })
+        #expect(log.latest?.continuous == false)
+        seen = log.count
+        w.rescanNow(preservingContinuity: true)
+        #expect(await waitUntil { log.count > seen })
+        #expect(log.latest?.continuous == true)
+    }
+
+    @Test("stop() returns at once during a long scan, and nothing is delivered after it")
+    func stopDoesNotWaitForAScan() async throws {
+        let d = try TempDesk()
+        for i in 0..<3000 { try d.write(String(format: "f%05d.txt", i)) }
+        let log = EventLog()
+        let w = DesktopWatcher(scanner: DesktopScanner(root: d.root)) { log.record($0) }
+        w.start()
+        try await Task.sleep(for: .milliseconds(20))
+        let t = Date()
+        w.stop()
+        #expect(Date().timeIntervalSince(t) < 0.1)
+        let stopped = log.count
+        try await Task.sleep(for: .milliseconds(1200))
+        #expect(log.count == stopped)
+    }
+
     @Test("rescanNow delivers a snapshot immediately; stop ends delivery")
     func rescanAndStop() async throws {
         let (d, w, log) = try await started()

@@ -69,12 +69,60 @@ struct SafetyGuardTests {
         #expect(try SafetyGuard.mirrorFolder(override(fixture.path), mode: .headless) == fixture.standardizedFileURL)
     }
 
-    @Test("Desk mode mirrors whatever was resolved")
+    @Test("Desk mode mirrors an ordinary folder")
     func deskMode() throws {
         let d = try TempDesk()
         #expect(refusal(override(d.root.path), .desk) == nil)
         #expect(SafetyGuard.Mode.desk.requiresSandboxFolder == false)
         #expect(Self.devModes.allSatisfy { $0.requiresSandboxFolder })
+    }
+
+    @Test("No mode mirrors a folder holding the desktop or home, a volume, or the volumes folder (fake home)")
+    func broadFoldersRefused() throws {
+        let d = try TempDesk()
+        let home = try d.mkdir("home")
+        let desk = try d.mkdir("home/Desktop")
+        let docs = try d.mkdir("home/Documents")
+        let inDesk = try d.mkdir("home/Desktop/Sub")
+        func reason(_ url: URL, _ mode: SafetyGuard.Mode, desktop: URL? = nil) -> SafetyGuard.Refusal.Reason? {
+            do throws(SafetyGuard.Refusal) {
+                _ = try SafetyGuard.mirrorFolder(
+                    DesktopLocator.resolve(override: url.path), mode: mode, realDesktop: desktop ?? desk, home: home
+                )
+                return nil
+            } catch {
+                #expect(error.exitCode == 64)
+                return error.reason
+            }
+        }
+        for mode in [SafetyGuard.Mode.desk] + Self.devModes {
+            #expect(reason(home, mode) == .enclosesRealDesktop)
+            #expect(reason(d.root, mode) == .enclosesRealDesktop)
+            #expect(reason(URL(fileURLWithPath: "/"), mode) == .enclosesRealDesktop)
+            #expect(reason(URL(fileURLWithPath: "/Volumes"), mode) == .volumeRoot)
+            #expect(reason(URL(fileURLWithPath: "/System/Volumes/Data"), mode) == .volumeRoot)
+            // With the desktop somewhere else, the home folder is still refused for what it holds.
+            #expect(reason(home, mode, desktop: try d.mkdir("elsewhere/Desktop")) == .enclosesHome)
+            #expect(reason(docs, mode) == nil)
+        }
+        #expect(reason(desk, .desk) == nil)
+        #expect(reason(inDesk, .desk) == nil)
+        #expect(reason(desk, .demo) == .realDesktop)
+        #expect(reason(inDesk, .demo) == .insideRealDesktop)
+    }
+
+    @Test("Our own folders stay out of the real desktop and the mirrored folder")
+    func ownFolders() throws {
+        let d = try TempDesk()
+        let fakeDesk = try d.mkdir("FakeDesk")
+        let mirror = try d.mkdir("Mirror")
+        #expect(throws: Never.self) { try SafetyGuard.checkOwnFolder(d.url("state"), desktop: fakeDesk, mirrored: mirror) }
+        #expect(throws: SafetyGuard.Refusal(reason: .insideMirroredFolder, path: mirror.path)) {
+            try SafetyGuard.checkOwnFolder(mirror, desktop: fakeDesk, mirrored: mirror)
+        }
+        #expect(throws: SafetyGuard.Refusal.self) {
+            try SafetyGuard.checkOwnWrite(mirror.appendingPathComponent("desk.json"), root: mirror, desktop: fakeDesk, mirrored: mirror)
+        }
     }
 
     @Test("Resolution: flag, then environment, then the real desktop")

@@ -20,7 +20,7 @@ public enum SafetyGuard {
     public struct Refusal: Error, Equatable, CustomStringConvertible {
         public enum Reason: String, Sendable {
             case noFolderGiven, missingFolder, notADirectory, realDesktop, insideRealDesktop, enclosesRealDesktop
-            case outsideOwnRoot
+            case enclosesHome, volumeRoot, insideMirroredFolder, outsideOwnRoot
         }
 
         public let reason: Reason
@@ -35,26 +35,37 @@ public enum SafetyGuard {
             case .realDesktop: "refusing to use the real desktop folder in this mode: \(path)"
             case .insideRealDesktop: "refusing a folder inside the real desktop in this mode: \(path)"
             case .enclosesRealDesktop: "refusing a folder that contains the real desktop: \(path)"
+            case .enclosesHome: "refusing the home folder or a folder that contains it: \(path)"
+            case .volumeRoot: "refusing a whole volume or the volumes folder: \(path)"
+            case .insideMirroredFolder: "refusing to keep our own files inside the mirrored folder: \(path)"
             case .outsideOwnRoot: "refusing to write outside our own folder: \(path)"
             }
         }
     }
 
-    /// The folder to mirror in `mode`. Desk mode takes the resolution as is (it must exist). Every other mode
-    /// requires an override that exists, is a directory, and is neither the real desktop, inside it, nor an
-    /// ancestor of it.
+    /// The folder to mirror in `mode`; it must exist and be a directory. No mode accepts a folder that contains
+    /// the real desktop or the home folder, a volume root or the volumes folder: its children (Documents,
+    /// Library, whole disks) would become tokens. Every mode but desk also requires an override that is neither
+    /// the real desktop nor inside it.
     public static func mirrorFolder(
-        _ resolution: DesktopLocator.Resolution, mode: Mode, realDesktop: URL = DesktopLocator.defaultDesktopURL()
+        _ resolution: DesktopLocator.Resolution, mode: Mode, realDesktop: URL = DesktopLocator.defaultDesktopURL(),
+        home: URL = FileManager.default.homeDirectoryForCurrentUser
     ) throws(Refusal) -> URL {
         let url = resolution.url
-        if mode.requiresSandboxFolder {
-            guard resolution.isOverride else { throw Refusal(reason: .noFolderGiven, path: url.path) }
-            switch DesktopLocator.relation(of: url, to: realDesktop) {
-            case .same: throw Refusal(reason: .realDesktop, path: url.path)
-            case .inside: throw Refusal(reason: .insideRealDesktop, path: url.path)
-            case .encloses: throw Refusal(reason: .enclosesRealDesktop, path: url.path)
-            case .unrelated: break
+        if mode.requiresSandboxFolder, !resolution.isOverride { throw Refusal(reason: .noFolderGiven, path: url.path) }
+        let relation = DesktopLocator.relation(of: url, to: realDesktop)
+        switch relation {
+        case .same, .inside:
+            // The desktop itself or a folder in it (desk mode): neither can hold the home folder or a volume.
+            if mode.requiresSandboxFolder {
+                throw Refusal(reason: relation == .same ? .realDesktop : .insideRealDesktop, path: url.path)
             }
+        case .encloses:
+            throw Refusal(reason: .enclosesRealDesktop, path: url.path)
+        case .unrelated:
+            let toHome = DesktopLocator.relation(of: url, to: home)
+            if toHome == .same || toHome == .encloses { throw Refusal(reason: .enclosesHome, path: url.path) }
+            if isVolumeRoot(url) { throw Refusal(reason: .volumeRoot, path: url.path) }
         }
         var isDir: ObjCBool = false
         guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDir) else {
@@ -64,14 +75,30 @@ public enum SafetyGuard {
         return url
     }
 
-    /// For our own writes (state, cache): `url` must resolve inside `root` and outside the desktop folder.
-    public static func checkOwnWrite(_ url: URL, root: URL, desktop: URL) throws(Refusal) {
+    /// A mount point (`/`, `/Volumes/X`) or a folder of mount points.
+    static func isVolumeRoot(_ url: URL) -> Bool {
+        let path = DesktopLocator.canonicalPath(url)
+        if ["/volumes", "/system/volumes"].contains(path.lowercased()) { return true }
+        return (try? URL(fileURLWithPath: path).resourceValues(forKeys: [.isVolumeKey]))?.isVolume ?? false
+    }
+
+    /// For our own folders (state, cache, artifacts): `dir` is outside the real desktop and the mirrored folder.
+    public static func checkOwnFolder(_ dir: URL, desktop: URL, mirrored: URL?) throws(Refusal) {
+        if DesktopLocator.isInsideDesktop(dir, desktop: desktop) {
+            throw Refusal(reason: .insideRealDesktop, path: dir.path)
+        }
+        if let mirrored, DesktopLocator.isInsideDesktop(dir, desktop: mirrored) {
+            throw Refusal(reason: .insideMirroredFolder, path: dir.path)
+        }
+    }
+
+    /// For our own writes (state, cache): `url` must resolve inside `root` and outside the desktop folder and the
+    /// mirrored folder.
+    public static func checkOwnWrite(_ url: URL, root: URL, desktop: URL, mirrored: URL? = nil) throws(Refusal) {
         guard DesktopLocator.isInsideDesktop(url, desktop: root) else {
             throw Refusal(reason: .outsideOwnRoot, path: url.path)
         }
-        if DesktopLocator.isInsideDesktop(url, desktop: desktop) {
-            throw Refusal(reason: .insideRealDesktop, path: url.path)
-        }
+        try checkOwnFolder(url, desktop: desktop, mirrored: mirrored)
     }
 
     /// Root confinement (§3.7 item 4): `url` is a direct child of the realpath'd `root`.

@@ -6,10 +6,12 @@ import Foundation
 /// changes (DESIGN §3.1 item 4).
 ///
 /// Stream flags: `FileEvents | UseCFTypes | UseExtendedData | WatchRoot`, latency 0.25 s, on a private
-/// dispatch queue. Every relevant batch (re)arms a 250 ms debounce, capped at `maxDelay` so a long burst still
-/// produces snapshots; then the folder is rescanned. `RootChanged` restarts the stream and rescans at once.
-/// Changes deeper than the top level are ignored. The handler runs on the watcher's queue; hop to the main
-/// actor yourself. Call `stop()` when done (a running stream keeps the watcher alive).
+/// dispatch queue. Every relevant batch (re)arms a 250 ms debounce, capped at `maxDelay` (stretched to twice
+/// the last scan's duration on big folders) so a long burst still produces snapshots; then the folder is
+/// rescanned. `RootChanged` restarts the stream and rescans at once. Changes deeper than the top level are
+/// ignored. Snapshots are marked `continuous` when they follow the previous one with nothing missed in between.
+/// A stream that cannot start is reported as a failure and retried. The handler runs on the watcher's queue;
+/// hop to the main actor yourself. Call `stop()` when done (a running stream keeps the watcher alive).
 public final class DesktopWatcher: @unchecked Sendable {
     public enum Event: Sendable {
         case snapshot(DesktopSnapshot)
@@ -21,7 +23,13 @@ public final class DesktopWatcher: @unchecked Sendable {
     public let debounce: TimeInterval
     public let maxDelay: TimeInterval
 
+    /// Seconds between attempts to start a stream that failed.
+    public static let retryDelay: TimeInterval = 2
+
     private let handler: @Sendable (Event) -> Void
+    /// Closed by `stop()`: nothing is delivered after it returns, without waiting for a scan in flight.
+    private let gate = NSRecursiveLock()
+    private var open = false
     private let queue = DispatchQueue(label: "deskterior.desktop-watcher", qos: .utility)
     private let queueKey = DispatchSpecificKey<Bool>()
     private let watchedPath: String
@@ -32,6 +40,10 @@ public final class DesktopWatcher: @unchecked Sendable {
     private var pending: DispatchWorkItem?
     private var firstPending: DispatchTime?
     private var running = false
+    /// The next snapshot cannot vouch for when its changes happened (first scan, dropped events, a failure).
+    private var broken = true
+    private var lastScanDuration: TimeInterval = 0
+    private var retry: DispatchWorkItem?
 
     /// Extended-data dictionary keys (`kFSEventStreamEventExtendedDataPathKey`, `…ExtendedFileIDKey`).
     static let pathKey = "path"
@@ -57,26 +69,32 @@ public final class DesktopWatcher: @unchecked Sendable {
 
     /// Starts watching; with `initialScan`, delivers a snapshot right away.
     public func start(initialScan: Bool = true) {
+        gate.withLock { open = true }
         queue.async { [self] in
             guard !running else { return }
             running = true
+            broken = true
             createStream()
             if initialScan { runScan() }
         }
     }
 
-    /// Stops watching. Safe from any thread, including the handler.
+    /// Stops watching. Safe from any thread, including the handler; returns without waiting for a scan in flight,
+    /// and no event is delivered after it returns.
     public func stop() {
-        onQueue {
+        gate.withLock { open = false }
+        queue.async { [self] in
             running = false
             teardown()
         }
     }
 
-    /// Rescans now (wake, session active, user request), cancelling a pending debounce.
-    public func rescanNow() {
+    /// Rescans now (wake, session active, user request), cancelling a pending debounce. The snapshot is not
+    /// `continuous` unless `preservingContinuity` (a short confirmation rescan by the same session).
+    public func rescanNow(preservingContinuity: Bool = false) {
         queue.async { [self] in
             guard running else { return }
+            if !preservingContinuity { broken = true }
             runScan()
         }
     }
@@ -105,17 +123,37 @@ public final class DesktopWatcher: @unchecked Sendable {
         guard let s = FSEventStreamCreate(
             kCFAllocatorDefault, Self.callback, &context, [watchedPath] as CFArray,
             FSEventStreamEventId(kFSEventStreamEventIdSinceNow), latency, flags
-        ) else { return }
+        ) else {
+            streamFailed()
+            return
+        }
         FSEventStreamSetDispatchQueue(s, queue)
         guard FSEventStreamStart(s) else {
             FSEventStreamInvalidate(s)
             FSEventStreamRelease(s)
+            streamFailed()
             return
         }
         stream = s
     }
 
+    /// Reports a stream that would not start and tries again; changes are unseen until then.
+    private func streamFailed() {
+        broken = true
+        deliver(.failed(.unreadable(watchedPath, "could not watch the folder for changes")))
+        retry?.cancel()
+        let item = DispatchWorkItem { [weak self] in
+            guard let self, running, stream == nil else { return }
+            createStream()
+            if stream != nil { runScan() }
+        }
+        retry = item
+        queue.asyncAfter(deadline: .now() + Self.retryDelay, execute: item)
+    }
+
     private func teardown() {
+        retry?.cancel()
+        retry = nil
         pending?.cancel()
         pending = nil
         firstPending = nil
@@ -131,10 +169,15 @@ public final class DesktopWatcher: @unchecked Sendable {
         let rootChanged = UInt32(kFSEventStreamEventFlagRootChanged)
         if events.contains(where: { $0.flags & rootChanged != 0 }) {
             teardown()
+            broken = true
             createStream()
             runScan()
             return
         }
+        let lost = UInt32(
+            kFSEventStreamEventFlagMustScanSubDirs | kFSEventStreamEventFlagUserDropped | kFSEventStreamEventFlagKernelDropped
+        )
+        if events.contains(where: { $0.flags & lost != 0 }) { broken = true }
         if events.contains(where: isRelevant) { scheduleScan() }
     }
 
@@ -163,17 +206,31 @@ public final class DesktopWatcher: @unchecked Sendable {
         pending?.cancel()
         let item = DispatchWorkItem { [weak self] in self?.runScan() }
         pending = item
-        queue.asyncAfter(deadline: min(now + debounce, first + maxDelay), execute: item)
+        let cap = max(maxDelay, 2 * lastScanDuration)
+        queue.asyncAfter(deadline: min(now + debounce, first + cap), execute: item)
     }
 
     private func runScan() {
         pending?.cancel()
         pending = nil
         firstPending = nil
+        let started = DispatchTime.now()
+        let continuous = !broken
         do throws(DesktopScanner.Failure) {
-            handler(.snapshot(try scanner.scan()))
+            var snapshot = try scanner.scan()
+            lastScanDuration = Double(DispatchTime.now().uptimeNanoseconds - started.uptimeNanoseconds) / 1e9
+            snapshot.continuous = continuous && stream != nil
+            broken = stream == nil
+            deliver(.snapshot(snapshot))
         } catch {
-            handler(.failed(error))
+            broken = true
+            deliver(.failed(error))
+        }
+    }
+
+    private func deliver(_ event: Event) {
+        gate.withLock {
+            if open { handler(event) }
         }
     }
 

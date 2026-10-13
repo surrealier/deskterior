@@ -14,7 +14,9 @@ public struct ReduceEnv: Sendable {
 }
 
 /// `reduce(&state, action, env) -> [Effect]`: the one place the model changes. Pure: no I/O, no clock, no
-/// randomness except `env.seed`. Only request actions emit effects that touch files.
+/// randomness except `env.seed`. Only request actions emit effects that touch files. Keys in actions follow
+/// recent re-keys (a gesture that began before a safe-save), and non-finite numbers from the scene are refused
+/// so the layout always stays encodable.
 public func reduce(_ s: inout DeskState, _ a: DeskAction, _ env: ReduceEnv) -> [Effect] {
     Reducer.reduce(&s, a, env)
 }
@@ -44,13 +46,15 @@ public enum Reducer {
             return [.wakeLoop]
 
         case let .move(keys, to):
-            return move(&s, keys, to: to, grid: env.grid)
+            return move(&s, keys.map(s.currentKey), to: to, grid: env.grid)
 
         case let .settle(report):
             // TODO(M7): landing squash/puff effects per move.
             var changed = false
-            for m in report.moves where s.tokens.contains(m.key) {
-                changed = !move(&s, [m.key], to: m.to, grid: env.grid).isEmpty || changed
+            for m in report.moves {
+                let key = s.currentKey(for: m.key)
+                guard s.tokens.contains(key) else { continue }
+                changed = !move(&s, [key], to: m.to, grid: env.grid).isEmpty || changed
             }
             changed = setPiles(&s, report.piles) || changed
             return changed ? [.persist, .wakeLoop] : []
@@ -90,8 +94,10 @@ public enum Reducer {
             return [.persist, .wakeLoop]
 
         case let .drawerSettled(id, p):
-            guard id.isDrawer, s.drawers[id]?.p != p else { return [] }
-            s.drawers[id] = DrawerState(p: p)
+            guard id.isDrawer, p.isFinite else { return [] }
+            let opening = min(max(p, 0), id.spec.travel ?? p)
+            guard s.drawers[id]?.p != opening else { return [] }
+            s.drawers[id] = DrawerState(p: opening)
             return [.persist, .wakeLoop]
 
         case .phoneFlip:
@@ -99,7 +105,7 @@ public enum Reducer {
             return [.persist, .wakeLoop]
 
         case let .cupState(cup):
-            guard cup != s.penCup else { return [] }
+            guard cup.pos.isFinite, cup != s.penCup else { return [] }
             s.penCup = cup
             return [.persist, .wakeLoop]
 
@@ -109,7 +115,7 @@ public enum Reducer {
             return [.persist, .wakeLoop]
 
         case let .matSettled(mat):
-            guard mat != s.mat else { return [] }
+            guard mat.isFinite, mat != s.mat else { return [] }
             s.mat = mat
             return [.persist, .wakeLoop]
 
@@ -118,7 +124,7 @@ public enum Reducer {
 
         case let .chair(x, facing):
             let chair = ChairState(x: x, facing: facing)
-            guard chair != s.chair else { return [] }
+            guard x.isFinite, chair != s.chair else { return [] }
             s.chair = chair
             return [.persist, .wakeLoop]
 
@@ -144,7 +150,7 @@ public enum Reducer {
             return effects + [.persist, .wakeLoop]
 
         case let .showOnDesk(key):
-            return showOnDesk(&s, key)
+            return showOnDesk(&s, s.currentKey(for: key))
 
         case let .registerHints(names):
             Placement.register(names, into: &s.hints, now: env.now)
@@ -160,19 +166,19 @@ public enum Reducer {
             return [.connectDesktop, .wakeLoop]
 
         case let .requestOpen(keys):
-            let urls = keys.compactMap { s.url(of: $0) }
+            let urls = keys.compactMap { s.url(of: s.currentKey(for: $0)) }
             return urls.isEmpty ? [] : [.open(urls)]
 
         case let .requestQuickLook(keys):
-            let urls = keys.compactMap { s.url(of: $0) }
+            let urls = keys.compactMap { s.url(of: s.currentKey(for: $0)) }
             return urls.isEmpty ? [] : [.quickLook(urls)]
 
         case let .requestReveal(keys):
-            let urls = keys.compactMap { s.url(of: $0) }
+            let urls = keys.compactMap { s.url(of: s.currentKey(for: $0)) }
             return urls.isEmpty ? [] : [.reveal(urls)]
 
         case let .requestCopy(keys):
-            let urls = keys.compactMap { s.url(of: $0) }
+            let urls = keys.compactMap { s.url(of: s.currentKey(for: $0)) }
             return urls.isEmpty ? [] : [.copy(urls)]
 
         case .requestTrash, .requestEmptyWastebasket, .requestEject, .importDropped:
@@ -197,6 +203,9 @@ public enum Reducer {
         let events = Reconciler.reconcile(&s, snapshot, now: now, grid: grid)
         s.access = .connected
         guard !events.isEmpty || wasAccess != .connected else { return [] }
+        // Metadata-only changes (a growing download, an iCloud status flip) are saved with the next real change
+        // or on quit, not on their own.
+        let layoutChanged = wasAccess != .connected || events.contains { if case .updated = $0 { false } else { true } }
 
         var effects: [Effect] = []
         var printIn: [TokenKey] = []
@@ -225,7 +234,7 @@ public enum Reducer {
             s.monitor.pendingNew += arrivedWhileOff
             effects.append(.play(.ledAmber, .monitor))
         }
-        effects += [.persist, .wakeLoop]
+        effects += layoutChanged ? [.persist, .wakeLoop] : [.wakeLoop]
         return effects
     }
 
@@ -262,8 +271,10 @@ public enum Reducer {
         switch target {
         case let .screen(page, col, row):
             let aim = ScreenCell(page: page, col: col, row: row)
+            var occupied = s.tokens.occupiedCells
             for k in movers {
-                let c = grid.nearestFree(to: aim, s.tokens.occupiedCells)
+                let c = grid.nearestFree(to: aim, occupied)
+                occupied.insert(c)
                 s.tokens.move(k, to: c.location, grid: grid)
             }
         case let .container(id, order):
@@ -297,7 +308,7 @@ public enum Reducer {
 
     private static func setPiles(_ s: inout DeskState, _ positions: [PileID: SIMD2<Float>]) -> Bool {
         var changed = false
-        for (pile, pos) in positions where !s.tokens.members(of: pile).isEmpty && s.piles[pile] != pos {
+        for (pile, pos) in positions where pos.isFinite && !s.tokens.members(of: pile).isEmpty && s.piles[pile] != pos {
             s.piles[pile] = pos
             changed = true
         }

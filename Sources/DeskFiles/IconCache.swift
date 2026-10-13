@@ -7,16 +7,16 @@ import Foundation
 public struct IconCache: Sendable {
     public let directory: URL
     private let desktop: URL
+    private let mirrored: URL?
 
-    /// Refuses a directory inside the desktop folder; creates it otherwise.
-    public init(directory: URL, desktop: URL = DesktopLocator.defaultDesktopURL()) throws {
+    /// Refuses a directory inside the desktop folder or the mirrored folder; creates it otherwise.
+    public init(directory: URL, desktop: URL = DesktopLocator.defaultDesktopURL(), mirrored: URL? = nil) throws {
         let dir = directory.standardizedFileURL
-        if DesktopLocator.isInsideDesktop(dir, desktop: desktop) {
-            throw SafetyGuard.Refusal(reason: .insideRealDesktop, path: dir.path)
-        }
+        try SafetyGuard.checkOwnFolder(dir, desktop: desktop, mirrored: mirrored)
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         self.directory = dir
         self.desktop = desktop
+        self.mirrored = mirrored
     }
 
     /// `~/Library/Caches/<bundleID>/icons`.
@@ -47,7 +47,7 @@ public struct IconCache: Sendable {
 
     public func store(_ png: Data, for key: String) throws {
         guard let url = url(for: key) else { throw SafetyGuard.Refusal(reason: .outsideOwnRoot, path: key) }
-        try SafetyGuard.checkOwnWrite(url, root: directory, desktop: desktop)
+        try SafetyGuard.checkOwnWrite(url, root: directory, desktop: desktop, mirrored: mirrored)
         try png.write(to: url, options: .atomic)
     }
 

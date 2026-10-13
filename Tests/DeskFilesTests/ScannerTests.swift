@@ -11,7 +11,7 @@ struct ScannerTests {
         let required: [URLResourceKey] = [
             .fileIdentifierKey, .volumeUUIDStringKey, .isDirectoryKey, .isPackageKey, .localizedNameKey,
             .hasHiddenExtensionKey, .contentTypeKey, .addedToDirectoryDateKey, .contentModificationDateKey, .fileSizeKey,
-            .tagNamesKey, .isAliasFileKey, .ubiquitousItemDownloadingStatusKey,
+            .tagNamesKey, .isAliasFileKey, .ubiquitousItemDownloadingStatusKey, .creationDateKey,
         ]
         #expect(keys == Set(required))
     }
@@ -50,7 +50,11 @@ struct ScannerTests {
         #expect(notes.key == TokenKey(volume: snap.rootVolume, inode: d.inode("notes.txt")))
         #expect(notes.meta.kind == .text && notes.meta.size == 5)
         #expect(notes.meta.tags == ["Red", "Work"])
-        #expect(notes.meta.added != nil && notes.meta.modified != nil)
+        #expect(notes.meta.added != nil && notes.meta.modified != nil && notes.meta.created != nil)
+        #expect(!snap.continuous, "a plain scan cannot vouch for when its changes happened")
+        // Dates are whole milliseconds, exactly what desk.json stores.
+        let created = try #require(notes.meta.created)
+        #expect((created.timeIntervalSince1970 * 1000).rounded() / 1000 == created.timeIntervalSince1970)
         #expect(!notes.meta.isDataless && !notes.meta.isPackage && !notes.meta.isAlias)
 
         let pdf = try #require(byName[nfd])

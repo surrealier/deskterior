@@ -12,14 +12,41 @@ struct PlacementTests {
         let nfd = "사진.png".decomposedStringWithCanonicalMapping
         Placement.register([nfd: .floor(x: 7), "b.png": .floor(x: 8)], into: &hints, now: F.t0)
         #expect(hints.count == 2)
-        #expect(Placement.takeHint(named: "사진.png", from: &hints, now: F.t0 + 9.9) == .floor(x: 7))
-        #expect(Placement.takeHint(named: "사진.png", from: &hints, now: F.t0 + 1) == nil)
-        #expect(Placement.takeHint(named: "b.png", from: &hints, now: F.t0 + 10) == nil)
+        #expect(Placement.takeHint(for: F.entry("사진.png", 1), from: &hints, now: F.t0 + 9.9) == .floor(x: 7))
+        #expect(Placement.takeHint(for: F.entry("사진.png", 1), from: &hints, now: F.t0 + 1) == nil)
+        #expect(Placement.takeHint(for: F.entry("b.png", 2), from: &hints, now: F.t0 + 10) == nil)
         // Re-registering a name replaces the old hint.
         Placement.register(["c.png": .floor(x: 1)], into: &hints, now: F.t0)
         Placement.register(["c.png": .floor(x: 2)], into: &hints, now: F.t0)
         #expect(hints.filter { $0.name == "c.png" }.count == 1)
-        #expect(Placement.takeHint(named: "c.png", from: &hints, now: F.t0) == .floor(x: 2))
+        #expect(Placement.takeHint(for: F.entry("c.png", 3), from: &hints, now: F.t0) == .floor(x: 2))
+    }
+
+    @Test("Hints with an identity take only that file; name-only hints never fill the wastebasket")
+    func hintIdentity() {
+        var hints: [PlacementHint] = []
+        let expires = F.t0 + 10
+        Placement.register([
+            PlacementHint(name: "moved.txt", location: .container(.phone, order: 0), expires: expires, key: F.key(5)),
+            PlacementHint(name: "copied.txt", location: .container(.wastebasket, order: 0), expires: expires, size: 1),
+            PlacementHint(name: "named.txt", location: .container(.wastebasket, order: 0), expires: expires),
+        ], into: &hints)
+        #expect(Placement.takeHint(for: F.entry("moved.txt", 6), from: &hints, now: F.t0) == nil)
+        #expect(Placement.takeHint(for: F.entry("moved.txt", 5), from: &hints, now: F.t0) == .container(.phone, order: 0))
+        var big = F.entry("copied.txt", 7)
+        big.meta.size = 2
+        #expect(Placement.takeHint(for: big, from: &hints, now: F.t0) == nil)
+        #expect(Placement.takeHint(for: F.entry("copied.txt", 8), from: &hints, now: F.t0) == .container(.wastebasket, order: 0))
+        #expect(Placement.takeHint(for: F.entry("named.txt", 9), from: &hints, now: F.t0) == nil)
+    }
+
+    @Test("Recent means 0…2 s before now; a clock that stepped back is not recent")
+    func recency() {
+        #expect(Placement.isRecent(F.t0, now: F.t0))
+        #expect(Placement.isRecent(F.t0, now: F.t0 + 2))
+        #expect(!Placement.isRecent(F.t0, now: F.t0 + 2.01))
+        #expect(!Placement.isRecent(F.t0 + 3600, now: F.t0))
+        #expect(!Placement.isRecent(nil, now: F.t0))
     }
 
     @Test("Expiry drops old hints and tombstones")
