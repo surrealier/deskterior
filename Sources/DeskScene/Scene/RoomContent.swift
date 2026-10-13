@@ -81,7 +81,7 @@ final class RoomContent: GestureTarget {
     /// Interactive elements and the placed object whose hit-test slot they fill (front first).
     private var installed: [(slot: String, elements: [any DeskElement])] = []
     /// Every installed element.
-    private var extras: [any DeskElement] { installed.flatMap(\.elements) }
+    var extras: [any DeskElement] { installed.flatMap(\.elements) }
 
     static let hoverInk = Role.selection
 
@@ -275,7 +275,17 @@ final class RoomContent: GestureTarget {
         context.state = s
         for e in extras { e.apply(s) }
         for e in elements { e.apply(s) }
+        pruneSelection()
         router.refreshHover()
+        router.reaimDrag()
+    }
+
+    /// Drops selected tokens no element shows any more (power off, AV, another page, moved into hiding).
+    func pruneSelection() {
+        guard !context.selection.isEmpty else { return }
+        let shown = extras.reduce(into: Set<TokenKey>()) { $0.formUnion($1.shownTokens) }
+        context.selection.restrict(to: shown)
+        screen.refreshIfSelectionChanged()
     }
 
     func setIcon(_ key: TokenKey, _ icon: PixelBuffer?) {
@@ -290,6 +300,11 @@ final class RoomContent: GestureTarget {
         switch (id, target) {
         case let (.printIn, .tokens(keys)), let (.parade, .tokens(keys)):
             screen.playPrintIn(keys)
+            if id == .printIn, let s = context.state {
+                // New files that land on another page blink that page's dot.
+                let pages = Set(keys.compactMap { s.tokens.location(of: $0)?.cell?.page })
+                monitor.blinkDots(pages.subtracting(s.monitor.av ? [] : [s.monitor.page]))
+            }
         case let (.printIn, .token(key)), let (.parade, .token(key)):
             screen.playPrintIn([key])
         case let (.poof, .location(loc)):
@@ -344,6 +359,7 @@ final class RoomContent: GestureTarget {
         for d in settling { d.step(dt) }
         settling.removeAll { $0.isFinished }
         for e in extras { e.step(dt) }
+        pruneSelection()
         for e in elements where e.needsFrames { e.step(dt) }
         context.fx.step(dt)
         toast.step(dt, space: space)
@@ -452,8 +468,10 @@ final class RoomContent: GestureTarget {
         context.request(.menu(spec, at: p))
     }
 
+    /// A desk key. File keys act only on selected tokens that are on show (`pruneSelection`).
     func key(_ command: KeyCommand) -> Bool {
         let selection = context.selection
+        pruneSelection()
         switch command {
         case .quickLook:
             guard !selection.isEmpty else { return false }

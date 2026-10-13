@@ -160,14 +160,15 @@ public final class FrameLoop {
         host?.frameLoopRender()
     }
 
-    /// Adds or removes a pause reason. Clearing the last reason renders one frame.
+    /// Adds or removes a pause reason. Clearing the last reason resumes what was queued meanwhile (a print-in, a
+    /// toast, the CRT) by waking the loop when the host needs frames, and otherwise renders one frame.
     public func setPaused(_ reason: PauseReason, _ paused: Bool) {
         let wasPaused = !pauseReasons.isEmpty
         if paused { pauseReasons.insert(reason) } else { pauseReasons.remove(reason) }
         if !pauseReasons.isEmpty {
             link?.isPaused = true
         } else if wasPaused {
-            renderOnce()
+            if host?.frameLoopNeedsFrames == true { wake() } else { renderOnce() }
         }
     }
 

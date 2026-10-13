@@ -145,7 +145,11 @@ public enum DemoFS: Codable, Sendable, Equatable {
         }
     }
 
-    public var isValid: Bool { parts.dropFirst().allSatisfy(DeskState.isPlainName) }
+    /// Every name is a plain file name without control characters (a tab or newline would break the harness's
+    /// line protocol).
+    public var isValid: Bool {
+        parts.dropFirst().allSatisfy { DeskState.isPlainName($0) && !$0.unicodeScalars.contains { $0.properties.generalCategory == .control } }
+    }
 }
 
 /// A JSON scalar in an expectation.

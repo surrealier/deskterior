@@ -130,14 +130,15 @@ public enum MonitorArt {
     public static let skySeams = [24, 44, 64]
 
     /// The built-in "DeskOS" wallpaper: a calm banded sky over soft hills that follows the time of day (like a
-    /// dynamic desktop picture). Its detail stays quieter than the icons: two close sky tones by day, small
-    /// clouds, smooth ridges.
+    /// dynamic desktop picture). Its detail stays quieter than the icons: a deep sky hazing toward the horizon by
+    /// day, small clouds, smooth ridges. No sky band uses the selection blue (`Role.selection`) or the light blue
+    /// of folder icons, so highlights and folders never melt into it.
     public static func deskOSWallpaper(sky: SkyVariant = .day, size: ArtSize = CoreLayout.screen.size) -> PixelBuffer {
         var c = PixelCanvas(width: size.w, height: size.h, artOrigin: CoreLayout.screen.origin)
         let bands: [Ink], cloud: (Ink, Ink), hills: (far: Ink, near: Ink, ridge: Ink)
         switch sky {
         case .day:
-            bands = [.blue3, .blue3, .blue4, .blue4]
+            bands = [.blue2, .blue2, .neutral5, .neutral5]
             cloud = (.neutral9, .blue5)
             hills = (.green3, .green2, .green3)
         case .dusk:
@@ -145,7 +146,7 @@ public enum MonitorArt {
             cloud = (.red5, .purple4)
             hills = (.purple1, .purple0, .purple1)
         case .dawn:
-            bands = [.blue3, .blue4, .purple5, .oak5]
+            bands = [.blue2, .purple2, .purple5, .oak5]
             cloud = (.neutral9, .purple5)
             hills = (.blue2, .blue1, .blue2)
         case .night:
@@ -323,7 +324,7 @@ public enum MonitorArt {
         var c = PixelCanvas(width: n * CoreLayout.pageDotPitch - 2, height: 2)
         for i in 0..<n {
             let x = i * CoreLayout.pageDotPitch
-            c.fill(ArtRect(x, 0, 2, 2), i == current ? .neutral8 : .neutral1)
+            c.fill(ArtRect(x, 0, 2, 2), i == current ? .neutral8 : .neutral5)
             if i == current { c.plot(x, 0, .neutral9) } else { c.plot(x + 1, 1, .neutral4) }
         }
         return SpriteAsset("monitor.pageDots.\(n).\(current)", c, anchor: .zero)

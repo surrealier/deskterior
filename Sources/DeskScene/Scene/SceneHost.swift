@@ -27,6 +27,7 @@ public final class SceneHost: FrameLoopHost {
         self.grid = grid
         presenter = try PixelPresenter(device: device, artSize: grid.artSize)
         scene = DeskScene(grid: grid)
+        scene.pointsPerArtPx = grid.pointsPerArtPx
         presenter.scene = scene
         presenter.clearColor = scene.backdropColor
         presenter.update(atTime: 0)
@@ -52,6 +53,7 @@ public final class SceneHost: FrameLoopHost {
         if newGrid != grid {
             try presenter.resize(newGrid.artSize)
             scene.configure(grid: newGrid)
+            scene.pointsPerArtPx = newGrid.pointsPerArtPx
             grid = newGrid
         }
         loop.renderOnce()
@@ -61,7 +63,8 @@ public final class SceneHost: FrameLoopHost {
         let changed = scene.handle(event)
         scheduleInputTimer()
         if event.kind == .move {
-            if changed { loop.renderOnce() }
+            // Hovering may start something bounded (the AV logo's bounce); otherwise one frame at most.
+            if scene.needsFrames { loop.wake() } else if changed { loop.renderOnce() }
             return
         }
         loop.noteInput()
@@ -74,6 +77,13 @@ public final class SceneHost: FrameLoopHost {
         let changed = scene.handleKey(command)
         loop.noteInput()
         if scene.needsFrames { loop.wake() } else if changed { loop.renderOnce() }
+    }
+
+    /// Drops a press or drag in progress (focus went elsewhere): a carry springs home.
+    public func cancelInput() {
+        guard scene.isDragging || scene.isPressing else { return }
+        scene.cancelInput()
+        modelChanged()
     }
 
     /// After a model change: run the loop if something now animates, else render one frame.

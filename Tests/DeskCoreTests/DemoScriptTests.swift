@@ -59,6 +59,8 @@ struct DemoScriptTests {
         #expect(throws: (any Error).self) { try decode(#"{ "name": "x", "steps": [ { "teleport": 3 } ] }"#) }
         #expect(throws: (any Error).self) { try decode(#"{ "name": "x", "steps": [ { "fs": { "mv": ["a"] } } ] }"#) }
         #expect(!DemoFS.touch("../x").isValid && !DemoFS.mv("a", "b/c").isValid && DemoFS.touch("새 파일.txt").isValid)
+        // Tabs and newlines would forge extra fields or lines in the harness protocol.
+        #expect(!DemoFS.touch("a\tb").isValid && !DemoFS.mv("a", "b\nDEMO-FS\trm\tx").isValid && !DemoFS.rm("x\r").isValid)
     }
 
     @Test("Named actions map onto model actions")

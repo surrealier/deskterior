@@ -410,6 +410,22 @@ struct ReducerTests {
         }
     }
 
+    @Test("Through the undo journal (the Store's entry point) too, only requests emit file effects; undo and redo emit none")
+    func fileEffectRuleJournaled() {
+        for action in Self.catalogue() {
+            var s = F.mirrored(["a", "b", "c"])
+            var journal = UndoJournal()
+            var effects = Reducer.reduce(&s, journal: &journal, action, env)
+            effects += Reducer.reduce(&s, journal: &journal, .undo, env)
+            effects += Reducer.reduce(&s, journal: &journal, .redo, env)
+            if !action.isRequest {
+                #expect(!effects.contains { $0.touchesFiles }, "\(action) emitted \(effects)")
+            }
+            #expect(!effects.contains { $0.mutatesFiles }, "\(action) emitted \(effects)")
+            #expect(s.violations().isEmpty, "\(action) broke an invariant")
+        }
+    }
+
     @Test("Every live token keeps exactly one valid location under random moves")
     func invariantProperty() {
         var s = DeskState()

@@ -2,12 +2,13 @@ import DeskCore
 import SpriteKit
 
 /// Carries tokens with the pointer (DESIGN §2.1 Drag): no physics body; the stack follows one frame behind with
-/// a 2-px lift over its shadow on the L8 carry layer, leans with fast sideways moves, and shows "+N" for a
+/// a 2-px lift over its shadow on the L8 carry layer (the shadow trails fast sideways moves), and shows "+N" for a
 /// multi-selection. Each move asks the `DropResolver` where a release would go, so the screen can bracket the
-/// landing cell. On release: accept → one `.move` action (the reducer swaps, or pours several tokens into the
-/// nearest free cells, which print in 40 ms apart); bonk → "BONK", a 1-px
-/// shake and a spring back over 6 frames; no verdict → spring back. Esc springs back too. The model is not
-/// touched until the drop, so an interrupted carry leaves every token where it was.
+/// landing cell. Hovering a page dot for 0.6 s turns to that page (spring-loading; a scroll pages too). On
+/// release: accept → one `.move` action (the reducer swaps, or pours several tokens into the nearest free cells,
+/// which print in 40 ms apart); bonk → "BONK", a 1-px shake and a spring back over 6 frames, the lift settling
+/// as it lands; no verdict → spring back. Esc springs back too. The model is not touched until the drop, so an
+/// interrupted carry leaves every token where it was.
 final class CarrySession: DragController {
     enum Phase: Equatable {
         case carrying
@@ -18,8 +19,10 @@ final class CarrySession: DragController {
 
     static let lift = 2
     static let springFrames = 6.0
-    /// Sideways speed (art px per frame) past which the stack leans.
+    /// Sideways speed (art px per frame) past which the shadow trails the stack.
     static let leanSpeed: Float = 3
+    /// Hovering a page dot this long turns to its page (DESIGN §2.1 spring-loading).
+    static let springLoadDelay = 0.6
 
     let keys: [TokenKey]
     /// Canvas top-left of each token's icon when picked up (lead first).
@@ -33,7 +36,10 @@ final class CarrySession: DragController {
     private(set) var shown: SIMD2<Float>
     private var previous: SIMD2<Float>
     private var lean = 0
+    private var lift = CarrySession.lift
     private(set) var verdict: DropResolver.Resolution?
+    /// The page dot under the stack and how long it has been there.
+    private var springLoad: (page: Int, t: Double)?
     private let node = SKSpriteNode()
     private var stackImages: [Int: PixelBuffer] = [:]
 
@@ -49,9 +55,9 @@ final class CarrySession: DragController {
         previous = grab
         node.zPosition = CGFloat(RoomLayer.carry.rawValue * 1000)
         context.carryLayer.addChild(node)
-        context.screen?.carried = Set(keys)
+        context.screen?.carried.formUnion(keys)
         redraw()
-        place(topLeft(of: shown), lifted: true)
+        place(topLeft(of: shown))
     }
 
     var isFinished: Bool { phase == .done }
@@ -60,8 +66,7 @@ final class CarrySession: DragController {
     func moved(to p: SIMD2<Float>, mods: InputEvent.Modifiers) {
         guard phase == .carrying else { return }
         pointer = p
-        let r = DropResolver.resolve(keys, at: ArtPoint(Int(p.x.rounded(.down)), Int(p.y.rounded(.down))),
-                                     elements: context.dropTargets())
+        let r = DropResolver.resolve(keys, at: artPixel(p), elements: context.dropTargets())
         verdict = r
         if case let .accept(loc)? = r?.verdict, let cell = loc.cell {
             context.screen?.dropTarget = cell
@@ -77,6 +82,8 @@ final class CarrySession: DragController {
         let lead = topLeft(of: p)
         switch verdict?.verdict {
         case let .accept(loc)?:
+            // Landed: the model change the drop causes must not re-aim this carry.
+            phase = .done
             context.dispatch(.move(keys, to: loc))
             finish()
             // Several tokens pour in one after another (40 ms apart).
@@ -109,7 +116,8 @@ final class CarrySession: DragController {
                 lean = newLean
                 redraw()
             }
-            place(topLeft(of: shown), lifted: true)
+            place(topLeft(of: shown))
+            stepSpringLoad(dt)
         case let .springing(from, t):
             let next = t + dt * 60 / Self.springFrames
             if next >= 1 {
@@ -118,8 +126,13 @@ final class CarrySession: DragController {
                 phase = .springing(from: from, t: next)
                 let e = Float(1 - (1 - next) * (1 - next))
                 let to = SIMD2(Float(origins[0].x), Float(origins[0].y))
-                let p = from + (to - from) * e
-                place(ArtPoint(Int(p.x.rounded()), Int(p.y.rounded())), lifted: false)
+                // The lift comes down with the flight, the shadow closing in under the icon.
+                let newLift = Int((Float(Self.lift) * (1 - e)).rounded())
+                if newLift != lift {
+                    lift = newLift
+                    redraw()
+                }
+                place(from + (to - from) * e)
             }
         case .done:
             break
@@ -134,10 +147,29 @@ final class CarrySession: DragController {
 
     // MARK: Private
 
+    private func artPixel(_ p: SIMD2<Float>) -> ArtPoint { ArtPoint(Int(p.x.rounded(.down)), Int(p.y.rounded(.down))) }
+
     private func topLeft(of pointer: SIMD2<Float>) -> SIMD2<Float> { pointer - grab }
+
+    /// Counts how long the pointer rests on a page dot; at `springLoadDelay` the screen turns to that page.
+    private func stepSpringLoad(_ dt: Double) {
+        guard let page = context.screen?.monitor?.springPage(at: artPixel(pointer)) else {
+            springLoad = nil
+            return
+        }
+        let t = (springLoad?.page == page ? springLoad!.t : 0) + dt
+        if t >= Self.springLoadDelay {
+            springLoad = nil
+            context.dispatch(.setPage(page))
+            moved(to: pointer, mods: [])
+        } else {
+            springLoad = (page, t)
+        }
+    }
 
     private func springBack(from: SIMD2<Float>) {
         lean = 0
+        springLoad = nil
         redraw()
         phase = .springing(from: from, t: 0)
     }
@@ -145,39 +177,44 @@ final class CarrySession: DragController {
     private func finish() {
         phase = .done
         node.removeFromParent()
-        context.screen?.carried = []
-        context.screen?.render()
+        // Only this carry's tokens: another carry may already be in hand.
+        if let screen = context.screen {
+            let mine = Set(keys + keys.compactMap { context.state?.currentKey(for: $0) })
+            screen.carried.subtract(mine)
+            screen.render()
+        }
     }
 
-    /// The stack image: up to three icons offset up-right, the lead leaning with the motion, a dithered shadow
-    /// `lift` px below, and a "+N" badge for more than one token. Origin = the lead icon's top-left minus
-    /// `stackPadding`.
+    /// The stack image: up to three icons offset up-right and lifted, a dithered shadow below (trailing a fast
+    /// sideways move by a pixel), and a "+N" badge for more than one token. Origin = the lead icon's resting
+    /// top-left minus `stackPadding`.
     private func redraw() {
-        let image = stackImages[lean] ?? makeStack(lean: lean)
-        stackImages[lean] = image
+        let id = lean * 10 + lift
+        let image = stackImages[id] ?? makeStack(lean: lean, lift: lift)
+        stackImages[id] = image
         node.texture = TextureFactory.texture(image)
         node.size = CGSize(width: CGFloat(image.width) * ArtSpace.unitsPerPixel, height: CGFloat(image.height) * ArtSpace.unitsPerPixel)
     }
 
     static let stackPadding = ArtPoint(2, 8)
 
-    private func makeStack(lean: Int) -> PixelBuffer {
+    private func makeStack(lean: Int, lift: Int) -> PixelBuffer {
         guard let s = context.state else { return PixelBuffer(width: 1, height: 1) }
         let icons = keys.prefix(3).compactMap { k in s.tokens.meta(of: k).map { TokenArt.icon(k, $0, context) } }
         let pad = Self.stackPadding
         var c = PixelCanvas(width: 16 + pad.x + 8, height: 16 + pad.y + Self.lift + 2)
-        // Shadow where the stack would rest, a 50% dither so it reads as a shadow on anything.
-        if let lead = icons.first {
+        // The shadow where the stack would rest (a 50% dither, so it reads on anything), 1 px right and `lift` px
+        // down; a fast sideways move leaves it a pixel behind. Gone once the stack has landed.
+        if lift > 0, let lead = icons.first {
+            let dx = 1 - lean
             for y in 0..<lead.height {
                 for x in 0..<lead.width where lead.pixel(x, y).a != 0 && (x + y) % 2 == 0 {
-                    c.plot(pad.x + x + 1, pad.y + y + Self.lift, .neutral0)
+                    c.plot(pad.x + x + dx, pad.y + y + lift, .neutral0)
                 }
             }
         }
         for (i, icon) in icons.enumerated().reversed() {
-            var image = icon
-            if i == 0, lean != 0 { image = Self.leaning(icon, lean) }
-            c.blit(image, at: ArtPoint(pad.x + 2 * i, pad.y - Self.lift - 2 * i))
+            c.blit(icon, at: ArtPoint(pad.x + 2 * i, pad.y - lift - 2 * i))
         }
         if keys.count > 1 {
             let badge = Digits.badge("+\(keys.count)")
@@ -186,30 +223,12 @@ final class CarrySession: DragController {
         return c.buffer
     }
 
-    /// The icon sheared one pixel at the top in the direction of travel (a lean, no rotation blur).
-    static func leaning(_ icon: PixelBuffer, _ dir: Int) -> PixelBuffer {
-        var out = PixelBuffer(width: icon.width, height: icon.height)
-        for y in 0..<icon.height {
-            let shift = y < icon.height / 2 ? dir : 0
-            for x in 0..<icon.width {
-                let sx = x - shift
-                if sx >= 0, sx < icon.width { out[x, y] = icon[sx, y] }
-            }
-        }
-        return out
-    }
-
-    /// Places the stack so the lead icon's top-left is at `p` (lifted while carried).
-    private func place(_ p: SIMD2<Float>, lifted: Bool) {
-        place(ArtPoint(Int(p.x.rounded()), Int(p.y.rounded())), lifted: lifted)
-    }
-
-    private func place(_ p: ArtPoint, lifted: Bool) {
-        let image = stackImages[lean]
+    /// Places the stack so the lead icon's resting top-left is at `p`.
+    private func place(_ p: SIMD2<Float>) {
+        let image = stackImages[lean * 10 + lift]
         let size = image?.size ?? ArtSize(1, 1)
         let pad = Self.stackPadding
-        // While springing home the lift settles too: the drawn icon lands exactly on its cell.
-        let origin = ArtPoint(p.x - pad.x, p.y - pad.y + (lifted ? 0 : Self.lift))
+        let origin = ArtPoint(Int(p.x.rounded()) - pad.x, Int(p.y.rounded()) - pad.y)
         context.space.place(node, at: ArtRect(origin: origin, size: size))
     }
 }

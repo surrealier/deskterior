@@ -68,18 +68,29 @@ public struct UndoJournal: Sendable, Equatable {
         redoStack.removeAll()
     }
 
+    /// Undoes the latest entry that still changes something; entries whose tokens are all gone are dropped on
+    /// the way, so one ⌘Z always does something visible or nothing at all.
     public mutating func undo(_ s: inout DeskState, grid: ScreenGrid = .standard) -> [Effect] {
-        guard let entry = undoStack.popLast() else { return [] }
-        Self.apply(from: entry.after, to: entry.before, onto: &s, grid: grid)
-        redoStack.append(entry)
-        return [.persist, .wakeLoop]
+        while let entry = undoStack.popLast() {
+            let before = s
+            Self.apply(from: entry.after, to: entry.before, onto: &s, grid: grid)
+            guard s != before else { continue }
+            redoStack.append(entry)
+            return [.persist, .wakeLoop]
+        }
+        return []
     }
 
+    /// Redoes the latest undone entry that still changes something (stale ones are dropped).
     public mutating func redo(_ s: inout DeskState, grid: ScreenGrid = .standard) -> [Effect] {
-        guard let entry = redoStack.popLast() else { return [] }
-        Self.apply(from: entry.before, to: entry.after, onto: &s, grid: grid)
-        undoStack.append(entry)
-        return [.persist, .wakeLoop]
+        while let entry = redoStack.popLast() {
+            let before = s
+            Self.apply(from: entry.before, to: entry.after, onto: &s, grid: grid)
+            guard s != before else { continue }
+            undoStack.append(entry)
+            return [.persist, .wakeLoop]
+        }
+        return []
     }
 
     /// Re-applies the difference `from → to` onto `s`.

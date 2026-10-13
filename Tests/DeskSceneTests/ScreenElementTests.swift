@@ -285,7 +285,7 @@ struct ScreenElementTests {
         #expect(scene.contextMenu(at: ArtPoint(layout.coreOrigin.x + 260, layout.coreOrigin.y + 4)) == deskMenu)
     }
 
-    @Test("Hover rings a token at once; its tooltip (full NFC name, kind, date) waits 250 ms and renders once")
+    @Test("Hover rings a token and labels it at once; its tooltip (kind and date; the full NFC name when the label is shortened) waits 250 ms, sits above on the glass and renders once")
     func hoverAndTooltip() throws {
         let scene = F.scene()
         let p = Pointer(scene: scene)
@@ -293,11 +293,15 @@ struct ScreenElementTests {
         let r = try #require(screen.iconRect(of: F.key(1)))
         #expect(p.event(.move, F.centre(r)))
         #expect(scene.room?.hovered?.token == F.key(1) && screen.hovered == F.key(1))
+        #expect(screen.labelRects.map(\.key) == [F.key(1)])
         #expect(scene.tooltipShown == nil && scene.nextInputDeadline != nil && !scene.needsFrames)
         #expect(!scene.advanceInput(to: p.t + 0.1))
         #expect(scene.advanceInput(to: p.t + 0.26))
         let tip = try #require(scene.tooltipShown)
-        #expect(tip.title == "보고서 final.pdf" && tip.detail?.hasPrefix("PDF document · ") == true)
+        #expect(tip.title.hasPrefix("PDF document · ") && tip.detail == nil, "the name is already on the label")
+        let tipRect = try #require(scene.room?.tooltip.rect)
+        #expect(screen.screenRect.contains(tipRect), "screen tooltips stay on the glass")
+        #expect(!tipRect.intersects(r) && !tipRect.intersects(screen.labelRects[0].rect))
         // Moving off hides it; nothing animates meanwhile.
         #expect(p.event(.move, SIMD2(1, 1)))
         #expect(scene.tooltipShown == nil && !scene.needsFrames)
@@ -307,14 +311,15 @@ struct ScreenElementTests {
         #expect(scene.advanceInput(to: p.t + 0.3) && scene.tooltipShown?.title == "Clock")
         let lit = try #require(scene.room?.tooltip.rect)
         #expect(scene.lighting.mask[lit.midY * scene.grid.artSize.w + lit.midX] & 7 == 7)
-        // NFD names are shown in NFC.
-        var s = F.state(["\u{1100}\u{1161}.txt"])
+        // NFD names are shown in NFC; a name the label shortens is given in full.
+        var s = F.state([String(repeating: "\u{1100}\u{1161}", count: 12) + ".txt"])
         s.access = .connected
         scene.apply(s)
         let r2 = try #require(screen.iconRect(of: F.key(1)))
         _ = p.event(.move, F.centre(r2))
         _ = scene.advanceInput(to: p.t + 1)
-        #expect(scene.tooltipShown?.title == "가.txt")
+        #expect(scene.tooltipShown?.title == String(repeating: "가", count: 12) + ".txt")
+        #expect(scene.tooltipShown?.detail?.hasPrefix("Plain text") == true)
     }
 
     @Test("Print-in, pulse and poof play and end")

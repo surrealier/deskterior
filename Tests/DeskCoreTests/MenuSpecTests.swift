@@ -14,11 +14,32 @@ struct MenuSpecTests {
         #expect(m.item("quickLook")?.title == "Quick Look “a.txt”")
         #expect(m.item("open")?.command == .open(keys))
         #expect(m.item("trash")?.command == .moveToTrash(keys))
+        #expect(m.item("trash")?.isEnabled == false, "Move to Trash waits for FileOperator (M11)")
         #expect(m.item("moveTo.monitor") == nil, "tokens on the screen are already on the monitor")
         for id in ContainerID.allCases {
             #expect(m.item("moveTo.\(id.rawValue)")?.command == .moveTo(keys, .container(id, order: 0)))
         }
+        #expect(m.item("moveTo.riserLeft")?.title == "Left Riser Drawer" && m.item("moveTo.cabinetFile")?.title == "File Drawer")
         if case .requestTrash(keys)? = m.item("trash")?.command?.action(s) {} else { Issue.record("trash is a request") }
+    }
+
+    @Test("Move to ▸ HDMI n: other pages with room, and a new page; not the page the tokens are on")
+    func moveToPages() {
+        var s = DeskState()
+        Reconciler.reconcile(&s, F.snapshot((0..<50).map { F.entry("f\($0)", UInt64($0 + 1)) }), now: F.t0)
+        // HDMI 1 is full (45), HDMI 2 holds 5.
+        let k0 = s.tokens.sortedKeys.first { s.tokens.location(of: $0)?.cell?.page == 0 }!
+        let k45 = s.tokens.sortedKeys.first { s.tokens.location(of: $0)?.cell?.page == 1 }!
+        let m = MenuSpec.token([k0], s)
+        #expect(m.item("moveTo.hdmi1")?.isEnabled == false, "already there")
+        #expect(m.item("moveTo.hdmi2")?.isEnabled == true && m.item("moveTo.hdmi3")?.title == "HDMI 3 (New)")
+        guard case let .moveTo(keys, to)? = m.item("moveTo.hdmi2")?.command else { Issue.record("no page move"); return }
+        #expect(keys == [k0] && to.cell?.page == 1)
+        var copy = s
+        _ = reduce(&copy, .move(keys, to: to), ReduceEnv(now: F.t0))
+        #expect(copy.tokens.location(of: k0)?.cell?.page == 1)
+        // HDMI 1 is full: a token from HDMI 2 cannot go there.
+        #expect(MenuSpec.token([k45], s).item("moveTo.hdmi1")?.isEnabled == false)
     }
 
     @Test("Move to ▸ disables a container that cannot take the tokens; hidden tokens can go back to the monitor")
@@ -45,13 +66,18 @@ struct MenuSpecTests {
         #expect(m.item("input.hdmi2")?.title == "HDMI 2 · 5" && m.item("input.hdmi2")?.isChecked == true)
         #expect(m.item("input.av")?.command == .avInput)
         #expect(m.item("cleanUp.dateAdded")?.command == .cleanUp(.dateAdded))
+        #expect(m.item("input")?.isEnabled == true && m.item("cleanUp")?.isEnabled == true)
+        s.monitor.av = true
+        #expect(MenuSpec.monitor(s).item("cleanUp")?.isEnabled == false, "no desktop on AV")
+        s.monitor.av = false
         s.monitor.power = .off
         #expect(MenuSpec.monitor(s).item("power")?.title == "Turn Display On")
+        #expect(MenuSpec.monitor(s).item("input")?.isEnabled == false && MenuSpec.monitor(s).item("cleanUp")?.isEnabled == false)
         #expect(MenuSpec.monitor(DeskState()).item("cleanUp")?.isEnabled == false)
         if case .selectAV? = MenuCommand.avInput.action(s) {} else { Issue.record("AV selects the AV input") }
     }
 
-    @Test("Desk and status menus: lights, global actions, undo labels, pause; the status item adds its extras")
+    @Test("Desk and status menus: the same items (lights, global actions, undo labels, pause); unfinished ones disabled")
     func deskMenus() {
         var s = F.mirrored(["a", "b"])
         s.lights = LightsState(mode: .night, room: false, lamp: true)
@@ -63,11 +89,15 @@ struct MenuSpecTests {
         #expect(wall.item("redo")?.isEnabled == false)
         #expect(wall.item("pause")?.title == "Pause Desk" && wall.item("pause")?.command == .pauseDesk(true))
         #expect(wall.item("takeEverythingOut")?.isEnabled == true)
-        #expect(wall.item("emptyWastebasket") == nil && wall.item("openDesktopFolder") == nil)
+        // The wall stands in for a hidden status item: the same items, Empty Wastebasket and the folder included.
+        #expect(wall.item("emptyWastebasket")?.title == "Empty Wastebasket… (1)" && wall.item("openDesktopFolder") != nil)
         let status = MenuSpec.status(s, MenuSpec.Context(paused: true))
-        #expect(status.item("emptyWastebasket")?.title == "Empty Wastebasket… (1)")
-        #expect(status.item("openDesktopFolder") != nil && status.item("pause")?.title == "Resume Desk")
-        #expect(Set(wall.ids).isSubset(of: Set(status.ids)))
+        #expect(status.item("pause")?.title == "Resume Desk")
+        #expect(wall.ids == status.ids)
+        for id in ["clearDesk", "peekDesk", "settings", "emptyWastebasket"] {
+            #expect(wall.item(id)?.isEnabled == false, "\(id) waits for its milestone")
+        }
+        #expect(wall.item("find")?.isEnabled == true && wall.item("about")?.isEnabled == true)
         // Lights commands keep the other switches.
         if case let .lights(l)? = MenuCommand.lightsMode(.lampOnly).action(s) {
             #expect(l == LightsState(mode: .lampOnly, room: false, lamp: true))

@@ -96,7 +96,7 @@ enum ScreenCard {
         let l1 = PixelText.line("Finder hides desktop items.", .neutral8, font: font)
         let l2 = PixelText.line("Show them on the desk anyway?", .neutral8, font: font)
         let show = button("Show", primary: true, font: font)
-        let keep = button("Keep hidden", primary: false, font: font)
+        let keep = button("Keep Hidden", primary: false, font: font)
         let rowW = show.width + 6 + keep.width
         let contentW = max(title.width, l1.width, l2.width, rowW)
         let contentH = title.height + 3 + l1.height + 1 + l2.height + 5 + show.height
@@ -118,17 +118,22 @@ enum ScreenCard {
 
     // MARK: Pieces
 
-    /// A pixel button: rim, lit top edge, face, and the label with a shadow.
-    static func button(_ title: String, primary: Bool, font: PixelFont) -> PixelBuffer {
+    /// Buttons drawn as the card's default (blue) button.
+    static let primaryButtons: Set<String> = ["card.show", "card.chooseFolder"]
+
+    /// A pixel button: rim, lit top edge, face, and the label with a shadow. Pressed, the face sinks 1 px into its
+    /// shadow and loses the lit edge.
+    static func button(_ title: String, primary: Bool, pressed: Bool = false, font: PixelFont) -> PixelBuffer {
         let text = PixelText.shadowed(title, .neutral9, shadow: primary ? .blue1 : .neutral1, font: font)
         let w = text.width + 9, h = text.height + 4
+        let d = pressed ? 1 : 0
         var c = PixelCanvas(width: w, height: h + 1)
         c.roundedRectFill(ArtRect(0, 1, w, h), radius: 2, .neutral0)
-        c.roundedRectFill(ArtRect(0, 0, w, h), radius: 2, .neutral0)
-        let face = ArtRect(1, 1, w - 2, h - 2)
-        c.roundedRectFill(face, radius: 1, primary ? Role.selection : .neutral4)
-        c.hline(x: face.x + 1, y: face.y, length: face.w - 2, primary ? .blue4 : .neutral5)
-        c.blit(text, at: ArtPoint(5, 2))
+        c.roundedRectFill(ArtRect(0, d, w, h), radius: 2, .neutral0)
+        let face = ArtRect(1, 1 + d, w - 2, h - 2)
+        c.roundedRectFill(face, radius: 1, primary ? (pressed ? .blue2 : Role.selection) : (pressed ? .neutral3 : .neutral4))
+        if !pressed { c.hline(x: face.x + 1, y: face.y, length: face.w - 2, primary ? .blue4 : .neutral5) }
+        c.blit(text, at: ArtPoint(5, 2 + d))
         return c.buffer
     }
 

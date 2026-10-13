@@ -14,7 +14,7 @@
     { "wait": 0.1 },
     { "expect": { "tooltip": "none" } },
     { "wait": 0.3 },
-    { "expect": { "tooltip": "IMG_0001.png" } },
+    { "expect": { "hover": "IMG_0001.png", "tooltip": "Image" } },
     { "snapshot": "01-select-hover-tooltip" },
 
     { "click": { "at": "token:IMG_0002.png", "mods": ["cmd"] } },
@@ -28,7 +28,7 @@
     { "expect": { "selection": 15 } },
     { "key": "cmd+a" },
     { "expect": { "selection": 40 } },
-    { "click": "screen.empty" },
+    { "click": "cell:8,4" },
     { "expect": { "selection": 0 } },
 
     { "drag": { "from": "token:todo.txt", "to": "cell:6,4", "duration": 0.3, "hold": true } },

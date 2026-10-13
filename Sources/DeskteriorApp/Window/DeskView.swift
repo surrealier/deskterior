@@ -158,6 +158,48 @@ final class DeskView: NSView {
         return NSPoint(x: x, y: Double(bounds.height) - y)
     }
 
+    // MARK: Accessibility (DESIGN §4.5)
+
+    /// The scene's items and the elements built from them; rebuilt only when the items change.
+    private var axItems: [AXItem] = []
+    private var axElements: [DeskAccessibilityElement] = []
+
+    override func isAccessibilityElement() -> Bool { false }
+    override func accessibilityRole() -> NSAccessibility.Role? { .group }
+    override func accessibilityLabel() -> String? { "Desk" }
+
+    override func accessibilityChildren() -> [Any]? {
+        let items = host?.scene.accessibilityItems() ?? []
+        if items != axItems {
+            axItems = items
+            axElements = items.map { item in
+                var open: DeskAccessibilityElement.Action?
+                if let key = item.token { open = { [weak self] in self?.accessibilityOpen(key) } }
+                return DeskAccessibilityElement(item: item, parent: self, press: { [weak self] in self?.accessibilityPress(item) },
+                                                open: open)
+            }
+        }
+        for e in axElements { e.setAccessibilityFrameInParentSpace(viewRect(fromArt: e.item.frame)) }
+        return axElements
+    }
+
+    /// The view rect (y-up points) of a canvas art rect.
+    func viewRect(fromArt r: ArtRect) -> NSRect {
+        let a = viewPoint(fromArt: SIMD2(Float(r.minX), Float(r.minY)))
+        let b = viewPoint(fromArt: SIMD2(Float(r.maxX), Float(r.maxY)))
+        return NSRect(x: min(a.x, b.x), y: min(a.y, b.y), width: abs(b.x - a.x), height: abs(b.y - a.y))
+    }
+
+    private func accessibilityPress(_ item: AXItem) {
+        guard let host else { return }
+        host.scene.accessibilityPress(item, time: ProcessInfo.processInfo.systemUptime)
+        host.modelChanged()
+    }
+
+    private func accessibilityOpen(_ key: TokenKey) {
+        host?.scene.accessibilityOpen(key)
+    }
+
     // MARK: Quick Look (the panel finds us in the responder chain)
 
     nonisolated override func acceptsPreviewPanelControl(_ panel: QLPreviewPanel!) -> Bool { true }
@@ -196,5 +238,42 @@ final class DeskView: NSView {
         if flags.contains(.option) { m.insert(.option) }
         if flags.contains(.command) { m.insert(.command) }
         return m
+    }
+}
+
+/// One desk control or token for VoiceOver: a labelled button whose press clicks it, and Open for tokens.
+/// AppKit calls it on the main thread.
+nonisolated final class DeskAccessibilityElement: NSAccessibilityElement, @unchecked Sendable {
+    typealias Action = @MainActor @Sendable () -> Void
+    let item: AXItem
+    private let press: Action
+
+    init(item: AXItem, parent: NSView, press: @escaping Action, open: Action?) {
+        self.item = item
+        self.press = press
+        super.init()
+        setAccessibilityParent(parent)
+        setAccessibilityLabel(item.label)
+        switch item.role {
+        case .button, .token:
+            setAccessibilityRole(.button)
+            if item.role == .token { setAccessibilityRoleDescription("file") }
+        case .container, .group:
+            setAccessibilityRole(.group)
+        }
+        if let open {
+            setAccessibilityCustomActions([
+                NSAccessibilityCustomAction(name: "Open") {
+                    MainActor.assumeIsolated { open() }
+                    return true
+                },
+            ])
+        }
+    }
+
+    override func accessibilityPerformPress() -> Bool {
+        let press = press
+        MainActor.assumeIsolated { press() }
+        return true
     }
 }

@@ -31,7 +31,7 @@
     { "hover": "token:New Folder" },
     { "hover": "token:done.txt" },
     { "wait": 0.3 },
-    { "expect": { "tooltip": "done.txt", "tokens": 41 } },
+    { "expect": { "hover": "done.txt", "tooltip": "Plain text", "tokens": 41 } },
     { "snapshot": "03-after" }
   ]
 }

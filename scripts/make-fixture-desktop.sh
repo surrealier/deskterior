@@ -4,9 +4,12 @@
 # are refused before anything is created.
 #
 # Usage: scripts/make-fixture-desktop.sh [--count N] DIR
+#        scripts/make-fixture-desktop.sh --check DIR
 #   Default: about 40 visible items — NFD Korean names, emoji, an 80-character name, folders, an .rtfd package,
 #   png/pdf/txt/zip and friends, screenshot-named pngs — plus hidden dot-files.
 #   --count N  adds bulk files until DIR holds N visible items (performance fixture, e.g. --count 500).
+#   --check    only applies the real-desktop refusal to DIR (exit 64, or 0) and creates nothing; other scripts
+#              use it for their own output folders.
 # DIR must be empty, missing, or a previous fixture (it carries a .deskterior-fixture marker).
 # PNG/PDF files come from `deskterior-assets fixture`: set DESKTERIOR_ASSETS to a built binary, else the
 # script runs `swift run deskterior-assets` (with --scratch-path $SWIFT_SCRATCH_PATH when set).
@@ -15,13 +18,15 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 COUNT=0
 TARGET=""
+CHECK_ONLY=0
 
-usage() { sed -n '2,13p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//' >&2; exit 2; }
+usage() { sed -n '2,16p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//' >&2; exit 2; }
 
 while [ $# -gt 0 ]; do
   case "$1" in
     --count) [ $# -ge 2 ] || usage; COUNT="$2"; shift 2 ;;
     --count=*) COUNT="${1#--count=}"; shift ;;
+    --check) CHECK_ONLY=1; shift ;;
     -h|--help) usage ;;
     -*) echo "make-fixture-desktop: unknown option $1" >&2; usage ;;
     *) [ -z "$TARGET" ] || usage; TARGET="$1"; shift ;;
@@ -53,6 +58,7 @@ for desk in "$HOME/Desktop" "$(canonical "$HOME/Desktop")"; do
     "$TARGET_REAL"/*) echo "make-fixture-desktop: refusing a target that contains the real desktop: $TARGET" >&2; exit 64 ;;
   esac
 done
+[ "$CHECK_ONLY" -eq 0 ] || exit 0
 
 if [ -d "$TARGET" ] && [ -n "$(ls -A "$TARGET")" ] && [ ! -e "$TARGET/.deskterior-fixture" ]; then
   echo "make-fixture-desktop: $TARGET is not empty and is not a fixture; pick an empty folder" >&2

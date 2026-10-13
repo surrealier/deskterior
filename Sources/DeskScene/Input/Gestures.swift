@@ -69,6 +69,10 @@ public nonisolated struct TooltipSpec: Sendable, Equatable {
     public var detail: String?
     /// The canvas rect the tooltip points at (it sits below it, or above near the bottom edge).
     public var anchor: ArtRect
+    /// Sit above the anchor when that fits (below otherwise).
+    public var prefersAbove = false
+    /// Keep inside this canvas rect (nil: the visible canvas).
+    public var bounds: ArtRect?
 
     public init(title: String, detail: String? = nil, anchor: ArtRect) {
         self.title = title

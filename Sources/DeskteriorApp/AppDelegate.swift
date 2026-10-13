@@ -14,6 +14,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var observers: SystemObservers?
     private var session: DeskSession?
     private var inventory: InventoryWindowController?
+    private var resignKeyObserver: (any NSObjectProtocol)?
     private(set) var isUserPaused = false
 
     init(options: LaunchOptions) {
@@ -53,6 +54,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 displays?.refreshGrid()
                 session?.mirror.rescan()
             }
+            // A gesture whose mouse-up goes to another window or app must not stay in hand.
+            resignKeyObserver = NotificationCenter.default.addObserver(
+                forName: NSWindow.didResignKeyNotification, object: window, queue: .main
+            ) { [weak host] _ in
+                MainActor.assumeIsolated { host?.cancelInput() }
+            }
         }
 
         let mode = options.windowed.map { "windowed \($0)" } ?? "desk (level \(options.level.rawValue))"
@@ -77,6 +84,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         session?.stop()
         observers?.invalidate()
         displays?.invalidate()
+        if let resignKeyObserver { NotificationCenter.default.removeObserver(resignKeyObserver) }
+    }
+
+    func applicationDidResignActive(_ notification: Notification) {
+        session?.host.cancelInput()
     }
 
     func togglePause() {
@@ -140,9 +152,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func showInventory() {
         guard let session else { return }
         if inventory == nil {
-            inventory = InventoryWindowController(store: session.store) { [weak self] in self?.perform($0) }
+            let controller = InventoryWindowController(store: session.store) { [weak self] in self?.perform($0) }
+            controller.monitorFrame = { [weak self] in self?.monitorScreenFrame() }
+            inventory = controller
         }
         inventory?.show()
+    }
+
+    /// The monitor's glass in screen coordinates (Show on Desk moves the Inventory off it).
+    private func monitorScreenFrame() -> NSRect? {
+        guard let view = displays?.view, let window = view.window, let layout = session?.host.scene.layout else { return nil }
+        let glass = layout.rect(CoreLayout.screen)
+        let a = view.viewPoint(fromArt: SIMD2(Float(glass.minX), Float(glass.minY)))
+        let b = view.viewPoint(fromArt: SIMD2(Float(glass.maxX), Float(glass.maxY)))
+        let local = NSRect(x: min(a.x, b.x), y: min(a.y, b.y), width: abs(b.x - a.x), height: abs(b.y - a.y))
+        return window.convertToScreen(view.convert(local, to: nil))
     }
 
     /// An accessory app shows no menu bar (DESIGN Errata 1); this hidden main menu only routes key equivalents.
@@ -155,16 +179,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         appItem.submenu = appMenu
         main.addItem(appItem)
 
+        // Standard selectors, sent to the first responder: the desk view, or the Inventory's search field.
         let editItem = NSMenuItem()
         let edit = NSMenu(title: "Edit")
         edit.addItem(NSMenuItem(title: "Undo", action: #selector(DeskView.undo(_:)), keyEquivalent: "z"))
         let redo = NSMenuItem(title: "Redo", action: #selector(DeskView.redo(_:)), keyEquivalent: "z")
         redo.keyEquivalentModifierMask = [.command, .shift]
         edit.addItem(redo)
+        edit.addItem(NSMenuItem(title: "Cut", action: #selector(NSText.cut(_:)), keyEquivalent: "x"))
         edit.addItem(NSMenuItem(title: "Copy", action: #selector(DeskView.copy(_:)), keyEquivalent: "c"))
+        edit.addItem(NSMenuItem(title: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v"))
         edit.addItem(NSMenuItem(title: "Select All", action: #selector(DeskView.selectAll(_:)), keyEquivalent: "a"))
         editItem.submenu = edit
         main.addItem(editItem)
+
+        // ⌘W closes the Inventory (the borderless desk window has no close button and stays).
+        let windowItem = NSMenuItem()
+        let windowMenu = NSMenu(title: "Window")
+        windowMenu.addItem(NSMenuItem(title: "Close", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w"))
+        windowItem.submenu = windowMenu
+        main.addItem(windowItem)
         NSApp.mainMenu = main
     }
 
@@ -190,12 +224,14 @@ final class DeskSession {
         didSet { sync.isPaused = isPaused }
     }
     private let lights: LightsMode
+    private let dryRun: Bool
 
     init(host: SceneHost, options: LaunchOptions, configuration: MirrorController.Configuration, dryRun: Bool,
          lights: LightsMode? = nil, seed: UInt64? = nil) {
         self.host = host
         self.configuration = configuration
         self.lights = lights ?? options.lights
+        self.dryRun = dryRun
         let stateStore: StateStore?
         do {
             stateStore = try StateStore(directory: configuration.stateDirectory, mirrored: configuration.folder)
@@ -239,9 +275,14 @@ final class DeskSession {
         sync.start()
         mirror.start()
         host.scene.lightsMode = store.state.lights.mode
-        if lights != .auto, lights != store.state.lights.mode {
+        guard lights != .auto, lights != store.state.lights.mode else { return }
+        if dryRun {
+            // A demo's lights are part of its (throwaway) desk, so its menus agree.
             let l = store.state.lights
             store.dispatch(.lights(LightsState(mode: lights, room: l.room, lamp: l.lamp)))
+        } else {
+            // `--lights` is for this run only: shown, never saved into the user's layout. A Lights menu pick wins.
+            host.scene.lightsMode = lights
         }
     }
 

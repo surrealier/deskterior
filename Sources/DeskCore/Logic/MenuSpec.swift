@@ -167,7 +167,13 @@ extension MenuSpec {
         }
     }
 
-    /// Right-click on tokens (the selection): open, look, reveal, copy, move to a hiding place, trash.
+    /// Commands whose milestone has not landed yet: shown, but disabled (each track removes its own).
+    /// Move to Trash and Empty Wastebasket need `FileOperator` (M11), Clear the Desk the mat (M9), Peek Desk and
+    /// Settings… their windows (M12).
+    public static let pending: Set<String> = ["trash", "emptyWastebasket", "clearDesk", "peekDesk", "settings"]
+
+    /// Right-click on tokens (the selection): open, look, reveal, copy, move to another page or a hiding place,
+    /// trash.
     public static func token(_ keys: [TokenKey], _ s: DeskState) -> MenuSpec {
         let live = keys.filter { s.tokens.contains($0) }
         let any = !live.isEmpty
@@ -176,12 +182,14 @@ extension MenuSpec {
         let onScreen = live.allSatisfy { s.tokens.location(of: $0)?.isScreen == true }
         if !onScreen {
             moveTo.append(MenuItem("moveTo.monitor", "Monitor", .moveTo(live, Self.firstFreeCell(s)), enabled: any))
-            moveTo.append(.separator)
+        } else if any {
+            moveTo += pageItems(live, s)
         }
+        moveTo.append(.separator)
         for id in ContainerID.allCases {
             let staying = s.tokens.members(of: id).filter { !live.contains($0) }.count
             let fits = staying + live.count <= id.spec.hardCap
-            moveTo.append(MenuItem("moveTo.\(id.rawValue)", InventoryQuery.label(for: id),
+            moveTo.append(MenuItem("moveTo.\(id.rawValue)", containerTitle(id),
                                    .moveTo(live, .container(id, order: s.tokens.count(in: id))), enabled: any && fits))
         }
         let name = one ? s.tokens.meta(of: live[0])?.displayName : nil
@@ -193,11 +201,42 @@ extension MenuSpec {
             .separator,
             MenuItem("moveTo", "Move to", submenu: moveTo, enabled: any),
             .separator,
-            MenuItem("trash", "Move to Trash", .moveToTrash(live), enabled: any),
+            MenuItem("trash", "Move to Trash", .moveToTrash(live), enabled: any && !pending.contains("trash")),
         ])
     }
 
-    /// Right-click on the monitor: power, inputs, Clean Up By.
+    /// "Move to ▸ HDMI n" for tokens on the screen: every page in use and a new one after them. A page is offered
+    /// when the tokens are not all on it already and it has room for them; they pour in from its first free cell.
+    static func pageItems(_ keys: [TokenKey], _ s: DeskState, grid: ScreenGrid = .standard) -> [MenuItem] {
+        let movers = Set(keys)
+        let cells = s.tokens.occupiedCells
+        return (0...s.pageCount(grid: grid)).map { page in
+            let others = cells.filter { $0.page == page && !movers.contains(s.tokens.occupant(of: $0)!) }
+            let here = keys.allSatisfy { s.tokens.location(of: $0)?.cell?.page == page }
+            let fits = grid.cellsPerPage - others.count >= keys.count
+            let aim = grid.firstFree(Set(others), fromPage: page)
+            let title = page == s.pageCount(grid: grid) ? "HDMI \(page + 1) (New)" : "HDMI \(page + 1)"
+            return MenuItem("moveTo.hdmi\(page + 1)", title, .moveTo(keys, aim.location), enabled: !here && fits)
+        }
+    }
+
+    /// Menu names of the hiding places.
+    public static func containerTitle(_ id: ContainerID) -> String {
+        switch id {
+        case .riserLeft: "Left Riser Drawer"
+        case .riserRight: "Right Riser Drawer"
+        case .riserCubby: "Riser Cubby"
+        case .cabinetTop: "Top Cabinet Drawer"
+        case .cabinetMiddle: "Middle Cabinet Drawer"
+        case .cabinetFile: "File Drawer"
+        case .penCup: "Pen Cup"
+        case .phone: "Phone"
+        case .wastebasket: "Wastebasket"
+        }
+    }
+
+    /// Right-click on the monitor: power, inputs, Clean Up By (inputs only while on; Clean Up only on a desktop
+    /// page).
     public static func monitor(_ s: DeskState) -> MenuSpec {
         let on = s.monitor.power == .on
         let pages = s.pageCount()
@@ -215,8 +254,8 @@ extension MenuSpec {
         return MenuSpec([
             MenuItem("power", on ? "Turn Display Off" : "Turn Display On", .power(!on)),
             .separator,
-            MenuItem("input", "Input", submenu: inputs),
-            MenuItem("cleanUp", "Clean Up By", submenu: cleanUp, enabled: !s.tokens.occupiedCells.isEmpty),
+            MenuItem("input", "Input", submenu: inputs, enabled: on),
+            MenuItem("cleanUp", "Clean Up By", submenu: cleanUp, enabled: on && !s.monitor.av && !s.tokens.occupiedCells.isEmpty),
         ])
     }
 
@@ -236,17 +275,17 @@ extension MenuSpec {
         ]
     }
 
-    /// Right-click on the bare wall (also the fallback for a hidden status item, DESIGN §4.9).
+    /// Right-click on the bare wall: the status item's menu, for when menu-bar extras are hidden (DESIGN §4.9).
     public static func desk(_ s: DeskState, _ c: Context = Context()) -> MenuSpec {
-        MenuSpec(deskItems(s, c, status: false))
+        MenuSpec(deskItems(s, c))
     }
 
-    /// The menu-bar status item: the desk menu plus the items that only live there.
+    /// The menu-bar status item (the same items as the bare wall's menu).
     public static func status(_ s: DeskState, _ c: Context = Context()) -> MenuSpec {
-        MenuSpec(deskItems(s, c, status: true))
+        MenuSpec(deskItems(s, c))
     }
 
-    private static func deskItems(_ s: DeskState, _ c: Context, status: Bool) -> [MenuItem] {
+    private static func deskItems(_ s: DeskState, _ c: Context) -> [MenuItem] {
         let on = s.monitor.power == .on
         let hidden = s.tokens.keys { !$0.isScreen }.count
         let binned = s.tokens.count(in: .wastebasket)
@@ -257,23 +296,21 @@ extension MenuSpec {
             MenuItem("find", "Find Item…", .inventory),
             MenuItem("takeEverythingOut", "Take Everything Out", .takeEverythingOut,
                      enabled: hidden > 0 || !on || s.monitor.av),
-            MenuItem("clearDesk", "Clear the Desk", .clearDesk),
-            MenuItem("peekDesk", "Peek Desk", .peekDesk),
+            MenuItem("clearDesk", "Clear the Desk", .clearDesk, enabled: !pending.contains("clearDesk")),
+            MenuItem("peekDesk", "Peek Desk", .peekDesk, enabled: !pending.contains("peekDesk")),
+            MenuItem("emptyWastebasket", binned > 0 ? "Empty Wastebasket… (\(binned))" : "Empty Wastebasket…",
+                     .emptyWastebasket, enabled: binned > 0 && !pending.contains("emptyWastebasket")),
         ]
-        if status {
-            items.append(MenuItem("emptyWastebasket", binned > 0 ? "Empty Wastebasket… (\(binned))" : "Empty Wastebasket…",
-                                  .emptyWastebasket, enabled: binned > 0))
-        }
         items += [
             .separator,
             MenuItem("undo", c.undo.map { "Undo \($0)" } ?? "Undo", .undo, enabled: c.undo != nil),
             MenuItem("redo", c.redo.map { "Redo \($0)" } ?? "Redo", .redo, enabled: c.redo != nil),
             .separator,
             MenuItem("pause", c.paused ? "Resume Desk" : "Pause Desk", .pauseDesk(!c.paused)),
+            MenuItem("openDesktopFolder", "Open Desktop Folder in Finder", .openDesktopFolder),
         ]
-        if status { items.append(MenuItem("openDesktopFolder", "Open Desktop Folder in Finder", .openDesktopFolder)) }
         items += [
-            MenuItem("settings", "Settings…", .settings),
+            MenuItem("settings", "Settings…", .settings, enabled: !pending.contains("settings")),
             MenuItem("about", "About Deskterior", .about),
             .separator,
             MenuItem("quit", "Quit Deskterior", .quit),

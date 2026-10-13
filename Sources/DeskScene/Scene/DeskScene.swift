@@ -68,6 +68,10 @@ public final class DeskScene: SKScene {
     public var menuContext = MenuSpec.Context() {
         didSet { room?.menuContext = menuContext }
     }
+    /// Points per art px on the display (the drag threshold is capped in points); 0 keeps 3 art px.
+    public var pointsPerArtPx: Double = 0 {
+        didSet { room?.router.setPointsPerArtPx(pointsPerArtPx) }
+    }
     /// The committed model (nil: the bare room).
     public private(set) var deskState: DeskState?
     /// Real icons by token, kept across content rebuilds.
@@ -130,6 +134,7 @@ public final class DeskScene: SKScene {
             addChild(r.root)
             room = r
             r.menuContext = menuContext
+            r.router.setPointsPerArtPx(pointsPerArtPx)
             wireRoom()
             for (k, v) in icons { r.setIcon(k, v) }
             if let deskState { r.apply(deskState) }
@@ -202,11 +207,26 @@ public final class DeskScene: SKScene {
     public var toastShown: ToastKey? { room?.toast.key }
     /// True while a drag (carry or marquee) is in hand.
     public var isDragging: Bool { room?.router.drag != nil }
+    /// True while the button is down on the desk.
+    public var isPressing: Bool { room?.router.isPressed ?? false }
 
-    /// What VoiceOver should offer (rebuilt on state change).
+    /// What VoiceOver should offer: the visible controls and tokens, front to back.
     public func accessibilityItems() -> [AXItem] {
         guard let room else { return [] }
         return room.routing.flatMap { $0.accessibilityItems() }
+    }
+
+    /// VoiceOver's press on an item: a click at its centre, through the same gestures as the pointer.
+    public func accessibilityPress(_ item: AXItem, time: Double) {
+        let p = SIMD2(Float(item.frame.midX) + 0.5, Float(item.frame.midY) + 0.5)
+        handle(InputEvent(.down, art: p, clickCount: 1, t: time))
+        handle(InputEvent(.up, art: p, clickCount: 1, t: time))
+    }
+
+    /// VoiceOver's Open on a token, while it is on show.
+    public func accessibilityOpen(_ key: TokenKey) {
+        guard let room, room.extras.contains(where: { $0.shownTokens.contains(key) }) else { return }
+        onAction?(.requestOpen([key]))
     }
 
     /// The menu a right-click at `p` would show (demo scripts, the app's status item uses the desk menu).

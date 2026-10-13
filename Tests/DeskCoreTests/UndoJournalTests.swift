@@ -74,6 +74,23 @@ struct UndoJournalTests {
         #expect(s.violations().isEmpty)
     }
 
+    @Test("Undo skips steps whose tokens are all gone: one ⌘Z does something visible, or nothing")
+    func undoSkipsStaleSteps() {
+        var s = F.mirrored(["a", "b", "c"])
+        var j = UndoJournal()
+        _ = Reducer.reduce(&s, journal: &j, .move([F.key(1)], to: cell(0, 8, 4)), env)
+        _ = Reducer.reduce(&s, journal: &j, .move([F.key(3)], to: cell(0, 7, 4)), env)
+        // c is deleted: its Move can no longer do anything.
+        _ = reduce(&s, .snapshot(F.snapshot([F.entry("a", 1), F.entry("b", 2)]), now: F.t0), env)
+        #expect(Reducer.reduce(&s, journal: &j, .undo, env) == [.persist, .wakeLoop])
+        #expect(s.tokens.location(of: F.key(1)) == cell(0, 0, 0), "the first undo reaches a's move")
+        #expect(j.undoLabel == nil && j.redoLabel == "Move")
+        // Nothing left that can change: no effects, no save.
+        _ = Reducer.reduce(&s, journal: &j, .move([F.key(2)], to: cell(0, 6, 4)), env)
+        _ = reduce(&s, .snapshot(F.snapshot([F.entry("a", 1)]), now: F.t0), env)
+        #expect(Reducer.reduce(&s, journal: &j, .undo, env).isEmpty && j.undoLabel == nil)
+    }
+
     @Test("Undo follows a token re-keyed by a safe-save")
     func undoFollowsRekey() {
         var s = F.mirrored(["a", "b"])

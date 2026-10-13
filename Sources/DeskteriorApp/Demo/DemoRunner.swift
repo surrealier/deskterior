@@ -439,6 +439,9 @@ final class DemoRunner {
                 if !(title == value.text || (value.text != "none" && title.contains(TextLayout.nfc(value.text)))) {
                     out.append("tooltip is \(title), expected \(value.text)")
                 }
+            case "hover":
+                let name = scene.screen?.hovered.flatMap { s.tokens.meta(of: $0)?.displayName } ?? "none"
+                check(key, name, DemoValue.string(TextLayout.nfc(value.text)))
             case "carrying": check(key, String(scene.isDragging), value)
             case "bonks": check(key, String(scene.bonkCount), value)
             case "command": check(key, appCommands.last ?? "none", value)

@@ -86,7 +86,8 @@ Every step is an object with one key.
 | `undo` | The undo label (`Move`, `Take Everything Out`…) or `none`. |
 | `effect` | The last file effect the dry-run effect runner recorded: `open`, `reveal`, `quickLook`, `copy`, `openPrivacySettings`, `chooseFolder`, or `none`. |
 | `toast` | The toast on show (`drivesReadOnly`…) or `none`. |
-| `tooltip` | `none`, or text the tooltip's title contains. |
+| `tooltip` | `none`, or text the tooltip's title contains (a token's tooltip is its kind and date; its name is on the label). |
+| `hover` | `none`, or the name of the token under the pointer. |
 | `carrying` / `bonks` | A drag in hand; refused drops so far. |
 | `command` | The last app command a scene request or menu asked for (`inventory`…). |
 

@@ -31,6 +31,8 @@ public nonisolated struct Hit: Hashable, Sendable {
 ///   bare-desk fallback (clear the selection, the wall menu);
 /// - `dropVerdict` says where carried tokens released over the element go (`DropResolver` asks front to back);
 /// - `menu` builds the right-click `MenuSpec` (nil falls back to the desk menu);
+/// - `shownTokens` lists the tokens it draws and lets the user pick: the selection keeps only tokens some element
+///   shows, so keys and menus never act on a hidden token (an element that shows minis must list them);
 /// - `step`/`needsFrames`/`settle` run bounded animations under the frame loop (hard sleep calls `settle`);
 /// - `accessibilityItems` lists what VoiceOver should offer.
 ///
@@ -55,6 +57,8 @@ public protocol DeskElement: AnyObject {
     /// Where `tokens` released at `p` would go, or nil when the element does not take drops there.
     func dropVerdict(_ tokens: [TokenKey], at p: ArtPoint) -> DropVerdict?
     func menu(_ hit: Hit) -> MenuSpec?
+    /// Tokens drawn now that the user can select (carried ones included).
+    var shownTokens: Set<TokenKey> { get }
     func accessibilityItems() -> [AXItem]
     /// True while the element animates on its own.
     var needsFrames: Bool { get }
@@ -71,6 +75,7 @@ extension DeskElement {
     public func handle(_ gesture: Gesture, _ hit: Hit) -> GestureResponse { .pass }
     public func dropVerdict(_ tokens: [TokenKey], at p: ArtPoint) -> DropVerdict? { nil }
     public func menu(_ hit: Hit) -> MenuSpec? { nil }
+    public var shownTokens: Set<TokenKey> { [] }
     public func accessibilityItems() -> [AXItem] { [] }
     public var needsFrames: Bool { false }
     public func step(_ dt: Double) {}

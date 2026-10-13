@@ -17,6 +17,8 @@ final class Store {
     var effects: ((Effect) -> Void)?
     /// Just before the reducer sees an action (app-side bookkeeping such as remembering "Show anyway").
     var willDispatch: ((DeskAction, DeskState) -> Void)?
+    /// The undo or redo label changed (menus show "Undo <label>"), even when the state did not.
+    var journalChanged: (() -> Void)?
     let saver: LayoutSaver?
     private var observers: [(id: Int, body: (DeskState, DeskState) -> Void)] = []
     private var nextObserver = 0
@@ -44,8 +46,12 @@ final class Store {
         dispatchCount += 1
         willDispatch?(action, state)
         let before = state
+        let labels = (journal.undoLabel, journal.redoLabel, journal.undoStack.count, journal.redoStack.count)
         let out = Reducer.reduce(&state, journal: &journal, action, ReduceEnv(now: now(), seed: seed))
         if state != before { notify(before) }
+        if labels != (journal.undoLabel, journal.redoLabel, journal.undoStack.count, journal.redoStack.count) {
+            journalChanged?()
+        }
         for effect in out {
             if effect == .persist {
                 saver?.schedule(state)

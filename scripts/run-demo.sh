@@ -11,10 +11,12 @@
 #   (default 3), DESKTERIOR_BIN (a built Deskterior; skips the build).
 #
 # The real desktop is never used: fixture and state folders come from mktemp, make-fixture-desktop.sh refuses
-# targets inside the real desktop, and the app refuses (exit 64) a mirrored, state or snapshot folder that is the
-# real desktop or inside it. The demo's fs steps (touch, mkdir, mv, rm) are performed here, inside the fixture
-# only: the app asks on stdout ("DEMO-FS<TAB>op<TAB>name[<TAB>name]") and waits for "ok" on its stdin, so the app
-# itself never changes a file.
+# targets inside the real desktop, this script refuses an --out folder inside (or containing) it before touching
+# anything, and the app refuses (exit 64) a mirrored, state or snapshot folder that is the real desktop or inside
+# it. The demo's fs steps (touch, mkdir, mv, rm) are performed here, inside the fixture only: the app asks on
+# stdout ("DEMO-FS<TAB>op<TAB>name[<TAB>name]") and waits for "ok" on its stdin, so the app itself never changes a
+# file. Names are single plain components without control characters; symlinks are never followed (the fixture
+# holds links to /Applications and the like), and mv never replaces anything.
 # Exit: 0 when every demo passes, else the first failing demo's code (1 expectation, 2 script error, 64 guard).
 set -euo pipefail
 
@@ -40,6 +42,9 @@ while [ $# -gt 0 ]; do
 done
 [ "${#NAMES[@]}" -gt 0 ] || usage
 
+# Snapshots go under --out (old PNGs there are deleted): never inside, or above, the real desktop.
+"$ROOT/scripts/make-fixture-desktop.sh" --check "$OUT_ROOT" || exit $?
+
 # Build (or use DESKTERIOR_BIN).
 if [ -n "${DESKTERIOR_BIN:-}" ]; then
   BIN_DIR="$(cd "$(dirname "$DESKTERIOR_BIN")" && pwd)"
@@ -53,17 +58,28 @@ APP="${DESKTERIOR_BIN:-$BIN_DIR/Deskterior}"
 [ -x "$APP" ] || { echo "run-demo: no Deskterior binary at $APP" >&2; exit 2; }
 if [ -x "$BIN_DIR/deskterior-assets" ]; then export DESKTERIOR_ASSETS="$BIN_DIR/deskterior-assets"; fi
 
-plain() { case "$1" in ""|.|..|*/*) return 1 ;; esac; return 0; }
+# A single path component: not empty, not . or .., no slash, no control characters.
+plain() {
+  case "$1" in ""|.|..|*/*|*[[:cntrl:]]*) return 1 ;; esac
+  return 0
+}
 
-# Performs one fs request inside the fixture $DESK: op, name, [name].
+# Performs one fs request inside the fixture $DESK: op, name, [name]. Symlinks are never followed: touch sets a
+# link's own times, mkdir and mv refuse a link (or anything) already at the target, rm removes a link, not what it
+# points to.
 fs_op() {
   local op="$1" a="$2" b="${3:-}"
   plain "$a" || return 1
   case "$op" in
-    touch) touch "$DESK/$a" ;;
-    mkdir) mkdir -p "$DESK/$a" ;;
-    rm) rm -rf "$DESK/$a" ;;
-    mv) plain "$b" || return 1; mv "$DESK/$a" "$DESK/$b" ;;
+    touch) if [ -L "$DESK/$a" ]; then touch -h "$DESK/$a"; else touch "$DESK/$a"; fi ;;
+    mkdir) [ ! -e "$DESK/$a" ] && [ ! -L "$DESK/$a" ] || return 1; mkdir "$DESK/$a" ;;
+    rm) rm -rf "${DESK:?}/$a" ;;
+    mv)
+      plain "$b" || return 1
+      { [ -e "$DESK/$a" ] || [ -L "$DESK/$a" ]; } || return 1
+      [ ! -e "$DESK/$b" ] && [ ! -L "$DESK/$b" ] || return 1
+      mv -n "$DESK/$a" "$DESK/$b"
+      ;;
     *) return 1 ;;
   esac
 }

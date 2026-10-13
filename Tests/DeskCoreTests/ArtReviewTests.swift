@@ -44,11 +44,15 @@ struct ArtReviewTests {
         }
     }
 
-    @Test("DeskOS sky: day is 4f8fba→73bed3 only, seams sit in the token-row gutters, no checkerboards")
+    @Test("DeskOS sky: day is 3c5e8b→577277 only, no sky band is the selection or folder blue, seams sit in the token-row gutters, no checkerboards")
     func wallpaper() {
         let day = MonitorArt.deskOSWallpaper(sky: .day)
         // A cloud-free column above the hills.
-        #expect(inks(day, in: ArtRect(80, 0, 1, 72)) == [.blue3, .blue4])
+        #expect(inks(day, in: ArtRect(80, 0, 1, 72)) == [.blue2, .neutral5])
+        for sky in SkyVariant.allCases {
+            let column = inks(MonitorArt.deskOSWallpaper(sky: sky), in: ArtRect(80, 0, 1, 72))
+            #expect(!column.contains(Role.selection) && !column.contains(.blue4), "\(sky)")
+        }
         for seam in MonitorArt.skySeams {
             let y = CoreLayout.screen.y + seam
             for row in 0..<CoreLayout.screenRows {

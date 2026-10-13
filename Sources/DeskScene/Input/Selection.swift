@@ -47,4 +47,11 @@ public final class Selection {
         let mapped = Set(keys.map(state.currentKey).filter(state.tokens.contains))
         set(mapped, primary: primary.map(state.currentKey))
     }
+
+    /// Keeps only `shown` tokens: what the desk no longer shows (power off, AV, another page, a hiding place)
+    /// leaves the selection, so keys and menus never act on a token the user cannot see.
+    public func restrict(to shown: Set<TokenKey>) {
+        guard !keys.isSubset(of: shown) else { return }
+        set(keys.intersection(shown), primary: primary)
+    }
 }

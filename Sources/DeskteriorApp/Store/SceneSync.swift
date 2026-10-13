@@ -29,6 +29,7 @@ final class SceneSync {
     /// Pushes the current state and follows every change from now on.
     func start() {
         store.observe { [weak self] new, _ in self?.push(new) }
+        store.journalChanged = { [weak self] in self?.refreshMenuContext() }
         push(store.state)
     }
 

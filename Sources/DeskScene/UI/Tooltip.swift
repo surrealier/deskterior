@@ -83,13 +83,20 @@ enum TooltipArt {
     }
 
     /// Top-left for a tooltip of `size` pointing at `anchor`: centred below it (above when it would leave
-    /// `bounds` at the bottom), kept inside `bounds`.
-    static func origin(size: ArtSize, anchor: ArtRect, bounds: ArtRect) -> ArtPoint {
+    /// `bounds` at the bottom), or above it first when `above` (below when it would leave `bounds` at the top);
+    /// kept inside `bounds`.
+    static func origin(size: ArtSize, anchor: ArtRect, bounds: ArtRect, above: Bool = false) -> ArtPoint {
+        let inset = min(2, max(0, (bounds.w - size.w) / 2))
         var x = anchor.midX - size.w / 2
-        var y = anchor.maxY + 3
-        if y + size.h > bounds.maxY { y = anchor.minY - 3 - size.h }
-        x = min(max(x, bounds.minX + 2), bounds.maxX - 2 - size.w)
-        y = min(max(y, bounds.minY + 2), bounds.maxY - 2 - size.h)
+        let under = anchor.maxY + 3, over = anchor.minY - 3 - size.h
+        var y: Int
+        if above {
+            y = over >= bounds.minY + inset ? over : under
+        } else {
+            y = under + size.h <= bounds.maxY ? under : over
+        }
+        x = min(max(x, bounds.minX + inset), bounds.maxX - inset - size.w)
+        y = min(max(y, bounds.minY + inset), bounds.maxY - inset - size.h)
         return ArtPoint(x, y)
     }
 }
@@ -118,7 +125,11 @@ final class TooltipView {
             return wasShown
         }
         let image = TooltipArt.render(spec, font: font)
-        let r = ArtRect(origin: TooltipArt.origin(size: image.size, anchor: spec.anchor, bounds: bounds), size: image.size)
+        // The spec's own bounds (the glass) when the tooltip fits in them, else the visible canvas.
+        var within = spec.bounds.map { $0.intersection(bounds) } ?? bounds
+        if image.width > within.w || image.height > within.h { within = bounds }
+        let origin = TooltipArt.origin(size: image.size, anchor: spec.anchor, bounds: within, above: spec.prefersAbove)
+        let r = ArtRect(origin: origin, size: image.size)
         node.texture = TextureFactory.texture(image)
         space.place(node, at: r)
         node.isHidden = false

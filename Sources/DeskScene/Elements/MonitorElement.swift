@@ -3,9 +3,10 @@ import DeskPixels
 import SpriteKit
 
 /// The monitor and its power button (DESIGN §2.2 E1–E2): ⏻ (zero latency; on the first-run prompt it connects
-/// the desktop), INPUT (HDMI 1…n, AV, HDMI 1), page dots, the LED and "+N" badge, the CRT collapse and bloom, the
-/// static and OSD after an input change, the AV logo (≤ 10 s, restarted by hovering) and the full-screen cards
-/// (connect prompt, connecting, NO SIGNAL, DESKTOP HIDDEN with their buttons). It owns the glass for gestures:
+/// the desktop), INPUT (HDMI 1…n, AV, HDMI 1; inert while off), page dots (one per page in use; the dot of a page
+/// new files landed on blinks), the LED and "+N" badge, the CRT collapse and bloom, the static and OSD after an
+/// input change, the AV logo (≤ 10 s, restarted by hovering) and the full-screen cards (connect prompt,
+/// connecting, NO SIGNAL, DESKTOP HIDDEN with their buttons, which press in). It owns the glass for gestures:
 /// empty-screen clicks clear the selection, drags draw a marquee, scrolls change page. The monitor's static
 /// sprites stay in the room's `PlacedElement`, which this element uses for alpha hit tests; everything that
 /// changes is drawn here, over them. The visible state comes from `MonitorMachine`.
@@ -40,10 +41,15 @@ public final class MonitorElement: DeskElement {
     private var scrollAccum: SIMD2<Float> = .zero
     private var scrollIdle: Double = 0
     private var scrollLocked = false
+    /// Page dots blinking for new files that landed there, and for how long so far.
+    private var dotBlink: (pages: Set<Int>, t: Double)?
     private lazy var staticFrames = MonitorArt.staticFrames()
 
     /// Scroll distance (art px) that flips one page.
     static let pageScroll: Float = 24
+    /// New files on another page: its dot blinks three times.
+    static let dotBlinkDuration = 1.2
+    static let dotBlinkPeriod = 0.4
 
     init(context: SceneContext, screen: ScreenElement) {
         self.context = context
@@ -125,9 +131,10 @@ public final class MonitorElement: DeskElement {
                 coverKey = "static\(f)"
                 coverImage = { self.staticFrames[f] }
             } else if m.overlay == .av {
-                let p = m.logo.position
-                coverKey = "av\(p.x),\(p.y)"
-                coverImage = { MonitorArt.noSignalScreen(logo: p) }
+                // While the green OSD says "AV", the screen's own grey "AV" stays off (no stray pixels under it).
+                let p = m.logo.position, input = m.osdText == nil ? "AV" : ""
+                coverKey = "av\(p.x),\(p.y),\(input)"
+                coverImage = { MonitorArt.noSignalScreen(logo: p, input: input) }
             } else if m.overlay != .none {
                 let sky = context.sky
                 if card == nil || cardKey?.0 != m.overlay || cardKey?.1 != sky || force {
@@ -195,10 +202,16 @@ public final class MonitorElement: DeskElement {
         }
         let pages = min(8, s.pageCount())
         let current = m.phase == .on || m.phase == .poweringOn ? (s.monitor.av ? -1 : s.monitor.page) : -1
-        let dotsKey = "\(pages).\(current)"
+        let blinking = dotBlink.flatMap { b in Int(b.t / (Self.dotBlinkPeriod / 2)) % 2 == 0 ? b.pages.filter { $0 < pages } : nil } ?? []
+        let dotsKey = "\(pages).\(current).\(blinking.sorted())"
         if dotsKey != shownDots || force {
             shownDots = dotsKey
-            let dots = MonitorArt.pageDots(count: pages, current: current).image
+            var dots = MonitorArt.pageDots(count: pages, current: current).image
+            for page in blinking {
+                let lit = MonitorArt.pageDots(count: pages, current: page).image
+                let r = ArtRect(page * CoreLayout.pageDotPitch, 0, 2, 2)
+                dots.blit(lit.cropped(to: r), at: r.origin)
+            }
             dotsNode.texture = TextureFactory.texture(dots)
             space.place(dotsNode, at: ArtRect(origin: layout.point(CoreLayout.pageDots.origin), size: dots.size))
             dotsNode.zPosition = top
@@ -236,13 +249,40 @@ public final class MonitorElement: DeskElement {
         }
         guard let h = placed?.hitTest(p) else { return nil }
         if h.part == "monitor.pageDots" {
-            // One hit per dot, so its index survives in the rect.
+            // One hit per drawn dot, so its index survives in the rect; the strip past the last dot is bezel.
+            guard let i = dot(at: p) else { return Hit(element: id, part: nil, rect: h.rect) }
             let x0 = context.layout.x(CoreLayout.pageDots.x)
-            let i = max(0, (p.x - x0) / CoreLayout.pageDotPitch)
             return Hit(element: id, part: h.part, rect: ArtRect(x0 + i * CoreLayout.pageDotPitch - 1, h.rect.y, 4, h.rect.h))
         }
         return Hit(element: id, part: h.part, rect: h.rect)
     }
+
+    /// The page dot under `p` (drawn dots only: one per page in use, at most 8).
+    func dot(at p: ArtPoint) -> Int? {
+        guard let s = state, context.layout.rect(CoreLayout.pageDots).contains(p) else { return nil }
+        let i = (p.x - context.layout.x(CoreLayout.pageDots.x)) / CoreLayout.pageDotPitch
+        return i >= 0 && i < min(8, s.pageCount()) ? i : nil
+    }
+
+    /// The page a carry hovering at `p` spring-loads: a page dot of a lit desktop.
+    func springPage(at p: ArtPoint) -> Int? {
+        guard let s = state, s.monitor.power == .on, machine?.showsTokens == true || s.monitor.av else { return nil }
+        guard let i = dot(at: p), i != s.monitor.page || s.monitor.av else { return nil }
+        return i
+    }
+
+    /// Pages whose dot is blinking now.
+    var blinkingPages: Set<Int> { dotBlink?.pages ?? [] }
+
+    /// Blinks the dots of `pages` (new files landed there) three times.
+    func blinkDots(_ pages: Set<Int>) {
+        guard !pages.isEmpty, state?.monitor.power == .on else { return }
+        dotBlink = (pages.union(dotBlink?.pages ?? []), 0)
+        refresh()
+    }
+
+    /// INPUT does nothing while the display is off, so it does not light up either.
+    private var inputLive: Bool { state?.monitor.power == .on }
 
     public func hover(_ hit: Hit?) -> Bool {
         if hit?.part == "monitor.screen", machine?.overlay == .av {
@@ -254,7 +294,8 @@ public final class MonitorElement: DeskElement {
     }
 
     public func hoverStyle(_ hit: Hit) -> HoverStyle {
-        hit.part == "monitor.screen" || hit.part == nil ? .none : .standard
+        if hit.part == "monitor.input", !inputLive { return .none }
+        return hit.part == "monitor.screen" || hit.part == nil ? .none : .standard
     }
 
     public func tooltip(_ hit: Hit) -> TooltipSpec? {
@@ -267,6 +308,7 @@ public final class MonitorElement: DeskElement {
                 : (s.monitor.power == .on ? "Turn Display Off" : "Turn Display On")
             if let badge = m.badge { detail = "\(badge.dropFirst()) new while off" }
         case "monitor.input":
+            guard inputLive else { return nil }
             title = "Input"
             detail = MonitorMachine.osdText(s)
         case "monitor.pageDots":
@@ -283,7 +325,9 @@ public final class MonitorElement: DeskElement {
         guard let s = state else { return .pass }
         switch gesture {
         case .press:
-            setPressed(hit.part == "monitor.power" || hit.part == "monitor.input" ? hit.part : nil)
+            let pressable = hit.part == "monitor.power" || (hit.part == "monitor.input" && inputLive)
+                || hit.part.map { cardButtons[$0] != nil } == true
+            setPressed(pressable ? hit.part : nil)
             return hit.part == "monitor.screen" ? .pass : .handled
         case .cancelPress:
             setPressed(nil)
@@ -347,6 +391,7 @@ public final class MonitorElement: DeskElement {
         guard part != pressedPart else { return }
         pressedPart = part
         let layout = context.layout
+        var z = context.placementZ("monitor.pageDots") + 0.6
         switch part {
         case "monitor.power":
             pressedNode.texture = TextureFactory.texture(MonitorArt.powerButton(pressed: true).image)
@@ -354,11 +399,17 @@ public final class MonitorElement: DeskElement {
         case "monitor.input":
             pressedNode.texture = TextureFactory.texture(MonitorArt.inputButton(pressed: true).image)
             context.space.place(pressedNode, at: layout.rect(CoreLayout.input))
+        case let name? where cardButtons[name] != nil && context.font != nil && Self.buttonTitles[name] != nil:
+            let image = ScreenCard.button(Self.buttonTitles[name]!, primary: ScreenCard.primaryButtons.contains(name),
+                                          pressed: true, font: context.font!)
+            pressedNode.texture = TextureFactory.texture(image)
+            context.space.place(pressedNode, at: ArtRect(origin: cardButtons[name]!.origin, size: image.size))
+            z = context.placementZ("monitor.screen") + 0.35
         default:
             pressedNode.isHidden = true
             return
         }
-        pressedNode.zPosition = context.placementZ("monitor.pageDots") + 0.6
+        pressedNode.zPosition = z
         pressedNode.isHidden = false
     }
 
@@ -382,14 +433,14 @@ public final class MonitorElement: DeskElement {
     }
 
     static let buttonTitles = [
-        "card.show": "Show", "card.keepHidden": "Keep hidden", "card.openSettings": "Open Settings",
+        "card.show": "Show", "card.keepHidden": "Keep Hidden", "card.openSettings": "Open Settings",
         "card.chooseFolder": "Choose Folder…",
     ]
 
     // MARK: Frames
 
     public var needsFrames: Bool {
-        (machine?.needsFrames ?? false) || scrollAccum != .zero || scrollLocked
+        (machine?.needsFrames ?? false) || scrollAccum != .zero || scrollLocked || dotBlink != nil
     }
 
     public func step(_ dt: Double) {
@@ -400,6 +451,10 @@ public final class MonitorElement: DeskElement {
                 scrollLocked = false
             }
         }
+        if let b = dotBlink {
+            dotBlink = b.t + dt >= Self.dotBlinkDuration ? nil : (b.pages, b.t + dt)
+            if machine?.needsFrames != true { refresh() }
+        }
         guard machine?.needsFrames == true else { return }
         machine?.step(dt)
         refresh()
@@ -409,6 +464,7 @@ public final class MonitorElement: DeskElement {
         machine?.settle()
         scrollAccum = .zero
         scrollLocked = false
+        dotBlink = nil
         refresh()
     }
 }
