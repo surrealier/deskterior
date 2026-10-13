@@ -21,6 +21,14 @@
    `git rev-parse --show-toplevel` must print this project directory (the folder lives inside an
    unrelated parent repo that must never be touched).
 
+5. **App icon** (found on macOS 26.6 while packaging): full-bleed art with transparent pixel corners, and
+   any supplied 16/32-px image, get the grey "legacy icon" plate. The shipped icon is therefore a body on
+   Apple's 824/1024 squircle grid (superellipse |u|⁵+|v|⁵ ≤ 1) and the `.icns` omits the 16/32-px slots so
+   the system derives them (`scripts/make-icon.sh --all-sizes` restores them). Supersedes "full-bleed
+   rounded square" and "16–1024" in §6.
+6. **Test toolchain on CLT:** `scripts/swift-test.sh` adds the Testing framework search paths and
+   `-disable-cross-import-overlays` (the CLT ship `_Testing_Foundation.framework` without its module).
+
 ---
 
 # Deskterior: final implementation spec (v0.1)
