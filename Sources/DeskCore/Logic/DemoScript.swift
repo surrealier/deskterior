@@ -105,7 +105,7 @@ public enum DemoFS: Codable, Sendable, Equatable {
     case mv(String, String)
     case rm(String)
 
-    private enum Key: String, CodingKey { case touch, mkdir, mv, rm }
+    private enum Key: String, CodingKey { case touch, newFolder = "mkdir", mv, rm }
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: Key.self)
@@ -114,7 +114,7 @@ public enum DemoFS: Codable, Sendable, Equatable {
         }
         switch key {
         case .touch: self = .touch(try c.decode(String.self, forKey: .touch))
-        case .mkdir: self = .newFolder(try c.decode(String.self, forKey: .mkdir))
+        case .newFolder: self = .newFolder(try c.decode(String.self, forKey: .newFolder))
         case .rm: self = .rm(try c.decode(String.self, forKey: .rm))
         case .mv:
             let names = try c.decode([String].self, forKey: .mv)
@@ -129,7 +129,7 @@ public enum DemoFS: Codable, Sendable, Equatable {
         var c = encoder.container(keyedBy: Key.self)
         switch self {
         case let .touch(n): try c.encode(n, forKey: .touch)
-        case let .newFolder(n): try c.encode(n, forKey: .mkdir)
+        case let .newFolder(n): try c.encode(n, forKey: .newFolder)
         case let .rm(n): try c.encode(n, forKey: .rm)
         case let .mv(a, b): try c.encode([a, b], forKey: .mv)
         }

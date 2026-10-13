@@ -60,6 +60,35 @@
     - A scan that would remove > 50 % (and > 20) of the tokens is held and confirmed by a rescan 2 s later.
     - Backups rotate by age: `.bak1` hourly, `.bak2` daily, `.bak3` weekly.
     - Switching the mirrored folder parks its layout as `desk.<sha1(rootPath)>.json`.
+12. **Interaction core (M5).** These refine §2.1, §4.2 and §4.9.
+    - `DeskElement` has a `shownTokens` requirement. The selection keeps only tokens some element shows, so
+      elements that show selectable minis (open drawers, cubby, phone) must list them. Space, ⌘O, ⌘C and the
+      token menu act only on tokens on show.
+    - Interactive elements join the hit/drop order through `RoomContent.install(_:inSlotOf:)`.
+    - `MenuSpec.pending` disables items whose milestone hasn't landed (Move to Trash, Empty Wastebasket, Clear
+      the Desk, Peek Desk, Settings…). Each milestone removes its ids.
+    - `--lights` in desk mode changes only what the scene shows and is never saved.
+    - The drag threshold is 3 art px, but never more than 4 pt.
+13. **Drawers, tosses and machines (M6/M7 sims).** These refine §2.2 E3–E8.
+    - A jammed drawer rests at its gap, `min(6, n − capacity)` px, not 4 px. The boing overshoots about 1.3 px
+      and returns.
+    - A click on a drawer more than half open closes it; otherwise it opens. Clicks and spring-loading thunk
+      into the chair (`.hitChair` → `RollerSim.pushedByDrawer()`).
+    - A peek expires 0.35 s after the last scroll. Cabinet drawers are interlocked: one open at a time.
+    - Floor x is the token's **centre** (`FloorLine`). The floor keeps clear of the basket and cabinet footprints.
+    - A release above the desk's front edge faster than 250 px/s is a front-plane arc.
+    - The basket tips only on a sustained sideways rim drag: 3 samples in a row, |vx| > 300 px/s and > 3|vy|,
+      covering more than 6 px. Its heap uses `InteriorRaster.basketSlots` (24 slots; the heap rises above the
+      rim from the 11th).
+14. **Intent minting (M11 DeskFiles).** These refine §3.7 and §4.2.
+    - `ExplicitIntent` is minted only through `@_spi(IntentMinting) import DeskFiles`, allowed only in
+      `DeskteriorApp/Store/EffectRunner.swift` (and DeskFiles' own tests). `@testable` is forbidden in Sources.
+    - Each intent is single-use, and its age is measured on `ContinuousClock` (10 s).
+    - Accepted origins: trash takes menuItem, sheetConfirm, dragToTrash or inventory; import takes drop; undo
+      takes undo; eject takes menuItem or inventory.
+    - A `FileUndoRecord` is redeemable once, and only on the operator that issued it.
+    - Copies stage in an item-replacement folder on the desk's volume, report progress, and land by one
+      exclusive rename. Every move is re-checked by identity afterwards and sent back if it was swapped.
 
 ---
 
@@ -676,7 +705,7 @@ Legend: **MVP** ships in v0.1. Each element lists gesture, state, hiding, physic
    - Writes inside our own roots are allowlisted per file: `StateStore` (state dir), `IconCache` (caches dir), `OperationLog` (state dir), `ArtifactWriter` (an explicit `--snapshot-dir`/`--frames-dir`, refused if it is under the desktop root), `FakeTrash` (state dir). Each asserts its path prefix at runtime.
 2. **`ExplicitIntent{origin, issuedAt}`** is required by every mutating `FileOperator` method.
    - `DeskCore` and `DeskScene` cannot import `DeskFiles`, so they cannot create intents.
-   - The lint fails on `ExplicitIntent(` outside `DeskteriorApp/EffectRunner.swift`, which creates intents only in menu, confirm-sheet, drop, drag-to-Trash, Undo and Inventory handlers.
+   - The lint fails on `ExplicitIntent(` outside `DeskteriorApp/Store/EffectRunner.swift`, which creates intents only in menu, confirm-sheet, drop, drag-to-Trash, Undo and Inventory handlers.
    - `FileOperator` rejects intents older than 10 s.
 3. **Time-of-check guard:** immediately before acting, re-stat the file. If the inode or parent differs from what the token expects, abort with a toast.
 4. **Root confinement:** targets must be direct children of the realpath'd desktop root. Drop sources and Trash URLs are the only exceptions.
@@ -1527,5 +1556,5 @@ Lamp Only (menu, emergent states), dark-token hit filtering, monitor and phone e
 - Sources/DeskCore/Logic/Reducer.swift (with `Model/DeskState.swift`, `Model/Location.swift`, `Logic/Reconciler.swift`)
 - Sources/DeskCore/Cloth/ClothSim.swift (with `ClothGrabs.swift`, `DeskSurfaceRaster.swift`, `Coverage.swift`, `BumpField.swift`)
 - Sources/DeskScene/Render/PixelPresenter.swift (with `PostPass.swift`, `Loop/FrameLoop.swift`, `DeskCore/Geometry/PixelGrid.swift`)
-- Sources/DeskFiles/FileOperator.swift (with `ExplicitIntent.swift`, `SafetyGuard.swift`, `DeskteriorApp/EffectRunner.swift`, `scripts/check-file-safety.sh`)
+- Sources/DeskFiles/FileOperator.swift (with `ExplicitIntent.swift`, `SafetyGuard.swift`, `DeskteriorApp/Store/EffectRunner.swift`, `scripts/check-file-safety.sh`)
 - Sources/DeskteriorApp/Window/DeskWindow.swift (with `DeskView.swift`, `DisplayManager.swift`, `scripts/build-app.sh`, `.github/workflows/release.yml`)

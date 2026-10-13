@@ -31,7 +31,7 @@ public enum SceneClock: Hashable, Sendable {
 /// (`SKRenderer` draws it). Set up explicitly; no `didMove(to:)`. Shows the room by default; pushes the room's
 /// light mask and ambient level to the presenter it is connected to, and re-renders the clock each minute.
 ///
-/// The app drives it with committed model state (`apply`), real icons (`setIcon`), model animations (`play`)
+/// The app drives it with committed model state (`apply`), real icons (`showIcon`), model animations (`play`)
 /// and toasts; input arrives as `InputEvent`s and `KeyCommand`s, and what the user asks for leaves through
 /// `onAction` (a `DeskAction` for the store) and `onRequest` (menus, Inventory). Without a model it is the bare
 /// M3 room.
@@ -136,7 +136,7 @@ public final class DeskScene: SKScene {
             r.menuContext = menuContext
             r.router.setPointsPerArtPx(pointsPerArtPx)
             wireRoom()
-            for (k, v) in icons { r.setIcon(k, v) }
+            for (k, v) in icons { r.showIcon(k, v) }
             if let deskState { r.apply(deskState) }
         }
         pushLighting()
@@ -172,16 +172,16 @@ public final class DeskScene: SKScene {
     }
 
     /// A token's pixelated real icon (nil: back to the kind icon).
-    public func setIcon(_ key: TokenKey, _ icon: PixelBuffer?) {
+    public func showIcon(_ key: TokenKey, _ icon: PixelBuffer?) {
         icons[key] = icon
-        room?.setIcon(key, icon)
+        room?.showIcon(key, icon)
     }
 
     /// Drops icons of tokens that are gone.
     public func pruneIcons(keeping live: Set<TokenKey>) {
         for k in icons.keys where !live.contains(k) {
             icons[k] = nil
-            room?.setIcon(k, nil)
+            room?.showIcon(k, nil)
         }
     }
 

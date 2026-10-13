@@ -72,10 +72,10 @@ final class SceneSync {
         switch result {
         case let .pixels(icon, _):
             iconCount += 1
-            host.scene.setIcon(key, icon)
+            host.scene.showIcon(key, icon)
             host.modelChanged()
         case .kindOnly:
-            host.scene.setIcon(key, nil)
+            host.scene.showIcon(key, nil)
         case .stale:
             requested[key] = nil
             requestIcons(store.state)

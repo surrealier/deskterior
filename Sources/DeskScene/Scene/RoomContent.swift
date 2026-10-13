@@ -288,7 +288,7 @@ final class RoomContent: GestureTarget {
         screen.refreshIfSelectionChanged()
     }
 
-    func setIcon(_ key: TokenKey, _ icon: PixelBuffer?) {
+    func showIcon(_ key: TokenKey, _ icon: PixelBuffer?) {
         context.icons[key] = icon
         if let s = context.state, s.tokens.location(of: key)?.isScreen == true { screen.apply(s) }
     }
