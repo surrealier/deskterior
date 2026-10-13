@@ -34,7 +34,8 @@ let package = Package(
         // Dev tool: app icon, sprite contact sheets, fixture files.
         .executableTarget(name: "DeskAssetTool", dependencies: ["DeskCore", "DeskPixels"]),
 
-        .testTarget(name: "DeskCoreTests", dependencies: ["DeskCore"]),
+        // DeskPixels is a test-only dependency here: PNG goldens for core rasterizers.
+        .testTarget(name: "DeskCoreTests", dependencies: ["DeskCore", "DeskPixels"]),
         .testTarget(name: "DeskPixelsTests", dependencies: ["DeskCore", "DeskPixels"]),
         .testTarget(name: "DeskFilesTests", dependencies: ["DeskCore", "DeskFiles"]),
         .testTarget(
