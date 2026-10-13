@@ -13,6 +13,7 @@ import Foundation
 //                                                     --rooms adds CPU-lit room previews per display × light
 //   deskterior-assets zoom <in.png> --rect x,y,w,h --out <file> [--scale N]
 //                                                     nearest-neighbour crop of a 1× image for close review
+//   deskterior-assets cloth-review --out <dir>        desk-mat cloth scenarios rendered for review
 
 let args = Array(CommandLine.arguments.dropFirst())
 
@@ -22,6 +23,7 @@ func usage() -> Never {
                deskterior-assets icon --out <dir> [--all-sizes]
                deskterior-assets contact-sheet --out <dir> [--scale N] [--rooms]
                deskterior-assets zoom <in.png> --rect x,y,w,h --out <file> [--scale N]
+               deskterior-assets cloth-review --out <dir>
         """)
     exit(2)
 }
@@ -237,6 +239,9 @@ do {
         try PNGCodec.encode(image.cropped(to: ArtRect(n[0], n[1], n[2], n[3])).scaledNearest(option("--scale", default: 4)))
             .write(to: url)
         print("wrote \(url.path)")
+    case "cloth-review":
+        guard let out = value(of: "--out") else { usage() }
+        try ClothReview.run(outDir: URL(fileURLWithPath: out, isDirectory: true))
     case "icon":
         guard let out = value(of: "--out") else { usage() }
         try writeIcon(to: URL(fileURLWithPath: out, isDirectory: true), allSizes: args.contains("--all-sizes"))
