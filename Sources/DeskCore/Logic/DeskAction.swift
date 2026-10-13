@@ -64,6 +64,15 @@ public enum DeskAction: Sendable {
 
     case clock(Date)
 
+    // MARK: containers (M6)
+    /// Open… / Show on Desk: a drawer opens all the way (a cabinet drawer closes the other two and rolls the chair
+    /// clear), the phone turns face up (`Reducer.revealContainer`).
+    case openContainer(ContainerID)
+    /// Close: a drawer shuts to its rest (an overfull one stays ajar at its gap), the phone turns face down.
+    case closeContainer(ContainerID)
+    /// The phone face down or up: absolute, so a repeated or late commit never flips it the wrong way.
+    case phoneFace(down: Bool)
+
     /// Explicit user requests. Only these may produce file effects (`Effect.touchesFiles`).
     public var isRequest: Bool {
         switch self {

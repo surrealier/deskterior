@@ -22,7 +22,7 @@ public struct PhoneMachine: Sendable, Equatable {
     }
 
     public enum Event: Hashable, Sendable {
-        /// The flip started: the model's `faceDown` becomes this (dispatch `.phoneFlip`).
+        /// The flip started: the model's `faceDown` becomes this (dispatch `action(committing:model:)`).
         case committed(faceDown: Bool)
         /// The flip finished.
         case landed(faceDown: Bool)
@@ -85,10 +85,10 @@ public struct PhoneMachine: Sendable, Equatable {
         }
     }
 
-    /// The model action for a `committed(faceDown:)` event. `.phoneFlip` toggles, so it is dispatched only when the
-    /// model differs: a repeated or late commit never flips the model the wrong way.
+    /// The model action for a `committed(faceDown:)` event: the absolute `.phoneFace(down:)`, and only when the
+    /// model differs, so a repeated or late commit never flips the model the wrong way.
     public static func action(committing faceDown: Bool, model: PhoneState) -> DeskAction? {
-        model.faceDown == faceDown ? nil : .phoneFlip
+        model.faceDown == faceDown ? nil : .phoneFace(down: faceDown)
     }
 
     /// The model changed under the machine (undo, Clear the Desk, Show on Desk): jump to it without animating.

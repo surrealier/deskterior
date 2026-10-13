@@ -344,7 +344,9 @@ final class DemoRunner {
         if target.hasPrefix("token:") {
             let name = String(target.dropFirst(6))
             guard let key = tokenKey(named: name) else { throw ScriptError(description: "no token named '\(name)'") }
-            guard let r = screen.iconRect(of: key) else { throw ScriptError(description: "token '\(name)' is not on show") }
+            guard let r = screen.iconRect(of: key) ?? host.scene.miniRect(of: key) else {
+                throw ScriptError(description: "token '\(name)' is not on show")
+            }
             return center(r)
         }
         if target.hasPrefix("cell:") {
@@ -368,7 +370,9 @@ final class DemoRunner {
             guard let r = screen.firstEmptyCell() else { throw ScriptError(description: "no empty cell on the page") }
             return center(r)
         }
-        guard let r = layout.anchors[target] else { throw ScriptError(description: "unknown target '\(target)'") }
+        guard let r = host.scene.liveAnchor(target) ?? layout.anchors[target] else {
+            throw ScriptError(description: "unknown target '\(target)'")
+        }
         return center(r)
     }
 
@@ -445,6 +449,17 @@ final class DemoRunner {
             case "carrying": check(key, String(scene.isDragging), value)
             case "bonks": check(key, String(scene.bonkCount), value)
             case "command": check(key, appCommands.last ?? "none", value)
+            // MARK: containers (M6)
+            case let k where k.hasPrefix("drawer:"):
+                guard let id = ContainerID(rawValue: String(k.dropFirst(7))), id.isDrawer else {
+                    throw ScriptError(description: "no drawer '\(k.dropFirst(7))'")
+                }
+                let p = s.drawerOpening(id)
+                check(key, p >= Visibility.drawerOpen ? "open" : (p > 0 ? "ajar" : "closed"), value)
+            case "phone": check(key, s.phone.faceDown ? "faceDown" : "faceUp", value)
+            case "minis": check(key, String(scene.containerMinis.count), value)
+            case "chair.blocksCabinet":
+                check(key, String(DrawerSim.cabinetOpenLimit(travel: 12, chairX: s.chair.x) < 12), value)
             default:
                 throw ScriptError(description: "unknown expectation '\(key)'")
             }

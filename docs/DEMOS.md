@@ -63,8 +63,8 @@ Every step is an object with one key.
 
 | Target | Point |
 |---|---|
-| an anchor name | The anchor's centre (`monitor.power`, `monitor.input`, `monitor.pageDots`, `monitor.screen`, `hub`, `wastebasket.mouth`…; `Anchors.core`). |
-| `token:<name>` | The centre of that token's icon (NFC name; it must be on show). |
+| an anchor name | The anchor's centre (`monitor.power`, `monitor.input`, `monitor.pageDots`, `monitor.screen`, `hub`, `wastebasket.mouth`…; `Anchors.core`). A drawer's anchors follow it out: `riser.drawerL.front`, `.handle`, `.interior`, `cabinet.top.handle`… |
+| `token:<name>` | The centre of that token's icon, or of the part of its mini that answers a click in an open drawer, the cubby or the face-up phone (NFC name; it must be on show). |
 | `cell:<col>,<row>` | A cell of the current page. |
 | `screen.empty` | The first empty cell of the current page. |
 | `card.<button>` | A button on a monitor card: `card.show`, `card.keepHidden`, `card.openSettings`, `card.chooseFolder`. |
@@ -90,6 +90,10 @@ Every step is an object with one key.
 | `hover` | `none`, or the name of the token under the pointer. |
 | `carrying` / `bonks` | A drag in hand; refused drops so far. |
 | `command` | The last app command a scene request or menu asked for (`inventory`…). |
+| `drawer:<id>` | A drawer's opening in the model: `closed` (0), `ajar` (under 8 px: a peek, overfull, the chair in the way) or `open`. Ids are `ContainerID`s (`riserLeft`, `cabinetFile`…). |
+| `phone` | `faceUp` / `faceDown` (the model). |
+| `minis` | Count: tokens the containers show as selectable minis (open drawers, the cubby, the face-up phone). |
+| `chair.blocksCabinet` | `true` while the model's chair overlaps the cabinet fronts by more than 16 px. |
 
 ## The demos
 
@@ -98,4 +102,6 @@ Every step is an object with one key.
 | `00-layout` | The mirrored fixture on the monitor by day, at night and in Lamp Only darkness. |
 | `01-mirror` | Select, ⌘/⇧ extend, hover tooltip, marquee, ⌘A, a carry mid-drag and its drop, a bonk on the drive hub, double-click open, Space, Copy, undo/redo, ⌘F. |
 | `02-monitor-power` | First run: connect prompt, DESKTOP HIDDEN, connect; INPUT static, OSD and the AV logo; the CRT collapse, files arriving while off (amber LED, +N), the bloom and pop-in; NO SIGNAL with its buttons. |
+| `03-drawers` | The riser: a chomp into the shut left drawer, a stack of eight leaving it overfull and ajar, a scroll peek, click open (minis, hover name, select), five more jamming it (a click shut boings off the paper; the next drop bonks). The cubby's silhouettes, one dragged back out. The chair rolled in front of the cabinet: a pull opens 3 px and thunks it aside, then opens fully. Four into the file drawer (the chomp shuts the open top drawer: interlocked), its folder tabs; spring-loading the middle drawer. The right drawer opened from its menu and flicked shut (slam), then Take All Out. |
+| `08-phone` | Drops become 5×5 app minis with a sparkle; six fill it and a seventh bonks; hover and select a mini; a click on the stand flips it face down (three edge frames; the minis hide and drops bonk), Turn Face Up from its menu, and a mini carried back to the screen. |
 | `09-fs-events` | Finder-side changes within a second: a new file prints in, a rename keeps its cell, a removal poofs, a new folder. |

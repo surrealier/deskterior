@@ -123,6 +123,14 @@ public enum MenuCommand: Sendable, Equatable {
     case about
     case quit
 
+    // MARK: containers (M6)
+    /// Open Drawer / Turn Face Up (`MenuSpec.container`).
+    case openContainer(ContainerID)
+    /// Close Drawer / Turn Face Down.
+    case closeContainer(ContainerID)
+    /// Container ▸ Take All Out.
+    case takeAllOut(ContainerID)
+
     /// The model action this command dispatches; nil for app commands.
     public func action(_ s: DeskState) -> DeskAction? {
         switch self {
@@ -146,6 +154,10 @@ public enum MenuCommand: Sendable, Equatable {
         case .undo: .undo
         case .redo: .redo
         case .inventory, .peekDesk, .pauseDesk, .openDesktopFolder, .settings, .about, .quit: nil
+        // MARK: containers (M6)
+        case let .openContainer(id): .openContainer(id)
+        case let .closeContainer(id): .closeContainer(id)
+        case let .takeAllOut(id): .takeAllOut(id)
         }
     }
 }

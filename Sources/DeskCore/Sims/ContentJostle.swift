@@ -77,6 +77,15 @@ public struct ContentJostle: Sendable, Equatable {
         if zip(positions, homes).contains(where: { abs($0 - $1) > params.sleepOffset }) { isAsleep = false }
     }
 
+    /// Puts item `i` at base row `row` (clamped into `bounds`) moving at `velocity` rows/s: a token dropped in
+    /// through a chomp starts at the back wall and slides to its home.
+    public mutating func place(_ i: Int, at row: Float, velocity: Float = 0) {
+        guard positions.indices.contains(i), row.isFinite, velocity.isFinite else { return }
+        positions[i] = min(max(row, bounds.lowerBound), bounds.upperBound)
+        velocities[i] = min(max(velocity, -params.maxSpeed), params.maxSpeed)
+        isAsleep = false
+    }
+
     /// Gives every item a velocity kick (rows/s), e.g. from a knock.
     public mutating func kick(_ dv: [Float]) {
         for i in velocities.indices where i < dv.count && dv[i].isFinite {

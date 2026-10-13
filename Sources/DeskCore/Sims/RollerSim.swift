@@ -123,6 +123,17 @@ public struct RollerSim: Sendable, Equatable {
         push(-max(params.drawerPush, speedToCoast(distance) * 1.05))
     }
 
+    /// A scripted roll to left edge `target` (Show on Desk clearing the cabinet, undo): launched at the speed that
+    /// coasts there, so it rolls and spins like a push and comes to rest about there. Ignored while held.
+    public mutating func roll(to target: Float) {
+        guard target.isFinite, dragTarget == nil else { return }
+        let goal = min(max(target, params.travel.lowerBound), params.travel.upperBound)
+        let d = goal - x
+        guard abs(d) >= 0.5 else { return }
+        v = (d > 0 ? 1 : -1) * min(speedToCoast(abs(d)), params.maxSpeed)
+        wake()
+    }
+
     /// How far a chair rolling at `v0` coasts before it stops (`dv/dt = −f·v − r`).
     public func coastDistance(_ v0: Float) -> Float {
         let f = params.friction, r = params.rollingResistance, v = abs(v0)

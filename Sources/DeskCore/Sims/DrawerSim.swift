@@ -99,6 +99,8 @@ public struct DrawerSim: Sendable, Equatable {
         case chompHold(elapsed: Float)
         /// Closing to whatever the lower stop is when it arrives.
         case scriptClose
+        /// Closing on purpose toward the true closed stop: an overfull drawer meets its paper at speed.
+        case shutting
         /// A jammed drawer's rebound off its gap.
         case jamBounce
     }
@@ -219,10 +221,18 @@ public struct DrawerSim: Sendable, Equatable {
         wake()
     }
 
-    /// Click: closes a drawer that is more than half open, opens one that is less (so a click on a drawer the
-    /// chair stopped at 3 px tries again).
+    /// Click: closes a drawer that is more than half open (`shut()`), opens one that is less (so a click on a
+    /// drawer the chair stopped at 3 px tries again).
     public mutating func toggle() {
-        if p > closedLimit + max(1, (travel - closedLimit) / 2) { close() } else { open() }
+        if p > closedLimit + max(1, (travel - closedLimit) / 2) { shut() } else { open() }
+    }
+
+    /// Closes on purpose (a click, the Close menu item): it heads for the true closed stop, so an ordinary drawer
+    /// closes as softly as `close()`, an overfull one stops dead on its paper, and a jammed one boings back off its
+    /// gap (Errata 13) before resting on it.
+    public mutating func shut() {
+        setMode(.shutting)
+        wake()
     }
 
     /// Opens all the way (click, spring-loading). A chair in the way stops it at `openLimit` with `hitChair`.
@@ -353,6 +363,8 @@ public struct DrawerSim: Sendable, Equatable {
             mode = idle + dt >= params.peekHold ? .scriptClose : .peek(target: target, idle: idle + dt)
         case .scriptClose:
             spring(toward: lower, dt)
+        case .shutting:
+            spring(toward: 0, dt)
         case .jamBounce:
             v = (v + params.jamStiffness * (lower - p) * dt) / (1 + params.jamDamping * dt)
         case let .chompOpen(elapsed):
@@ -402,6 +414,7 @@ public struct DrawerSim: Sendable, Equatable {
             v = 0
             mode = .coast
         case .scriptClose where p <= lower + params.arriveDistance && abs(v) < params.restSpeed * 4,
+             .shutting where p <= lower + params.arriveDistance && abs(v) < params.restSpeed * 4,
              .jamBounce where p <= lower + params.arriveDistance && abs(v) < params.restSpeed * 4:
             p = lower
             v = 0

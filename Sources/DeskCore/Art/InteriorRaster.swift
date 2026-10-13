@@ -32,6 +32,27 @@ public enum InteriorRaster {
         }
     }
 
+    /// How particular items draw, by index into the items (DESIGN §2.1, Errata 12: minis are selectable).
+    public struct Marks: Hashable, Sendable {
+        /// Not drawn (in hand), while everything else keeps its place.
+        public var hidden: Set<Int>
+        /// Drawn on the selection backdrop (`Role.selection`).
+        public var selected: Set<Int>
+        /// Drawn as icons even while the drawer only peeks (a token sliding in after a chomp).
+        public var shown: Set<Int>
+        /// Drawn in front of the others like a selected item, without the backdrop (Show on Desk's blink).
+        public var raised: Set<Int>
+
+        public init(hidden: Set<Int> = [], selected: Set<Int> = [], shown: Set<Int> = [], raised: Set<Int> = []) {
+            self.hidden = hidden
+            self.selected = selected
+            self.shown = shown
+            self.raised = raised
+        }
+
+        public static let none = Marks()
+    }
+
     /// Mini icon size in drawers.
     public static let miniSize = 12
 
@@ -103,27 +124,29 @@ public enum InteriorRaster {
 
     /// The drawer's content buffer at opening `p` with each item's base row moved by `offsets` (from
     /// `ContentJostle.pixelOffsets`; missing entries are 0). Icons show when `revealed` (pass
-    /// `DrawerSim.isRevealed` while it moves; by default from `Visibility.drawerOpen`), else only paper.
+    /// `DrawerSim.isRevealed` while it moves; by default from `Visibility.drawerOpen`), else only paper; `marks`
+    /// hide, select or show particular items.
     public static func drawerContents(
-        _ id: ContainerID, items: [Item], offsets: [Int] = [], opening p: Int, revealed: Bool? = nil
+        _ id: ContainerID, items: [Item], offsets: [Int] = [], opening p: Int, revealed: Bool? = nil,
+        marks: Marks = .none
     ) -> PixelBuffer {
         let size = contentSize(id)
         var c = PixelCanvas(width: size.w, height: size.h)
         let open = revealed ?? (Float(p) >= Visibility.drawerOpen)
         if id == .cabinetFile {
-            drawFolders(&c, items: items, offsets: offsets, open: open)
+            drawFolders(&c, items: items, offsets: offsets, open: open, marks: marks)
             return c.buffer
         }
         let homes = homes(id, items: items)
         let bounds = baseBounds(id)
-        let order = items.indices.sorted { a, b in
-            let ya = base(homes[a].y, offsets, a, bounds), yb = base(homes[b].y, offsets, b, bounds)
-            return ya != yb ? ya < yb : a < b
-        }
-        for i in order {
+        let order = drawOrder(items.count, open: open, marks: marks) { base(homes[$0].y, offsets, $0, bounds) }
+        for i in order where !marks.hidden.contains(i) {
             let y = base(homes[i].y, offsets, i, bounds)
             let origin = ArtPoint(homes[i].x, y - miniSize + 1)
-            if open {
+            if open || marks.shown.contains(i) {
+                if open && marks.selected.contains(i) {
+                    drawSelection(&c, ArtRect(origin: origin, size: ArtSize(miniSize, miniSize)))
+                }
                 c.blit(KindIcons.icon(iconKind(items[i].kind), size: miniSize).image, at: origin)
             } else {
                 drawPaper(&c, at: origin, seed: items[i].seed)
@@ -135,6 +158,18 @@ public enum InteriorRaster {
     static func base(_ home: Int, _ offsets: [Int], _ i: Int, _ bounds: ClosedRange<Float>) -> Int {
         let y = home + (i < offsets.count ? offsets[i] : 0)
         return min(max(y, Int(bounds.lowerBound)), Int(bounds.upperBound))
+    }
+
+    /// The order items are drawn in, back to front: by base row, then index; selected (or raised) items come last
+    /// while open, on top of the others, so a picked mini in a crowded drawer shows whole.
+    public static func drawOrder(_ count: Int, open: Bool, marks: Marks, base: (Int) -> Int) -> [Int] {
+        func front(_ i: Int) -> Bool { open && (marks.selected.contains(i) || marks.raised.contains(i)) }
+        return (0..<count).sorted { a, b in
+            let sa = front(a), sb = front(b)
+            if sa != sb { return sb }
+            let ya = base(a), yb = base(b)
+            return ya != yb ? ya < yb : a < b
+        }
     }
 
     /// Where each item is drawn (content px), back to front as drawn last-on-top, for hit-testing a drag out.
@@ -163,6 +198,14 @@ public enum InteriorRaster {
             return ya != yb ? ya > yb : a > b
         }
         return order.first { rects[$0].contains(p) }
+    }
+
+    /// The selection backdrop behind a mini at `r`: a `Role.selection` square in a dark rounded frame, as the
+    /// screen draws it, so a 1-px light ring shows round the icon.
+    static func drawSelection(_ c: inout PixelCanvas, _ r: ArtRect) {
+        let frame = r.insetBy(-2, -2)
+        c.roundedRectFill(frame, radius: 3, .blue0)
+        c.roundedRectFill(frame.insetBy(1, 1), radius: 2, Role.selection)
     }
 
     /// A sheet of paper standing where a mini would (peek: the contents stay anonymous).
@@ -203,7 +246,7 @@ public enum InteriorRaster {
     }
 
     /// Hanging folders back to front: each a coloured top edge across the drawer and a tab with initials.
-    static func drawFolders(_ c: inout PixelCanvas, items: [Item], offsets: [Int], open: Bool) {
+    static func drawFolders(_ c: inout PixelCanvas, items: [Item], offsets: [Int], open: Bool, marks: Marks = .none) {
         let w = c.width, h = c.height
         // Floor and the two hanging rails.
         c.fill(.neutral5)
@@ -211,13 +254,11 @@ public enum InteriorRaster {
         for y in [2, 3] { c.hline(x: 0, y: y, length: w, y == 2 ? .neutral7 : .neutral3) }
         let homes = homes(.cabinetFile, items: items)
         let bounds = baseBounds(.cabinetFile)
-        let order = items.indices.sorted { a, b in
-            let ya = base(homes[a].y, offsets, a, bounds), yb = base(homes[b].y, offsets, b, bounds)
-            return ya != yb ? ya < yb : a < b
-        }
-        for i in order {
+        let order = drawOrder(items.count, open: open, marks: marks) { base(homes[$0].y, offsets, $0, bounds) }
+        for i in order where !marks.hidden.contains(i) {
             let y = base(homes[i].y, offsets, i, bounds)
-            let ink = open ? KindIcons.color(iconKind(items[i].kind)) : .neutral8
+            let shows = open || marks.shown.contains(i)
+            let ink = shows ? KindIcons.color(iconKind(items[i].kind)) : .neutral8
             // The folder's top edge with its shadow, hooks over the rails.
             c.hline(x: 1, y: y, length: w - 2, ink)
             c.plot(0, y, .neutral2)
@@ -225,8 +266,8 @@ public enum InteriorRaster {
             if y + 1 < h { c.hline(x: 1, y: y + 1, length: w - 2, ink.darker(2)) }
             // Tab.
             let t = ArtRect(homes[i].x, y - folderTab.h, folderTab.w, folderTab.h)
-            if open {
-                drawTab(&c, t, ink: ink, label: initials(items[i].name))
+            if shows {
+                drawTab(&c, t, ink: ink, label: initials(items[i].name), selected: open && marks.selected.contains(i))
             } else {
                 c.fill(ArtRect(t.x, t.y + 2, t.w, t.h - 2), .neutral8)
                 c.hline(x: t.x, y: t.y + 2, length: t.w, .neutral9)
@@ -234,21 +275,22 @@ public enum InteriorRaster {
         }
     }
 
-    static func drawTab(_ c: inout PixelCanvas, _ t: ArtRect, ink: Ink, label: String) {
+    static func drawTab(_ c: inout PixelCanvas, _ t: ArtRect, ink: Ink, label: String, selected: Bool = false) {
         c.fill(t, ink)
         c.hline(x: t.x, y: t.y, length: t.w, ink.lighter())
         c.vline(x: t.maxX - 1, y: t.y + 1, length: t.h - 1, ink.darker())
         c.plot(t.x, t.y, .clear)
         c.plot(t.maxX - 1, t.y, .clear)
-        // White label insert with the initials.
+        // White label insert with the initials (a selected folder's insert turns `Role.selection`).
         let lb = ArtRect(t.x + 2, t.y + 1, t.w - 4, Digits.height + 1)
-        c.fill(lb, .neutral9)
+        c.fill(lb, selected ? Role.selection : .neutral9)
         if label.isEmpty {
-            c.hline(x: lb.x + 1, y: lb.y + 2, length: 5, .neutral5)
-            c.hline(x: lb.x + 1, y: lb.y + 4, length: 3, .neutral5)
+            c.hline(x: lb.x + 1, y: lb.y + 2, length: 5, selected ? .neutral9 : .neutral5)
+            c.hline(x: lb.x + 1, y: lb.y + 4, length: 3, selected ? .neutral9 : .neutral5)
         } else {
             let tw = Digits.measure(label)
-            Digits.draw(label, at: ArtPoint(lb.x + (lb.w - tw) / 2, lb.y + 1), .neutral1, into: &c)
+            let ink: Ink = selected ? .neutral9 : .neutral1
+            Digits.draw(label, at: ArtPoint(lb.x + (lb.w - tw) / 2, lb.y + 1), ink, into: &c)
         }
     }
 
@@ -256,11 +298,11 @@ public enum InteriorRaster {
 
     /// A riser drawer front at opening `p` with its contents (an overfull drawer shows paper poking out).
     public static func riserDrawer(
-        _ id: ContainerID, p: Int, items: [Item], offsets: [Int] = [], revealed: Bool? = nil
+        _ id: ContainerID, p: Int, items: [Item], offsets: [Int] = [], revealed: Bool? = nil, marks: Marks = .none
     ) -> SpriteAsset {
         precondition(isRiser(id), "\(id) is not a riser drawer")
         let contents = items.isEmpty
-            ? nil : drawerContents(id, items: items, offsets: offsets, opening: p, revealed: revealed)
+            ? nil : drawerContents(id, items: items, offsets: offsets, opening: p, revealed: revealed, marks: marks)
         return StorageArt.riserDrawer(p: p, jammed: items.count > id.spec.capacity, contents: contents)
     }
 
@@ -270,7 +312,7 @@ public enum InteriorRaster {
     /// The pedestal cabinet (geometry of `StorageArt.cabinet`) with each drawer pulled out by `p[i]` and showing
     /// `items[i]` (jostled by `offsets[i]`, icons per `revealed[i]`); overfull drawers show paper poking out.
     public static func cabinet(
-        p: [Int], items: [[Item]], offsets: [[Int]] = [], revealed: [Bool?] = []
+        p: [Int], items: [[Item]], offsets: [[Int]] = [], revealed: [Bool?] = [], marks: [Marks] = []
     ) -> SpriteAsset {
         let r = CoreLayout.cabinet, top = StorageArt.cabinetTopFace
         let opens = (0..<3).map { i in min(max(i < p.count ? p[i] : 0, 0), CoreLayout.cabinetTravels[i]) }
@@ -289,7 +331,8 @@ public enum InteriorRaster {
             let id = cabinetDrawers[i]
             if open >= 2, !content[i].isEmpty || id == .cabinetFile {
                 let buf = drawerContents(id, items: content[i], offsets: i < offsets.count ? offsets[i] : [],
-                                         opening: open, revealed: i < revealed.count ? revealed[i] : nil)
+                                         opening: open, revealed: i < revealed.count ? revealed[i] : nil,
+                                         marks: i < marks.count ? marks[i] : .none)
                 let rows = open - 1
                 let shown = buf.cropped(to: ArtRect(0, buf.height - rows, buf.width, rows))
                 c.blit(shown, at: ArtPoint(f0.x + 4, f0.y + 1))
@@ -313,25 +356,44 @@ public enum InteriorRaster {
     // MARK: Cubby
 
     /// The riser cubby's contents (28×12, `CoreLayout.riserCubby`): icons standing in two rows as dim
-    /// silhouettes (names show only on hover).
-    public static func cubby(_ items: [Item]) -> PixelBuffer {
+    /// silhouettes (names show only on hover). `marks` leave items in hand out and put selected ones, undimmed, on
+    /// the selection backdrop and in front.
+    public static func cubby(_ items: [Item], marks: Marks = .none) -> PixelBuffer {
         let size = CoreLayout.riserCubby.size
         var c = PixelCanvas(width: size.w, height: size.h)
-        let rows: [(base: Int, level: Int)] = [(size.h - 3, 1), (size.h - 1, 2)]
-        for (layer, row) in rows.enumerated() {
-            let members = items.indices.filter { items.count < 3 ? layer == 1 : $0 % 2 == layer }
+        let rects = cubbyRects(count: items.count)
+        // Back row first; within a row, left to right.
+        let order = drawOrder(items.count, open: true, marks: marks) { rects[$0].maxY }
+        for i in order where !marks.hidden.contains(i) {
+            let icon = KindIcons.icon(iconKind(items[i].kind), size: miniSize).image
+            if marks.selected.contains(i) {
+                drawSelection(&c, rects[i])
+                c.blit(icon, at: rects[i].origin)
+            } else {
+                c.blit(relit(icon, level: rects[i].maxY == size.h ? 2 : 1), at: rects[i].origin)
+            }
+        }
+        return c.buffer
+    }
+
+    /// Where the cubby draws each of `count` items (cubby px, 12×12; the back row ends 2 px higher, so it may poke
+    /// out of the slot's top).
+    public static func cubbyRects(count: Int) -> [ArtRect] {
+        let size = CoreLayout.riserCubby.size
+        var out = [ArtRect](repeating: .zero, count: count)
+        let rows: [Int] = [size.h - 3, size.h - 1]
+        for (layer, base) in rows.enumerated() {
+            let members = (0..<count).filter { count < 3 ? layer == 1 : $0 % 2 == layer }
             let n = members.count
             guard n > 0 else { continue }
             let span = size.w - miniSize
             let pitch = n > 1 ? min(Float(miniSize + 1), Float(span) / Float(n - 1)) : 0
             let start = (span - Int((pitch * Float(n - 1)).rounded())) / 2 + (layer == 0 ? 1 : 0)
             for (k, i) in members.enumerated() {
-                let icon = KindIcons.icon(iconKind(items[i].kind), size: miniSize).image
-                let dim = relit(icon, level: row.level)
-                c.blit(dim, at: ArtPoint(start + Int((Float(k) * pitch).rounded()), row.base - miniSize + 1))
+                out[i] = ArtRect(start + Int((Float(k) * pitch).rounded()), base - miniSize + 1, miniSize, miniSize)
             }
         }
-        return c.buffer
+        return out
     }
 
     /// `b` relit at `level` (cool): the deep-night tint.
@@ -350,6 +412,12 @@ public enum InteriorRaster {
     /// 5×5 minis for the face-up phone (`PropArt.phoneStand(face:minis:)`), at most six.
     public static func phoneMinis(_ items: [Item]) -> [PixelBuffer] {
         items.prefix(ContainerSpec.phone.capacity).map { KindIcons.mini(iconKind($0.kind)).image }
+    }
+
+    /// Where the face-up phone draws mini `i` (phone px; two columns, three rows on the screen), as
+    /// `PropArt.phoneStand(face:minis:)` lays them out.
+    public static func phoneMiniRect(_ i: Int) -> ArtRect {
+        ArtRect(3 + (i % 2) * 5, 5 + (i / 2) * 5, 5, 5)
     }
 
     /// Pen cap inks by kind (`PropArt.penCup(_:pens:)`), at most six.

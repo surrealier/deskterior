@@ -115,6 +115,7 @@ final class RoomContent: GestureTarget {
         context.dropOrder = { [unowned self] in routing }
         context.onToast = { [unowned self] key in showToast(key) }
         install([screen, monitor], inSlotOf: "monitor")
+        installContainers()
         rebuild()
     }
 
@@ -311,6 +312,7 @@ final class RoomContent: GestureTarget {
             screen.playPoof(at: loc)
         case let (.pulse, .token(key)):
             screen.playPulse(key)
+            pulseContainers(key)
         case let (.bonk, .container(id)):
             if let r = layout.anchors[Self.anchor(for: id)] {
                 context.fx.pop(.bonk, at: ArtPoint(r.midX, r.minY))
@@ -319,7 +321,7 @@ final class RoomContent: GestureTarget {
         default:
             // CRT, static, OSD and the LED follow the model through MonitorMachine; containers and the mat
             // animate in their own elements (waves 4b/5).
-            break
+            playContainer(id, target)
         }
     }
 

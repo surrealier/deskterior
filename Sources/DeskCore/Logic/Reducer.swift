@@ -202,6 +202,10 @@ public enum Reducer {
 
         case let .clock(now):
             return Placement.expire(&s, now: now) > 0 ? [.persist] : []
+
+        // MARK: containers (M6)
+        case .openContainer, .closeContainer, .phoneFace:
+            return reduceContainer(&s, a)
         }
     }
 
@@ -338,10 +342,7 @@ public enum Reducer {
             s.monitor.av = false
             s.monitor.page = page
         case let .container(id, _):
-            if let travel = id.spec.travel, s.drawerOpening(id) < Visibility.drawerOpen {
-                s.drawers[id] = DrawerState(p: travel)
-            }
-            if id == .phone { s.phone.faceDown = false }
+            revealContainer(&s, id)
         case .desk:
             effects.append(.play(.peekMat, .location(loc)))
         case .floor, .carried:
