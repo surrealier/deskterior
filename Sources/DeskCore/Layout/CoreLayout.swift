@@ -80,9 +80,10 @@ public enum CoreLayout {
 
     // MARK: Under the desk
 
-    public static let chair = ArtRect(200, 236, 64, 76)
+    /// The pushed-in chair: its backrest rises over the apron and the desk's front lip (clear of the mat).
+    public static let chair = ArtRect(196, 228, 72, 84)
     /// The chair rolls with its left edge in this range.
-    public static let chairTravel = 64...440
+    public static let chairTravel = 64...432
     public static let cabinet = ArtRect(392, 248, 80, 64)
     /// Drawer front heights top → bottom (top, middle, file), then the 6-px plinth.
     public static let cabinetFrontHeights = [16, 18, 24]
@@ -98,11 +99,12 @@ public enum CoreLayout {
         return ArtRect(cabinet.x, y, cabinet.w, cabinetFrontHeights[i])
     }
 
-    /// Lamp light (core px): a pool on the desk top under the shade, from the back edge to the apron.
-    public static let lampConeTop = (x0: 128, x1: 224, y: 168)
-    public static let lampConeBottom = (x0: 108, x1: 286, y: 236)
+    /// The lamp's pool of light on the desk (core px): an ellipse under the shade that spills onto the apron.
+    public static let lampPool = ArtRect(95, 178, 150, 58)
 
-    /// Monitor glow on the keyboard and mat (core px): screen-wide under the chin, wider on the desk.
-    public static let monitorGlowTop = (x0: 176, x1: 352, y: 176)
-    public static let monitorGlowBottom = (x0: 150, x1: 378, y: 232)
+    /// Monitor glow on the desk in front of the riser (core px): full just under the chin, then fading over
+    /// `monitorGlowFade` rows toward the keyboard.
+    public static let monitorGlowTop = (x0: 184, x1: 344, y: 176)
+    public static let monitorGlowBottom = (x0: 178, x1: 350, y: 182)
+    public static let monitorGlowFade = 20
 }

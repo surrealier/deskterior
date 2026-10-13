@@ -9,15 +9,19 @@ public struct WallDecor: Hashable, Sendable, CustomStringConvertible {
         case frame
         /// Pegboard with a few tools.
         case pegboard
-        /// Large landscape painting for tall walls.
+        /// Landscape painting centred over the monitor: large on tall walls, a small print on medium ones.
         case painting
         /// Potted floor plant standing on the floor line.
         case floorPlant
+        /// The ceiling plane above a tall wall (`rect` runs from the canvas top down to the crown).
+        case ceiling
         /// Crown moulding where a tall wall meets the ceiling.
         case crown
-        /// Pendant lamp hanging from the ceiling of a very tall wall (`rect` = cord and shade).
+        /// Picture rail near the top of a medium-height wall; the string lights hang from it.
+        case rail
+        /// Pendant lamp hanging from the crown of a very tall wall (`rect` = cord and shade).
         case pendant
-        /// Macramé hanging plant from the ceiling of a very tall wall.
+        /// Macramé hanging plant from the crown of a very tall wall.
         case hangingPlant
     }
 
@@ -42,9 +46,13 @@ public struct SceneLayout: Hashable, Sendable {
     public let anchors: Anchors
     /// True when no nudge could clear the avoid rects (show the one-time tip).
     public let avoidUnresolved: Bool
+    /// Rows the core sits above the grid's floor line so some floor shows under the furniture
+    /// (`LayoutSolver.floorLift`).
+    public let floorLift: Int
 
     public var canvas: ArtSize { grid.artSize }
-    public var coreOrigin: ArtPoint { grid.coreOrigin }
+    /// Canvas position of the core's top-left (the grid's, lifted by `floorLift`).
+    public var coreOrigin: ArtPoint { ArtPoint(grid.coreOrigin.x, grid.coreOrigin.y - floorLift) }
     public var visible: ArtRect { grid.visibleArtRect }
 
     /// A core rect in canvas px.
@@ -105,11 +113,24 @@ public enum LayoutSolver {
                 }
             }
         }
-        let o = grid.coreOrigin
+        let lift = floorLift(grid)
+        let o = ArtPoint(grid.coreOrigin.x, grid.coreOrigin.y - lift)
         return SceneLayout(
-            grid: grid, avoid: avoid, decor: decor(for: grid, avoid: avoid),
-            anchors: Anchors.core.offsetBy(o.x, o.y), avoidUnresolved: unresolved
+            grid: grid, avoid: avoid, decor: decor(for: grid, origin: o, avoid: avoid),
+            anchors: Anchors.core.offsetBy(o.x, o.y), avoidUnresolved: unresolved, floorLift: lift
         )
+    }
+
+    /// Floor rows kept under the floor line when no Dock strip is reserved, so casters and plinths do not sit
+    /// on the bezel.
+    public static let minFloorMargin = 14
+
+    /// How far the core rises above the grid's floor line to show `minFloorMargin` rows of floor below it
+    /// (0 when a Dock strip already does; never past the top of the visible band).
+    public static func floorLift(_ grid: PixelGrid) -> Int {
+        let below = grid.artSize.h - grid.floorLineY
+        let room = grid.coreOrigin.y - grid.visibleArtRect.minY
+        return max(0, min(minFloorMargin - below, room))
     }
 
     /// The canvas rect covering a device-pixel rect (e.g. a widget frame converted to device px).
@@ -121,54 +142,77 @@ public enum LayoutSolver {
     }
 
     private static func blocked(_ grid: PixelGrid, _ avoid: [ArtRect]) -> Bool {
-        criticalCoreRects.contains { core in
-            let r = grid.canvasRect(fromCore: core)
+        let o = ArtPoint(grid.coreOrigin.x, grid.coreOrigin.y - floorLift(grid))
+        return criticalCoreRects.contains { core in
+            let r = core.offsetBy(o.x, o.y)
             return avoid.contains { $0.intersects(r) }
         }
     }
 
     // MARK: Decor
 
-    /// Decor for a grid, back to front. Pure and deterministic.
-    static func decor(for grid: PixelGrid, avoid: [ArtRect]) -> [WallDecor] {
-        let c = grid.coreOrigin, canvas = grid.artSize
+    /// The most wall shown above the core; taller canvases show the ceiling above a crown moulding.
+    public static let maxWallAbove = 230
+    /// Longest cord a pendant or hanging plant hangs on.
+    public static let maxCord = 72
+
+    /// Decor for a grid with the core at `c`, back to front. Pure and deterministic.
+    static func decor(for grid: PixelGrid, origin c: ArtPoint, avoid: [ArtRect]) -> [WallDecor] {
+        let canvas = grid.artSize
         let top = max(grid.visibleArtRect.minY, 0)
         var out: [WallDecor] = []
         func clear(_ r: ArtRect) -> Bool { !avoid.contains { $0.intersects(r) } }
-
-        // Tall walls: crown moulding at the ceiling, and decor stays within reach of the desk.
         let wallAbove = c.y - top
-        if c.y > 150 {
-            out.append(WallDecor(.crown, ArtRect(0, 0, canvas.w, 6)))
+        let monitorTop = c.y + CoreLayout.monitorBody.y
+
+        // Tall walls end at a crown moulding with the ceiling above it; medium walls get a picture rail near the
+        // top that the string lights hang from.
+        var hangTop = top
+        var rail = false
+        if wallAbove > maxWallAbove {
+            let crownY = c.y - maxWallAbove
+            out.append(WallDecor(.ceiling, ArtRect(0, 0, canvas.w, crownY)))
+            out.append(WallDecor(.crown, ArtRect(0, crownY, canvas.w, 6)))
+            hangTop = crownY + 6
+        } else if wallAbove >= 56 {
+            out.append(WallDecor(.rail, ArtRect(0, top + 4, canvas.w, 3)))
+            hangTop = top + 7
+            rail = true
         }
-        let ceiling = c.y > 150 ? max(top + 8, c.y - 150) : top
-        // The lights drape a little above the furniture, not along a far-off ceiling.
-        let lightsTop = max(ceiling, c.y - 38)
+        // The lights drape a little above the furniture (or from the rail), not along a far-off ceiling.
+        let lightsTop = rail ? hangTop : max(hangTop, c.y - 38)
 
         // String lights: hooks near the top of the band, lowest bulb above the window and monitor (core y 12).
-        var lightsBottom = ceiling
+        var lightsBottom = hangTop
         let band = c.y + 9 - lightsTop
         if band >= 14 {
-            let sag = min(8, band - 10)
-            let r = ArtRect(4, lightsTop + 2, canvas.w - 8, sag + 6)
+            let sag = rail ? min(14, max(6, (monitorTop - lightsTop) / 3)) : min(8, band - 10)
+            let r = ArtRect(4, lightsTop + (rail ? 0 : 2), canvas.w - 8, sag + 6)
             out.append(WallDecor(.stringLights, r))
-            lightsBottom = r.maxY
+            lightsBottom = r.maxY + 4
         }
 
-        // Painting on a tall wall, centred over the monitor.
+        // A painting centred over the monitor: large on a tall wall, a small print where a medium wall leaves a
+        // band between the lights and the monitor.
         if wallAbove >= 110 {
             let w = 112, h = 64
             let r = ArtRect(c.x + 264 - w / 2, lightsTop - 10 - h, w, h)
-            if r.minY >= ceiling, clear(r) { out.append(WallDecor(.painting, r)) }
+            if r.minY >= hangTop, clear(r) { out.append(WallDecor(.painting, r)) }
+        } else if monitorTop - lightsBottom >= 40 {
+            let gap = monitorTop - lightsBottom
+            let h = min(30, gap - 12), w = h * 8 / 5
+            let r = ArtRect(c.x + 264 - w / 2, lightsBottom + (gap - h) / 2, w, h)
+            if clear(r) { out.append(WallDecor(.painting, r)) }
         }
 
-        // Very tall walls: things hang from the ceiling into the space above the scene.
-        if wallAbove >= 220 {
-            let ceilingY = c.y > 150 ? 6 : top
-            let pendant = ArtRect(c.x + 92, ceilingY, 24, c.y - 96 - ceilingY)
-            if clear(pendant) { out.append(WallDecor(.pendant, pendant)) }
-            let hanging = ArtRect(c.x + 438, ceilingY, 32, c.y - 46 - ceilingY)
-            if clear(hanging) { out.append(WallDecor(.hangingPlant, hanging)) }
+        // Very tall walls: a pendant and a hanging plant on short cords from the crown.
+        if wallAbove > maxWallAbove {
+            let pendantH = min(maxCord + 12, c.y - 96 - hangTop)
+            let pendant = ArtRect(c.x + 92, hangTop, 24, pendantH)
+            if pendantH >= 40, clear(pendant) { out.append(WallDecor(.pendant, pendant)) }
+            let plantH = min(maxCord + 28, c.y - 46 - hangTop)
+            let hanging = ArtRect(c.x + 438, hangTop, 32, plantH)
+            if plantH >= 60, clear(hanging) { out.append(WallDecor(.hangingPlant, hanging)) }
         }
 
         // Right wall: the shelf hangs over the phone and hub; it widens into a wide right margin.
@@ -180,7 +224,7 @@ public enum LayoutSolver {
             if clear(r) { out.append(WallDecor(.shelf, r)) }
         }
         // Framed print above the shelf, under the lights.
-        let frameTop = max(lightsBottom + 6, c.y + 2)
+        let frameTop = max(lightsBottom + 2, c.y + 2)
         let frameRoom = c.y + 68 - frameTop
         if frameRoom >= 34 {
             let h = min(40, frameRoom)
@@ -195,7 +239,7 @@ public enum LayoutSolver {
         if leftRoom >= 34 {
             let w = min(40, leftRoom - 4)
             let h = 44
-            let r = ArtRect(4 + (leftRoom - w) / 2, max(lightsBottom + 8, c.y + 24), w, h)
+            let r = ArtRect(4 + (leftRoom - w) / 2, max(lightsBottom + 4, c.y + 24), w, h)
             if r.maxY <= c.y + 132, clear(r) { out.append(WallDecor(.pegboard, r)) }
         }
 

@@ -11,6 +11,8 @@ import Foundation
 //   deskterior-assets contact-sheet --out <dir> [--scale N] [--rooms]
 //                                                     every sprite and frame on labelled sheets (×3 nearest);
 //                                                     --rooms adds CPU-lit room previews per display × light
+//   deskterior-assets zoom <in.png> --rect x,y,w,h --out <file> [--scale N]
+//                                                     nearest-neighbour crop of a 1× image for close review
 
 let args = Array(CommandLine.arguments.dropFirst())
 
@@ -19,6 +21,7 @@ func usage() -> Never {
         usage: deskterior-assets review <out-dir> [--scale N]
                deskterior-assets icon --out <dir> [--all-sizes]
                deskterior-assets contact-sheet --out <dir> [--scale N] [--rooms]
+               deskterior-assets zoom <in.png> --rect x,y,w,h --out <file> [--scale N]
         """)
     exit(2)
 }
@@ -176,10 +179,27 @@ let previewDisplays: [(String, DisplayGeometry)] = [
     ("1080x1920@1", DisplayGeometry(widthPt: 1080, heightPt: 1920, backingScale: 1, topInsetPt: 25)),
 ]
 
+/// The DeskOS wallpaper with a full page of icons in the token grid (how the screen reads with files on it).
+func screenMock(_ sky: SkyVariant) -> PixelBuffer {
+    var screen = MonitorArt.deskOSWallpaper(sky: sky)
+    let kinds = IconKind.allCases
+    for row in 0..<CoreLayout.screenRows {
+        for col in 0..<CoreLayout.screenColumns {
+            let cell = CoreLayout.screenCellRect(col: col, row: row).offsetBy(-CoreLayout.screen.x, -CoreLayout.screen.y)
+            let icon = KindIcons.icon(kinds[(row * CoreLayout.screenColumns + col) % kinds.count]).image
+            screen.blit(icon, at: ArtPoint(cell.x + 2, cell.y + 2))
+        }
+    }
+    return screen
+}
+
 func writeContactSheets(to dir: URL, scale: Int, rooms: Bool) throws {
     try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
     for section in ArtCatalog.sections() {
         try write(contactSheet(section), "contact-\(section.title).png", in: dir, scale: scale)
+    }
+    for sky in SkyVariant.allCases {
+        try write(screenMock(sky), "screen-icons-\(sky.rawValue).png", in: dir, scale: scale)
     }
     guard rooms else { return }
     let lights: [(String, WallTime, LightsMode)] = [
@@ -191,6 +211,7 @@ func writeContactSheets(to dir: URL, scale: Int, rooms: Bool) throws {
         for (phase, time, mode) in lights {
             let image = RoomPlan.render(layout, RoomState(time: time, lightsMode: mode))
             try write(image, "room-\(name)-\(phase).png", in: dir, scale: 2)
+            try write(image, "room-\(name)-\(phase)@1x.png", in: dir, scale: 1)
         }
     }
 }
@@ -208,6 +229,14 @@ do {
         guard let out = value(of: "--out") else { usage() }
         try writeContactSheets(to: URL(fileURLWithPath: out, isDirectory: true), scale: option("--scale", default: 3),
                                rooms: args.contains("--rooms"))
+    case "zoom":
+        guard args.count >= 2, let out = value(of: "--out"), let spec = value(of: "--rect") else { usage() }
+        let n = spec.split(separator: ",").compactMap { Int($0) }
+        guard n.count == 4, let image = PNGCodec.decode(try Data(contentsOf: URL(fileURLWithPath: args[1]))) else { usage() }
+        let url = URL(fileURLWithPath: out)
+        try PNGCodec.encode(image.cropped(to: ArtRect(n[0], n[1], n[2], n[3])).scaledNearest(option("--scale", default: 4)))
+            .write(to: url)
+        print("wrote \(url.path)")
     case "icon":
         guard let out = value(of: "--out") else { usage() }
         try writeIcon(to: URL(fileURLWithPath: out, isDirectory: true), allSizes: args.contains("--all-sizes"))

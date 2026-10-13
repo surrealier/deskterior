@@ -23,6 +23,9 @@ public enum ArtCatalog {
         s.append(RoomArt.calendar(WallTime(year: 2026, month: 8, day: 31, hour: 10, minute: 0)).renamed("calendar.aug"))
         for sky in SkyVariant.allCases { s.append(WindowArt.window(sky: sky, minuteOfDay: 600)) }
         s.append(RoomArt.deskFront())
+        let layout = LayoutSolver.solve(display: DisplayGeometry(widthPt: 1470, heightPt: 956, backingScale: 2, topInsetPt: 33))
+        s.append(RoomArt.lampHalo(layout))
+        s.append(RoomArt.lampPool(layout))
         return Section(title: "room", sprites: s)
     }
 
@@ -34,7 +37,8 @@ public enum ArtCatalog {
             DecorArt.frame(ArtSize(32, 40)), DecorArt.pegboard(ArtSize(40, 44)), DecorArt.painting(ArtSize(112, 64)),
             DecorArt.floorPlant(ArtSize(38, 92)), RoomArt.crown(width: 64),
             DecorArt.pendant(ArtSize(24, 60), lit: false), DecorArt.pendant(ArtSize(24, 60), lit: true),
-            DecorArt.hangingPlant(ArtSize(32, 90)),
+            DecorArt.hangingPlant(ArtSize(32, 90)), RoomArt.ceiling(ArtSize(64, 48)), RoomArt.rail(width: 64),
+            DecorArt.painting(ArtSize(48, 30)).renamed("decor.painting.small"),
         ])
     }
 
@@ -185,9 +189,11 @@ public struct RoomPlacement: Equatable, Sendable {
 public enum RoomPlan {
     /// Placement ids whose sprites depend on `RoomState` (the rest only depend on the layout).
     public static let stateDependentIDs: Set<String> = [
-        "decor", "window", "clock", "calendar", "room.switch", "riser.drawerL", "riser.drawerR", "monitor.screen",
-        "monitor.led", "lamp", "phone", "cabinet", "chair",
+        "decor", "glow.lampHalo", "glow.lampPool", "window", "clock", "calendar", "room.switch", "riser.drawerL",
+        "riser.drawerR", "monitor.screen", "monitor.led", "lamp", "phone", "cabinet", "chair",
     ]
+    /// Painted light that belongs to the room's backdrop (never hit-tested as an object).
+    public static let glowIDs: Set<String> = ["glow.lampHalo", "glow.lampPool"]
     /// Ids that change from minute to minute within one light phase.
     public static let minuteIDs: Set<String> = ["window", "clock", "calendar"]
 
@@ -206,9 +212,21 @@ public enum RoomPlan {
             out.append(RoomPlacement("backdrop", .backdrop, SpriteAsset("backdrop", RoomArt.backdrop(layout), anchor: .zero),
                                      at: .zero))
         }
+        // The lamp's bloom and the warm centre of its pool, when the room is dark enough (blank otherwise, so
+        // a refresh replaces them).
+        let glowing = lights.lampOn && RoomArt.lampGlows(tod)
+        if wanted("glow.lampPool") {
+            out.append(glowing
+                ? RoomPlacement("glow.lampPool", .backdrop, RoomArt.lampPool(layout), at: layout.rect(CoreLayout.lampPool).origin)
+                : RoomPlacement("glow.lampPool", .backdrop, blank("glow.lampPool.off"), at: .zero))
+        }
         if wanted("decor") {
             for (i, d) in layout.decor.enumerated() {
-                let lit = d.kind == .pendant ? tod.isDark && lights.roomLightOn : tod.isDark
+                let lit = switch d.kind {
+                case .pendant: tod.isDark && lights.roomLightOn
+                case .stringLights: RoomArt.stringLightsLit(tod)
+                default: tod.isDark
+                }
                 out.append(RoomPlacement("decor.\(d.kind.rawValue).\(i)", .backdrop, DecorArt.sprite(d, lit: lit),
                                          at: d.rect.origin))
             }
@@ -233,6 +251,12 @@ public enum RoomPlan {
             core: CoreLayout.screen.origin)
         add("monitor.led", .deskBack, MonitorArt.led(lights.monitorOn ? .on : .off), core: CoreLayout.led.origin)
         add("monitor.pageDots", .deskBack, MonitorArt.pageDots(count: 1, current: 0), core: CoreLayout.pageDots.origin)
+        // The bulb's bloom spills out of the shade's mouth over the monitor's edge, behind the lamp itself.
+        if wanted("glow.lampHalo") {
+            out.append(glowing
+                ? RoomPlacement("glow.lampHalo", .deskBack, RoomArt.lampHalo(layout), at: RoomArt.lampHaloOrigin(layout))
+                : RoomPlacement("glow.lampHalo", .deskBack, blank("glow.lampHalo.off"), at: .zero))
+        }
         add("lamp", .deskBack, PropArt.lamp(on: lights.lampOn), core: PropArt.lampRect.origin)
         add("phone", .deskBack, PropArt.phoneStand(faceUp: lights.phoneFaceUp), core: CoreLayout.phone.origin)
         add("hub", .deskBack, PropArt.driveHub(), core: CoreLayout.driveHub.origin)
@@ -249,6 +273,11 @@ public enum RoomPlan {
 
         add("chair", .chair, PropArt.chair(state.chairFacing), core: ArtPoint(state.chairX, CoreLayout.chair.y))
         return out
+    }
+
+    /// A 1×1 transparent stand-in for a placement that shows nothing right now.
+    static func blank(_ name: String) -> SpriteAsset {
+        SpriteAsset(name, PixelBuffer(width: 1, height: 1), anchor: .zero)
     }
 
     /// The unlit room on the CPU, back to front (stable within a layer).

@@ -64,6 +64,29 @@ struct RoomSceneTests {
         #expect(!scene.needsFrames)
     }
 
+    @Test("The power button's hover ring hugs the button and stays inside the chin")
+    func powerRing() throws {
+        let scene = roomScene(WallTime(hour: 10, minute: 0))
+        let layout = try #require(scene.layout)
+        let r = RoomContent.ringRect(part: "monitor.power", hit: try #require(layout.anchors["monitor.power"]), layout: layout)
+        #expect(layout.rect(CoreLayout.chin).insetBy(1, 1).contains(r))
+        #expect(r.contains(layout.rect(CoreLayout.power)))
+    }
+
+    @Test("The lamp's painted light belongs to the room (never hit as the lamp) and goes when the room lights up")
+    func lampGlowPlacements() throws {
+        let scene = roomScene(WallTime(hour: 22, minute: 0), lights: .lampOnly)
+        let layout = try #require(scene.layout)
+        let pool = layout.rect(CoreLayout.lampPool)
+        #expect(scene.hitTest(ArtPoint(pool.midX, pool.midY))?.element == "room")
+        func poolImage() -> PixelBuffer? {
+            scene.room?.elements.first { $0.id == "room" }?.placements.first { $0.id == "glow.lampPool" }?.image
+        }
+        #expect(try #require(poolImage()).opaqueBounds() != .zero)
+        scene.lightsMode = .auto
+        #expect(try #require(poolImage()).opaqueBounds() == .zero)
+    }
+
     @Test("A new minute only redraws the clock, window and calendar; a new phase relights")
     func minuteRefresh() throws {
         let scene = roomScene(WallTime(hour: 10, minute: 0))

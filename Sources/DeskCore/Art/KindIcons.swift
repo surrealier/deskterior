@@ -24,7 +24,10 @@ public enum KindIcons {
         }
     }
 
-    /// The icon at 16 or 12 px.
+    /// The outline every icon wears, so it reads on any wallpaper (the DeskOS sky shares the folder's blues).
+    public static let outlineInk = Ink.blue0
+
+    /// The icon at 16 or 12 px, its silhouette edge drawn in `outlineInk`.
     public static func icon(_ kind: IconKind, size: Int = 16) -> SpriteAsset {
         let big = size >= 16
         let n = big ? 16 : 12
@@ -39,7 +42,20 @@ public enum KindIcons {
             let page = drawPage(&c, n)
             drawPageGlyph(&c, kind, page: page, big: big)
         }
+        outlineEdge(&c)
         return SpriteAsset("icon.\(kind.rawValue).\(n)", c, anchor: ArtPoint(n / 2, n))
+    }
+
+    /// Repaints every opaque pixel with a transparent (or off-canvas) 4-neighbour in `outlineInk`: a 1-px
+    /// outline that keeps the icon inside its square.
+    static func outlineEdge(_ c: inout PixelCanvas) {
+        let src = c.buffer
+        func clear(_ x: Int, _ y: Int) -> Bool { src.pixel(x, y).a == 0 }
+        for y in 0..<c.height {
+            for x in 0..<c.width where !clear(x, y) {
+                if clear(x - 1, y) || clear(x + 1, y) || clear(x, y - 1) || clear(x, y + 1) { c.plot(x, y, outlineInk) }
+            }
+        }
     }
 
     // MARK: Pieces

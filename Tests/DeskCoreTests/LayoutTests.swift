@@ -62,10 +62,12 @@ struct LayoutTests {
     func canvasAnchors() {
         let layout = LayoutSolver.solve(display: pixelGridDesignTable[0].display(dock: .hidden))
         let o = layout.coreOrigin
-        #expect(o == ArtPoint(38, 70))
+        // The grid puts the floor line on the screen's bottom edge; the core rises to show some floor.
+        #expect(layout.floorLift == LayoutSolver.minFloorMargin - 1)
+        #expect(o == ArtPoint(38, 70 - layout.floorLift))
         #expect(layout.anchors["monitor.screen"] == CoreLayout.screen.offsetBy(o.x, o.y))
         #expect(layout.floorY == o.y + 312)
-        #expect(layout.rect(CoreLayout.window) == CoreLayout.window.offsetBy(38, 70))
+        #expect(layout.rect(CoreLayout.window) == CoreLayout.window.offsetBy(o.x, o.y))
     }
 
     @Test("Decor stays on the canvas, below the menu bar, and clear of the core's wall pieces",
@@ -77,7 +79,7 @@ struct LayoutTests {
                     CoreLayout.lampHead, CoreLayout.phone, CoreLayout.driveHub, CoreLayout.deskTop].map(layout.rect)
         for d in layout.decor {
             #expect(canvas.contains(d.rect), "\(d) off canvas")
-            let hangsFromCeiling: Set<WallDecor.Kind> = [.crown, .pendant, .hangingPlant]
+            let hangsFromCeiling: Set<WallDecor.Kind> = [.ceiling, .crown, .pendant, .hangingPlant]
             if !hangsFromCeiling.contains(d.kind) { #expect(d.rect.minY >= layout.visible.minY, "\(d) behind the menu bar") }
             if d.kind == .floorPlant { continue }
             for r in core where d.kind != .stringLights || r.minY < d.rect.maxY {
@@ -99,7 +101,7 @@ struct LayoutTests {
     func portraitDecor() {
         let layout = LayoutSolver.solve(display: pixelGridDesignTable[8].display())
         let kinds = Set(layout.decor.map(\.kind))
-        #expect(kinds.isSuperset(of: [.crown, .painting, .stringLights, .shelf, .pendant, .hangingPlant]))
+        #expect(kinds.isSuperset(of: [.ceiling, .crown, .painting, .stringLights, .shelf, .pendant, .hangingPlant]))
         let painting = layout.decor(.painting)[0].rect
         #expect(painting.maxY <= layout.coreOrigin.y)
     }

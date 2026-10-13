@@ -50,7 +50,7 @@ struct LightMaskTests {
         let led = layout.rect(CoreLayout.led)
         #expect(on.level(led.x, led.y) == 7)
         let sky = layout.rect(WindowArt.skyRect(in: CoreLayout.window))
-        #expect(on.level(sky.midX, sky.midY) == 7)
+        #expect(on.level(sky.midX - 10, sky.midY) == 7)
         let pool = layout.point(ArtPoint(180, 220))
         #expect(on.level(pool.x, pool.y) == 7 && on.tint(pool.x, pool.y) == .warm)
 

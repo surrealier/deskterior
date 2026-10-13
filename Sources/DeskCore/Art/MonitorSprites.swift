@@ -68,7 +68,7 @@ public enum MonitorArt {
     }
 
     /// 5×5 power glyph (⏻).
-    static let powerGlyph = ["..#..", "#.#.#", "#.#.#", "#...#", ".###."]
+    static let powerGlyph = ["..#..", "#.#.#", "#...#", "#...#", ".###."]
 
     static func drawPowerButton(_ c: inout PixelCanvas, _ r: ArtRect, pressed: Bool) {
         c.roundedRectFill(r, radius: 2, .neutral1)
@@ -125,30 +125,35 @@ public enum MonitorArt {
 
     public static var screenSize: ArtSize { CoreLayout.screen.size }
 
-    /// The built-in "DeskOS" wallpaper: a calm dithered sky over soft hills that follows the time of day
-    /// (like a dynamic desktop picture).
+    /// Screen-local rows where the wallpaper's sky bands meet: the gutters between token rows (core y 42, 62
+    /// and 82), so no seam crosses an icon.
+    public static let skySeams = [24, 44, 64]
+
+    /// The built-in "DeskOS" wallpaper: a calm banded sky over soft hills that follows the time of day (like a
+    /// dynamic desktop picture). Its detail stays quieter than the icons: two close sky tones by day, small
+    /// clouds, smooth ridges.
     public static func deskOSWallpaper(sky: SkyVariant = .day, size: ArtSize = CoreLayout.screen.size) -> PixelBuffer {
         var c = PixelCanvas(width: size.w, height: size.h, artOrigin: CoreLayout.screen.origin)
-        let skyInks: [Ink], cloud: (Ink, Ink, Ink), hills: (Ink, Ink, Ink, Ink)
+        let bands: [Ink], cloud: (Ink, Ink), hills: (far: Ink, near: Ink, ridge: Ink)
         switch sky {
         case .day:
-            skyInks = [.blue2, .blue3, .blue3, .blue4, .blue4, .blue5]
-            cloud = (.neutral9, .blue5, .blue4)
-            hills = (.green3, .green2, .green4, .green3)
+            bands = [.blue3, .blue3, .blue4, .blue4]
+            cloud = (.neutral9, .blue5)
+            hills = (.green3, .green2, .green3)
         case .dusk:
-            skyInks = [.blue1, .purple1, .purple2, .purple3, .red4, .walnut4]
-            cloud = (.red5, .purple4, .purple3)
-            hills = (.purple1, .purple0, .purple2, .purple1)
+            bands = [.purple1, .purple2, .purple3, .red4]
+            cloud = (.red5, .purple4)
+            hills = (.purple1, .purple0, .purple1)
         case .dawn:
-            skyInks = [.blue3, .blue4, .blue5, .purple5, .oak5]
-            cloud = (.neutral9, .purple5, .purple4)
-            hills = (.blue2, .blue1, .blue3, .blue2)
+            bands = [.blue3, .blue4, .purple5, .oak5]
+            cloud = (.neutral9, .purple5)
+            hills = (.blue2, .blue1, .blue2)
         case .night:
-            skyInks = [.blue0, .blue0, .purple0, .blue1, .blue1, .blue2]
-            cloud = (.blue3, .blue2, .blue1)
-            hills = (.blue1, .purple0, .blue2, .blue1)
+            bands = [.blue0, .blue0, .purple0, .blue1]
+            cloud = (.blue2, .blue1)
+            hills = (.purple0, .blue0, .blue1)
         }
-        c.gradientV(c.bounds, inks: skyInks)
+        drawBands(&c, bands, seams: skySeams)
         if sky == .night {
             for i in 0..<34 {
                 let x = ArtKit.noise(i, 1, seed: 91, size.w), y = ArtKit.noise(i, 2, seed: 91, size.h / 2)
@@ -161,34 +166,40 @@ public enum MonitorArt {
             c.ellipseFill(ArtRect(size.w / 2 - 9, size.h - 36, 18, 18), .walnut5)
             c.ellipseFill(ArtRect(size.w / 2 - 6, size.h - 33, 12, 12), .neutral9)
         }
-        // Soft cloud banks.
-        func bank(_ x: Int, _ y: Int, _ w: Int) {
-            c.ellipseFill(ArtRect(x, y, w, w / 4 + 3), cloud.1)
-            c.ellipseFill(ArtRect(x + w / 6, y - w / 8, w / 2, w / 4 + 1), cloud.0)
-            c.ellipseFill(ArtRect(x + w / 2, y - w / 12, w / 3, w / 5 + 1), cloud.0)
-            c.hline(x: x + 4, y: y + w / 4 + 2, length: w - 8, cloud.2)
+        // Small clouds (at most 24×8).
+        func puff(_ x: Int, _ y: Int, _ w: Int) {
+            c.ellipseFill(ArtRect(x, y + 3, w, 5), cloud.1)
+            c.ellipseFill(ArtRect(x + w / 5, y, w / 2, 6), cloud.1)
+            c.ellipseFill(ArtRect(x + w / 5 + 1, y, w / 2 - 2, 3), cloud.0)
         }
-        bank(18, 26, 40)
-        bank(118, 16, 34)
-        bank(150, 44, 26)
-        // Hills: a far ridge and a near slope.
+        puff(18, 6, 24)
+        puff(112, 2, 20)
+        puff(150, 30, 16)
+        // Hills: a far ridge always above the near slope, each with a lit crest.
         let h = size.h
         for x in 0..<size.w {
-            let far = h - 22 - Int(6 * RoomArt.sine(Double(x) / 23) + 4 * RoomArt.sine(Double(x) / 9 + 1))
-            c.vline(x: x, y: far, length: h - far, hills.0)
+            let far = h - 26 - Int(5 * RoomArt.sine(Double(x) / 23) + 2 * RoomArt.sine(Double(x) / 9 + 1))
+            c.vline(x: x, y: far, length: h - far, hills.far)
             let near = h - 12 - Int(5 * RoomArt.sine(Double(x) / 31 + 2))
-            c.vline(x: x, y: near, length: h - near, hills.1)
-            if (x + far) % 11 == 0 { c.plot(x, far, hills.2) }
-            c.plot(x, near, hills.3)
-        }
-        if sky == .night {
-            // A few lit cottage windows on the far ridge.
-            for (i, x) in [36, 41, 140].enumerated() {
-                let far = h - 22 - Int(6 * RoomArt.sine(Double(x) / 23) + 4 * RoomArt.sine(Double(x) / 9 + 1))
-                c.fill(ArtRect(x, far + 3, 2, 2), i == 1 ? .walnut4 : .walnut5)
-            }
+            c.vline(x: x, y: near, length: h - near, hills.near)
+            c.plot(x, near, hills.ridge)
         }
         return c.buffer
+    }
+
+    /// Fills `inks` as horizontal bands meeting at `seams` (one fewer than the inks); each change of ink is a
+    /// two-row ordered dither (a quarter, then three quarters of the next ink), never a checkerboard.
+    static func drawBands(_ c: inout PixelCanvas, _ inks: [Ink], seams: [Int]) {
+        precondition(seams.count == inks.count - 1, "one seam between each pair of bands")
+        for y in 0..<c.height {
+            let k = seams.firstIndex { y < $0 } ?? seams.count
+            for x in 0..<c.width {
+                var ink = inks[k]
+                if k < seams.count, y == seams[k] - 1, (x + 1) % 4 == 0 { ink = inks[k + 1] }
+                if k > 0, y == seams[k - 1], (x + 3) % 4 == 0 { ink = inks[k - 1] }
+                c.plot(x, y, ink)
+            }
+        }
     }
 
     /// Screen off: near-black glass with a diagonal glare streak.

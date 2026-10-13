@@ -35,8 +35,10 @@ public enum PropArt {
         }
         strut(pivot + ArtPoint(0, -1), elbow)
         strut(elbow, knuckle)
-        let spring = LineRaster.points(from: pivot + ArtPoint(4, -3), to: elbow + ArtPoint(4, 3))
-        for (i, p) in spring.enumerated() where i % 2 == 0 { c.plot(p, .neutral6) }
+        // The power cord runs up beside the lower strut with a slight sag.
+        let cordA = pivot + ArtPoint(4, -2), cordB = elbow + ArtPoint(3, 3)
+        let sag = ArtPoint((cordA.x + cordB.x) / 2 + 2, (cordA.y + cordB.y) / 2 + 1)
+        c.polyline([cordA, sag, cordB], .neutral4)
         for j in [elbow] {
             c.ellipseFill(ArtRect(j.x - 2, j.y - 2, 5, 5), .neutral3)
             c.plot(j.x, j.y, .neutral7)
@@ -87,13 +89,15 @@ public enum PropArt {
                 let inMouth = eu * eu + ev * ev <= 1
                 if inMouth {
                     let rim = eu * eu + ev * ev > 0.55
+                    let bulb = eu * eu + (ev * 1.6) * (ev * 1.6) < 0.35
                     let ink: Ink
                     if rim {
-                        ink = v < 0 ? .red5 : .red4
+                        // Lit, the lower lip glows warm.
+                        ink = v < 0 ? .red5 : (on ? .walnut4 : .red4)
                     } else if on {
-                        ink = (eu * eu + (ev * 1.6) * (ev * 1.6) < 0.35) ? .neutral9 : .walnut4
+                        ink = bulb ? .neutral9 : .walnut5
                     } else {
-                        ink = (eu * eu + (ev * 1.6) * (ev * 1.6) < 0.35) ? .neutral7 : .red0
+                        ink = bulb ? .neutral6 : .red1
                     }
                     c.plot(x, y, ink)
                     mask.plot(x, y, .neutral0)
@@ -105,10 +109,6 @@ public enum PropArt {
                     mask.plot(x, y, .neutral0)
                 }
             }
-        }
-        if on {
-            // Bulb glint and warm inner rim.
-            c.plot(15, 11, .neutral9)
         }
         let outline = ArtKit.outline(mask.buffer, .red1)
         var out = PixelCanvas(width: w, height: h)
@@ -222,6 +222,15 @@ public enum PropArt {
         let topCentre = bottomCentre + up * H
         let rm = 2.0
 
+        // Two pencils that always live in the cup lean left; pens for files stand in front of them.
+        for (dx, lean, ink) in [(-1.6, -2.2, Ink.walnut4), (0.9, -1.4, Ink.red3)] {
+            let start = topCentre + perp * dx + up * 0.5
+            let tip = start + up * 6 + perp * lean
+            let a = ArtPoint(Int(start.x.rounded(.down)), Int(start.y.rounded(.down)))
+            let b = ArtPoint(Int(tip.x.rounded(.down)), Int(tip.y.rounded(.down)))
+            c.line(from: a, to: b, ink)
+            c.plot(b, .oak5)
+        }
         // Pens behind the front wall.
         if !pens.isEmpty {
             for (i, ink) in pens.prefix(6).enumerated() {
@@ -440,13 +449,13 @@ public enum PropArt {
         let r = CoreLayout.brush
         func frame(_ bend: Int) -> PixelBuffer {
             var c = PixelCanvas(width: r.w, height: r.h)
-            // Handle.
-            c.roundedRectFill(ArtRect(9, 2, 15, 4), radius: 1, .oak1)
-            c.hline(x: 10, y: 3, length: 12, .oak4)
-            c.hline(x: 10, y: 2, length: 12, .oak3)
-            c.hline(x: 11, y: 4, length: 11, .oak2)
-            c.plot(21, 3, .oak0)
-            c.plot(22, 3, .oak2)
+            // Lacquered red handle (it must not melt into the oak desk) with a hanging hole.
+            c.roundedRectFill(ArtRect(9, 2, 15, 4), radius: 1, .red1)
+            c.hline(x: 10, y: 2, length: 12, .red4)
+            c.hline(x: 10, y: 3, length: 12, .red3)
+            c.hline(x: 11, y: 4, length: 11, .red2)
+            c.plot(12, 2, .oak5)
+            c.plot(21, 3, .red0)
             // Head block.
             c.roundedRectFill(ArtRect(0, 1, 11, 6), radius: 1, .walnut0)
             c.fill(ArtRect(1, 2, 9, 4), .walnut2)
@@ -516,7 +525,7 @@ public enum PropArt {
 
     public enum ChairFacing: Int, CaseIterable, Sendable { case back, right, front, left }
 
-    /// The office chair (64×76) in one of four facings; `left` mirrors `right`.
+    /// The office chair (72×84) in one of four facings; `left` mirrors `right`.
     public static func chair(_ facing: ChairFacing = .back) -> SpriteAsset {
         let r = CoreLayout.chair
         if facing == .left {
@@ -528,78 +537,83 @@ public enum PropArt {
         switch facing {
         case .back:
             // Spine.
-            c.fill(ArtRect(29, 30, 6, 10), .neutral1)
-            c.fill(ArtRect(30, 30, 3, 10), .neutral3)
+            c.fill(ArtRect(33, 32, 6, 12), .neutral1)
+            c.fill(ArtRect(34, 32, 3, 12), .neutral3)
             // Seat back edge.
-            c.roundedRectFill(ArtRect(6, 37, 52, 9), radius: 2, .blue0)
-            c.fill(ArtRect(7, 38, 50, 3), .blue2)
-            c.fill(ArtRect(7, 41, 50, 4), .blue1)
-            c.hline(x: 8, y: 38, length: 48, .blue3)
-            // Backrest.
-            let back = ArtRect(10, 0, 44, 32)
+            c.roundedRectFill(ArtRect(6, 41, 60, 10), radius: 2, .blue0)
+            c.fill(ArtRect(7, 42, 58, 3), .blue2)
+            c.fill(ArtRect(7, 45, 58, 5), .blue1)
+            c.hline(x: 8, y: 42, length: 56, .blue3)
+            // Backrest: one seam across, a lit top-left.
+            let back = ArtRect(11, 0, 50, 35)
             c.roundedRectFill(back, radius: 5, .blue0)
             c.roundedRectFill(back.insetBy(1, 1), radius: 4, .blue2)
-            c.roundedRectFill(ArtRect(12, 2, 36, 10), radius: 3, .blue3)
-            c.hline(x: 15, y: 2, length: 22, .blue4)
-            c.fill(ArtRect(12, 26, 40, 4), .blue1)
-            c.vline(x: 52, y: 4, length: 24, .blue1)
-            for y in [12, 20] { c.hline(x: 14, y: y, length: 36, .blue1) }
-            c.vline(x: 32, y: 13, length: 7, .blue1)
-            c.plot(13, 6, .blue4)
+            c.roundedRectFill(ArtRect(13, 2, 42, 12), radius: 3, .blue3)
+            c.hline(x: 16, y: 2, length: 26, .blue4)
+            c.vline(x: 13, y: 5, length: 8, .blue4)
+            c.hline(x: 13, y: 17, length: 46, .blue1)
+            c.hline(x: 13, y: 18, length: 46, .blue3)
+            c.fill(ArtRect(13, 29, 46, 4), .blue1)
+            c.vline(x: 58, y: 5, length: 26, .blue1)
         case .front:
-            c.fill(ArtRect(29, 30, 6, 10), .neutral1)
-            c.fill(ArtRect(30, 30, 3, 10), .neutral3)
-            let back = ArtRect(12, 0, 40, 30)
+            c.fill(ArtRect(33, 32, 6, 12), .neutral1)
+            c.fill(ArtRect(34, 32, 3, 12), .neutral3)
+            let back = ArtRect(13, 0, 46, 33)
             c.roundedRectFill(back, radius: 5, .blue0)
             c.roundedRectFill(back.insetBy(1, 1), radius: 4, .blue3)
-            c.roundedRectFill(ArtRect(16, 4, 32, 22), radius: 4, .blue2)
-            c.hline(x: 17, y: 4, length: 20, .blue4)
+            c.roundedRectFill(ArtRect(17, 4, 38, 25), radius: 4, .blue2)
+            c.hline(x: 18, y: 4, length: 24, .blue4)
             // Seat cushion: top face then front edge.
-            c.roundedRectFill(ArtRect(5, 31, 54, 15), radius: 3, .blue0)
-            c.fill(ArtRect(6, 32, 52, 8), .blue3)
-            c.hline(x: 8, y: 32, length: 40, .blue4)
-            c.fill(ArtRect(6, 40, 52, 5), .blue2)
-            c.hline(x: 6, y: 44, length: 52, .blue1)
+            c.roundedRectFill(ArtRect(5, 34, 62, 17), radius: 3, .blue0)
+            c.fill(ArtRect(6, 35, 60, 9), .blue3)
+            c.hline(x: 8, y: 35, length: 46, .blue4)
+            c.fill(ArtRect(6, 44, 60, 6), .blue2)
+            c.hline(x: 6, y: 49, length: 60, .blue1)
         case .right:
             // Backrest edge-on, seat in profile.
-            c.fill(ArtRect(14, 28, 4, 14), .neutral1)
-            c.fill(ArtRect(15, 28, 2, 14), .neutral3)
-            let back = ArtRect(8, 0, 12, 32)
+            c.fill(ArtRect(16, 31, 4, 16), .neutral1)
+            c.fill(ArtRect(17, 31, 2, 16), .neutral3)
+            let back = ArtRect(9, 0, 14, 35)
             c.roundedRectFill(back, radius: 4, .blue0)
             c.roundedRectFill(back.insetBy(1, 1), radius: 3, .blue2)
-            c.vline(x: 10, y: 3, length: 24, .blue3)
-            c.vline(x: 11, y: 4, length: 10, .blue4)
-            c.roundedRectFill(ArtRect(10, 35, 46, 10), radius: 3, .blue0)
-            c.fill(ArtRect(11, 36, 44, 4), .blue3)
-            c.hline(x: 12, y: 36, length: 30, .blue4)
-            c.fill(ArtRect(11, 40, 44, 4), .blue2)
-            c.hline(x: 11, y: 43, length: 44, .blue1)
+            c.vline(x: 11, y: 3, length: 27, .blue3)
+            c.vline(x: 12, y: 4, length: 11, .blue4)
+            c.roundedRectFill(ArtRect(11, 39, 52, 11), radius: 3, .blue0)
+            c.fill(ArtRect(12, 40, 50, 4), .blue3)
+            c.hline(x: 13, y: 40, length: 34, .blue4)
+            c.fill(ArtRect(12, 44, 50, 5), .blue2)
+            c.hline(x: 12, y: 48, length: 50, .blue1)
         case .left:
             break
         }
         let name = "chair." + ["back", "right", "front", "left"][facing.rawValue]
-        return SpriteAsset(name, c, anchor: ArtPoint(r.w / 2, r.h), hitRects: ["seat": ArtRect(6, 30, 52, 16)])
+        return SpriteAsset(name, c, anchor: ArtPoint(r.w / 2, r.h), hitRects: ["seat": ArtRect(6, 33, 60, 18)])
     }
 
+    /// Gas lift, five-star base and casters, over a contact shadow on the floor (it rolls with the chair).
     static func drawChairBase(_ c: inout PixelCanvas, size: ArtSize) {
+        // Contact shadow between and beside the casters.
+        c.drawing(at: ArtPoint(2, size.h - 3), size: ArtSize(size.w - 2, 3)) { s in
+            s.ellipseFill(s.bounds, .oak0)
+        }
         // Gas lift.
-        c.fill(ArtRect(29, 44, 6, 18), .neutral1)
-        c.fill(ArtRect(30, 44, 4, 18), .neutral3)
-        c.vline(x: 30, y: 44, length: 18, .neutral5)
-        c.fill(ArtRect(27, 44, 10, 4), .neutral2)
-        c.hline(x: 27, y: 44, length: 10, .neutral4)
+        c.fill(ArtRect(33, 50, 6, 20), .neutral1)
+        c.fill(ArtRect(34, 50, 4, 20), .neutral3)
+        c.vline(x: 34, y: 50, length: 20, .neutral5)
+        c.fill(ArtRect(31, 50, 10, 4), .neutral2)
+        c.hline(x: 31, y: 50, length: 10, .neutral4)
         // Star base: two side legs and a front leg, casters at the ends.
-        let hub = ArtPoint(32, 63)
-        for (end, dir) in [(ArtPoint(5, 69), -1), (ArtPoint(58, 69), 1)] {
+        let hub = ArtPoint(36, 71)
+        for (end, dir) in [(ArtPoint(5, 77), -1), (ArtPoint(66, 77), 1)] {
             c.line(from: hub, to: end, .neutral1)
             c.line(from: hub + ArtPoint(0, -1), to: end + ArtPoint(0, -1), .neutral3)
             c.line(from: hub + ArtPoint(0, -2), to: end + ArtPoint(dir, -2), .neutral4)
         }
-        c.fill(ArtRect(30, 62, 4, 9), .neutral1)
-        c.fill(ArtRect(31, 62, 2, 8), .neutral4)
-        c.fill(ArtRect(27, 61, 10, 3), .neutral2)
-        c.hline(x: 27, y: 61, length: 10, .neutral5)
-        for x in [1, 28, 55] {
+        c.fill(ArtRect(34, 70, 4, 9), .neutral1)
+        c.fill(ArtRect(35, 70, 2, 8), .neutral4)
+        c.fill(ArtRect(31, 69, 10, 3), .neutral2)
+        c.hline(x: 31, y: 69, length: 10, .neutral5)
+        for x in [1, 32, 63] {
             c.fill(ArtRect(x + 2, size.h - 7, 3, 2), .neutral2)
             c.ellipseFill(ArtRect(x, size.h - 5, 7, 5), .neutral1)
             c.ellipseFill(ArtRect(x + 1, size.h - 5, 4, 3), .neutral3)
@@ -609,50 +623,53 @@ public enum PropArt {
 
     // MARK: Wastebasket
 
-    /// The basket's back (interior and back rim): drawn behind the heap.
+    /// The basket's back: a dark 4-px-deep mouth (`151d28`) inside a `394a50` back rim; drawn behind the heap.
     public static func wastebasketBack() -> SpriteAsset {
         let r = CoreLayout.wastebasket
         var c = PixelCanvas(width: r.w, height: r.h)
         let mouth = ArtRect(0, 0, r.w, 7)
-        c.ellipseFill(mouth, .neutral6)
-        c.ellipseFill(mouth.insetBy(1, 1), .neutral1)
-        c.ellipseFill(ArtRect(3, 2, r.w - 6, 3), .neutral0)
+        c.ellipseFill(mouth, .neutral4)
+        c.ellipseFill(ArtRect(2, 1, r.w - 4, 5), .neutral2)
+        c.hline(x: 6, y: 1, length: r.w - 12, .neutral1)
         return SpriteAsset("wastebasket.back", c, anchor: ArtPoint(r.w / 2, r.h))
     }
 
-    /// The basket's mesh body and front rim: drawn in front of the heap.
+    /// The basket's wire body (vertical slats every 3 px, two hoops) and its pale front rim: drawn in front of
+    /// the heap.
     public static func wastebasketFront() -> SpriteAsset {
         let r = CoreLayout.wastebasket
         var c = PixelCanvas(width: r.w, height: r.h)
-        let top = 3
-        // Tapered body.
+        let top = 4
+        // Tapered body: dark inside, slats lit on the left, hoops round it.
         for y in top..<r.h {
             let inset = (y - top) / 9
             let x0 = inset, x1 = r.w - inset
             c.hline(x: x0, y: y, length: x1 - x0, .neutral2)
-            for x in x0..<x1 {
-                let lit = x < r.w / 3, dark = x > r.w * 2 / 3
-                if (x + y) % 4 == 0 || (x - y + 64) % 4 == 0 {
-                    c.plot(x, y, lit ? .neutral7 : (dark ? .neutral4 : .neutral5))
-                }
+            for x in (x0 + 1)..<(x1 - 1) where x % 3 == 1 {
+                let f = Double(x) / Double(r.w)
+                c.plot(x, y, f < 0.33 ? .neutral7 : (f > 0.7 ? .neutral4 : .neutral5))
             }
-            c.plot(x0, y, .neutral5)
-            c.plot(x0 + 1, y, .neutral6)
+            c.plot(x0, y, .neutral6)
             c.plot(x1 - 1, y, .neutral3)
         }
-        // Base band and front rim (lower half of the mouth ellipse).
+        for y in [15, 26] {
+            let inset = (y - top) / 9
+            c.hline(x: inset, y: y, length: r.w - 2 * inset, .neutral5)
+            c.hline(x: inset, y: y, length: (r.w - 2 * inset) / 3, .neutral7)
+        }
+        // Base band.
         c.fill(ArtRect(4, r.h - 5, r.w - 8, 4), .neutral4)
         c.hline(x: 4, y: r.h - 5, length: r.w - 8, .neutral6)
         c.hline(x: 4, y: r.h - 1, length: r.w - 8, .neutral2)
+        // Front rim: the lower half of the mouth's ring, lit.
         var ring = PixelCanvas(width: r.w, height: 8)
-        ring.ellipseStroke(ArtRect(0, 0, r.w, 7), .neutral7)
+        ring.ellipseStroke(ArtRect(0, 0, r.w, 7), .neutral8)
         ring.ellipseStroke(ArtRect(0, 1, r.w, 7), .neutral6)
         for y in 3..<8 {
             for x in 0..<r.w where ring.ink(at: x, y)?.isClear == false {
-                c.plot(x, y, y == 3 || y == 4 ? .neutral8 : ring.ink(at: x, y)!)
+                c.plot(x, y, y <= 5 ? .neutral8 : ring.ink(at: x, y)!)
             }
         }
-        c.hline(x: 6, y: 6, length: 20, .neutral7)
         return SpriteAsset("wastebasket.front", c, anchor: ArtPoint(r.w / 2, r.h), hitRects: [
             "mouth": ArtRect(0, 0, r.w, 6),
         ])

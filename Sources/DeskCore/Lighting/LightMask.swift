@@ -8,6 +8,8 @@ public struct LightMask: Hashable, Sendable {
     public static let warmBit: UInt8 = 8
     /// Width of the dithered fringe on cone and glow edges.
     public static let edge = 4
+    /// Dither cell for fringes: 2×2 blocks survive scaled display modes, 1-px checkers do not (DESIGN §1.2).
+    public static let cell = 2
 
     public init(size: ArtSize) {
         self.size = size
@@ -45,40 +47,41 @@ public struct LightMask: Hashable, Sendable {
     }
 
     /// A trapezoid with horizontal top and bottom edges (top `y0` spanning `x0a…x1a`, bottom `y1` spanning
-    /// `x0b…x1b`; pixel-corner coordinates). Its sides and bottom fade out over a Bayer-dithered `edge`-px
-    /// fringe; the top edge is hard unless `fadeTop` (then it fades upward the same way).
+    /// `x0b…x1b`; pixel-corner coordinates). Its sides fade out over a Bayer-dithered `edge`-px fringe and its
+    /// bottom over `bottomEdge` px (default `edge`), in dither blocks of `cell` px; the top edge is hard unless
+    /// `fadeTop` (then it fades upward over `edge`). Nothing outside `clip` is lit.
     public mutating func addTrapezoid(
         top: (x0: Int, x1: Int, y: Int), bottom: (x0: Int, x1: Int, y: Int), level: Int, tint: Tint,
-        edge: Int = LightMask.edge, fadeTop: Bool = false
+        edge: Int = LightMask.edge, bottomEdge: Int? = nil, fadeTop: Bool = false, cell: Int = LightMask.cell,
+        clip: ArtRect? = nil
     ) {
         guard bottom.y > top.y else { return }
-        let e = Double(max(edge, 1))
+        let area = (clip ?? ArtRect(0, 0, size.w, size.h)).intersection(ArtRect(0, 0, size.w, size.h))
+        let e = Double(max(edge, 1)), eb = Double(max(bottomEdge ?? edge, 1))
         let span = Double(bottom.y - top.y)
-        let yEnd = min(bottom.y + edge, size.h)
-        let yStart = max(top.y - (fadeTop ? edge : 0), 0)
+        let yEnd = min(bottom.y + Int(eb), area.maxY)
+        let yStart = max(top.y - (fadeTop ? edge : 0), area.minY)
         for y in yStart..<max(yEnd, yStart) {
             let cy = Double(y) + 0.5
             let t = min(1, max(0, (cy - Double(top.y)) / span))
             let xl = Double(top.x0) + Double(bottom.x0 - top.x0) * t
             let xr = Double(top.x1) + Double(bottom.x1 - top.x1) * t
-            let below = max(0, cy - Double(bottom.y), fadeTop ? Double(top.y) - cy : 0)
-            let x0 = max(Int(xl - e) - 1, 0), x1 = min(Int(xr + e) + 1, size.w)
+            let below = max(0, cy - Double(bottom.y)) / eb
+            let above = fadeTop ? max(0, Double(top.y) - cy) / e : 0
+            let x0 = max(Int(xl - e) - 1, area.minX), x1 = min(Int(xr + e) + 1, area.maxX)
             guard x0 < x1 else { continue }
             for x in x0..<x1 {
                 let cx = Double(x) + 0.5
-                let side = max(xl - cx, cx - xr, 0)
-                let d = max(side, below)
-                if d <= 0 {
-                    light(x, y, level: level, tint: tint)
-                } else if d < e, Dither.pick(x: x, y: y, fraction: 1 - d / e) {
+                let f = max(max(xl - cx, cx - xr, 0) / e, below, above)
+                if f <= 0 || (f < 1 && Dither.pick(x: x, y: y, fraction: 1 - f, cell: cell)) {
                     light(x, y, level: level, tint: tint)
                 }
             }
         }
     }
 
-    /// An ellipse inscribed in `r` whose rim fades over a dithered `edge`-px fringe.
-    public mutating func addEllipse(_ r: ArtRect, level: Int, tint: Tint, edge: Int = LightMask.edge) {
+    /// An ellipse inscribed in `r` whose rim fades over a dithered `edge`-px fringe (dither blocks of `cell` px).
+    public mutating func addEllipse(_ r: ArtRect, level: Int, tint: Tint, edge: Int = LightMask.edge, cell: Int = LightMask.cell) {
         guard !r.isEmpty else { return }
         let cx = Double(r.x) + Double(r.w) / 2, cy = Double(r.y) + Double(r.h) / 2
         let rx = Double(r.w) / 2, ry = Double(r.h) / 2
@@ -91,11 +94,16 @@ public struct LightMask: Hashable, Sendable {
                 let dx = (Double(x) + 0.5 - cx) / rx, dy = (Double(y) + 0.5 - cy) / ry
                 let n = (dx * dx + dy * dy).squareRoot()
                 let d = (n - 1) * min(rx, ry)
-                if d <= 0 || (d < e && Dither.pick(x: x, y: y, fraction: 1 - d / e)) {
+                if d <= 0 || (d < e && Dither.pick(x: x, y: y, fraction: 1 - d / e, cell: cell)) {
                     light(x, y, level: level, tint: tint)
                 }
             }
         }
+    }
+
+    /// Lights each point.
+    public mutating func addPoints(_ points: [ArtPoint], level: Int, tint: Tint) {
+        for p in points { light(p.x, p.y, level: level, tint: tint) }
     }
 
     /// Lights every opaque pixel of `sprite` placed at `origin` (only rows in `rows`, sprite-local, if given).
@@ -152,37 +160,45 @@ public struct RoomLightState: Hashable, Sendable {
 }
 
 extension LightMask {
-    /// The room's mask (DESIGN §1.4): lamp cone 7 warm, monitor glow 5 cool, phone glow 4 cool, and emissive
-    /// rects at 7 for the lit screen, the LED, the window sky, the lamp bulb and (in the dark) the string lights.
+    /// The room's mask (DESIGN §1.4): emissive glass, screen, LED and bulbs at 7; when the room is dark enough
+    /// for it (ambient 5 or less) the lamp's warm pool and halo; the monitor's cool glow on the desk (level 5,
+    /// which keeps the oak an oak, never the felt mat's greys) and on the wall; the phone's glow; the pendant
+    /// and the string lights after dark.
     public static func room(_ layout: SceneLayout, lights: RoomLightState, time: TimeOfDay) -> LightMask {
         var m = LightMask(size: layout.canvas)
         let o = layout.coreOrigin
         func shift(_ e: (x0: Int, x1: Int, y: Int)) -> (x0: Int, x1: Int, y: Int) {
             (e.x0 + o.x, e.x1 + o.x, e.y + o.y)
         }
-        m.addRect(layout.rect(WindowArt.skyRect(in: CoreLayout.window)), level: 7, tint: .cool)
+        // Only the glass glows: the mullion and the blind cord stay at the room's level.
+        let win = layout.rect(CoreLayout.window)
+        m.addPoints(WindowArt.skyPixels().map { $0 + win.origin }, level: 7, tint: .cool)
         if lights.monitorOn {
             m.addEllipse(layout.rect(CoreLayout.monitorBody).insetBy(-14, -10), level: 2, tint: .cool, edge: 12)
             m.addTrapezoid(top: shift(CoreLayout.monitorGlowTop), bottom: shift(CoreLayout.monitorGlowBottom),
-                           level: 3, tint: .cool, edge: 8, fadeTop: true)
+                           level: 5, tint: .cool, edge: 8, bottomEdge: CoreLayout.monitorGlowFade)
             m.addRect(layout.rect(CoreLayout.screen), level: 7, tint: .cool)
         }
         if lights.lampOn {
-            // A pool on the desk under the shade, spilling up the wall behind it, and a halo round the bulb.
-            m.addTrapezoid(top: shift(CoreLayout.lampConeTop), bottom: shift(CoreLayout.lampConeBottom),
-                           level: 7, tint: .warm)
-            // What stands in the pool catches the light too: the lamp's own base, the riser's left end.
-            let lamp = layout.rect(PropArt.lampRect)
-            let baseRows = (CoreLayout.lampSwitch.y - PropArt.lampRect.y)..<PropArt.lampRect.h
-            m.addSprite(PropArt.lamp(on: true).image, at: lamp.origin, rows: baseRows, level: 7, tint: .warm)
-            m.addTrapezoid(top: (o.x + CoreLayout.riser.x, o.x + 222, o.y + CoreLayout.riser.y),
-                           bottom: (o.x + CoreLayout.riser.x, o.x + 224, o.y + 168), level: 6, tint: .warm, edge: 6)
-            m.addEllipse(layout.rect(PropArt.lampBulbRect).insetBy(-7, -6), level: 6, tint: .warm)
+            if RoomArt.lampGlows(time) {
+                // A pool under the shade: a bright core, one falloff ring, a dithered edge that spills onto the
+                // apron and the chair back; the lamp's own base and the riser's end catch it too.
+                let pool = layout.rect(CoreLayout.lampPool)
+                m.addEllipse(pool, level: 6, tint: .warm, edge: 3)
+                m.addEllipse(RoomArt.lampPoolCore(pool), level: 7, tint: .warm, edge: 4)
+                let lamp = layout.rect(PropArt.lampRect)
+                let baseRows = (CoreLayout.lampSwitch.y - PropArt.lampRect.y)..<PropArt.lampRect.h
+                m.addSprite(PropArt.lamp(on: true).image, at: lamp.origin, rows: baseRows, level: 7, tint: .warm)
+                let riser = layout.rect(CoreLayout.riser)
+                m.addTrapezoid(top: (riser.x, riser.x + 4, riser.y), bottom: (riser.x, riser.x + 8, riser.maxY),
+                               level: 6, tint: .warm, edge: 8, clip: riser)
+                m.addPoints(RoomArt.lampHaloPixels(layout).map(\.point), level: 7, tint: .warm)
+            }
             m.addRect(layout.rect(PropArt.lampBulbRect), level: 7, tint: .warm)
         }
         m.addRect(layout.rect(CoreLayout.led), level: 7, tint: .cool)
         if lights.phoneFaceUp {
-            m.addEllipse(layout.rect(CoreLayout.phone).insetBy(-7, -3), level: 4, tint: .cool, edge: 6)
+            m.addEllipse(layout.rect(CoreLayout.phone).insetBy(-7, -3), level: 5, tint: .cool, edge: 6)
             m.addRect(layout.rect(PropArt.phoneScreenRect), level: 7, tint: .cool)
         }
         if time.isDark && lights.roomLightOn {
@@ -191,11 +207,10 @@ extension LightMask {
                 m.addEllipse(bulb.insetBy(-10, -6), level: 7, tint: .warm, edge: 6)
             }
         }
-        if time.isDark {
-            for lights in layout.decor(.stringLights) {
-                for bulb in RoomArt.stringLightBulbs(in: lights.rect) {
-                    m.addRect(ArtRect(bulb.x - 1, bulb.y, 3, 3), level: 7, tint: .warm)
-                }
+        if time.isDark, RoomArt.stringLightsLit(time) {
+            for d in layout.decor(.stringLights) {
+                m.addPoints(RoomArt.stringLightGlass(in: d.rect) + RoomArt.stringLightHalo(in: d.rect).map(\.point),
+                            level: 7, tint: .warm)
             }
         }
         return m

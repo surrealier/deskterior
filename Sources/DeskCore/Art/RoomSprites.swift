@@ -20,7 +20,7 @@ public enum RoomArt {
     // MARK: Backdrop
 
     /// Everything static behind the room's objects, canvas-sized: wall, wainscot, baseboard, floor, rug, the
-    /// desk top face, and the soft shadows that wall pieces and back-strip props cast.
+    /// desk top face, and the soft shadows that wall pieces, back-strip props and floor furniture cast.
     public static func backdrop(_ layout: SceneLayout) -> PixelBuffer {
         let w = layout.canvas.w, h = layout.canvas.h
         var c = PixelCanvas(width: w, height: h, fill: wall)
@@ -49,41 +49,68 @@ public enum RoomArt {
         c.hline(x: 0, y: base - 1, length: w, wainscotLine)
 
         drawFloor(&c, from: base, layout: layout)
+        drawUnderDeskShade(&c, layout: layout)
         drawRug(&c, layout: layout)
-
-        // Under-desk shade: the floor darkens toward the wall in two steps, each with a soft edge.
-        let shadeBottom = layout.y(292)
-        let apronBottom = layout.y(CoreLayout.apron.maxY)
-        shade(&c, ArtRect(desk.x, apronBottom, desk.w, shadeBottom - apronBottom), steps: 1)
-        let deep = base + 12
-        shade(&c, ArtRect(desk.x, apronBottom, desk.w, deep - apronBottom), steps: 1)
-        softEdge(&c, y: deep, x: desk.minX..<desk.maxX)
-        softEdge(&c, y: shadeBottom, x: desk.minX..<desk.maxX)
+        drawFloorShadows(&c, layout: layout)
 
         // Contact shadow on the wall just above the desk's back edge.
         for x in desk.minX..<desk.maxX where c.ink(at: x, desk.y - 1) == wall { c.plot(x, desk.y - 1, wallShade) }
-        drawDeskTop(&c, desk)
+        c.blit(deskSurface, at: desk.origin)
         drawWallShadows(&c, layout)
-        drawDeskShadows(&c, layout)
         return c.buffer
     }
 
-    /// One half-dithered row under a shadow's edge, so it reads soft without a visible pattern band.
-    static func softEdge(_ c: inout PixelCanvas, y: Int, x range: Range<Int>) {
-        guard y >= 0, y < c.height else { return }
-        for x in range where (x + y) % 2 == 0 {
-            if let ink = c.ink(at: x, y), !ink.isClear { c.plot(x, y, ink.darker()) }
+    /// The desk top face in desk-local px, with the contact shadows of the back-strip props and the keyboard.
+    /// It is the same for every layout, so it is built once.
+    static let deskSurface: PixelBuffer = {
+        let d = CoreLayout.deskTop
+        var c = PixelCanvas(width: d.w, height: d.h)
+        drawDeskTop(&c, c.bounds)
+        drawDeskShadows(&c, offset: ArtPoint(-d.x, -d.y))
+        return c.buffer
+    }()
+
+    /// The floor under the desk darkens toward the wall in two plank-aligned steps (`602c2c`, then `7a4841`),
+    /// ending well before the rug; the baseboard between the legs falls into the shadow too.
+    static func drawUnderDeskShade(_ c: inout PixelCanvas, layout: SceneLayout) {
+        let desk = layout.rect(CoreLayout.deskTop)
+        let base = layout.wallBaseY
+        let top = layout.y(CoreLayout.apron.maxY)
+        // Planks are 6 rows (seam last), so each step ends on a seam.
+        let deepEnd = base + 12, midEnd = base + 30
+        let deep: [Ink: Ink] = [floorBase: .walnut1, floorSeam: .oak0, floorLight: floorSeam]
+        let mid: [Ink: Ink] = [floorBase: floorSeam, floorSeam: .oak0, floorLight: floorBase]
+        let board: [Ink: Ink] = [.neutral9: .neutral5, .neutral8: .neutral5, wainscotLine: .neutral4]
+        let clip = ArtRect(desk.x, top, desk.w, midEnd - top).intersection(c.bounds)
+        guard !clip.isEmpty else { return }
+        for y in clip.minY..<clip.maxY {
+            let map = y < base ? board : (y < deepEnd ? deep : mid)
+            for x in clip.minX..<clip.maxX {
+                if let ink = c.ink(at: x, y), let to = map[ink] { c.plot(x, y, to) }
+            }
         }
     }
 
-    /// Darkens every pixel of `r` by `steps` ramp steps.
-    static func shade(_ c: inout PixelCanvas, _ r: ArtRect, steps: Int) {
-        let clip = r.intersection(c.bounds)
-        guard !clip.isEmpty else { return }
-        for y in clip.minY..<clip.maxY {
-            for x in clip.minX..<clip.maxX {
-                if let ink = c.ink(at: x, y), !ink.isClear { c.plot(x, y, ink.darker(steps)) }
+    /// Contact shadows on the floor (one ramp step darker, offset right of the light) under the wastebasket,
+    /// the cabinet's plinth and the floor plant's basket; the chair carries its own.
+    static func drawFloorShadows(_ c: inout PixelCanvas, layout: SceneLayout) {
+        func shadow(_ r: ArtRect) {
+            var e = PixelCanvas(width: r.w, height: r.h)
+            e.ellipseFill(e.bounds, .neutral0)
+            for y in 0..<r.h {
+                for x in 0..<r.w where e.ink(at: x, y) == .neutral0 {
+                    if let ink = c.ink(at: r.x + x, r.y + y), !ink.isClear { c.plot(r.x + x, r.y + y, ink.darker()) }
+                }
             }
+        }
+        let floor = CoreLayout.floorY
+        let basket = CoreLayout.wastebasket
+        shadow(layout.rect(ArtRect(basket.x - 1, floor - 3, basket.w + 8, 6)))
+        let cab = CoreLayout.cabinet
+        shadow(layout.rect(ArtRect(cab.x - 2, floor - 3, cab.w + 10, 6)))
+        for d in layout.decor(.floorPlant) {
+            let pot = DecorArt.floorPlantPot(d.rect.size).offsetBy(d.rect.x, d.rect.y)
+            shadow(ArtRect(pot.x - 2, pot.maxY - 3, pot.w + 7, 5))
         }
     }
 
@@ -118,26 +145,27 @@ public enum RoomArt {
         }
     }
 
+    /// The rug in front of the desk: a quiet field with a tone-on-tone border and lattice, so it recedes.
     static func drawRug(_ c: inout PixelCanvas, layout: SceneLayout) {
         let r = ArtRect(layout.x(104), layout.y(290), 272, c.height - layout.y(290))
         guard r.h > 2 else { return }
         c.fill(r, .red2)
         c.hline(x: r.x, y: r.y, length: r.w, .red3)
-        // Border band and a row of diamonds.
+        // Border band and a row of small diamonds.
         let band = ArtRect(r.x + 4, r.y + 3, r.w - 8, r.h)
-        c.stroke(ArtRect(band.x, band.y, band.w, band.h + 2), .walnut4)
+        c.stroke(ArtRect(band.x, band.y, band.w, band.h + 2), .red3)
         let inner = band.insetBy(3, 3)
         if inner.h > 0 { c.stroke(ArtRect(inner.x, inner.y, inner.w, inner.h + 6), .red1) }
         var x = band.x + 8
         while x + 6 < band.maxX - 4 {
             let cy = band.y + 7
             if cy + 2 < c.height {
-                c.plot(x + 2, cy - 2, .walnut5)
-                c.hline(x: x + 1, y: cy - 1, length: 3, .walnut4)
-                c.hline(x: x, y: cy, length: 5, .walnut4)
+                c.plot(x + 2, cy - 2, .red3)
+                c.hline(x: x + 1, y: cy - 1, length: 3, .red3)
+                c.hline(x: x, y: cy, length: 5, .red3)
                 c.plot(x + 2, cy, .red1)
-                c.hline(x: x + 1, y: cy + 1, length: 3, .walnut4)
-                c.plot(x + 2, cy + 2, .walnut3)
+                c.hline(x: x + 1, y: cy + 1, length: 3, .red3)
+                c.plot(x + 2, cy + 2, .red3)
             }
             x += 12
         }
@@ -147,15 +175,15 @@ public enum RoomArt {
         while ly + 1 < c.height {
             var lx = inner.x + 6 + (row % 2) * 6
             while lx + 2 < inner.maxX - 3 {
-                c.plot(lx + 1, ly - 1, .red3)
-                c.hline(x: lx, y: ly, length: 3, .red3)
-                c.plot(lx + 1, ly + 1, .red3)
+                c.plot(lx + 1, ly - 1, .red1)
+                c.hline(x: lx, y: ly, length: 3, .red1)
+                c.plot(lx + 1, ly + 1, .red1)
                 lx += 12
             }
             ly += 9
             row += 1
         }
-        // Fringe at the back edge, then a dark contact line under the rug's lip.
+        // Fringe at the back edge.
         c.hline(x: r.x, y: r.y - 1, length: r.w, .oak0)
         var fx = r.x + 1
         while fx < r.maxX {
@@ -182,12 +210,12 @@ public enum RoomArt {
                 k += 1
             }
         }
-        for i in 0..<8 {
+        for i in 0..<4 {
             let y = d.y + 4 + ArtKit.noise(i, 5, seed: 13, d.h - 10)
             let x = d.x + 4 + ArtKit.noise(i, 6, seed: 13, d.w / 3)
             c.hline(x: x, y: y, length: 10 + ArtKit.noise(i, 7, seed: 13, 24), Role.deskHighlight)
         }
-        // Back edge meets the wall; front bullnose catches the light.
+        // Back edge meets the wall (a shadow row, then a soft one); front bullnose catches the light.
         c.hline(x: d.x, y: d.y, length: d.w, Role.deskShadow)
         c.hline(x: d.x, y: d.y + 1, length: d.w, Role.deskEdge)
         c.hline(x: d.x, y: d.maxY - 1, length: d.w, Role.deskHighlight)
@@ -198,18 +226,19 @@ public enum RoomArt {
 
     /// Soft wall shadows (down-right of each wall piece and of the monitor).
     static func drawWallShadows(_ c: inout PixelCanvas, _ layout: SceneLayout) {
-        func drop(_ r: ArtRect, dx: Int, dy: Int) {
+        func drop(_ r: ArtRect, dx: Int, dy: Int, ink: Ink = wallShade) {
             let s = r.offsetBy(dx, dy)
             for y in s.minY..<s.maxY {
                 for x in s.minX..<s.maxX where !r.contains(ArtPoint(x, y)) {
-                    if c.ink(at: x, y) == wall { c.plot(x, y, wallShade) }
+                    if c.ink(at: x, y) == wall { c.plot(x, y, ink) }
                 }
             }
         }
         let win = layout.rect(CoreLayout.window)
         drop(ArtRect(win.x + 2, win.y, win.w - 4, win.h - 2), dx: 3, dy: 3)
         drop(layout.rect(CoreLayout.calendar), dx: 2, dy: 2)
-        drop(layout.rect(CoreLayout.roomSwitch), dx: 1, dy: 1)
+        // The switch plate is wall-grey itself, so its shadow is a step deeper.
+        drop(layout.rect(CoreLayout.roomSwitch), dx: 1, dy: 1, ink: .neutral7)
         let clock = layout.rect(CoreLayout.clock)
         var disc = PixelCanvas(width: clock.w, height: clock.h)
         disc.ellipseFill(disc.bounds, .neutral0)
@@ -224,26 +253,30 @@ public enum RoomArt {
                 drop(ArtRect(d.rect.x, d.rect.y + 22, d.rect.w, 4), dx: 2, dy: 3)
             case .frame, .pegboard, .painting:
                 drop(d.rect, dx: 2, dy: 2)
+            case .rail:
+                drop(d.rect, dx: 0, dy: 1)
             default:
                 break
             }
         }
     }
 
-    /// Contact shadows of the back-strip props on the desk top (down-right, one oak step darker).
-    static func drawDeskShadows(_ c: inout PixelCanvas, _ layout: SceneLayout) {
+    /// Contact shadows on the desk top (one oak step darker, onto bare desk only): the back-strip props cast
+    /// theirs down-right; the keyboard a 1-px row under its front face and a column on its right.
+    /// `offset` moves core px into the canvas being drawn.
+    static func drawDeskShadows(_ c: inout PixelCanvas, offset: ArtPoint) {
         func onDesk(_ i: Ink) -> Bool { i == Role.desk || i == Role.deskHighlight }
-        let props: [(PixelBuffer, ArtRect)] = [
-            (StorageArt.riser().image, CoreLayout.riser),
-            (MonitorArt.stand().image, MonitorArt.standRect),
-            (PropArt.plant().image, CoreLayout.plant),
-            (PropArt.phoneStand(faceUp: true).image, PropArt.phoneStandRect),
-            (PropArt.driveHub().image, CoreLayout.driveHub),
-            (PropArt.lamp(on: false).image, PropArt.lampRect),
+        let props: [(PixelBuffer, ArtRect, ArtPoint)] = [
+            (StorageArt.riser().image, CoreLayout.riser, ArtPoint(3, 2)),
+            (MonitorArt.stand().image, MonitorArt.standRect, ArtPoint(3, 2)),
+            (PropArt.plant().image, CoreLayout.plant, ArtPoint(3, 2)),
+            (PropArt.phoneStand(faceUp: true).image, PropArt.phoneStandRect, ArtPoint(3, 2)),
+            (PropArt.driveHub().image, CoreLayout.driveHub, ArtPoint(3, 2)),
+            (PropArt.lamp(on: false).image, PropArt.lampRect, ArtPoint(3, 2)),
+            (PropArt.keyboard().image, CoreLayout.keyboard, ArtPoint(1, 1)),
         ]
-        for (img, core) in props {
-            let r = layout.rect(core)
-            ArtKit.castShadow(of: img, at: r.origin, offset: ArtPoint(3, 2), ink: Role.deskEdge, into: &c, where: onDesk)
+        for (img, core, shift) in props {
+            ArtKit.castShadow(of: img, at: core.origin + offset, offset: shift, ink: Role.deskEdge, into: &c, where: onDesk)
         }
     }
 
@@ -283,31 +316,27 @@ public enum RoomArt {
 
     // MARK: Light switch
 
+    /// The room light switch: a grey plate with a dark outline (its wall shadow is in the backdrop) and a 2×3
+    /// toggle at the top of its slot when on, at the bottom when off.
     public static func roomSwitch(on: Bool) -> SpriteAsset {
         let r = CoreLayout.roomSwitch
         var c = PixelCanvas(width: r.w, height: r.h)
-        c.roundedRectFill(c.bounds, radius: 1, .neutral6)
-        c.fill(c.bounds.insetBy(1, 1), .neutral9)
-        c.hline(x: 1, y: r.h - 2, length: r.w - 2, .neutral8)
-        c.vline(x: r.w - 2, y: 1, length: r.h - 2, .neutral8)
-        // Rocker: lit top half when on.
-        let rocker = ArtRect(3, 3, 2, 6)
-        c.fill(rocker, .neutral7)
-        if on {
-            c.fill(ArtRect(3, 3, 2, 3), .neutral9)
-            c.hline(x: 3, y: 6, length: 2, .neutral6)
-        } else {
-            c.fill(ArtRect(3, 6, 2, 3), .neutral9)
-            c.hline(x: 3, y: 3, length: 2, .neutral6)
-        }
-        c.plot(4, 1, .neutral7)
-        c.plot(4, r.h - 2, .neutral7)
+        c.roundedRectFill(c.bounds, radius: 1, .neutral5)
+        c.fill(c.bounds.insetBy(1, 1), .neutral8)
+        c.hline(x: 1, y: 1, length: r.w - 3, .neutral9)
+        c.vline(x: 1, y: 1, length: r.h - 3, .neutral9)
+        // Slot and toggle.
+        let slot = ArtRect(3, 3, 2, 6)
+        c.fill(slot, .neutral7)
+        c.fill(ArtRect(slot.x, on ? slot.y : slot.maxY - 3, 2, 3), .neutral4)
+        c.plot(slot.x, on ? slot.y : slot.maxY - 3, .neutral5)
         return SpriteAsset(on ? "room.switch.on" : "room.switch.off", c, anchor: .zero)
     }
 
     // MARK: Clock
 
-    /// The wall clock showing `hour:minute` (hands drawn with LineRaster, pixel-perfect).
+    /// The wall clock showing `hour:minute`: a short 2-px hour hand and a long 1-px minute hand, so the two
+    /// never fuse.
     public static func clock(hour: Int, minute: Int) -> SpriteAsset {
         let n = CoreLayout.clock.w
         var c = PixelCanvas(width: n, height: n)
@@ -346,9 +375,13 @@ public enum RoomArt {
         }
         let m = Double(minute), hr = Double(hour % 12) + m / 60
         let centre = ArtPoint(13, 13)
-        c.polyline([centre, at(hr * 30, 6.2)], .neutral1)
-        c.polyline([ArtPoint(14, 14), at(hr * 30, 5.6)], .neutral1)
-        c.polyline([centre, at(m * 6, 9.2)], .neutral2)
+        // Hour hand: 5 px long, doubled across its direction.
+        let hourTip = at(hr * 30, 5.2)
+        let a = (hr * 30 - 90) * .pi / 180
+        let side = abs(cos(a)) > abs(sin(a)) ? ArtPoint(0, 1) : ArtPoint(1, 0)
+        c.line(from: centre, to: hourTip, .neutral3)
+        c.line(from: centre + side, to: hourTip + side, .neutral3)
+        c.line(from: centre, to: at(m * 6, 9.4), .neutral0)
         c.fill(ArtRect(13, 13, 2, 2), .red3)
         c.plot(13, 13, .red4)
         return SpriteAsset("clock", c, anchor: .zero)
@@ -410,7 +443,13 @@ public enum RoomArt {
 
     // MARK: String lights
 
-    /// Bulb positions (canvas px, top of each bulb) for string lights strung across `rect`.
+    /// String lights are lit from dusk to dawn.
+    public static func stringLightsLit(_ time: TimeOfDay) -> Bool { time.phase != .day }
+
+    /// The desk lamp's pool and halo show only when the room is dark enough for them (ambient 5 or less).
+    public static func lampGlows(_ time: TimeOfDay) -> Bool { time.ambientLevel <= 5 }
+
+    /// Bulb positions (canvas px, the cap above each bulb) for string lights strung across `rect`.
     public static func stringLightBulbs(in rect: ArtRect) -> [ArtPoint] {
         let wire = stringLightWire(in: rect)
         var out: [ArtPoint] = []
@@ -422,23 +461,61 @@ public enum RoomArt {
         return out
     }
 
-    /// Wire y per x: a catenary-ish sag between hooks every ~120 px.
-    static func stringLightWire(in rect: ArtRect) -> [Int: Int] {
-        let sag = max(2, rect.h - 6)
-        let spans = max(1, (rect.w + 60) / 120)
-        let spanW = Double(rect.w) / Double(spans)
-        var out: [Int: Int] = [:]
-        for x in rect.x..<rect.maxX {
-            let t = (Double(x - rect.x) / spanW).truncatingRemainder(dividingBy: 1)
-            let dip = 4 * t * (1 - t)
-            out[x] = rect.y + Int((Double(sag) * dip).rounded())
+    /// The glass of every bulb (canvas px): a 3-px-wide body two rows tall and a tip.
+    public static func stringLightGlass(in rect: ArtRect) -> [ArtPoint] {
+        stringLightBulbs(in: rect).flatMap { b in
+            [ArtPoint(b.x - 1, b.y + 1), ArtPoint(b.x, b.y + 1), ArtPoint(b.x + 1, b.y + 1),
+             ArtPoint(b.x - 1, b.y + 2), ArtPoint(b.x, b.y + 2), ArtPoint(b.x + 1, b.y + 2), ArtPoint(b.x, b.y + 3)]
+        }
+    }
+
+    /// A lit bulb's halo (canvas px and ink): the ring one pixel round its glass, every other pixel by the
+    /// Bayer pattern, warm.
+    public static func stringLightHalo(in rect: ArtRect) -> [(point: ArtPoint, ink: Ink)] {
+        var out: [(point: ArtPoint, ink: Ink)] = []
+        for b in stringLightBulbs(in: rect) {
+            for y in (b.y + 1)...(b.y + 4) {
+                for x in (b.x - 2)...(b.x + 2) {
+                    let inGlass = (y <= b.y + 2 && abs(x - b.x) <= 1) || (y == b.y + 3 && x == b.x)
+                    guard !inGlass, abs(x - b.x) + abs(y - b.y - 2) <= 3 else { continue }
+                    if Dither.pick(x: x, y: y, sixteenths: 8) { out.append((ArtPoint(x, y), y == b.y + 4 ? .walnut3 : .walnut4)) }
+                }
+            }
         }
         return out
     }
 
-    /// Fairy lights across `rect` (sprite in rect-local px). `lit` brightens the glass (night).
+    /// Hook x positions (rect-local) for the spans: about 120 px apart, the inner ones jittered.
+    static func stringLightHooks(in rect: ArtRect) -> [Int] {
+        let spans = max(1, (rect.w + 60) / 120)
+        return (0...spans).map { i in
+            let x = min(rect.w - 1, i * rect.w / spans)
+            guard i > 0, i < spans else { return x }
+            return x + ArtKit.noise(i, rect.w, seed: 61, 13) - 6
+        }
+    }
+
+    /// Wire y per canvas x: a catenary-ish sag between hooks, each span 0–2 px shallower than the deepest.
+    static func stringLightWire(in rect: ArtRect) -> [Int: Int] {
+        let sag = max(2, rect.h - 6)
+        let hooks = stringLightHooks(in: rect)
+        var out: [Int: Int] = [:]
+        for s in 0..<(hooks.count - 1) {
+            let a = hooks[s], b = max(hooks[s + 1], a + 1)
+            let spanSag = Double(max(2, sag - ArtKit.noise(s, rect.w, seed: 67, 3)))
+            let end = s == hooks.count - 2 ? rect.w : b
+            for lx in a..<end {
+                let t = min(1, Double(lx - a) / Double(b - a))
+                out[rect.x + lx] = rect.y + Int((spanSag * 4 * t * (1 - t)).rounded())
+            }
+        }
+        return out
+    }
+
+    /// Fairy lights across `rect` (sprite in rect-local px). Unlit: grey glass under a coloured cap. Lit: the
+    /// glass glows in its colour inside a warm dithered halo.
     public static func stringLights(_ rect: ArtRect, lit: Bool) -> SpriteAsset {
-        var c = PixelCanvas(width: rect.w, height: rect.h + 4)
+        var c = PixelCanvas(width: rect.w, height: rect.h + 4, artOrigin: rect.origin)
         let wire = stringLightWire(in: rect)
         var prev: ArtPoint?
         for x in rect.x..<rect.maxX {
@@ -446,26 +523,33 @@ public enum RoomArt {
             if let q = prev { c.line(from: q, to: p, .neutral4) } else { c.plot(p, .neutral4) }
             prev = p
         }
-        // Hooks at span ends.
-        let spans = max(1, (rect.w + 60) / 120)
-        for i in 0...spans {
-            let x = min(rect.w - 1, i * rect.w / spans)
-            c.fill(ArtRect(x - 1, 0, 2, 2), .neutral5)
+        for x in stringLightHooks(in: rect) { c.fill(ArtRect(x - 1, 0, 2, 2), .neutral5) }
+        if lit {
+            for h in stringLightHalo(in: rect) { c.plot(h.point.x - rect.x, h.point.y - rect.y, h.ink) }
         }
         let colours: [(Ink, Ink)] = [(.walnut5, .walnut4), (.red5, .red4), (.green5, .green4), (.walnut5, .walnut4), (.blue5, .blue4)]
         for (i, b) in stringLightBulbs(in: rect).enumerated() {
             let x = b.x - rect.x, y = b.y - rect.y
             let (glass, deep) = colours[i % colours.count]
-            c.plot(x, y, .neutral3)
-            c.fill(ArtRect(x - 1, y + 1, 3, 2), lit ? glass : deep)
-            c.plot(x, y + 3, lit ? deep : deep.darker())
-            c.plot(x - 1, y + 1, lit ? .neutral9 : glass)
+            if lit {
+                c.plot(x, y, .neutral3)
+                c.fill(ArtRect(x - 1, y + 1, 3, 2), deep)
+                c.plot(x, y + 1, glass)
+                c.plot(x - 1, y + 1, .neutral9)
+                c.plot(x, y + 3, deep)
+            } else {
+                c.plot(x, y, deep)
+                c.fill(ArtRect(x - 1, y + 1, 3, 2), .neutral5)
+                c.plot(x - 1, y + 1, .neutral6)
+                c.plot(x, y + 3, .neutral4)
+            }
         }
         return SpriteAsset(lit ? "decor.stringLights.lit" : "decor.stringLights", c, anchor: .zero)
     }
 
-    // MARK: Crown moulding
+    // MARK: Ceiling, crown and rail
 
+    /// Crown moulding where a tall wall meets the ceiling.
     public static func crown(width: Int) -> SpriteAsset {
         var c = PixelCanvas(width: width, height: 6, fill: .neutral9)
         c.hline(x: 0, y: 0, length: width, .neutral7)
@@ -473,6 +557,112 @@ public enum RoomArt {
         c.hline(x: 0, y: 4, length: width, .neutral8)
         c.hline(x: 0, y: 5, length: width, .neutral7)
         return SpriteAsset("decor.crown", c, anchor: .zero)
+    }
+
+    /// The ceiling plane above a tall wall: it darkens in three steps away from the crown (2×2 Bayer bands)
+    /// and its board joints crowd together toward the far wall.
+    public static func ceiling(_ size: ArtSize) -> SpriteAsset {
+        var c = PixelCanvas(width: size.w, height: size.h, fill: .neutral8)
+        let inks: [Ink] = [.neutral9, .neutral8, .neutral7]
+        let step = max(8, size.h / 3)
+        for y in 0..<size.h {
+            let d = Double(size.h - 1 - y) / Double(step)
+            let band = min(Int(d), inks.count - 1)
+            let f = d - Double(band)
+            for x in 0..<size.w {
+                let next = min(band + 1, inks.count - 1)
+                let ink = f > 0.75 && Dither.pick(x: x, y: y, fraction: (f - 0.75) * 4, cell: 2) ? inks[next] : inks[band]
+                c.plot(x, y, ink)
+            }
+        }
+        // Joints: gaps grow by a third each board away from the crown.
+        var gap = 5.0, y = Double(size.h - 1) - gap
+        while y > 0 {
+            let row = Int(y)
+            for x in 0..<size.w { if let ink = c.ink(at: x, row) { c.plot(x, row, ink.darker()) } }
+            gap *= 1.33
+            y -= gap
+        }
+        return SpriteAsset("decor.ceiling", c, anchor: .zero)
+    }
+
+    /// A picture rail: a lit top edge over a shadowed lip.
+    public static func rail(width: Int) -> SpriteAsset {
+        var c = PixelCanvas(width: width, height: 3, fill: .neutral8)
+        c.hline(x: 0, y: 0, length: width, .neutral9)
+        c.hline(x: 0, y: 2, length: width, .neutral7)
+        return SpriteAsset("decor.rail", c, anchor: .zero)
+    }
+
+    // MARK: Lamp light
+
+    /// The bright core of the lamp's pool inside the pool rect.
+    public static func lampPoolCore(_ pool: ArtRect) -> ArtRect {
+        ArtRect(pool.x + pool.w / 5, pool.y + pool.h / 5, pool.w * 3 / 5, pool.h * 3 / 5)
+    }
+
+    /// The warm centre of the lamp's pool, painted over the desk where the light is brightest: highlights turn
+    /// `e8c170` toward the middle and the grain warms to `de9e41`; transparent elsewhere. Canvas-placed at the
+    /// pool rect.
+    public static func lampPool(_ layout: SceneLayout) -> SpriteAsset {
+        let pool = layout.rect(CoreLayout.lampPool)
+        let desk = layout.rect(CoreLayout.deskTop)
+        var c = PixelCanvas(width: pool.w, height: pool.h, artOrigin: pool.origin)
+        let core = lampPoolCore(pool)
+        let cx = Double(core.x) + Double(core.w) / 2, cy = Double(core.y) + Double(core.h) / 2
+        for y in pool.minY..<pool.maxY {
+            for x in pool.minX..<pool.maxX where desk.contains(ArtPoint(x, y)) {
+                let dx = (Double(x) + 0.5 - cx) / (Double(core.w) / 2), dy = (Double(y) + 0.5 - cy) / (Double(core.h) / 2)
+                let n = (dx * dx + dy * dy).squareRoot()
+                guard n < 0.8 else { continue }
+                let under = Ink(palette: Apollo.index(of: deskSurface.pixel(x - desk.x, y - desk.y)) ?? 0)
+                let hot = n < 0.45 || Dither.pick(x: x, y: y, fraction: (0.8 - n) / 0.35, cell: 2)
+                switch under {
+                case Role.deskHighlight: c.plot(x - pool.x, y - pool.y, .walnut5)
+                case Role.desk where hot: c.plot(x - pool.x, y - pool.y, .walnut5)
+                case Role.deskEdge where n < 0.6: c.plot(x - pool.x, y - pool.y, .walnut4)
+                default: break
+                }
+            }
+        }
+        return SpriteAsset("glow.lampPool", c, anchor: .zero)
+    }
+
+    /// The bloom round the lamp's bulb on the wall behind it (canvas px and ink): `e8c170` within 4 px of the
+    /// bulb, `de9e41` out to 8, the boundary dithered in 2×2 cells.
+    public static func lampHaloPixels(_ layout: SceneLayout) -> [(point: ArtPoint, ink: Ink)] {
+        let b = layout.rect(PropArt.lampBulbRect)
+        let cx = Double(b.x) + Double(b.w) / 2, cy = Double(b.y) + Double(b.h) / 2
+        var out: [(point: ArtPoint, ink: Ink)] = []
+        for y in (b.y - 9)...(b.maxY + 9) {
+            for x in (b.x - 9)...(b.maxX + 9) {
+                let d = ((Double(x) + 0.5 - cx) * (Double(x) + 0.5 - cx) + (Double(y) + 0.5 - cy) * (Double(y) + 0.5 - cy)).squareRoot()
+                if d <= 4 || (d <= 5.5 && Dither.pick(x: x, y: y, fraction: (5.5 - d) / 1.5, cell: 2)) {
+                    out.append((ArtPoint(x, y), .walnut5))
+                } else if d <= 7 || (d <= 8.5 && Dither.pick(x: x, y: y, fraction: (8.5 - d) / 1.5, cell: 2)) {
+                    out.append((ArtPoint(x, y), .walnut4))
+                }
+            }
+        }
+        return out
+    }
+
+    /// The bulb's bloom as a sprite (behind the lamp), canvas-placed at `lampHaloOrigin(_:)`.
+    public static func lampHalo(_ layout: SceneLayout) -> SpriteAsset {
+        let px = lampHaloPixels(layout)
+        let b = bounds(of: px.map(\.point))
+        var c = PixelCanvas(width: b.w, height: b.h)
+        for p in px { c.plot(p.point.x - b.x, p.point.y - b.y, p.ink) }
+        return SpriteAsset("glow.lampHalo", c, anchor: .zero)
+    }
+
+    /// The canvas origin of `lampHalo(_:)`.
+    public static func lampHaloOrigin(_ layout: SceneLayout) -> ArtPoint {
+        bounds(of: lampHaloPixels(layout).map(\.point)).origin
+    }
+
+    static func bounds(of points: [ArtPoint]) -> ArtRect {
+        points.reduce(ArtRect.zero) { $0.union(ArtRect($1.x, $1.y, 1, 1)) }
     }
 }
 
@@ -491,6 +681,35 @@ public enum WindowArt {
         ArtRect(window.x + glass.x, window.y + blindsBottom + 3, glass.w, glass.maxY - blindsBottom - 3)
     }
 
+    /// The mullion's two columns (window-local x).
+    static var mullionX: ClosedRange<Int> { (glass.x + glass.w / 2 - 1)...(glass.x + glass.w / 2) }
+
+    /// The blind cord and its tassel hanging below the bottom rail at `railY` (window-local px).
+    static func cordPixels(railY: Int) -> [ArtPoint] {
+        let cord = glass.x - 1 + glass.w + 2 - 6
+        return (0..<14).map { ArtPoint(cord, railY + 3 + $0) }
+            + (0..<4).flatMap { dy in (-1...1).map { ArtPoint(cord + $0, railY + 17 + dy) } }
+    }
+
+    /// Where the bottom rail of blinds pulled down to `bottom` starts (window-local y).
+    static func railY(bottom: Int) -> Int {
+        glass.y + 3 + 3 * max(0, (bottom - glass.y - 3) / 3)
+    }
+
+    /// The pixels where the sky shows through the glass (window-local): the sky rect without the mullion and
+    /// the blind cord. These are what glow after dark.
+    public static func skyPixels() -> [ArtPoint] {
+        let sky = skyRect(in: ArtRect(0, 0, CoreLayout.window.w, CoreLayout.window.h))
+        let cord = Set(cordPixels(railY: railY(bottom: blindsBottom)))
+        var out: [ArtPoint] = []
+        for y in sky.minY..<sky.maxY {
+            for x in sky.minX..<sky.maxX where !mullionX.contains(x) && !cord.contains(ArtPoint(x, y)) {
+                out.append(ArtPoint(x, y))
+            }
+        }
+        return out
+    }
+
     /// The whole window for a sky variant at `minuteOfDay`.
     public static func window(sky: SkyVariant, minuteOfDay: Int, blindsDown: Int? = nil) -> SpriteAsset {
         let r = CoreLayout.window
@@ -499,7 +718,7 @@ public enum WindowArt {
         c.blit(skyImage(sky, size: skyArea.size, minuteOfDay: minuteOfDay), at: skyArea.origin)
 
         // Mullion and a glass glint.
-        let mx = glass.x + glass.w / 2 - 1
+        let mx = mullionX.lowerBound
         c.fill(ArtRect(mx, glass.y, 2, glass.h), .neutral9)
         c.vline(x: mx + 1, y: glass.y, length: glass.h, .neutral8)
         if sky == .day || sky == .dawn {
@@ -540,22 +759,21 @@ public enum WindowArt {
         let x0 = glass.x - 1, w = glass.w + 2
         c.fill(ArtRect(x0, glass.y, w, 3), .neutral9)
         c.hline(x: x0, y: glass.y + 2, length: w, .neutral7)
-        var y = glass.y + 3
-        while y + 3 <= bottom {
-            c.hline(x: x0 + 1, y: y, length: w - 2, .neutral9)
-            c.hline(x: x0 + 1, y: y + 1, length: w - 2, .neutral8)
-            c.hline(x: x0 + 1, y: y + 2, length: w - 2, .neutral7)
-            y += 3
+        let y = railY(bottom: bottom)
+        for sy in stride(from: glass.y + 3, to: y, by: 3) {
+            c.hline(x: x0 + 1, y: sy, length: w - 2, .neutral9)
+            c.hline(x: x0 + 1, y: sy + 1, length: w - 2, .neutral8)
+            c.hline(x: x0 + 1, y: sy + 2, length: w - 2, .neutral7)
         }
         c.fill(ArtRect(x0, y, w, 3), .neutral8)
         c.hline(x: x0, y: y, length: w, .neutral9)
         c.hline(x: x0, y: y + 2, length: w, .neutral6)
         // Ladder strings and the pull cord with its tassel.
         for lx in [x0 + 12, x0 + w - 13] { c.vline(x: lx, y: glass.y + 3, length: y - glass.y - 3, .neutral8) }
-        let cord = x0 + w - 6
-        c.vline(x: cord, y: y + 3, length: 14, .neutral6)
-        c.fill(ArtRect(cord - 1, y + 17, 3, 4), .neutral7)
-        c.plot(cord - 1, y + 17, .neutral9)
+        let cord = cordPixels(railY: y)
+        for p in cord.prefix(14) { c.plot(p, .neutral6) }
+        for p in cord.dropFirst(14) { c.plot(p, .neutral7) }
+        c.plot(cord[14], .neutral9)
     }
 
     /// The sky behind the glass.
@@ -665,7 +883,9 @@ public enum DecorArt {
         case .pegboard: pegboard(d.rect.size)
         case .painting: painting(d.rect.size)
         case .floorPlant: floorPlant(d.rect.size)
+        case .ceiling: RoomArt.ceiling(d.rect.size)
         case .crown: RoomArt.crown(width: d.rect.w)
+        case .rail: RoomArt.rail(width: d.rect.w)
         case .pendant: pendant(d.rect.size, lit: lit)
         case .hangingPlant: hangingPlant(d.rect.size)
         }
@@ -674,12 +894,15 @@ public enum DecorArt {
     /// The pendant's bulb (sprite-local), emissive when the room light is on in the dark.
     public static func pendantBulb(in size: ArtSize) -> ArtRect { ArtRect(size.w / 2 - 3, size.h - 3, 6, 3) }
 
-    /// A mustard enamel pendant lamp on a long cord.
+    /// The cord both hanging pieces hang on.
+    static let cordInk = Ink.neutral4
+
+    /// A mustard enamel pendant lamp on a cord.
     public static func pendant(_ size: ArtSize, lit: Bool) -> SpriteAsset {
         var c = PixelCanvas(width: size.w, height: size.h)
         let cx = size.w / 2
         c.fill(ArtRect(cx - 3, 0, 6, 2), .neutral7)
-        c.vline(x: cx, y: 2, length: size.h - 14, .neutral3)
+        c.vline(x: cx, y: 2, length: size.h - 14, cordInk)
         let top = size.h - 12
         c.fill(ArtRect(cx - 2, top, 4, 3), .neutral4)
         // Dome shade.
@@ -700,7 +923,7 @@ public enum DecorArt {
         let cx = size.w / 2
         let potTop = size.h - 26
         c.fill(ArtRect(cx - 2, 0, 4, 2), .neutral7)
-        c.vline(x: cx, y: 2, length: potTop - 14, .oak4)
+        c.vline(x: cx, y: 2, length: potTop - 14, cordInk)
         let knot = potTop - 12
         c.fill(ArtRect(cx - 1, knot, 3, 3), .oak3)
         for dx in [-6, 0, 6] {
@@ -734,12 +957,6 @@ public enum DecorArt {
         let w = size.w
         var c = PixelCanvas(width: w, height: size.h)
         let boardY = 22
-        // Brackets.
-        for x in [5, w - 8] {
-            c.fill(ArtRect(x, boardY + 4, 3, 7), .neutral3)
-            c.vline(x: x, y: boardY + 4, length: 7, .neutral5)
-            c.line(from: ArtPoint(x + 1, boardY + 10), to: ArtPoint(x + 1, boardY + 4), .neutral4)
-        }
         // Books, left to right.
         let books: [(w: Int, h: Int, ink: Ink)] = [
             (4, 18, .red3), (3, 20, .blue2), (5, 17, .oak4), (3, 19, .green2), (4, 15, .purple3), (3, 18, .walnut4),
@@ -803,6 +1020,12 @@ public enum DecorArt {
         c.hline(x: 0, y: boardY + 3, length: w, .oak1)
         c.vline(x: w - 1, y: boardY, length: 4, .oak1)
         for vx in [px + 1, px + 8] { c.vline(x: vx, y: boardY, length: 4, .green1) }
+        // Brackets under both ends, in front of the trailing vines.
+        for x in [5, w - 21] {
+            c.fill(ArtRect(x, boardY + 4, 3, 7), .neutral3)
+            c.vline(x: x, y: boardY + 4, length: 7, .neutral5)
+            c.hline(x: x, y: boardY + 4, length: 3, .neutral5)
+        }
         return SpriteAsset("decor.shelf", c, anchor: .zero)
     }
 
@@ -825,18 +1048,21 @@ public enum DecorArt {
         let mat = c.bounds.insetBy(2, 2)
         c.fill(mat, .neutral9)
         let art = mat.insetBy(3, 3)
-        c.fill(art, .oak5)
-        let cx = art.midX, base = art.maxY - 4
-        for (i, ink) in [Ink.red4, .walnut4, .blue3, .green3].enumerated() {
-            let rr = art.w / 2 - 1 - i * 2
-            guard rr > 1 else { break }
-            c.ellipseFill(ArtRect(cx - rr, base - rr, rr * 2, rr * 2), ink)
+        // The print is drawn in its own clipped card, so the arches stop at the card's edge.
+        c.drawing(at: art.origin, size: art.size) { a in
+            a.fill(a.bounds, .oak5)
+            let cx = a.width / 2, base = a.height - 4
+            for (i, ink) in [Ink.red4, .walnut4, .blue3, .green3].enumerated() {
+                let rr = a.width / 2 - 1 - i * 2
+                guard rr > 1 else { break }
+                a.ellipseFill(ArtRect(cx - rr, base - rr, rr * 2, rr * 2), ink)
+            }
+            let s = max(2, a.width / 2 - 9)
+            a.ellipseFill(ArtRect(cx - s, base - s, s * 2, s * 2), .oak5)
+            a.fill(ArtRect(0, base, a.width, a.height - base), .oak5)
+            a.ellipseFill(ArtRect(cx - 3, 3, 6, 6), .walnut4)
+            a.hline(x: 2, y: a.height - 2, length: a.width - 4, .oak3)
         }
-        let s = max(2, art.w / 2 - 9)
-        c.ellipseFill(ArtRect(cx - s, base - s, s * 2, s * 2), .oak5)
-        c.fill(ArtRect(art.x, base, art.w, art.maxY - base), .oak5)
-        c.ellipseFill(ArtRect(cx - 3, art.y + 3, 6, 6), .walnut4)
-        c.hline(x: art.x + 2, y: art.maxY - 2, length: art.w - 4, .oak3)
         c.hline(x: mat.x, y: mat.maxY - 1, length: mat.w, .neutral8)
         return SpriteAsset("decor.frame", c, anchor: .zero)
     }
@@ -914,7 +1140,13 @@ public enum DecorArt {
         return SpriteAsset("decor.painting", c, anchor: .zero)
     }
 
-    /// A fiddle-leaf fig in a woven basket, standing on the floor line.
+    /// The floor plant's basket inside its sprite.
+    public static func floorPlantPot(_ size: ArtSize) -> ArtRect {
+        ArtRect(size.w / 2 - 10, size.h - 16, 21, 16)
+    }
+
+    /// A fiddle-leaf fig in a woven basket, standing on the floor line: violin-shaped leaves with a pale midrib,
+    /// outlined only on their shadow side.
     public static func floorPlant(_ size: ArtSize) -> SpriteAsset {
         let w = size.w, h = size.h
         var leaves = PixelCanvas(width: w, height: h)
@@ -925,26 +1157,21 @@ public enum DecorArt {
             leaves.plot(x, y, .walnut1)
             leaves.plot(x + 1, y, .walnut2)
         }
-        // Big fiddle leaves: (centre dx, centre y as a fraction of 92, w, h); larger and denser toward the top.
-        let spots: [(Int, Int, Int, Int)] = [
-            (0, 6, 10, 11), (-8, 12, 10, 10), (8, 13, 10, 10), (-12, 22, 10, 9), (2, 20, 11, 10), (11, 25, 10, 9),
-            (-6, 31, 10, 10), (7, 34, 10, 9), (-11, 42, 9, 9), (2, 43, 10, 9), (10, 48, 9, 8), (-7, 53, 9, 9),
-            (4, 57, 9, 8), (-10, 63, 8, 8), (8, 66, 8, 7),
+        // Leaves: (centre dx, top y as a fraction of 92, flip), back to front; denser toward the top.
+        let spots: [(Int, Int, Bool)] = [
+            (-2, 2, true), (5, 5, false), (-9, 9, true), (9, 11, false), (0, 12, false), (-13, 18, true),
+            (12, 20, false), (-4, 22, true), (5, 26, false), (-11, 30, true), (11, 33, false), (-2, 35, true),
+            (6, 41, false), (-10, 44, true), (12, 47, false), (-3, 50, true), (8, 56, false), (-9, 60, true),
+            (3, 64, false),
         ]
         for (i, s) in spots.enumerated() {
-            let x = cx + s.0 * w / 38 - s.2 / 2, y = s.1 * h / 92
-            let r = ArtRect(x, y, s.2, s.3)
-            let dark = i % 3 == 1
-            leaves.ellipseFill(r, dark ? .green2 : .green3)
-            leaves.ellipseFill(ArtRect(r.x + 1, r.y + 1, r.w / 2 + 1, r.h / 2), dark ? .green3 : .green4)
-            leaves.plot(r.x + 2, r.y + 2, .green5)
-            leaves.line(from: ArtPoint(r.midX, r.y + 2), to: ArtPoint(r.midX + (s.0 < 0 ? 1 : -1), r.maxY - 2), .green1)
+            let x = cx + s.0 * w / 38 - 3, y = s.1 * h / 92
+            leaf(&leaves, at: ArtPoint(x, y), dark: i % 3 == 1, flipped: s.2)
         }
         var c = PixelCanvas(width: w, height: h)
-        c.blit(ArtKit.outline(leaves.buffer, .green0).cropped(to: ArtRect(1, 1, w, h)), at: .zero)
         c.blit(leaves.buffer, at: .zero)
         // Woven basket.
-        let pot = ArtRect(cx - 10, h - 16, 21, 16)
+        let pot = floorPlantPot(size)
         c.roundedRectFill(pot, radius: 2, .oak1)
         c.fill(pot.insetBy(1, 1), .oak3)
         for y in stride(from: pot.y + 2, to: pot.maxY - 1, by: 3) {
@@ -955,5 +1182,26 @@ public enum DecorArt {
         c.hline(x: pot.x + 1, y: pot.y + 1, length: pot.w - 2, .oak5)
         c.vline(x: pot.maxX - 2, y: pot.y + 2, length: pot.h - 3, .oak2)
         return SpriteAsset("decor.floorPlant", c, anchor: ArtPoint(cx, h))
+    }
+
+    /// One 7×10 fiddle leaf (broad tip, waist, narrow base) with an `a8ca58` midrib and a `25562e` edge on
+    /// the shadow (right and bottom) side; `flipped` mirrors the shape for leaves left of the trunk.
+    static func leaf(_ c: inout PixelCanvas, at o: ArtPoint, dark: Bool, flipped: Bool) {
+        let rows = [".#####.", "#######", "#######", ".######", ".#####.", "..#####", "..####.", "..###..", "...#...",
+                    "...#..."]
+        func mx(_ x: Int) -> Int { flipped ? 6 - x : x }
+        var l = PixelCanvas(width: 7, height: rows.count)
+        for (y, row) in rows.enumerated() {
+            for (x, ch) in row.enumerated() where ch == "#" { l.plot(mx(x), y, dark ? .green2 : .green3) }
+        }
+        for y in 1..<8 { l.plot(mx(y < 5 ? 3 : 4 - (y - 5) / 2), y, .green4) }
+        for y in 0..<l.height {
+            if let x = (0..<7).last(where: { l.ink(at: $0, y)?.isClear == false }) { l.plot(x, y, .green1) }
+        }
+        for x in 0..<7 {
+            if let y = (0..<l.height).last(where: { l.ink(at: x, $0)?.isClear == false }) { l.plot(x, y, .green1) }
+        }
+        if let x = (0..<7).first(where: { l.ink(at: $0, 1)?.isClear == false }) { l.plot(x, 1, dark ? .green3 : .green4) }
+        c.blit(l.buffer, at: o)
     }
 }

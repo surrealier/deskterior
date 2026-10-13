@@ -87,6 +87,7 @@ final class RoomContent {
     static func elementID(for placementID: String) -> String {
         switch placementID {
         case "backdrop": "room"
+        case _ where RoomPlan.glowIDs.contains(placementID): "room"
         case "desk.front": "desk"
         case "room.switch": "room.switch"
         default:
@@ -102,6 +103,15 @@ final class RoomContent {
         case "desk": ["apron"]
         default: [elementID]
         }
+    }
+
+    /// The hover ring round a part: one pixel outside what is drawn (the power button, not its generous hit
+    /// rect), kept inside the chin for the chin's controls.
+    static func ringRect(part: String, hit: ArtRect, layout: SceneLayout) -> ArtRect {
+        let drawn = part == "monitor.power" ? layout.rect(CoreLayout.power) : hit
+        let ring = drawn.insetBy(-1, -1)
+        let chin = layout.rect(CoreLayout.chin).insetBy(1, 1)
+        return chin.contains(drawn) ? ring.intersection(chin) : ring
     }
 
     // MARK: Updates
@@ -165,11 +175,12 @@ final class RoomContent {
         }
         let ring: PixelBuffer
         let origin: ArtPoint
-        if hit.part != nil {
-            var c = PixelCanvas(width: hit.rect.w + 2, height: hit.rect.h + 2)
-            c.roundedRectStroke(c.bounds, radius: 1, Self.hoverInk)
+        if let part = hit.part {
+            let r = Self.ringRect(part: part, hit: hit.rect, layout: layout)
+            var c = PixelCanvas(width: r.w, height: r.h)
+            c.roundedRectStroke(c.bounds, radius: 2, Self.hoverInk)
             ring = c.buffer
-            origin = ArtPoint(hit.rect.x - 1, hit.rect.y - 1)
+            origin = r.origin
         } else {
             let b = e.bounds
             ring = e.silhouette().outlined(Self.hoverInk)
