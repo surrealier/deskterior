@@ -5,7 +5,8 @@ import Foundation
 /// It tips **only** from a deliberate gesture: a carry released faster than `tipSpeed` holding at least
 /// `tipMinPens` pens, or the menu's Tip Out. Knocks, bonks and slow releases only wobble it. Reaching `lying` emits
 /// `spill`; `spill(count:from:right:seed:)` gives every pen a seeded impulse and its deterministic landing spot.
-/// A click on the lying cup stands it back up. Resting states commit through `settled` (dispatch `.cupState`).
+/// A click on the lying cup stands it back up. Its position always keeps the cup on the desk and clear of the
+/// furniture. Resting states commit through `settled` (dispatch `.cupState`).
 public struct PenCupMachine: Sendable, Equatable {
     public struct Params: Hashable, Sendable {
         public var tipSpeed: Float = 400
@@ -58,7 +59,7 @@ public struct PenCupMachine: Sendable, Equatable {
     public struct Spill: Hashable, Sendable {
         /// Pen order in the cup (0 = first in).
         public var index: Int
-        /// Desk-plane start (the cup's mouth) and impulse velocity `(vx, vd)`.
+        /// Desk-plane start (the cup's mouth, squeezed clear of furniture) and impulse velocity `(vx, vd)`.
         public var start: SIMD2<Float>
         public var velocity: SIMD2<Float>
         /// Where it comes to rest: a desk point, or off the edge onto the floor or into the basket.
@@ -79,7 +80,8 @@ public struct PenCupMachine: Sendable, Equatable {
 
     public init(_ state: PenCupState = PenCupState(), params: Params = .standard) {
         self.params = params
-        self.position = state.pos.isFinite ? state.pos : PenCupState().pos
+        let pos = Self.onDesk(state.pos.isFinite ? state.pos : PenCupState().pos)
+        self.position = Self.isClear(pos) ? pos : PenCupState().pos
         switch state.state {
         case Self.lyingLeftName: phase = .lying(right: false)
         case Self.lyingRightName: phase = .lying(right: true)
@@ -162,10 +164,36 @@ public struct PenCupMachine: Sendable, Equatable {
         return [.wobble]
     }
 
-    /// While carried as a prop: follows `position`, leaning against the acceleration.
+    /// Whether the cup's footprint at `pos` lies on the desk, clear of the furniture.
+    public static func isValidPosition(_ pos: SIMD2<Float>) -> Bool {
+        pos.isFinite && onDesk(pos) == pos && isClear(pos)
+    }
+
+    /// `pos` moved onto the desk so the whole footprint stands on it.
+    static func onDesk(_ pos: SIMD2<Float>) -> SIMD2<Float> {
+        let desk = DeskPlanePhysics.desk, f = DeskPlanePhysics.penCupFootprint(at: pos)
+        let half = f.width / 2
+        return SIMD2(min(max(pos.x, desk.x + half), desk.x + desk.width - half),
+                     min(max(pos.y, desk.d), desk.d + desk.depth - f.depth))
+    }
+
+    static func isClear(_ pos: SIMD2<Float>) -> Bool {
+        let f = DeskPlanePhysics.penCupFootprint(at: pos)
+        return !DeskPlanePhysics.footprints.values.contains { $0.intersects(f) }
+    }
+
+    /// While carried as a prop: follows `position` as far as the desk and the furniture let it (sliding along
+    /// what it meets), leaning against the acceleration.
     public mutating func carry(to position: SIMD2<Float>, acceleration: SIMD2<Float>) {
         guard isUpright, position.isFinite else { return }
-        self.position = position
+        let target = Self.onDesk(position)
+        if Self.isClear(target) {
+            self.position = target
+        } else if Self.isClear(SIMD2(target.x, self.position.y)) {
+            self.position.x = target.x
+        } else if Self.isClear(SIMD2(self.position.x, target.y)) {
+            self.position.y = target.y
+        }
         let a = acceleration.isFinite ? acceleration.x : 0
         carryLean = Int(min(max(-a / params.leanAcceleration, -2), 2).rounded())
     }
@@ -214,7 +242,7 @@ public struct PenCupMachine: Sendable, Equatable {
     }
 
     public mutating func step(_ dt: Float) -> [Event] {
-        guard dt > 0 else { return [] }
+        guard let dt = SimClock.step(dt) else { return [] }
         let total = 3 * params.frameDuration
         switch phase {
         case .upright, .lying:
@@ -281,6 +309,7 @@ public struct PenCupMachine: Sendable, Equatable {
                 p.y -= 1
                 squeeze += 1
             }
+            let start = p
             var landing: Ballistics.Landing?
             var edge: SIMD2<Float>?
             var s: Float = 0
@@ -313,7 +342,7 @@ public struct PenCupMachine: Sendable, Equatable {
                 p = q
                 s += step
             }
-            out.append(Spill(index: i, start: mouth, velocity: velocity, landing: landing ?? .desk(p), edge: edge))
+            out.append(Spill(index: i, start: start, velocity: velocity, landing: landing ?? .desk(p), edge: edge))
         }
         return out
     }

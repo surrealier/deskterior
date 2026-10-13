@@ -9,9 +9,12 @@ import simd
 /// it. Between events the path is an exact parabola under gravity `g`; events are found by sampling at
 /// `eventStep` and bisecting, so the same inputs always give the same arc.
 ///
-/// The wastebasket is a cylinder under the desk front: in the side view (x, z) its rim tops are the two points
-/// `basketX ± rimRadius` at `rimZ`, tested against the ball (radius `radius`, restitution `rimRestitution`, at most
-/// `maxRimBounces` bounces) while the ball is within the basket's depth. Crossing the mouth between them goes in.
+/// The wastebasket is a cylinder under the desk front. In the side view (x, z) each of its walls is a vertical
+/// segment at `basketX ± rimRadius` from the floor up to its rim top at `rimZ`, solid from either side while the
+/// ball is within the basket's depth: the rim tops bounce with `rimRestitution` (at most `maxRimBounces` count;
+/// the last one settles the ball in or out by the side its centre is on), the walls with `wallRestitution`. A ball
+/// whose centre is below the rim between the walls is in. A floor landing in front of furniture hops on to the
+/// nearest free spot (`FloorLine`), so every miss ends as a visible, safe token.
 public enum Ballistics {
     public struct Params: Hashable, Sendable {
         public var gravity: Float = 940
@@ -19,13 +22,19 @@ public enum Ballistics {
         public var radius: Float = 4
         public var rimRestitution: Float = 0.4
         public var maxRimBounces = 3
-        /// Walls (back wall, room sides, the basket's outside).
+        /// Walls (back wall, room sides, the basket's walls).
         public var wallRestitution: Float = 0.3
+        /// A ball that used up its rim bounces on the outside rolls off the rim at least this fast (px/s).
+        public var rollOffSpeed: Float = 40
         public var floorZ: Float = Float(CoreLayout.deskFrontY - CoreLayout.floorY)
         public var deskX: ClosedRange<Float> = Float(CoreLayout.deskTop.minX)...Float(CoreLayout.deskTop.maxX)
         public var backD: Float = 128
-        /// Releases below the desk's front edge start in this vertical plane, just in front of the desk.
+        /// Releases below the desk's front edge, and fast ones above it, start in this vertical plane just in
+        /// front of the desk.
         public var frontPlaneD: Float = -2
+        /// A release above the desk's front edge faster than this (px/s) starts in the front plane, so its arc
+        /// follows the hand on screen; slower ones drop onto the desk (or down the back wall).
+        public var frontFlingSpeed: Float = 250
         /// Room sides tokens stay within (core x).
         public var roomX: ClosedRange<Float> = 4...Float(CoreLayout.size.w - 4)
         /// Basket: centre x and depth (just in front of the desk's front edge), rim radius, and rim height (where
@@ -36,6 +45,10 @@ public enum Ballistics {
         public var rimZ: Float = Float(CoreLayout.deskFrontY - (CoreLayout.wastebasketMouth.minY + 3)) + 8 * 0.5
         /// A ball that went in is followed this far below the rim (then it is behind the basket's front).
         public var sinkDepth: Float = 12
+        /// Floor furniture a landing hops clear of (`FloorLine`): seconds of hop, plus this per px of hop.
+        public var floorAvoid: [Range<Int>] = FloorLine.furniture
+        public var hopTime: Float = 0.1
+        public var hopTimePerPx: Float = 1.0 / 300
         /// Seeded variation: velocity components scale by up to ± this fraction, rim restitution by ± `rimJitter`.
         public var velocityJitter: Float = 0.04
         public var rimJitter: Float = 0.06
@@ -54,7 +67,7 @@ public enum Ballistics {
         case basket
         /// Desk-plane point `(x, d)`.
         case desk(SIMD2<Float>)
-        /// Core x of the landing spot on the floor.
+        /// Core x of the token's centre on the floor: a whole px, clear of the floor furniture (`FloorLine`).
         case floor(x: Float)
     }
 
@@ -85,6 +98,9 @@ public enum Ballistics {
         public var rimHits: Int
         /// Where the toss ends (the bottom point).
         public var end: SIMD3<Float>
+        /// Desk-space velocity at touchdown (on the desk: hand it to the pile's body; on the floor: before any hop
+        /// to a free spot; in the basket: as it sinks out of sight).
+        public var landingVelocity: SIMD3<Float>
         public var gravity: Float
         public var projection: DeskProjection
 
@@ -96,6 +112,14 @@ public enum Ballistics {
             if t >= duration { return end }
             let seg = segments.last { $0.t0 <= t } ?? segments[0]
             return Ballistics.evaluate(seg, t, gravity)
+        }
+
+        /// Desk-space velocity at time `t` (zero once it has ended).
+        public func velocity(at t: Float) -> SIMD3<Float> {
+            guard t < duration else { return .zero }
+            let t = max(t, 0)
+            let seg = segments.last { $0.t0 <= t } ?? segments[0]
+            return Ballistics.velocityOf(seg, t, gravity)
         }
 
         /// Core art point of the bottom at time `t`.
@@ -113,19 +137,21 @@ public enum Ballistics {
     // MARK: Release
 
     /// Turns a carry release at core point `point` with core velocity `velocity` (px/s, y-down) into a desk-space
-    /// start: over the desk top face it starts on the plane at height `lift` with `vd = −2·vy`; above the desk's
-    /// back edge it starts against the back wall; below the front edge it starts just in front of the desk
-    /// (`frontPlaneD`), where it can reach the basket and the floor.
+    /// start. Below the desk's front edge, or above it faster than `frontFlingSpeed`, it starts just in front of
+    /// the desk (`frontPlaneD`) moving as the hand did on screen, so it can reach the basket and the floor. Slower
+    /// releases over the desk top face start on the plane at height `lift` with `vd = −2·vy`; above the desk's
+    /// back edge, against the back wall.
     public static func release(
         at point: SIMD2<Float>, velocity: SIMD2<Float>, lift: Float = 2, params: Params = .standard
     ) -> (position: SIMD3<Float>, velocity: SIMD3<Float>) {
         let proj = params.projection
         let backY = proj.frontY - params.backD * proj.k
-        if point.y >= backY, point.y <= proj.frontY {
+        let fast = velocity.isFinite && (velocity * velocity).sum() > params.frontFlingSpeed * params.frontFlingSpeed
+        if point.y >= backY, point.y <= proj.frontY, !fast {
             let p = proj.unproject(point, z: lift)
             return (SIMD3(p.x, min(max(p.y, 0), params.backD), lift), SIMD3(velocity.x, -velocity.y / proj.k, 0))
         }
-        let d: Float = point.y < backY ? params.backD : params.frontPlaneD
+        let d: Float = point.y < backY && !fast ? params.backD : params.frontPlaneD
         let z = proj.frontY - point.y - d * proj.k
         return (SIMD3(point.x, d, z), SIMD3(velocity.x, 0, -velocity.y))
     }
@@ -156,7 +182,7 @@ public enum Ballistics {
         p0.z = max(p0.z, params.floorZ)
 
         let g = params.gravity, r = params.radius, h = params.eventStep
-        let rims = [-params.rimRadius, params.rimRadius].map { SIMD2(params.basketX + $0, params.rimZ) }
+        let walls = [params.basketX - params.rimRadius, params.basketX + params.rimRadius]
         var segments = [Segment(t0: 0, start: p0, velocity: v0)]
         var rimHits = 0
         var entered = false
@@ -167,10 +193,34 @@ public enum Ballistics {
             params.deskX.contains(p.x) && p.y >= 0 && p.y <= params.backD
         }
         func centre(_ p: SIMD3<Float>) -> SIMD2<Float> { SIMD2(p.x, p.z + r) }
-        func finish(_ landing: Landing, at end: SIMD3<Float>, time: Float) -> Toss {
+        /// The point of basket wall `k` (its rim top, or the wall below it) nearest to ball centre `c`.
+        func wallPoint(_ k: Int, _ c: SIMD2<Float>) -> SIMD2<Float> { SIMD2(walls[k], min(c.y, params.rimZ)) }
+        func touches(_ k: Int, _ p: SIMD3<Float>) -> Bool {
+            guard inBasketDepth(p) else { return false }
+            let c = centre(p)
+            return simd_length(c - wallPoint(k, c)) < r
+        }
+        func isInside(_ p: SIMD3<Float>) -> Bool {
+            inBasketDepth(p) && centre(p).y < params.rimZ && abs(p.x - params.basketX) < params.rimRadius
+        }
+        func finish(_ landing: Landing, at end: SIMD3<Float>, time: Float, impact: SIMD3<Float>) -> Toss {
             let kind: Kind = landing == .basket ? (rimHits == 0 ? .swish : .rimIn) : (rimHits == 0 ? .miss : .rimOut)
             return Toss(segments: segments, duration: time, landing: landing, kind: kind, rimHits: rimHits, end: end,
-                        gravity: g, projection: params.projection)
+                        landingVelocity: impact, gravity: g, projection: params.projection)
+        }
+        /// Lands on the floor at `e` (time `te`), hopping on to the nearest free spot when furniture stands there.
+        func floorLanding(_ e: SIMD3<Float>, _ te: Float, impact: SIMD3<Float>) -> Toss {
+            let spot = Float(FloorLine.freeSpot(near: e.x, avoiding: params.floorAvoid))
+            var end = SIMD3(e.x, e.y, params.floorZ)
+            let gap = spot - end.x
+            guard abs(gap) > 0.5 else {
+                end.x = spot
+                return finish(.floor(x: spot), at: end, time: te, impact: impact)
+            }
+            let hop = params.hopTime + params.hopTimePerPx * abs(gap)
+            segments.append(Segment(t0: te, start: end, velocity: SIMD3(gap / hop, 0, g * hop / 2)))
+            end.x = spot
+            return finish(.floor(x: spot), at: end, time: te + hop, impact: impact)
         }
 
         while t < params.maxTime {
@@ -200,7 +250,7 @@ public enum Ballistics {
                     let te = refine { $0.z + r <= params.rimZ - params.sinkDepth }
                     var e = evaluate(seg, te, g)
                     e.x = min(max(e.x, params.basketX - params.rimRadius + r), params.basketX + params.rimRadius - r)
-                    return finish(.basket, at: e, time: te)
+                    return finish(.basket, at: e, time: te, impact: velocityOf(seg, te, g))
                 }
                 let inner = params.rimRadius - r
                 if abs(b.x - params.basketX) > inner, (b.x - params.basketX) * vb.x > 0 {
@@ -214,44 +264,59 @@ public enum Ballistics {
                 continue
             }
 
-            // Rim contact (side view), while within the basket's depth.
-            if rimHits < params.maxRimBounces, inBasketDepth(b) {
-                if let k = rims.firstIndex(where: { simd_length(centre(b) - $0) < r }) {
-                    let rim = rims[k]
-                    let te = refine { simd_length(centre($0) - rim) < r }
-                    let pe = evaluate(seg, te, g)
-                    var ve = velocityOf(seg, te, g)
-                    var n = centre(pe) - rim
-                    let len = simd_length(n)
-                    n = len > 1e-4 ? n / len : SIMD2(k == 0 ? -1 : 1, 0)
-                    let vn = ve.x * n.x + ve.z * n.y
-                    if vn < 0 {
+            // The basket's walls and rim tops, from either side, while within its depth.
+            if let k = walls.indices.first(where: { touches($0, b) }) {
+                let te = refine { touches(k, $0) }
+                let pe = evaluate(seg, te, g)
+                var ve = velocityOf(seg, te, g)
+                let c = centre(pe), q = wallPoint(k, c)
+                var n = c - q
+                let len = simd_length(n)
+                n = len > 1e-4 ? n / len : SIMD2(a.x < walls[k] ? -1 : 1, 0)
+                let vn = ve.x * n.x + ve.z * n.y
+                if vn < 0 {
+                    if q.y >= params.rimZ {
                         ve.x -= (1 + rimE) * vn * n.x
                         ve.z -= (1 + rimE) * vn * n.y
-                        rimHits += 1
-                        // Nudge out of contact so the next search starts clear of the rim.
-                        let out = n * (r - len + 0.01)
-                        restart(at: te, position: pe + SIMD3(out.x, 0, out.y), velocity: ve)
-                        continue
+                        if rimHits < params.maxRimBounces {
+                            rimHits += 1
+                            // The last counted bounce settles it by the side of the rim its centre is on.
+                            if rimHits == params.maxRimBounces, abs(c.x - params.basketX) < params.rimRadius {
+                                entered = true
+                                let inward: Float = c.x < params.basketX ? 1 : -1
+                                ve.x = inward * abs(ve.x)
+                            }
+                        }
+                        if rimHits == params.maxRimBounces, !entered {
+                            let outward: Float = c.x < params.basketX ? -1 : 1
+                            if ve.x * outward < params.rollOffSpeed { ve.x = outward * params.rollOffSpeed }
+                        }
+                    } else {
+                        ve.x = -ve.x * params.wallRestitution
                     }
+                    // Nudge out of contact so the next search starts clear of the wall.
+                    let out = entered ? .zero : n * (r - len + 0.01)
+                    restart(at: te, position: pe + SIMD3(out.x, 0, out.y), velocity: ve)
+                    continue
                 }
             }
-
-            // Through the mouth: the centre crosses the rim height going down, between the rims.
-            if inBasketDepth(b), centre(a).y > params.rimZ, centre(b).y <= params.rimZ,
-               abs(b.x - params.basketX) < params.rimRadius {
+            // A wall line crossed below the rim within one search step (far too fast to touch): bounce back.
+            if inBasketDepth(b), let k = walls.indices.first(where: { (a.x - walls[$0]) * (b.x - walls[$0]) < 0 }) {
+                let side: Float = a.x < walls[k] ? -1 : 1
+                let te = refine { ($0.x - walls[k]) * side <= 0 }
+                var pe = evaluate(seg, te, g)
+                if centre(pe).y < params.rimZ {
+                    var ve = velocityOf(seg, te, g)
+                    ve.x = -ve.x * params.wallRestitution
+                    pe.x = walls[k] + side * (r + 0.01)
+                    restart(at: te, position: pe, velocity: ve)
+                    continue
+                }
+            }
+            // Below the rim between the walls: in (the walls keep anything else out, so it came through the mouth).
+            if isInside(b) {
                 entered = true
                 t = t1
-                continue
-            }
-
-            // The basket's outside, below the rim.
-            if inBasketDepth(b), centre(b).y < params.rimZ, abs(a.x - params.basketX) >= params.rimRadius + r,
-               abs(b.x - params.basketX) < params.rimRadius + r {
-                let te = refine { abs($0.x - params.basketX) < params.rimRadius + r }
-                var ve = velocityOf(seg, te, g)
-                ve.x = -ve.x * params.wallRestitution
-                restart(at: te, position: evaluate(seg, te, g), velocity: ve)
                 continue
             }
 
@@ -260,7 +325,7 @@ public enum Ballistics {
                 let te = refine { $0.z <= 0 }
                 var e = evaluate(seg, te, g)
                 e.z = 0
-                return finish(.desk(SIMD2(e.x, e.y)), at: e, time: te)
+                return finish(.desk(SIMD2(e.x, e.y)), at: e, time: te, impact: velocityOf(seg, te, g))
             }
             // The underside of the desk top.
             if a.z < 0, b.z >= 0, vb.z > 0, overDesk(b) {
@@ -273,9 +338,7 @@ public enum Ballistics {
             // The floor.
             if b.z <= params.floorZ {
                 let te = refine { $0.z <= params.floorZ }
-                var e = evaluate(seg, te, g)
-                e.z = params.floorZ
-                return finish(.floor(x: e.x), at: e, time: te)
+                return floorLanding(evaluate(seg, te, g), te, impact: velocityOf(seg, te, g))
             }
             // Back wall and room sides.
             if b.y > params.backD, vb.y > 0 {
@@ -296,8 +359,8 @@ public enum Ballistics {
             t = t1
         }
         // Out of time (cannot happen under gravity within `maxTime` from the room): drop where it is.
-        let e = evaluate(segments[segments.count - 1], t, g)
-        return finish(.floor(x: e.x), at: SIMD3(e.x, e.y, params.floorZ), time: t)
+        let last = segments[segments.count - 1]
+        return floorLanding(evaluate(last, t, g), t, impact: .zero)
     }
 
     @inline(__always)

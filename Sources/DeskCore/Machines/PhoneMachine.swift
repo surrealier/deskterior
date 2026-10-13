@@ -1,9 +1,9 @@
 /// The phone on its stand (DESIGN §2.2 E4): `faceUp ↔ flipping ↔ faceDown`.
 ///
 /// A click flips it through the three edge frames (`PropArt.PhoneFace.flip1…flip3`), one every `frameDuration`.
-/// The model commits at the start of a flip (`committed`: dispatch `.phoneFlip`), so face-down hides at once; a
-/// click mid-flip turns it back from the frame it is on. Drops are accepted only face-up with room ("bloop");
-/// otherwise they bonk. Face-up it glows. Pure; time comes in through `step(_:)`.
+/// The model commits at the start of a flip (`committed`: dispatch `action(committing:model:)`), so face-down hides
+/// at once; a click mid-flip turns it back from the frame it is on. Drops are accepted only face-up with room
+/// ("bloop"); otherwise they bonk. Face-up it glows. Pure; time comes in through `step(_:)`.
 public struct PhoneMachine: Sendable, Equatable {
     public struct Params: Hashable, Sendable {
         /// Seconds per flip frame (three frames per flip).
@@ -85,13 +85,19 @@ public struct PhoneMachine: Sendable, Equatable {
         }
     }
 
+    /// The model action for a `committed(faceDown:)` event. `.phoneFlip` toggles, so it is dispatched only when the
+    /// model differs: a repeated or late commit never flips the model the wrong way.
+    public static func action(committing faceDown: Bool, model: PhoneState) -> DeskAction? {
+        model.faceDown == faceDown ? nil : .phoneFlip
+    }
+
     /// The model changed under the machine (undo, Clear the Desk, Show on Desk): jump to it without animating.
     public mutating func sync(_ state: PhoneState) {
         if self.state != state { phase = state.faceDown ? .faceDown : .faceUp }
     }
 
     public mutating func step(_ dt: Float) -> [Event] {
-        guard case let .flipping(toFaceDown, elapsed) = phase, dt > 0 else { return [] }
+        guard case let .flipping(toFaceDown, elapsed) = phase, let dt = SimClock.step(dt) else { return [] }
         let t = elapsed + dt
         if t >= flipDuration {
             phase = toFaceDown ? .faceDown : .faceUp

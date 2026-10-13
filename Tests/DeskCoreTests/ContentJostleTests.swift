@@ -80,4 +80,15 @@ struct ContentJostleTests {
         j.step(drawerAcceleration: 9000, Self.dt)
         #expect(j.count == 0)
     }
+
+    @Test("Hard sleep puts every item home and stops")
+    func forceRest() {
+        var j = Self.jostle(6)
+        j.step(drawerAcceleration: 30_000, Self.dt)
+        #expect(j.needsFrames && j.pixelOffsets.contains { $0 != 0 })
+        j.forceRest()
+        #expect(!j.needsFrames && j.positions == j.homes && j.velocities.allSatisfy { $0 == 0 })
+        j.step(drawerAcceleration: 0, Self.dt)
+        #expect(!j.needsFrames)
+    }
 }

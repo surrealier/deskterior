@@ -124,4 +124,39 @@ struct PenCupMachineTests {
             != PenCupMachine.spill(count: 6, from: [250, 60], right: true, seed: 2))
         #expect(PenCupMachine.spill(count: 0, from: [250, 60], right: true, seed: 1).isEmpty)
     }
+
+    @Test("Spilled pens start clear of the furniture, squeezed out in front of it")
+    func spillStartsClear() {
+        for (pos, right) in [(SIMD2<Float>(367, 120), true), (SIMD2<Float>(367, 120), false), (SIMD2<Float>(176, 120), true),
+                             (SIMD2<Float>(250, 60), false)] {
+            for s in PenCupMachine.spill(count: 6, from: pos, right: right, seed: 42) {
+                let body = DeskPlaneRect.centred(at: s.start, size: DeskPlanePhysics.pileSize)
+                #expect(!DeskPlanePhysics.footprints.values.contains { $0.intersects(body) }, "\(pos) \(right): \(s.start)")
+            }
+        }
+    }
+
+    @Test("The cup stays on the desk and out of the furniture, whatever the carry or the saved state says")
+    func positionChecked() {
+        var cup = PenCupMachine()
+        cup.carry(to: [367, -60], acceleration: .zero)
+        #expect(PenCupMachine.isValidPosition(cup.position) && cup.position == [367, 0])
+        let offDesk = cup.release(velocity: .zero, count: 2) == [.settled(PenCupState(state: "upright", pos: [367, 0]))]
+        #expect(offDesk)
+        // Into the riser from in front: it stops short, sliding along x.
+        var slide = PenCupMachine(PenCupState(state: "upright", pos: [300, 100]))
+        slide.carry(to: [260, 125], acceleration: .zero)
+        #expect(PenCupMachine.isValidPosition(slide.position) && slide.position == [260, 100])
+        // Random carries never leave a valid spot.
+        var rng = SplitMix64(seed: 4)
+        var m = PenCupMachine()
+        for _ in 0..<2000 {
+            m.carry(to: [rng.nextFloat01() * 700 - 100, rng.nextFloat01() * 260 - 60], acceleration: .zero)
+            #expect(PenCupMachine.isValidPosition(m.position), "\(m.position)")
+        }
+        #expect(PenCupMachine.isValidPosition(PenCupState().pos))
+        // A saved spot off the desk or inside furniture is restored onto the desk / to the default.
+        #expect(PenCupMachine(PenCupState(state: "upright", pos: [900, 300])).position == [493, 120])
+        #expect(PenCupMachine(PenCupState(state: "upright", pos: [260, 120])).position == PenCupState().pos)
+    }
 }

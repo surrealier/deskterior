@@ -81,14 +81,17 @@ struct BallisticsTests {
         if case let .floor(x) = side.landing { #expect(x < 12) } else { Issue.record("\(side.landing)") }
     }
 
-    @Test("A fling over the desk top lands on the desk at a plane point; the back wall bounces")
+    @Test("A slow release over the desk top lands on the desk at a plane point; the back wall bounces")
     func deskLanding() {
-        let t = Self.fling(SIMD2(250, 200), SIMD2(420, -60))
+        let t = Self.fling(SIMD2(250, 200), SIMD2(200, -60))
         guard case let .desk(p) = t.landing else {
             Issue.record("expected a desk landing, got \(t.landing)")
             return
         }
         #expect(p.x > 250 && p.y >= 0 && p.y <= 128)
+        // The touchdown velocity hands over to the pile's body.
+        #expect(t.landingVelocity.x == 200 && t.landingVelocity.y == 120 && t.landingVelocity.z < 0)
+        #expect(t.velocity(at: 0) == t.segments[0].velocity && t.velocity(at: t.duration) == .zero)
         let lob = Ballistics.toss(from: SIMD3(200, 100, 10), velocity: SIMD3(0, 400, 200))
         guard case let .desk(q) = lob.landing else {
             Issue.record("expected a desk landing, got \(lob.landing)")
@@ -123,7 +126,114 @@ struct BallisticsTests {
         #expect(wall.position.y == 128 && wall.position.z == 68 && wall.velocity.z == 50)
         let below = Ballistics.release(at: SIMD2(64, 250), velocity: .zero)
         #expect(below.position == SIMD3(64, -2, -17))
+        // Fast releases above the front edge start in the front plane and move as the hand did on screen.
+        let flick = Ballistics.release(at: SIMD2(200, 200), velocity: SIMD2(-200, -180))
+        #expect(flick.position == SIMD3(200, -2, 33) && flick.velocity == SIMD3(-200, 0, 180))
+        let wallFlick = Ballistics.release(at: SIMD2(200, 100), velocity: SIMD2(0, -300))
+        #expect(wallFlick.position == SIMD3(200, -2, 133) && wallFlick.velocity == SIMD3(0, 0, 300))
+        #expect(Self.params.projection.project(flick.position) == SIMD2(200, 200))
         let nan = Ballistics.toss(from: SIMD3(.nan, 0, 0), velocity: SIMD3(.infinity, 0, 0))
         #expect(nan.duration.isFinite && nan.end.x.isFinite)
+    }
+
+    @Test("The basket's walls are solid from either side: nothing ends on the floor inside them or passes through")
+    func solidWalls() {
+        let p = Self.params
+        var ins = 0, outs = 0
+        for x in stride(from: 90, through: 200, by: 10) {
+            for vx in stride(from: -900, through: -50, by: 50) {
+                for vy in stride(from: -600, through: 200, by: 50) {
+                    let t = Self.fling(SIMD2(Float(x), 240), SIMD2(Float(vx), Float(vy)))
+                    if t.isIn { ins += 1 } else { outs += 1 }
+                    if case let .floor(fx) = t.landing {
+                        #expect(FloorLine.isFree(Int(fx)), "x\(x) v(\(vx),\(vy)): floor x \(fx)")
+                    }
+                    guard !t.isIn else { continue }
+                    // A ball that did not go in is never below the rim between the walls within the basket's depth.
+                    for i in 0...Int(t.duration * 240) {
+                        let q = t.position(at: Float(i) / 240)
+                        let between = abs(q.x - p.basketX) < p.rimRadius - 0.5
+                        let below = q.z + p.radius < p.rimZ - 0.5
+                        #expect(!(between && below && abs(q.y - p.basketD) <= p.rimRadius),
+                                "x\(x) v(\(vx),\(vy)) through the wall at \(q)")
+                    }
+                }
+            }
+        }
+        #expect(ins > 0 && outs > 0)
+        // The reviewer's case: off the left room wall, back into the basket's left side below the rim.
+        let wall = Ballistics.toss(from: SIMD3(35.5, -8, -9), velocity: SIMD3(-570, 0, 20))
+        guard case let .floor(x) = wall.landing else {
+            Issue.record("expected a floor landing, got \(wall.landing)")
+            return
+        }
+        #expect(x <= Float(CoreLayout.wastebasket.minX - FloorLine.tokenWidth / 2))
+        #expect(wall.segments.contains { $0.start.x <= p.basketX - p.rimRadius - p.radius && $0.velocity.x < 0 })
+    }
+
+    @Test("A ball that uses up its rim bounces settles in or out by the side its centre is on")
+    func rimExhaustion() {
+        let p = Self.params
+        for dx: Float in [-15, -14.5, 14.5, 15, -16, 16] {
+            for h: Float in [5, 20, 40] {
+                let t = Ballistics.toss(from: SIMD3(p.basketX + dx, p.basketD, p.rimZ + h), velocity: .zero)
+                #expect(t.rimHits >= 1 && t.rimHits <= p.maxRimBounces)
+                if abs(dx) < p.rimRadius {
+                    #expect(t.isIn, "dx \(dx) h \(h): centred inside the rim, it drops in")
+                } else if case let .floor(x) = t.landing {
+                    #expect(abs(x - p.basketX) >= p.rimRadius + Float(FloorLine.tokenWidth / 2), "dx \(dx) h \(h): \(x)")
+                } else {
+                    Issue.record("dx \(dx) h \(h): \(t.landing)")
+                }
+            }
+        }
+    }
+
+    @Test("Flicks from the bare wall and from over the desk can reach the basket; slow ones still land on the desk")
+    func flicksReachBasket() {
+        var wallIn = 0, deskIn = 0, slowOnDesk = 0, slow = 0
+        for vx in stride(from: -1200, through: 0, by: 100) {
+            for vy in stride(from: -600, through: 900, by: 100) {
+                for y: Float in [100, 140, 160] where Self.fling(SIMD2(120, y), SIMD2(Float(vx), Float(vy))).isIn {
+                    wallIn += 1
+                }
+                for y: Float in [180, 200, 220, 230] {
+                    let v = SIMD2(Float(vx), Float(vy))
+                    let t = Self.fling(SIMD2(120, y), v)
+                    if t.isIn { deskIn += 1 }
+                    // Slow and away from the front edge (a slow push over the edge rightly falls off).
+                    if (v * v).sum() <= Self.params.frontFlingSpeed * Self.params.frontFlingSpeed, vy <= 0 {
+                        slow += 1
+                        if case .desk = t.landing { slowOnDesk += 1 }
+                    }
+                }
+            }
+        }
+        #expect(wallIn > 0 && deskIn > 0, "wall \(wallIn), desk \(deskIn)")
+        #expect(slow > 0 && slowOnDesk == slow)
+    }
+
+    @Test("Floor landings end at a free spot: in front of the cabinet or the basket the token hops clear")
+    func floorSpots() {
+        let cab = Ballistics.pushOff(at: SIMD2(430, 0), velocity: SIMD2(0, -80))
+        #expect(cab.landing == .floor(x: 384) && cab.kind == .miss)
+        #expect(cab.end == SIMD3(384, cab.end.y, Self.params.floorZ))
+        #expect(cab.position(at: cab.duration) == cab.end && cab.landingVelocity.z < 0)
+        // The hop is continuous and stays above the floor.
+        let hop = cab.segments.last!
+        for i in 0...20 {
+            let q = cab.position(at: hop.t0 + (cab.duration - hop.t0) * Float(i) / 20)
+            #expect(q.z >= Self.params.floorZ - 0.01)
+        }
+        for x in stride(from: Float(380), through: 480, by: 5) {
+            let t = Ballistics.pushOff(at: SIMD2(x, 0), velocity: SIMD2(0, -120))
+            guard case let .floor(fx) = t.landing else { continue }
+            #expect(FloorLine.isFree(Int(fx)) && fx == fx.rounded(), "\(x) → \(fx)")
+        }
+        // In front of the basket, below its rim: a drop there goes in; one in front of it lands clear of it.
+        let drop = Self.fling(SIMD2(64, 290))
+        #expect(drop.isIn)
+        let front = Ballistics.toss(from: SIMD3(64, -40, -60), velocity: .zero)
+        #expect(front.landing == .floor(x: 40) || front.landing == .floor(x: 88))
     }
 }

@@ -4,9 +4,10 @@
 /// `min(6, max(0, n − capacity))`) to the upper stop `openLimit` (the travel, or 3 px while the chair blocks a
 /// cabinet drawer). A drag pulls the handle toward the pointer through a damped spring; a release coasts with
 /// friction; scripts (click toggle, peek, chomp, spring-loading, knock) drive the same spring toward a target.
-/// Stops bounce with `restitution`; the closed stop has a detent that catches small bounces. Events report what
-/// happened for FX and sound; `settled` fires once each time the drawer comes to rest (dispatch
-/// `.drawerSettled(id, p)`). Pure, deterministic and `Sendable`: time comes in through `step(_:)`.
+/// Stops bounce with `restitution`; the closed stop has a detent that catches small bounces; a jammed drawer
+/// boings off its gap on a stiff spring and comes back to rest exactly on it. Events report what happened for FX
+/// and sound; `settled` fires once each time the drawer comes to rest (dispatch `.drawerSettled(id, p)`). Pure,
+/// deterministic and `Sendable`: time comes in through `step(_:)`.
 public struct DrawerSim: Sendable, Equatable {
     /// Feel constants. Starting values from the spec; the tests are the contract, not the numbers.
     public struct Params: Hashable, Sendable {
@@ -30,10 +31,13 @@ public struct DrawerSim: Sendable, Equatable {
         /// The detent pulls a coasting drawer shut within this distance of the closed stop (1/s²).
         public var latchDistance: Float = 2.5
         public var latchStiffness: Float = 300
-        /// A jammed drawer bounces off its gap ("boing") and coasts at most this far back out, so it stays shut
-        /// enough to keep its contents hidden.
-        public var jamRebound: Float = 1.5
+        /// A jammed drawer bounces off its gap ("boing") at `jamRestitution` of its speed, at most
+        /// `jamReboundSpeed`, on an underdamped spring (1/s², 1/s) that brings it back onto the gap about a pixel
+        /// out, so its contents stay hidden.
         public var jamRestitution: Float = 0.5
+        public var jamReboundSpeed: Float = 60
+        public var jamStiffness: Float = 1600
+        public var jamDamping: Float = 10
         /// Speed at which a drawer pushed past a moved stop (more items, the chair) slides back to it.
         public var pushOutSpeed: Float = 60
         public var maxSpeed: Float = 600
@@ -46,8 +50,10 @@ public struct DrawerSim: Sendable, Equatable {
         public var chompOpen: Float = 6
         public var chompOpenTimeout: Float = 0.2
         public var chompHold: Float = 0.12
-        /// Scroll peek range on a closed drawer.
+        /// Scroll peek range on a closed drawer; a peek with no scroll for `peekHold` seconds closes by itself (a
+        /// mouse wheel sends no scroll end).
         public var peekMax: Float = 4
+        public var peekHold: Float = 0.35
         /// A desk knock snaps shut a non-jammed drawer at most this far past its lower stop.
         public var knockReach: Float = 3
         /// The chair blocks a cabinet drawer when it overlaps the front by more than this many px …
@@ -74,7 +80,8 @@ public struct DrawerSim: Sendable, Equatable {
         case hitStop(speed: Float)
         /// A cabinet drawer ran into the chair (thunk; push the chair aside).
         case hitChair(speed: Float)
-        /// A chomp reached its widest: the dropped token slides in now.
+        /// A chomp reached its widest: the dropped token slides in now. Exactly once per accepted chomp, even when
+        /// something interrupts it (then on the next step, or from `forceRest`).
         case chompSwallow
         /// Came to rest at this opening (whole px).
         case settled(Float)
@@ -84,12 +91,16 @@ public struct DrawerSim: Sendable, Equatable {
         case coast
         case drag(target: Float)
         case script(target: Float)
-        /// Held at a peek until `endPeek()`.
-        case peek(target: Float)
+        /// Opening toward the full travel, so a lower upper stop (the chair) is hit and thunks.
+        case opening
+        /// Held at a peek until `endPeek()` or `peekHold` seconds without a `peek(_:)`.
+        case peek(target: Float, idle: Float)
         case chompOpen(elapsed: Float)
         case chompHold(elapsed: Float)
         /// Closing to whatever the lower stop is when it arrives.
         case scriptClose
+        /// A jammed drawer's rebound off its gap.
+        case jamBounce
     }
 
     public var params: Params
@@ -107,10 +118,16 @@ public struct DrawerSim: Sendable, Equatable {
     /// The upper stop (travel, or the chair-block limit).
     public private(set) var openLimit: Float
     public private(set) var isAsleep = true
+    /// The interior shows its contents (icons) rather than paper: from `Visibility.drawerOpen`, or from the start of
+    /// a click / spring-loading open, until the drawer shuts or rests below `drawerOpen`, so contents never swap
+    /// for paper while a drawer slides shut.
+    public private(set) var isRevealed: Bool
     var mode: Mode = .coast
     var restCount = 0
     /// The stop the drawer is pressed against (one event per contact).
     var contact: Int = 0
+    /// Interrupted chomps whose swallow is still owed.
+    var swallowsDue = 0
 
     /// A drawer at rest at opening `p` holding `count` items.
     public init(capacity: Int, hardCap: Int, travel: Float, p: Float = 0, count: Int = 0, params: Params = .standard) {
@@ -122,7 +139,9 @@ public struct DrawerSim: Sendable, Equatable {
         self.count = max(0, count)
         self.openLimit = travel
         self.p = p.isFinite ? min(max(p, 0), travel) : 0
+        self.isRevealed = false
         self.p = max(self.p, closedLimit)
+        self.isRevealed = self.p >= Visibility.drawerOpen
     }
 
     /// The drawer of container `id` (riser or cabinet).
@@ -150,6 +169,21 @@ public struct DrawerSim: Sendable, Equatable {
     /// Accepts a drop (a chomp or an open interior): not at the hard cap.
     public var acceptsDrops: Bool { !isJammed }
     public var needsFrames: Bool { !isAsleep }
+    /// Mid-chomp: a knock leaves it alone.
+    public var isChomping: Bool {
+        switch mode {
+        case .chompOpen, .chompHold: true
+        default: false
+        }
+    }
+
+    /// The cabinet drawers are interlocked like a real filing cabinet's: opening one (drag, click, spring-loading,
+    /// peek) closes the others, so a lower drawer's contents never hide behind the front above it. The drawers to
+    /// `close()` when `id` starts opening.
+    public static func interlocked(_ id: ContainerID) -> [ContainerID] {
+        let cabinet: [ContainerID] = [.cabinetTop, .cabinetMiddle, .cabinetFile]
+        return cabinet.contains(id) ? cabinet.filter { $0 != id } : []
+    }
 
     /// The upper stop of a cabinet drawer with the chair's left edge at `chairX`: `chairBlockLimit` when the chair
     /// overlaps the cabinet front by more than `chairBlockOverlap`, else the full travel.
@@ -164,7 +198,7 @@ public struct DrawerSim: Sendable, Equatable {
 
     /// The pointer grabbed the handle.
     public mutating func beginDrag() {
-        mode = .drag(target: p)
+        setMode(.drag(target: p))
         wake()
     }
 
@@ -172,7 +206,7 @@ public struct DrawerSim: Sendable, Equatable {
     /// the rail).
     public mutating func drag(to target: Float) {
         guard target.isFinite else { return }
-        mode = .drag(target: target)
+        setMode(.drag(target: target))
         wake()
     }
 
@@ -181,36 +215,42 @@ public struct DrawerSim: Sendable, Equatable {
     public mutating func endDrag(releaseVelocity: Float? = nil) {
         guard isDragging else { return }
         if let rv = releaseVelocity, rv.isFinite { v = min(max(rv, -params.maxSpeed), params.maxSpeed) }
-        mode = .coast
+        setMode(.coast)
         wake()
     }
 
-    /// Click: closes an open drawer, opens a closed one.
+    /// Click: closes a drawer that is more than half open, opens one that is less (so a click on a drawer the
+    /// chair stopped at 3 px tries again).
     public mutating func toggle() {
-        if p > closedLimit + 1 { close() } else { open() }
+        if p > closedLimit + max(1, (travel - closedLimit) / 2) { close() } else { open() }
     }
 
-    /// Opens to the upper stop (click, spring-loading).
-    public mutating func open() { setTarget(openLimit) }
+    /// Opens all the way (click, spring-loading). A chair in the way stops it at `openLimit` with `hitChair`.
+    public mutating func open() {
+        setMode(.opening)
+        if p < Visibility.drawerOpen, openLimit >= Visibility.drawerOpen { isRevealed = true }
+        wake()
+    }
 
     /// Closes softly (the detent catches it).
     public mutating func close() {
-        mode = .scriptClose
+        setMode(.scriptClose)
         wake()
     }
 
     /// Scripted motion to opening `target` (clamped to the stops).
     public mutating func setTarget(_ target: Float) {
         guard target.isFinite else { return }
-        mode = .script(target: min(max(target, closedLimit), max(openLimit, closedLimit)))
+        setMode(.script(target: min(max(target, closedLimit), max(openLimit, closedLimit))))
         wake()
     }
 
-    /// Two-finger scroll on a closed drawer: holds it `amount` (0…`peekMax`) past the lower stop until `endPeek()`.
+    /// Two-finger scroll on a closed drawer: holds it `amount` (0…`peekMax`) past the lower stop until `endPeek()`,
+    /// or until no scroll has come for `peekHold` seconds.
     public mutating func peek(_ amount: Float) {
         let peeking = if case .peek = mode { true } else { false }
         guard amount.isFinite, peeking || p <= closedLimit + params.peekMax + params.arriveDistance else { return }
-        mode = .peek(target: closedLimit + min(max(amount, 0), params.peekMax))
+        setMode(.peek(target: closedLimit + min(max(amount, 0), params.peekMax), idle: 0))
         wake()
     }
 
@@ -224,16 +264,18 @@ public struct DrawerSim: Sendable, Equatable {
     @discardableResult
     public mutating func chomp() -> Bool {
         guard !isJammed else { return false }
-        mode = .chompOpen(elapsed: 0)
+        setMode(.chompOpen(elapsed: 0))
         wake()
         return true
     }
 
-    /// A desk knock: an ajar drawer within `knockReach` of its lower stop snaps shut unless it is jammed. Returns
-    /// whether it will close. A knock never opens a drawer.
+    /// A desk knock: an ajar drawer within `knockReach` of its lower stop snaps shut unless it is jammed, held or
+    /// mid-chomp. Returns whether it will close. A knock never opens a drawer.
     @discardableResult
     public mutating func knock() -> Bool {
-        guard !isJammed, !isDragging, p > closedLimit, p - closedLimit <= params.knockReach else { return false }
+        guard !isJammed, !isDragging, !isChomping, p > closedLimit, p - closedLimit <= params.knockReach else {
+            return false
+        }
         close()
         return true
     }
@@ -263,11 +305,14 @@ public struct DrawerSim: Sendable, Equatable {
         p = min(max(p.rounded(.down), lower), upper)
         v = 0
         acceleration = 0
-        mode = .coast
+        setMode(.coast)
+        let swallows = [Event](repeating: .chompSwallow, count: swallowsDue)
+        swallowsDue = 0
         isAsleep = true
+        isRevealed = p >= Visibility.drawerOpen
         contact = 0
         restCount = 0
-        return [.settled(p)]
+        return swallows + [.settled(p)]
     }
 
     mutating func wake() {
@@ -275,15 +320,22 @@ public struct DrawerSim: Sendable, Equatable {
         restCount = 0
     }
 
+    /// Switches mode; leaving a chomp before it swallowed still owes the swallow.
+    mutating func setMode(_ m: Mode) {
+        if case .chompOpen = mode { swallowsDue += 1 }
+        mode = m
+    }
+
     // MARK: Step
 
     /// Advances by `dt` seconds (the frame loop's fixed 1/60) and returns what happened.
     public mutating func step(_ dt: Float) -> [Event] {
-        guard !isAsleep, dt > 0 else {
+        guard !isAsleep, let dt = SimClock.step(dt) else {
             acceleration = 0
             return []
         }
-        var events: [Event] = []
+        var events = [Event](repeating: .chompSwallow, count: swallowsDue)
+        swallowsDue = 0
         let lower = closedLimit, upper = max(openLimit, lower)
         let v0 = v
 
@@ -292,10 +344,17 @@ public struct DrawerSim: Sendable, Equatable {
         case let .drag(target):
             // The pointer may pull past a stop (a flick toward closed builds speed); the stop holds the drawer.
             spring(toward: min(max(target, lower - travel), upper + travel), dt)
-        case let .script(target), let .peek(target):
+        case let .script(target):
             spring(toward: min(max(target, lower), upper), dt)
+        case .opening:
+            spring(toward: travel, dt)
+        case let .peek(target, idle):
+            spring(toward: min(max(target, lower), upper), dt)
+            mode = idle + dt >= params.peekHold ? .scriptClose : .peek(target: target, idle: idle + dt)
         case .scriptClose:
             spring(toward: lower, dt)
+        case .jamBounce:
+            v = (v + params.jamStiffness * (lower - p) * dt) / (1 + params.jamDamping * dt)
         case let .chompOpen(elapsed):
             let target = min(lower + params.chompOpen, upper)
             spring(toward: target, dt)
@@ -337,7 +396,13 @@ public struct DrawerSim: Sendable, Equatable {
             p = min(max(target, lower), upper)
             v = 0
             mode = .coast
-        case .scriptClose where p <= lower + params.arriveDistance && abs(v) < params.restSpeed * 4:
+        case .opening where p >= upper - params.arriveDistance && (upper < travel || abs(v) < params.restSpeed * 4):
+            // All the way out, or against the chair.
+            p = upper
+            v = 0
+            mode = .coast
+        case .scriptClose where p <= lower + params.arriveDistance && abs(v) < params.restSpeed * 4,
+             .jamBounce where p <= lower + params.arriveDistance && abs(v) < params.restSpeed * 4:
             p = lower
             v = 0
             mode = .coast
@@ -359,6 +424,11 @@ public struct DrawerSim: Sendable, Equatable {
             }
         } else {
             restCount = 0
+        }
+        if p >= Visibility.drawerOpen {
+            isRevealed = true
+        } else if isAsleep || p <= lower {
+            isRevealed = false
         }
         return events
     }
@@ -385,15 +455,20 @@ public struct DrawerSim: Sendable, Equatable {
                 // Below the bounce floor the detent holds it shut.
                 if v < params.restSpeed * 2 { v = 0 }
             } else if isJammed {
-                if contact != -1, speed > params.hitStopSpeed || held {
-                    events.append(.jamThud(speed: speed))
-                }
-                if held {
+                if mode == .jamBounce {
+                    // Back on the gap after the boing: it rests there.
                     v = 0
-                } else if speed > params.hitStopSpeed {
-                    v = min(speed * params.jamRestitution, params.jamRebound * params.coastFriction)
+                    mode = .coast
                 } else {
-                    v = 0
+                    if contact != -1, speed > params.hitStopSpeed || held {
+                        events.append(.jamThud(speed: speed))
+                    }
+                    if !held, speed > params.hitStopSpeed {
+                        v = min(speed * params.jamRestitution, params.jamReboundSpeed)
+                        mode = .jamBounce
+                    } else {
+                        v = 0
+                    }
                 }
             } else {
                 if contact != -1, speed > params.hitStopSpeed { events.append(.stuffed(speed: speed)) }

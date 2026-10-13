@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 @testable import DeskCore
 
@@ -43,6 +44,7 @@ func randomDesk(_ seed: UInt64) -> DeskState {
 @Suite("DeskKnock")
 struct DeskKnockTests {
     static let dt: Float = 1.0 / 60
+    static let env = ReduceEnv(now: Date(timeIntervalSince1970: 0))
 
     @Test("A knock never changes where a token lives (random desks, plan + every sim it drives)")
     func neverChangesMembership() {
@@ -51,7 +53,7 @@ struct DeskKnockTests {
             #expect(before.violations().isEmpty, "fixture \(seed): \(before.violations())")
             var after = before
             let plan = DeskKnock.plan(for: after, origin: SIMD2(256, 0), strength: 1, seed: seed)
-            DeskKnock.apply(plan, to: &after)
+            for action in DeskKnock.actions(plan, state: before) { _ = reduce(&after, action, Self.env) }
             #expect(after.tokens == before.tokens)
             #expect(after.piles == before.piles)
             #expect(after.violations().isEmpty)
@@ -97,8 +99,35 @@ struct DeskKnockTests {
         let plan = DeskKnock.plan(for: s, origin: SIMD2(100, 0), seed: 1)
         #expect(plan.drawerCloses == [.riserLeft])
         #expect(plan.drawerJostle == [.cabinetTop])
-        DeskKnock.apply(plan, to: &s)
+        let actions = DeskKnock.actions(plan, state: s)
+        #expect(actions.count == 1)
+        for action in actions { _ = reduce(&s, action, Self.env) }
         #expect(s.drawerOpening(.riserLeft) == 0 && s.drawerOpening(.riserRight) == 9 && s.drawerOpening(.cabinetTop) == 6)
+    }
+
+    @Test("Live sims decide: a held or chomping drawer is left alone, a drawer ajar right now snaps shut")
+    func liveDrawers() {
+        var s = DeskState()
+        s.drawers[.riserLeft] = DrawerState(p: 2)
+        s.drawers[.riserRight] = DrawerState(p: 2)
+        s.drawers[.cabinetTop] = DrawerState(p: 0)
+        var held = DrawerSim(.riserLeft, p: 2)
+        held.beginDrag()
+        var chomping = DrawerSim(.riserRight, p: 0)
+        _ = chomping.chomp()
+        for _ in 0..<3 { _ = chomping.step(Self.dt) }
+        #expect(chomping.p > 0 && chomping.p <= 3)
+        var ajar = DrawerSim(.cabinetTop, p: 0)
+        ajar.setTarget(3)
+        for _ in 0..<60 { _ = ajar.step(Self.dt) }
+        let live: [ContainerID: DrawerSim] = [.riserLeft: held, .riserRight: chomping, .cabinetTop: ajar]
+        let plan = DeskKnock.plan(for: s, drawers: live, origin: SIMD2(256, 0), seed: 3)
+        #expect(plan.drawerCloses == [.cabinetTop])
+        var knock = DeskKnock()
+        #expect(knock.knock(s, drawers: live, at: 0, origin: SIMD2(256, 0), seed: 3) == plan)
+        // The live sims agree when the scene knocks them.
+        let heldCloses = held.knock(), chompCloses = chomping.knock(), ajarCloses = ajar.knock()
+        #expect(!heldCloses && !chompCloses && ajarCloses)
     }
 
     @Test("Cooldown: one knock per second")

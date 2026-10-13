@@ -96,6 +96,13 @@ public struct ContentJostle: Sendable, Equatable {
         })
     }
 
+    /// Hard sleep (DESIGN §4.6): everything back home and still.
+    public mutating func forceRest() {
+        positions = homes
+        velocities = Array(repeating: 0, count: homes.count)
+        isAsleep = true
+    }
+
     /// The per-item stiffness factor (seeded, stable for an index).
     func stiffnessFactor(_ i: Int) -> Float {
         let u = Float(SplitMix64.mix(seed &+ UInt64(i) &* 0x9E37_79B9_7F4A_7C15) >> 40) * 0x1p-24
@@ -105,7 +112,7 @@ public struct ContentJostle: Sendable, Equatable {
     /// Advances by `dt` with the drawer's acceleration `drawerAcceleration` (px/s², positive = speeding up while
     /// opening).
     public mutating func step(drawerAcceleration a: Float, _ dt: Float) {
-        guard dt > 0, !homes.isEmpty else { return }
+        guard let dt = SimClock.step(dt), !homes.isEmpty else { return }
         let a = a.isFinite ? a : 0
         let felt = abs(a) > params.stiction ? -a * params.coupling : 0
         if isAsleep && felt == 0 { return }

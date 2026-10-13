@@ -30,7 +30,7 @@ struct WastebasketMachineTests {
             switch rng.nextInt(below: 4) {
             case 0: events = m.knock()
             case 1: events = m.drop(count: rng.nextInt(in: 0...30))
-            case 2: events = m.rimDrag(velocityX: rng.nextFloat01() * 600 - 300)
+            case 2: events = m.rimDrag(delta: SIMD2(rng.nextFloat01() * 9.8 - 4.9, 0), dt: Self.dt)
             default: break
             }
             events += m.step(Self.dt)
@@ -40,23 +40,57 @@ struct WastebasketMachineTests {
         #expect(m.state == BasketState(state: "upright", swishes: 3))
     }
 
-    @Test("A fast rim drag tips it; it spills once on landing; a click stands it up")
+    /// Drags the rim by `delta` per frame for `frames` frames, collecting events.
+    static func drag(_ m: inout WastebasketMachine, _ delta: SIMD2<Float>, frames: Int) -> [WastebasketMachine.Event] {
+        (0..<frames).flatMap { _ in m.rimDrag(delta: delta, dt: dt) }
+    }
+
+    @Test("A sustained sideways rim drag tips it; it spills once on landing; a click stands it up")
     func tip() {
         var m = WastebasketMachine()
-        let slow = m.rimDrag(velocityX: 299).isEmpty
+        let slow = Self.drag(&m, [4.9, 0], frames: 10).isEmpty
         #expect(slow)
-        let fast = m.rimDrag(velocityX: -301) == [.tipped(right: false)]
+        m.endRimDrag()
+        let fast = Self.drag(&m, [-6, 0.5], frames: 3) == [.tipped(right: false)]
         #expect(fast)
         #expect(m.state.state == "tippedLeft" && !m.canAccept(count: 0) && !m.canDig(count: 3))
         var events = Self.settle(&m)
         #expect(events == [.spill(right: false), .settled(BasketState(state: "tippedLeft", swishes: 0))])
-        let tippedIgnores = m.isTipped && m.rimDrag(velocityX: 900).isEmpty
+        let tippedIgnores = m.isTipped && Self.drag(&m, [20, 0], frames: 5).isEmpty
         #expect(tippedIgnores)
         _ = m.standUp()
         events = Self.settle(&m)
         #expect(events == [.righted, .settled(BasketState())] && m.isUpright)
         let menu = m.tipOut(right: true) == [.tipped(right: true)]
         #expect(menu)
+    }
+
+    @Test("A quick dig out of the mouth never tips it: one fast sample, up-and-down drags, wobbles and short flicks")
+    func digNeverTips() {
+        var m = WastebasketMachine()
+        // A single fast sideways sample (the dig's first jerk), then the dig goes up.
+        var events = m.rimDrag(delta: [12, -2], dt: Self.dt)
+        events += Self.drag(&m, [3, -9], frames: 8)
+        #expect(events.isEmpty && m.isUpright)
+        m.endRimDrag()
+        // Fast but mostly vertical.
+        events = Self.drag(&m, [7, -24], frames: 10)
+        #expect(events.isEmpty && m.isUpright)
+        m.endRimDrag()
+        // Fast sideways jitter that keeps changing direction.
+        events = (0..<12).flatMap { i in m.rimDrag(delta: [i % 2 == 0 ? 8 : -8, 0], dt: Self.dt) }
+        #expect(events.isEmpty && m.isUpright)
+        m.endRimDrag()
+        // Two fast samples are not enough; a slower one in between resets the count.
+        events = Self.drag(&m, [8, 0], frames: 2) + Self.drag(&m, [2, 0], frames: 1) + Self.drag(&m, [8, 0], frames: 2)
+        #expect(events.isEmpty && m.isUpright)
+        m.endRimDrag()
+        // Three fast samples that cover no more than 6 px.
+        events = (0..<3).flatMap { _ in m.rimDrag(delta: [2, 0], dt: 1.0 / 240) }
+        #expect(events.isEmpty && m.isUpright)
+        m.endRimDrag()
+        let tipped = Self.drag(&m, [6, -1], frames: 3) == [.tipped(right: true)]
+        #expect(tipped)
     }
 
     @Test("Swishes are counted; a rim-in is not; a full basket bonks the ball out")
@@ -77,21 +111,27 @@ struct WastebasketMachineTests {
         #expect(WastebasketMachine(BasketState(state: "??", swishes: -2)).state == BasketState())
     }
 
-    @Test("Gentle drops within 12 px of the mouth; spill spots fit on the floor, top ball nearest")
+    @Test("Gentle drops within 12 px of the mouth; spill spots are free floor centres, top ball nearest the mouth")
     func dropsAndSpots() {
         let m = WastebasketMachine()
         let mouth = CoreLayout.wastebasketMouth
         #expect(m.isGentleDrop(at: mouth.center))
         #expect(m.isGentleDrop(at: ArtPoint(mouth.minX - 12, mouth.minY - 12)))
         #expect(!m.isGentleDrop(at: ArtPoint(mouth.minX - 13, mouth.midY)))
+        let cabinet = CoreLayout.cabinet.minX..<CoreLayout.cabinet.maxX
         for right in [true, false] {
-            for n in [1, 5, 12, 24] {
+            let lying = WastebasketMachine.tippedRect(right: right)
+            #expect(lying.size == ArtSize(CoreLayout.wastebasket.h, CoreLayout.wastebasket.w))
+            #expect(lying.maxY == CoreLayout.floorY && (right ? lying.minX == mouth.maxX : lying.maxX == mouth.minX))
+            for n in [1, 5, 12, 17, 24] {
                 let spots = WastebasketMachine.spillSpots(count: n, right: right)
                 #expect(spots.count == n)
-                #expect(spots.allSatisfy { $0 >= 0 && $0 <= CoreLayout.size.w - 16 })
+                #expect(spots.allSatisfy { FloorLine.isFree($0, avoiding: [lying.minX..<lying.maxX, cabinet]) },
+                        "\(right) \(n): \(spots)")
                 #expect(spots == WastebasketMachine.spillSpots(count: n, right: right))
-                let dist = spots.map { abs($0 + 8 - mouth.midX) }
-                #expect(dist.last == dist.min(), "the top ball lands nearest the basket")
+                let mouthX = right ? lying.maxX : lying.minX
+                let dist = spots.map { abs($0 - mouthX) }
+                #expect(dist.last == dist.min(), "the top ball lands nearest the mouth")
             }
         }
         #expect(WastebasketMachine.spillSpots(count: 0, right: true).isEmpty)

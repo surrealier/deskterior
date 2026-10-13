@@ -113,6 +113,74 @@ struct InteriorRasterTests {
         #expect(InteriorRaster.items(.penCup, in: s).isEmpty)
     }
 
+    @Test("Ten balls fill the basket to its mouth; from the 11th the heap shows above the rim and keeps rising")
+    func heapRises() {
+        func above(_ n: Int) -> Int {
+            let img = InteriorRaster.wastebasket(Self.items(n)).image
+            return (0..<InteriorRaster.heapRise).reduce(0) { sum, y in
+                sum + (0..<img.width).filter { img[$0, y].a != 0 }.count
+            }
+        }
+        #expect(InteriorRaster.basketSlots.count == ContainerSpec.wastebasket.hardCap)
+        #expect(InteriorRaster.basketSlots.prefix(WastebasketMachine.aboveRimCount - 1).allSatisfy { $0.y >= 0 })
+        #expect(InteriorRaster.basketSlots.dropFirst(WastebasketMachine.aboveRimCount - 1).allSatisfy {
+            $0.y <= -3 && $0.y >= -InteriorRaster.heapRise && $0.x >= 0 && $0.x + 8 <= CoreLayout.wastebasket.w
+        })
+        for n in 0...10 { #expect(above(n) == 0, "n\(n)") }
+        var last = 0
+        for n in [11, 14, 18, 24] {
+            let a = above(n)
+            #expect(a > last, "n\(n): \(a) px above the rim")
+            last = a
+        }
+        // Fullness below the rim reads through the mesh: more balls, more lit pixels.
+        func lit(_ n: Int) -> Int {
+            InteriorRaster.wastebasket(Self.items(n)).image.pixels.filter { $0 != .clear && $0 != Ink.neutral2.color }.count
+        }
+        #expect(lit(10) > lit(5) && lit(5) > lit(0))
+        #expect(WastebasketMachine.heapSlot(10) == InteriorRaster.basketSlots[10])
+    }
+
+    @Test("The tipped basket: palette pixels, a pixel-exact quarter turn lying beside its spot, frames in between")
+    func tippedBasket() {
+        let upright = InteriorRaster.wastebasket([]).image
+        let uprightCount = upright.pixels.filter { $0.a != 0 }.count
+        for right in [true, false] {
+            let lying = InteriorRaster.wastebasketTipped(frame: nil, right: right)
+            #expect(Self.onPalette(lying.image))
+            #expect(lying.image.pixels.filter { $0.a != 0 }.count == uprightCount, "a quarter turn keeps every pixel")
+            // Its opaque box, placed by the anchor at the basket's foot, is `tippedRect`.
+            let r = CoreLayout.wastebasket
+            let origin = ArtPoint(r.midX - lying.anchor.x, r.maxY - lying.anchor.y)
+            var minX = Int.max, maxX = Int.min, minY = Int.max, maxY = Int.min
+            for y in 0..<lying.size.h {
+                for x in 0..<lying.size.w where lying.image[x, y].a != 0 {
+                    minX = min(minX, x); maxX = max(maxX, x); minY = min(minY, y); maxY = max(maxY, y)
+                }
+            }
+            let box = ArtRect(origin.x + minX, origin.y + minY, maxX - minX + 1, maxY - minY + 1)
+            #expect(box == WastebasketMachine.tippedRect(right: right), "\(right): \(box)")
+            for f in 0...2 {
+                let s = InteriorRaster.wastebasketTipped(frame: f, right: right)
+                #expect(Self.onPalette(s.image) && s.size == lying.size)
+                #expect(s.image.pixels.filter { $0.a != 0 }.count == uprightCount, "shears move whole pixels")
+            }
+            #expect(InteriorRaster.wastebasketTipped(frame: 0, right: right) != InteriorRaster.wastebasketTipped(frame: 2, right: right))
+        }
+        #expect(InteriorRaster.wastebasketTipped(frame: 1, right: false).image
+            == InteriorRaster.wastebasketTipped(frame: 1, right: true).image.flippedHorizontally())
+    }
+
+    @Test("A revealed drawer shows icons below 8 px; an unrevealed one shows paper above it")
+    func revealOverride() {
+        let its = Self.items(6)
+        let paper5 = InteriorRaster.drawerContents(.riserLeft, items: its, opening: 5)
+        let icons5 = InteriorRaster.drawerContents(.riserLeft, items: its, opening: 5, revealed: true)
+        #expect(icons5 == InteriorRaster.drawerContents(.riserLeft, items: its, opening: 10))
+        #expect(paper5 == InteriorRaster.drawerContents(.riserLeft, items: its, opening: 10, revealed: false))
+        #expect(paper5 != icons5)
+    }
+
     // MARK: Goldens
 
     @Test("Golden: riser drawer open with six items, jostled")

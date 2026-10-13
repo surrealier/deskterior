@@ -170,7 +170,7 @@ public struct RollerSim: Sendable, Equatable {
     // MARK: Step
 
     public mutating func step(_ dt: Float) -> [Event] {
-        guard !isAsleep, dt > 0 else { return [] }
+        guard !isAsleep, let dt = SimClock.step(dt) else { return [] }
         var events: [Event] = []
         let lo = params.travel.lowerBound
         let hiTravel = params.travel.upperBound

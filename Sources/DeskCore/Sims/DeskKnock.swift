@@ -4,7 +4,9 @@
 /// monitor, phone, lamp, plant and keyboard wobble, the cloth ripples, drawer contents and the basket heap
 /// jiggle, and ajar non-jammed drawers within `knockReach` of their lower stop snap shut. It **never** changes
 /// where a token lives: a `Plan` carries no locations, and the only model change it implies is those drawers'
-/// openings (`apply`). Pure; the cooldown takes the time it is given.
+/// openings. The scene runs them on its live sims (`DrawerSim.knock()`, which leaves a held or chomping drawer
+/// alone) and commits each `settled` through the reducer (`.drawerSettled`); `actions` gives the same commits
+/// without sims. Pure; the cooldown takes the time it is given.
 public struct DeskKnock: Sendable, Equatable {
     public struct Params: Hashable, Sendable {
         public var cooldown: Double = 1
@@ -95,13 +97,14 @@ public struct DeskKnock: Sendable, Equatable {
         return now - last >= params.cooldown
     }
 
-    /// A knock at time `now`, or nil inside the cooldown.
+    /// A knock at time `now`, or nil inside the cooldown. `drawers` are the live drawer sims (see `plan`).
     public mutating func knock(
-        _ state: DeskState, at now: Double, origin: SIMD2<Float>, strength: Float = 1, seed: UInt64
+        _ state: DeskState, drawers: [ContainerID: DrawerSim] = [:], at now: Double, origin: SIMD2<Float>,
+        strength: Float = 1, seed: UInt64
     ) -> Plan? {
         guard isReady(at: now) else { return nil }
         lastKnock = now
-        return Self.plan(for: state, origin: origin, strength: strength, seed: seed, params: params)
+        return Self.plan(for: state, drawers: drawers, origin: origin, strength: strength, seed: seed, params: params)
     }
 
     /// Strength of the knock a slam at `speed` px/s makes.
@@ -122,9 +125,11 @@ public struct DeskKnock: Sendable, Equatable {
         }
     }
 
-    /// The plan for a knock at desk-plane `origin` (pure).
+    /// The plan for a knock at desk-plane `origin` (pure). Drawers are judged by their live sims in `drawers`
+    /// (where they are this frame, held or not), else by the saved openings.
     public static func plan(
-        for state: DeskState, origin: SIMD2<Float>, strength: Float = 1, seed: UInt64, params: Params = .standard
+        for state: DeskState, drawers: [ContainerID: DrawerSim] = [:], origin: SIMD2<Float>, strength: Float = 1,
+        seed: UInt64, params: Params = .standard
     ) -> Plan {
         let o = origin.isFinite ? origin : SIMD2(Float(CoreLayout.apron.midX), 0)
         let s = strength.isFinite ? min(max(strength, 0), 1) : 0
@@ -152,7 +157,7 @@ public struct DeskKnock: Sendable, Equatable {
             plan.wobbles[w] = hop(at: wobblerPosition(w, state: state), frames: params.wobbleFrames, height: 1)
         }
         for id in ContainerID.allCases where id.isDrawer {
-            var sim = DrawerSim(id, p: state.drawerOpening(id), count: state.tokens.count(in: id))
+            var sim = drawers[id] ?? DrawerSim(id, p: state.drawerOpening(id), count: state.tokens.count(in: id))
             if sim.knock() { plan.drawerCloses.append(id) }
             if state.tokens.count(in: id) > 0 { plan.drawerJostle.append(id) }
         }
@@ -169,8 +174,10 @@ public struct DeskKnock: Sendable, Equatable {
         return out
     }
 
-    /// The model after the knock's motion settles: the closing drawers' openings, nothing else.
-    public static func apply(_ plan: Plan, to state: inout DeskState) {
-        for (id, p) in drawerTargets(plan, state: state) { state.drawers[id] = DrawerState(p: p) }
+    /// The commits the knock's motion ends in, for when no live sim runs it: each closing drawer settles at its
+    /// lower stop. Nothing else.
+    public static func actions(_ plan: Plan, state: DeskState) -> [DeskAction] {
+        let targets = drawerTargets(plan, state: state)
+        return plan.drawerCloses.compactMap { id in targets[id].map { .drawerSettled(id, $0) } }
     }
 }

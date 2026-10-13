@@ -4,7 +4,8 @@ import Foundation
 
 // `deskterior-assets sims-review --out DIR`: the M6/M7 sims and machines rendered into the room for review (×3
 // nearest): drawer open / slam / jam sequences with their contents, the interiors at rest, the chair block,
-// ballistic arcs over the basket, the chair roll, the pen cup tip and spill, the phone flip and the basket heap.
+// ballistic arcs over the basket (and flicks from the wall and the desk), the chair roll, the pen cup tip and
+// spill, the phone flip, and the basket heap, tip and spill.
 
 enum SimsReview {
     static let dt: Float = 1.0 / 60
@@ -104,7 +105,8 @@ enum SimsReview {
             pending += sim.step(dt)
             jostle.step(drawerAcceleration: sim.acceleration, dt)
             if f % every == 0 || f == frames - 1 {
-                let drawer = InteriorRaster.riserDrawer(id, p: sim.pixel, items: its, offsets: jostle.pixelOffsets)
+                let drawer = InteriorRaster.riserDrawer(id, p: sim.pixel, items: its, offsets: jostle.pixelOffsets,
+                                                        revealed: sim.isRevealed)
                 let img = room([Put(id: "riser.drawerL", layer: .deskBack, sprite: drawer, core: CoreLayout.riserDrawerL.origin)])
                 let label = "f\(f) p\(String(format: "%.1f", sim.p)) " + describe(pending)
                 tiles.append((crop(img, ArtRect(182, 150, 92, 34)), label))
@@ -169,8 +171,8 @@ enum SimsReview {
         let cases: [([Int], [Int], String)] = [
             ([12, 0, 0], [5, 0, 0], "top 5"), ([12, 0, 0], [8, 0, 0], "top 8"), ([0, 14, 0], [0, 12, 0], "middle 12"),
             ([0, 14, 0], [0, 18, 0], "middle 18"), ([0, 0, 18], [0, 0, 6], "file 6"), ([0, 0, 18], [0, 0, 20], "file 20"),
-            ([0, 0, 18], [0, 0, 0], "file empty"), ([6, 0, 0], [14, 0, 0], "top jammed"), ([12, 14, 18], [6, 9, 12], "all open"),
-            ([0, 0, 5], [0, 0, 8], "file peek"),
+            ([0, 0, 18], [0, 0, 0], "file empty"), ([6, 0, 0], [14, 0, 0], "top jammed"),
+            ([0, 14, 0], [6, 9, 12], "middle (interlock)"), ([0, 0, 5], [0, 0, 8], "file peek"),
         ]
         for (p, n, label) in cases {
             let its = (0..<3).map { items(n[$0], offset: 5 * $0) }
@@ -181,7 +183,8 @@ enum SimsReview {
         return sheet(tiles, columns: 5)
     }
 
-    /// The chair in front of the cabinet blocks the top drawer; the thunk pushes it aside and the next pull opens.
+    /// The chair in front of the cabinet blocks the top drawer: a click thunks it at 3 px and pushes the chair
+    /// aside; the second click opens it; later a drag shut.
     static func chairBlock() -> PixelBuffer {
         let id = ContainerID.cabinetTop
         let its = items(6, offset: 2)
@@ -192,10 +195,11 @@ enum SimsReview {
         var pending: [String] = []
         for f in 0..<150 {
             drawer.setOpenLimit(DrawerSim.cabinetOpenLimit(travel: drawer.travel, chairX: chair.x))
-            if f == 0 || f == 100 { drawer.beginDrag() }
-            if (0..<14).contains(f) || (100..<114).contains(f) { drawer.drag(to: Float(f % 100) * 1.5) }
-            if f == 14 || f == 114 { drawer.endDrag() }
-            if f == 30 { drawer.close() }
+            if f == 0 || f == 70 {
+                drawer.toggle()
+                pending.append("click")
+            }
+            if f == 110 { drawer.close() }
             for e in drawer.step(dt) {
                 if case let .hitChair(s) = e {
                     chair.pushedByDrawer()
@@ -206,7 +210,8 @@ enum SimsReview {
             jostle.step(drawerAcceleration: drawer.acceleration, dt)
             for e in chair.step(dt) { if case let .settled(x, _) = e { pending.append("chair x\(Int(x))") } }
             if f % 10 == 0 {
-                let cab = InteriorRaster.cabinet(p: [drawer.pixel, 0, 0], items: [its, [], []], offsets: [jostle.pixelOffsets])
+                let cab = InteriorRaster.cabinet(p: [drawer.pixel, 0, 0], items: [its, [], []], offsets: [jostle.pixelOffsets],
+                                                 revealed: [drawer.isRevealed])
                 let img = room([
                     Put(id: "cabinet", layer: .underDesk, sprite: cab, core: StorageArt.cabinetSpriteOrigin),
                     Put(id: "chair", layer: .chair, sprite: PropArt.chair(chair.chairFacing),
@@ -274,11 +279,43 @@ enum SimsReview {
         let fling = Ballistics.toss(from: fp, velocity: fv)
         plot(&img, fling, .purple5)
         labels.append("fling \(landingText(fling.landing))")
+        // Flicks toward the basket (front plane) from the bare wall and from over the desk: the first one in at
+        // up to a carry's top speed (1200 px/s); and a slow release over the desk, which drops onto it.
+        var flicks = room([])
+        for (at, ink) in [(SIMD2<Float>(140, 150), Ink.green5), (SIMD2<Float>(180, 210), Ink.walnut3)] {
+            var shot: Ballistics.Toss?
+            // Down-left throws first, then lobs.
+            search: for vy in Array(stride(from: 0, through: 600, by: 50)) + Array(stride(from: -50, through: -600, by: -50)) {
+                for vx in stride(from: -100, through: -1200, by: -50) {
+                    let v = SIMD2(Float(vx), Float(vy))
+                    guard (v * v).sum() <= 1200 * 1200 else { continue }
+                    let (p, pv) = Ballistics.release(at: at, velocity: v)
+                    let t = Ballistics.toss(from: p, velocity: pv)
+                    if t.isIn {
+                        shot = t
+                        labels.append("flick (\(vx),\(vy)) \(t.kind.rawValue)")
+                        break search
+                    }
+                }
+            }
+            if let shot { plot(&flicks, shot, ink) }
+        }
+        let (sp, sv) = Ballistics.release(at: SIMD2(200, 200), velocity: SIMD2(-120, -60))
+        let slow = Ballistics.toss(from: sp, velocity: sv)
+        plot(&flicks, slow, .neutral9)
+        labels.append("slow \(landingText(slow.landing))")
+        // Off the desk front in front of the cabinet: it lands, then hops clear of the cabinet.
+        let cab = Ballistics.pushOff(at: SIMD2(430, 0), velocity: SIMD2(0, -80))
+        plot(&flicks, cab, .red3)
+        labels.append("cab \(landingText(cab.landing))")
         let wide = crop(img, ArtRect(0, 100, 280, 220))
         let zoom = crop(img, ArtRect(20, 200, 140, 120))
+        let right = crop(flicks, ArtRect(340, 200, 172, 136))
         print("ballistics: " + labels.joined(separator: " · "))
         return [("ballistics", sheet([(wide, labels.prefix(4).joined(separator: " · "))], columns: 1)),
-                ("ballistics-basket", sheet([(zoom, labels.dropFirst(4).joined(separator: " · "))], columns: 1))]
+                ("ballistics-basket", sheet([(zoom, labels.dropFirst(4).prefix(4).joined(separator: " · "))], columns: 1)),
+                ("ballistics-flicks", sheet([(crop(flicks, ArtRect(0, 100, 280, 220)), labels.dropFirst(8).dropLast().joined(separator: " · ")),
+                                             (right, labels.last ?? "")], columns: 1))]
     }
 
     static func landingText(_ l: Ballistics.Landing) -> String {
@@ -355,7 +392,7 @@ enum SimsReview {
                     img.blit(KindIcons.icon(InteriorRaster.iconKind(item.kind)).image, at: ArtPoint(q.x + o.x - 8, q.y + o.y - 15))
                 case let .floor(x):
                     img.blit(KindIcons.icon(InteriorRaster.iconKind(item.kind)).image,
-                             at: ArtPoint(Int(x) + o.x - 8, CoreLayout.floorY + o.y - 16))
+                             at: ArtPoint(Int(x) + o.x - FloorLine.tokenWidth / 2, CoreLayout.floorY + o.y - 16))
                     notes.append("floor x\(Int(x))")
                 case .basket:
                     notes.append("basket")
@@ -389,7 +426,7 @@ enum SimsReview {
 
     static func wastebasket() -> PixelBuffer {
         var tiles: [(PixelBuffer, String)] = []
-        for n in [0, 5, 10, 11, 16, 24] {
+        for n in [0, 5, 10, 11, 12, 14, 16, 20, 24] {
             let s = InteriorRaster.wastebasket(items(n))
             let img = room([
                 Put(id: "wastebasket.back", layer: .underDesk, sprite: s,
@@ -399,17 +436,34 @@ enum SimsReview {
             ])
             tiles.append((crop(img, ArtRect(20, 236, 90, 84)), "n\(n)" + (n >= WastebasketMachine.aboveRimCount ? " heaped" : "")))
         }
-        // Tipped right: the spill spots as floor tokens (the tipped basket has no art yet).
+        return sheet(tiles, columns: 5)
+    }
+
+    /// The basket tipping both ways (three frames, then lying), and where twelve balls land.
+    static func wastebasketTip() -> PixelBuffer {
+        var tiles: [(PixelBuffer, String)] = []
+        let r = CoreLayout.wastebasket
         for right in [true, false] {
-            let spots = WastebasketMachine.spillSpots(count: 12, right: right)
-            var img = room([])
-            let o = layout.coreOrigin
-            for (x, item) in zip(spots, items(12)) {
-                img.blit(KindIcons.icon(InteriorRaster.iconKind(item.kind)).image, at: ArtPoint(x + o.x, CoreLayout.floorY + o.y - 16))
+            for frame in [Int?.none, 0, 1, 2].dropFirst() + [nil] {
+                let s = InteriorRaster.wastebasketTipped(frame: frame, right: right)
+                let origin = ArtPoint(r.midX - s.anchor.x, r.maxY - s.anchor.y)
+                var puts = [Put(id: "wastebasket.back", layer: .underDesk, sprite: s, core: origin),
+                            Put(id: "wastebasket.front", layer: .underDesk,
+                                sprite: SpriteAsset("none", PixelBuffer(width: 1, height: 1)), core: .zero)]
+                var label = "\(right ? "right" : "left") " + (frame.map { "f\($0)" } ?? "lying")
+                if frame == nil {
+                    let spots = WastebasketMachine.spillSpots(count: 12, right: right)
+                    for (k, (x, item)) in zip(spots, items(12)).enumerated() {
+                        puts.append(Put(id: "ball\(k)", layer: .underDesk, sprite: KindIcons.icon(InteriorRaster.iconKind(item.kind)),
+                                        core: ArtPoint(x - FloorLine.tokenWidth / 2, CoreLayout.floorY - 16)))
+                    }
+                    label += " 12"
+                }
+                let img = room(puts)
+                tiles.append((crop(img, ArtRect(0, 236, frame == nil ? 300 : 150, 84)), label))
             }
-            tiles.append((crop(img, ArtRect(0, 236, 300, 84)), "tipped \(right ? "right" : "left") 12"))
         }
-        return sheet(tiles, columns: 3)
+        return sheet(tiles, columns: 4)
     }
 
     // MARK: Run
@@ -425,6 +479,7 @@ enum SimsReview {
         out += penCup()
         out.append(("phone-flip", phone()))
         out.append(("wastebasket", wastebasket()))
+        out.append(("wastebasket-tip", wastebasketTip()))
         for (name, b) in out { try write(b, "\(name).png", in: outDir, scale: 3) }
     }
 }

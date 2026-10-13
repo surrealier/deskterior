@@ -1,8 +1,11 @@
+import Foundation
+
 /// What containers show of their contents (DESIGN §2.1 visibility matrix; E3–E8), as pure `PixelBuffer`s that
 /// plug into the storage and prop art:
 ///
-/// - drawers: 12-px kind icons standing in a fanned row at their `ContentJostle` rows once open (p ≥ 8), plain
-///   paper while they only peek; the cabinet's file drawer hangs folders with kind-coloured tabs and initials;
+/// - drawers: 12-px kind icons standing in a fanned row at their `ContentJostle` rows once revealed
+///   (`DrawerSim.isRevealed`; at rest, p ≥ 8), plain paper while they only peek; the cabinet's file drawer hangs
+///   folders with kind-coloured tabs and initials;
 /// - the riser cubby: the same icons as dim silhouettes;
 /// - the phone: 5×5 minis; the pen cup: pen caps in kind colours; the wastebasket: balls in the heap slots.
 ///
@@ -99,13 +102,14 @@ public enum InteriorRaster {
     }
 
     /// The drawer's content buffer at opening `p` with each item's base row moved by `offsets` (from
-    /// `ContentJostle.pixelOffsets`; missing entries are 0). Below `Visibility.drawerOpen` only paper shows.
+    /// `ContentJostle.pixelOffsets`; missing entries are 0). Icons show when `revealed` (pass
+    /// `DrawerSim.isRevealed` while it moves; by default from `Visibility.drawerOpen`), else only paper.
     public static func drawerContents(
-        _ id: ContainerID, items: [Item], offsets: [Int] = [], opening p: Int
+        _ id: ContainerID, items: [Item], offsets: [Int] = [], opening p: Int, revealed: Bool? = nil
     ) -> PixelBuffer {
         let size = contentSize(id)
         var c = PixelCanvas(width: size.w, height: size.h)
-        let open = Float(p) >= Visibility.drawerOpen
+        let open = revealed ?? (Float(p) >= Visibility.drawerOpen)
         if id == .cabinetFile {
             drawFolders(&c, items: items, offsets: offsets, open: open)
             return c.buffer
@@ -251,9 +255,12 @@ public enum InteriorRaster {
     // MARK: Drawer sprites
 
     /// A riser drawer front at opening `p` with its contents (an overfull drawer shows paper poking out).
-    public static func riserDrawer(_ id: ContainerID, p: Int, items: [Item], offsets: [Int] = []) -> SpriteAsset {
+    public static func riserDrawer(
+        _ id: ContainerID, p: Int, items: [Item], offsets: [Int] = [], revealed: Bool? = nil
+    ) -> SpriteAsset {
         precondition(isRiser(id), "\(id) is not a riser drawer")
-        let contents = items.isEmpty ? nil : drawerContents(id, items: items, offsets: offsets, opening: p)
+        let contents = items.isEmpty
+            ? nil : drawerContents(id, items: items, offsets: offsets, opening: p, revealed: revealed)
         return StorageArt.riserDrawer(p: p, jammed: items.count > id.spec.capacity, contents: contents)
     }
 
@@ -261,8 +268,10 @@ public enum InteriorRaster {
     public static let cabinetDrawers: [ContainerID] = [.cabinetTop, .cabinetMiddle, .cabinetFile]
 
     /// The pedestal cabinet (geometry of `StorageArt.cabinet`) with each drawer pulled out by `p[i]` and showing
-    /// `items[i]` (jostled by `offsets[i]`); overfull drawers show paper poking out.
-    public static func cabinet(p: [Int], items: [[Item]], offsets: [[Int]] = []) -> SpriteAsset {
+    /// `items[i]` (jostled by `offsets[i]`, icons per `revealed[i]`); overfull drawers show paper poking out.
+    public static func cabinet(
+        p: [Int], items: [[Item]], offsets: [[Int]] = [], revealed: [Bool?] = []
+    ) -> SpriteAsset {
         let r = CoreLayout.cabinet, top = StorageArt.cabinetTopFace
         let opens = (0..<3).map { i in min(max(i < p.count ? p[i] : 0, 0), CoreLayout.cabinetTravels[i]) }
         let content = (0..<3).map { i in i < items.count ? items[i] : [] }
@@ -280,7 +289,7 @@ public enum InteriorRaster {
             let id = cabinetDrawers[i]
             if open >= 2, !content[i].isEmpty || id == .cabinetFile {
                 let buf = drawerContents(id, items: content[i], offsets: i < offsets.count ? offsets[i] : [],
-                                         opening: open)
+                                         opening: open, revealed: i < revealed.count ? revealed[i] : nil)
                 let rows = open - 1
                 let shown = buf.cropped(to: ArtRect(0, buf.height - rows, buf.width, rows))
                 c.blit(shown, at: ArtPoint(f0.x + 4, f0.y + 1))
@@ -355,25 +364,36 @@ public enum InteriorRaster {
                                       hitRects: s.hitRects) : s
     }
 
+    /// Heap slots (basket-local top-left of each 8-px ball), filling bottom-up: ten fill the basket up to its
+    /// mouth, and from the 11th (`WastebasketMachine.aboveRimCount`) the heap rises above the rim. Supersedes
+    /// `PropArt.heapSlots`.
+    public static let basketSlots: [ArtPoint] = {
+        let rows: [(y: Int, xs: [Int])] = [
+            (28, [4, 12, 20]), (20, [7, 15, 22]), (12, [5, 18]), (4, [9, 17]),
+            (-3, [12, 3, 21]), (-4, [0, 24]), (-7, [8, 16]), (-9, [3, 21]), (-11, [12]), (-12, [6, 18]), (-13, [9, 15]),
+        ]
+        return rows.flatMap { row in row.xs.map { ArtPoint($0, row.y) } }
+    }()
+
     /// How far the heap can rise above the basket's top (slots reach 13 px above it).
     public static let heapRise = 13
 
-    /// The wastebasket heap: one crumpled ball per item in `PropArt.heapSlots` (bottom first), in a buffer
-    /// `heapRise` px taller than the basket; draw it at the basket's origin + `(0, −heapRise)` between
-    /// `wastebasketBack` and `wastebasketFront`. `lift` raises the balls (a knock's jiggle).
+    /// The wastebasket heap: one crumpled ball per item in `basketSlots` (bottom first), in a buffer `heapRise` px
+    /// taller than the basket; draw it at the basket's origin + `(0, −heapRise)` between `wastebasketBack` and
+    /// `wastebasketFront`. `lift` raises the balls (a knock's jiggle).
     public static func heap(_ items: [Item], lift: Int = 0) -> PixelBuffer {
         let r = CoreLayout.wastebasket
         var c = PixelCanvas(width: r.w, height: r.h + heapRise)
-        for (i, item) in items.prefix(PropArt.heapSlots.count).enumerated() {
-            let slot = PropArt.heapSlots[i]
+        for (i, item) in items.prefix(basketSlots.count).enumerated() {
+            let slot = basketSlots[i]
             c.blit(PropArt.paperBall(Int(item.seed % 3)).image, at: ArtPoint(slot.x, slot.y + heapRise - lift))
         }
         return c.buffer
     }
 
     /// The basket composed (back, heap, front), `heapRise` px taller than `CoreLayout.wastebasket`, anchored at
-    /// the basket's foot. Balls inside show through the gaps of the wire mesh, shaded, so fullness is
-    /// visible below the rim too (four steps darker: inside the basket, in its shadow).
+    /// the basket's foot. Balls inside show through the gaps of the wire mesh, shaded two steps (inside the
+    /// basket, in its shadow), so fullness is visible below the rim too.
     public static func wastebasket(_ items: [Item], lift: Int = 0) -> SpriteAsset {
         let r = CoreLayout.wastebasket
         let balls = heap(items, lift: lift)
@@ -387,10 +407,62 @@ public enum InteriorRaster {
             for x in 0..<r.w where front[x, y] == gap {
                 let b = balls[x, y + heapRise]
                 guard b.a != 0, let i = Apollo.index(of: b) else { continue }
-                out[x, y + heapRise] = Ink(palette: i).darker(4).color
+                out[x, y + heapRise] = Ink(palette: i).darker(2).color
             }
         }
         return SpriteAsset("wastebasket.n\(items.count)", out, anchor: ArtPoint(r.w / 2, r.h + heapRise),
                            hitRects: ["mouth": ArtRect(0, heapRise, r.w, 6)])
+    }
+
+    /// The empty basket tipping toward the right (`right`) or left: `frame` 0…2 of the tip
+    /// (`WastebasketMachine.tipFrame`), nil lying on its side (`WastebasketMachine.tippedRect`), mouth that way.
+    /// It turns about the corner of its foot on that side: the tipping frames through three shears of whole-px rows
+    /// (every pixel moves whole, none is lost or doubled), the lying one by an exact quarter turn. The sprite covers
+    /// the whole swing; its anchor is the upright foot's centre.
+    public static func wastebasketTipped(frame: Int?, right: Bool) -> SpriteAsset {
+        let r = CoreLayout.wastebasket
+        var upright = PixelBuffer(width: r.w, height: r.h)
+        upright.blit(PropArt.wastebasketBack().image, at: .zero)
+        upright.blit(PropArt.wastebasketFront().image, at: .zero)
+        // The swing's box for a right tip (core px): the far top corner sweeps a circle about the foot corner.
+        let reach = Int((Float(r.w * r.w + r.h * r.h)).squareRoot().rounded(.up))
+        let box = ArtRect(r.minX, r.maxY - reach, r.w + reach, reach)
+        let pivot = SIMD2(Float(r.maxX - box.x), Float(r.maxY - box.y))
+        var out = PixelBuffer(width: box.w, height: box.h)
+        guard let frame else {
+            // Lying: a quarter turn clockwise about the foot's corner, top toward the right.
+            for y in 0..<r.h {
+                for x in 0..<r.w where upright[x, y].a != 0 {
+                    out[Int(pivot.x) + r.h - 1 - y, Int(pivot.y) - r.w + x] = upright[x, y]
+                }
+            }
+            return tippedSprite(out, frame: nil, right: right, foot: r.midX - box.x)
+        }
+        let a = Float([25, 55, 80][min(max(frame, 0), 2)]) * .pi / 180
+        // Turning clockwise (top toward the right) by `a`: each output px maps back through the inverse shears.
+        let alpha = Float(tan(Double(a / 2))), beta = -Float(sin(Double(a)))
+        for oy in 0..<box.h {
+            for ox in 0..<box.w {
+                // Pixel centres, relative to the pivot (a corner between pixels).
+                var x = Float(ox) + 0.5 - pivot.x, y = Float(oy) + 0.5 - pivot.y
+                x = (x + alpha * y).rounded(.down) + 0.5
+                y = (y + beta * x).rounded(.down) + 0.5
+                x = (x + alpha * y).rounded(.down) + 0.5
+                let sx = Int((x + pivot.x).rounded(.down)) - (r.minX - box.x)
+                let sy = Int((y + pivot.y).rounded(.down)) - (r.minY - box.y)
+                guard sx >= 0, sx < r.w, sy >= 0, sy < r.h else { continue }
+                let px = upright[sx, sy]
+                if px.a != 0 { out[ox, oy] = px }
+            }
+        }
+        return tippedSprite(out, frame: frame, right: right, foot: r.midX - box.x)
+    }
+
+    /// A right-tip image as the sprite for that side, anchored at the upright foot's centre `foot`.
+    static func tippedSprite(_ image: PixelBuffer, frame: Int?, right: Bool, foot: Int) -> SpriteAsset {
+        let name = "wastebasket.tipped" + (frame.map { ".f\($0)" } ?? "") + (right ? ".right" : ".left")
+        return right
+            ? SpriteAsset(name, image, anchor: ArtPoint(foot, image.height))
+            : SpriteAsset(name, image.flippedHorizontally(), anchor: ArtPoint(image.width - foot, image.height))
     }
 }

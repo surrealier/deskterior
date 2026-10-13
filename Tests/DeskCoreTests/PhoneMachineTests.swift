@@ -54,4 +54,21 @@ struct PhoneMachineTests {
         #expect(m.phase == .faceDown)
         #expect(m.step(Self.dt).isEmpty)
     }
+
+    @Test("Commits dispatch the toggling action only when the model differs")
+    func commitAction() {
+        #expect(PhoneMachine.action(committing: true, model: PhoneState(faceDown: false)) != nil)
+        #expect(PhoneMachine.action(committing: true, model: PhoneState(faceDown: true)) == nil)
+        #expect(PhoneMachine.action(committing: false, model: PhoneState(faceDown: true)) != nil)
+        // A flip turned back mid-way: two commits, the model ends where the phone lands.
+        var m = PhoneMachine()
+        var model = PhoneState()
+        for e in m.flip() + m.flip() {
+            if case let .committed(faceDown) = e, PhoneMachine.action(committing: faceDown, model: model) != nil {
+                model.faceDown.toggle()
+            }
+        }
+        while m.needsFrames { _ = m.step(Self.dt) }
+        #expect(model == m.state && !model.faceDown)
+    }
 }
