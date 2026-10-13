@@ -51,7 +51,7 @@ public enum RoomArt {
         drawFloor(&c, from: base, layout: layout)
         drawRug(&c, layout: layout)
 
-        // Under-desk shade: wall strip and floor darken toward the back, fading out over a dithered band.
+        // Under-desk shade: the floor darkens toward the wall in two steps, each with a soft edge.
         let shadeBottom = layout.y(292)
         let apronBottom = layout.y(CoreLayout.apron.maxY)
         shade(&c, ArtRect(desk.x, apronBottom, desk.w, shadeBottom - apronBottom), steps: 1)
@@ -91,7 +91,7 @@ public enum RoomArt {
         let w = c.width
         c.fill(ArtRect(0, top, w, c.height - top), floorBase)
         // Boards run parallel to the wall: 6-row planks (5 board + 1 seam), staggered end joints, a lit
-        // bevel on most boards and the odd short grain streak.
+        // bevel on some boards and the odd short grain streak.
         var row = 0
         var y = top
         while y < c.height {
@@ -140,6 +140,20 @@ public enum RoomArt {
                 c.plot(x + 2, cy + 2, .walnut3)
             }
             x += 12
+        }
+        // A sparse lattice of small diamonds in the field.
+        var row = 0
+        var ly = band.y + 17
+        while ly + 1 < c.height {
+            var lx = inner.x + 6 + (row % 2) * 6
+            while lx + 2 < inner.maxX - 3 {
+                c.plot(lx + 1, ly - 1, .red3)
+                c.hline(x: lx, y: ly, length: 3, .red3)
+                c.plot(lx + 1, ly + 1, .red3)
+                lx += 12
+            }
+            ly += 9
+            row += 1
         }
         // Fringe at the back edge, then a dark contact line under the rug's lip.
         c.hline(x: r.x, y: r.y - 1, length: r.w, .oak0)
