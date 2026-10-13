@@ -1,0 +1,27 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v5
+      - name: Toolchain
+        run: swift --version && xcode-select -p
+      - name: Build
+        run: swift build
+      - name: Test
+        run: scripts/swift-test.sh
+      - name: File-safety lint
+        run: scripts/check-file-safety.sh

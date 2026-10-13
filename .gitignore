@@ -1,0 +1,10 @@
+.build/
+.build-*/
+build/
+.swiftpm/
+.claude/
+.DS_Store
+*.xcuserstate
+xcuserdata/
+DerivedData/
+/demo-out/
