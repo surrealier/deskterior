@@ -14,9 +14,11 @@ public struct MatState: Codable, Hashable, Sendable {
     /// `[cols, rows]`.
     public var grid: [Int]
     public var particles: String
+    /// Desk-plane `[x, d]` centre of the keyboard weighing the mat (it rides along with carries), if any.
+    public var keyboard: [Float]?
 
     public init(pattern: String = "felt", mode: String = "cloth", origin: [Float], size: [Float], angle: Float,
-                grid: [Int], particles: String) {
+                grid: [Int], particles: String, keyboard: [Float]? = nil) {
         self.pattern = pattern
         self.mode = mode
         self.origin = origin
@@ -24,10 +26,11 @@ public struct MatState: Codable, Hashable, Sendable {
         self.angle = angle
         self.grid = grid
         self.particles = particles
+        self.keyboard = keyboard
     }
 
     public enum CodingKeys: String, CodingKey {
-        case pattern, mode, origin, size, angle, grid, particles
+        case pattern, mode, origin, size, angle, grid, particles, keyboard
     }
 
     public init(from decoder: Decoder) throws {
@@ -39,6 +42,7 @@ public struct MatState: Codable, Hashable, Sendable {
         angle = try c.decode(Float.self, forKey: .angle)
         grid = try c.decode([Int].self, forKey: .grid)
         particles = try c.decode(String.self, forKey: .particles)
+        keyboard = try c.decodeIfPresent([Float].self, forKey: .keyboard)
     }
 
     /// Packs positions as Float32 LE `x, d, z` and base64-encodes them.
@@ -76,18 +80,59 @@ public struct MatState: Codable, Hashable, Sendable {
     }
 }
 
+/// A restored mat with the floor and coverage derived from it.
+public struct RestoredMat: Sendable {
+    public var cloth: ClothSim
+    public var bumps: BumpField
+    public var coverage: CoverageTracker
+}
+
 extension ClothSim {
     /// The persisted form of this mat.
     public func matState(pattern: String = "felt", mode: String = "cloth") -> MatState {
         let f = matFrame()
         return MatState(
             pattern: pattern, mode: mode, origin: [f.origin.x, f.origin.y], size: [restSize.x, restSize.y],
-            angle: f.angle, grid: [cols, rows], particles: MatState.encodeParticles(positions)
+            angle: f.angle, grid: [cols, rows], particles: MatState.encodeParticles(positions),
+            keyboard: keyboardCenter.map { [$0.x, $0.y] }
         )
     }
 
-    /// Restores a mat (asleep) from its persisted form over the current bump field; nil when the state is
-    /// malformed. Positions are clamped to the desk bounds.
+    /// Restores a saved mat with what it derives, in the one order that keeps its saved pose exactly: coverage
+    /// (piles the saved cloth lies on, measured over the floor their own bumps make), then those bumps at once,
+    /// then the cloth over them. With `keyboardSize` the keyboard is weighed again at its saved centre. `pileRadius`
+    /// is the footprint radius the scene's coverage uses. Nil when the state is malformed.
+    public static func restore(state: MatState, piles: [PileInput], pileRadius: Float = 6,
+                               keyboardSize: SIMD2<Float>? = nil, params: ClothParams = .standard) -> RestoredMat? {
+        guard var cloth = ClothSim(state: state, params: params) else { return nil }
+        var index = ClothTriangleIndex(cloth)
+        var covered = Set(piles.filter { index.clearance(at: $0.position) != nil }.map(\.id))
+        var bumps = BumpField()
+        for attempt in 0..<4 {
+            bumps.setCoveredPiles(piles.filter { covered.contains($0.id) }, animated: false)
+            guard let c = ClothSim(state: state, bumps: bumps, params: params) else { return nil }
+            cloth = c
+            index.update(cloth)
+            var next = Set<Int>()
+            for p in piles {
+                let k = index.coveredSamples(CoveragePile(id: p.id, position: p.position, radius: pileRadius))
+                if k >= 3 || (k == 2 && covered.contains(p.id)) { next.insert(p.id) }
+            }
+            if next == covered || attempt == 3 { break }
+            covered = next
+        }
+        var coverage = CoverageTracker()
+        for p in piles { coverage.setCovered(p.id, covered.contains(p.id)) }
+        if let size = keyboardSize, let k = state.keyboard, k.count == 2, k[0].isFinite, k[1].isFinite {
+            cloth.setKeyboard(DeskPlaneRect(x: k[0] - size.x / 2, d: k[1] - size.y / 2, width: size.x, depth: size.y))
+            cloth.forceSleep()
+        }
+        return RestoredMat(cloth: cloth, bumps: bumps, coverage: coverage)
+    }
+
+    /// Restores the cloth alone (asleep) from its persisted form over `bumps`, which must already hold the bumps of
+    /// the piles it covers (prefer `restore(state:piles:)`); nil when the state is malformed. Positions are clamped
+    /// to the desk bounds.
     public init?(state: MatState, bumps: BumpField? = nil, params: ClothParams = .standard) {
         guard state.grid.count == 2, state.size.count == 2 else { return nil }
         let cols = state.grid[0], rows = state.grid[1]

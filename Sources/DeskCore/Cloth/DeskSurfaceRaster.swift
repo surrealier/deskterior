@@ -1,13 +1,14 @@
 /// A revealed desk pile drawn into the desk-surface raster as an upright billboard with per-pixel depth.
 public struct PileBillboard: Sendable {
     /// Pile id (≥ 0); its pixels own `DeskSurfaceRaster.pileOwner(id)`.
-    public var id: Int
+    public let id: Int
     public var sprite: PixelBuffer
     /// Desk point `(x, d, z)` under the sprite's bottom-centre.
     public var position: SIMD3<Float>
 
-    public init(id: Int, sprite: PixelBuffer, position: SIMD3<Float>) {
-        precondition(id >= 0, "pile ids are non-negative")
+    /// Nil for a negative id, which `owner[]` cannot encode.
+    public init?(id: Int, sprite: PixelBuffer, position: SIMD3<Float>) {
+        guard id >= 0, id < Int(Int32.max) - 2 else { return nil }
         self.id = id
         self.sprite = sprite
         self.position = position
@@ -51,39 +52,51 @@ public struct DeskSurfaceRaster: Sendable {
 
     /// Depth units per px.
     static let depthScale: Float = 256
-    /// Back faces win ties against the layer under them by this much (½ px).
+    /// A folded flap's underside wins ties against the layer under it by this much (½ px); a face-up slope seen
+    /// from behind (steeper than the view) loses ties by as much, so it never leaks past the face hiding it.
     static let backBias: Int32 = 128
     /// Shading-level fractions (·1024) between which neighbouring levels are Bayer-dithered.
     static let ditherLow = 358
     static let ditherHigh = 666
-    /// Neighbour depth jump (1.5 px) that draws a crease or fold edge.
+    /// Neighbour depth jump (1.5 px) that draws a crease or a contour where the cloth passes behind itself.
     static let creaseJump: Int32 = 384
-    /// Material jump (6 px · 16) between neighbours that marks a different layer.
-    static let layerJump: Int32 = 96
+    /// Neighbouring pixels whose owning particles are this many grid steps apart or fewer lie on one continuous
+    /// stretch of cloth; farther apart, the nearer pixel is the edge of a layer lying over another.
+    static let layerSteps = 2
+    /// Below this shading change per pixel (levels · 1024) a face counts as flat and takes the nearest level instead
+    /// of a dither, so planar faces stay one solid colour.
+    static let ditherGradient = 12
     /// A triangle casts a shadow only when all of it is off the floor (min lift, px · 16) and part of it is clearly
     /// lifted (max lift), so creases and contact lines never shadow the layer they rest on.
     static let shadowMinLift: Int32 = 24
     static let shadowLift: Int32 = 48
-    /// Light from the upper left (−x, a little from the back, mostly above), normalized.
-    static let light = SIMD3<Float>(-0.6, 0.1, 0.8) / (1.01 as Float).squareRoot()
+    /// Light from the upper left (−x, a little from the front, mostly above), normalized: bumps keep felt-coloured
+    /// fronts and lit left flanks, and only their right flanks shade.
+    static let light = SIMD3<Float>(-0.6, -0.2, 0.8) / (1.04 as Float).squareRoot()
     /// Levels per unit of `n·L` change: slopes toward the light brighten faster than slopes away darken, so the
     /// viewer-facing slopes that fill most of this oblique view stay felt-coloured and only turned-away faces darken.
     static let shadeGainLit: Float = 4.5
-    static let shadeGainDark: Float = 2.8
+    static let shadeGainDark: Float = 1.5
 
     public private(set) var image: PixelBuffer
     /// `width × height`, row-major: −1 empty, ≥ 0 particle id, ≤ −2 pile (`pileID(owner:)`).
     public private(set) var owner: [Int32]
-    public var pattern: MatPattern
+    public var pattern: MatPattern {
+        didSet { inks = RasterInks(pattern) }
+    }
 
     var texels: [SurfaceTexel]
     /// Receiver depth of a cast shadow per pixel (`Int32.min` = none).
     var shadow: [Int32]
     /// Region written by the last render (buffer px).
     var dirty = ArtRect.zero
+    /// Per-render scratch kept between renders.
+    var verts = VertexSet()
+    var inks: RasterInks
 
     public init(pattern: MatPattern = .felt) {
         self.pattern = pattern
+        inks = RasterInks(pattern)
         image = PixelBuffer(width: Self.width, height: Self.height)
         owner = Array(repeating: -1, count: Self.width * Self.height)
         texels = Array(repeating: .empty, count: Self.width * Self.height)
@@ -106,7 +119,8 @@ public struct DeskSurfaceRaster: Sendable {
         let previous = dirty
         clear(previous)
         var bounds = Bounds()
-        let verts = VertexSet(cloth: cloth)
+        verts.update(cloth: cloth)
+        let verts = verts
         let matW = Int(cloth.restSize.x.rounded()), matD = Int(cloth.restSize.y.rounded())
         let pattern = pattern
         texels.withUnsafeMutableBufferPointer { T in
@@ -130,7 +144,7 @@ public struct DeskSurfaceRaster: Sendable {
             }
         }
         dirty = bounds.rect
-        resolve(dirty, matW: matW, matD: matD)
+        resolve(dirty, matW: matW, matD: matD, cols: cloth.cols)
     }
 
     // MARK: - Clear
@@ -159,12 +173,11 @@ public struct DeskSurfaceRaster: Sendable {
 
     // MARK: - Resolve
 
-    private mutating func resolve(_ r: ArtRect, matW: Int, matD: Int) {
+    private mutating func resolve(_ r: ArtRect, matW: Int, matD: Int, cols: Int) {
         guard !r.isEmpty else { return }
         let w = Self.width, h = Self.height
-        let pattern = pattern
-        let top = pattern.topRamp.map(\.color), under = pattern.undersideRamp.map(\.color)
-        let outlineColor = pattern.outline.color, deskShadow = pattern.deskShadow.color
+        let pattern = pattern, inks = inks
+        let outlineColor = inks.outline, deskShadow = inks.deskShadow
         texels.withUnsafeBufferPointer { T in
             shadow.withUnsafeBufferPointer { S in
                 owner.withUnsafeMutableBufferPointer { O in
@@ -178,7 +191,8 @@ public struct DeskSurfaceRaster: Sendable {
                                     if S[i] != .min { I[i] = deskShadow }
                                     continue
                                 case Self.kindPile:
-                                    I[i] = t.color
+                                    // A revealed pile under lifted cloth stands in its shadow.
+                                    I[i] = S[i] != .min ? inks.shaded(t.color) : t.color
                                     O[i] = t.owner
                                     continue
                                 default:
@@ -186,11 +200,14 @@ public struct DeskSurfaceRaster: Sendable {
                                 }
                                 let back = t.kind == Self.kindBack || t.kind == Self.kindBackThread
                                 let thread = t.kind == Self.kindFrontThread || t.kind == Self.kindBackThread
-                                let ramp = back ? under : top
+                                let ramp = back ? inks.under : inks.top
                                 O[i] = t.owner
-                                // Outline / crease from the 4 neighbours (this pixel must be the nearer one).
+                                // Edges from the 4 neighbours (this pixel must be the nearer one): an outline against
+                                // the desk, piles and other layers; a contour one shade darker where one stretch of
+                                // cloth passes in front of itself or creases.
+                                var edge = 0  // 0 none, 1 contour, 2 outline
+                                var gradient: Int32 = 0
                                 if !thread {
-                                    var edge = 0  // 0 none, 1 crease, 2 outline
                                     for k in 0..<4 {
                                         let nx = x + (k == 0 ? -1 : k == 1 ? 1 : 0)
                                         let ny = y + (k == 2 ? -1 : k == 3 ? 1 : 0)
@@ -203,25 +220,26 @@ public struct DeskSurfaceRaster: Sendable {
                                             edge = 2
                                             break
                                         }
+                                        let nBack = n.kind == Self.kindBack || n.kind == Self.kindBackThread
+                                        if n.kind != Self.kindPile && nBack == back {
+                                            gradient = max(gradient, abs(n.light - t.light))
+                                        }
                                         guard n.depth < t.depth else { continue }
-                                        if n.kind == Self.kindPile {
+                                        if n.kind == Self.kindPile || nBack != back {
                                             edge = 2
                                             break
                                         }
-                                        let jump = abs(n.u - t.u) + abs(n.v - t.v) > Self.layerJump
-                                            || (n.kind == Self.kindBack || n.kind == Self.kindBackThread) != back
-                                        if jump {
+                                        let a = Int(t.owner), b = Int(n.owner)
+                                        let steps = max(abs(a % cols - b % cols), abs(a / cols - b / cols))
+                                        let jump = t.depth - n.depth > Self.creaseJump
+                                        if steps > Self.layerSteps && !jump {
                                             edge = 2
                                             break
                                         }
-                                        if t.depth - n.depth > Self.creaseJump { edge = 1 }
+                                        if jump { edge = 1 }
                                     }
                                     if edge == 2 {
                                         I[i] = outlineColor
-                                        continue
-                                    }
-                                    if edge == 1 {
-                                        I[i] = ramp[0]
                                         continue
                                     }
                                 }
@@ -237,20 +255,49 @@ public struct DeskSurfaceRaster: Sendable {
                                 var level = Int(t.light)
                                 if S[i] != .min && S[i] >= t.depth - 320 { level -= 1280 }
                                 level = max(level, 0)
-                                // Crisp bands with a short 4×4 Bayer ramp only around each half-way boundary, so
-                                // near-flat felt stays one solid colour and slopes read as clean pixel-art steps.
+                                // Crisp bands; a short 4×4 Bayer ramp blends neighbouring levels only around each
+                                // half-way boundary of a shading gradient. Flat faces take the nearest level.
                                 let whole = level >> 10, frac = level & 1023
-                                let span = Self.ditherHigh - Self.ditherLow
-                                let ramp16 = min(max((frac - Self.ditherLow) * 16 / span, 0), 16)
-                                let bayer = Dither.bayer4(x: x + Self.origin.x, y: y + Self.origin.y)
-                                let lv = whole + (bayer < ramp16 ? 1 : 0)
-                                I[i] = ramp[min(max(lv + 1 + tone, 0), 6)]
+                                let lv: Int
+                                if gradient < Self.ditherGradient {
+                                    lv = whole + (frac >= 512 ? 1 : 0)
+                                } else {
+                                    let span = Self.ditherHigh - Self.ditherLow
+                                    let ramp16 = min(max((frac - Self.ditherLow) * 16 / span, 0), 16)
+                                    let bayer = Dither.bayer4(x: x + Self.origin.x, y: y + Self.origin.y)
+                                    lv = whole + (bayer < ramp16 ? 1 : 0)
+                                }
+                                let shade = min(max(lv + 1 + tone, 0), 6)
+                                I[i] = ramp[edge == 1 ? max(shade - 1, 0) : shade]
                             }
                         }
                     }
                 }
             }
         }
+    }
+}
+
+/// Resolved colours of a pattern's inks.
+struct RasterInks {
+    var top: [RGBA8]
+    var under: [RGBA8]
+    var outline: RGBA8
+    var deskShadow: RGBA8
+    /// Each Apollo colour two ramp steps darker (indexed by palette index), for piles in a cast shadow.
+    var shadedByIndex: [RGBA8]
+
+    init(_ pattern: MatPattern) {
+        top = pattern.topRamp.map(\.color)
+        under = pattern.undersideRamp.map(\.color)
+        outline = pattern.outline.color
+        deskShadow = pattern.deskShadow.color
+        shadedByIndex = (0..<Apollo.count).map { Ink(palette: $0).darker(2).color }
+    }
+
+    func shaded(_ c: RGBA8) -> RGBA8 {
+        guard let i = Apollo.index(of: c) else { return c }
+        return shadedByIndex[i]
     }
 }
 
@@ -267,20 +314,25 @@ struct VertexSet {
     var lightBack: [Int32]
     var lift: [Int32]
     var valid: [Bool]
+    /// Underside-up (part of a folded flap).
+    var folded: [Bool]
 
-    init(cloth: ClothSim) {
+    init() {
+        (sx, sy, depth, u, v, lightFront, lightBack, lift) = ([], [], [], [], [], [], [], [])
+        (valid, folded) = ([], [])
+    }
+
+    /// Recomputes every vertex for `cloth`, reusing the arrays.
+    mutating func update(cloth: ClothSim) {
         let n = cloth.count, cols = cloth.cols, rows = cloth.rows
         let proj = cloth.params.projection
         let ox = Float(DeskSurfaceRaster.origin.x), oy = Float(DeskSurfaceRaster.origin.y)
-        sx = Array(repeating: 0, count: n)
-        sy = sx
-        depth = sx
-        u = sx
-        v = sx
-        lightFront = sx
-        lightBack = sx
-        lift = sx
-        valid = Array(repeating: true, count: n)
+        if sx.count != n {
+            sx = Array(repeating: 0, count: n)
+            (sy, depth, u, v, lightFront, lightBack, lift) = (sx, sx, sx, sx, sx, sx, sx)
+            valid = Array(repeating: true, count: n)
+            folded = valid
+        }
         let L = DeskSurfaceRaster.light
         let lit = DeskSurfaceRaster.shadeGainLit, dark = DeskSurfaceRaster.shadeGainDark
         func fixed(_ f: Float, _ scale: Float) -> Int32? {
@@ -307,10 +359,12 @@ struct VertexSet {
                             valid[i] = false
                             continue
                         }
+                        valid[i] = true
                         sx[i] = x
                         sy[i] = y
                         depth[i] = z
                         lift[i] = l
+                        folded[i] = P[i].floorOffset != cloth.params.thickness
                         u[i] = Int32((UV[i].x * 16).rounded(.toNearestOrAwayFromZero))
                         v[i] = Int32((UV[i].y * 16).rounded(.toNearestOrAwayFromZero))
                         let a = abs3(P[row + min(c + 1, cols - 1)]) - abs3(P[row + max(c - 1, 0)])
@@ -427,7 +481,8 @@ private func rasterizeCloth(
     let va = Int(V.v[ia]), vb = Int(V.v[ib]), vc = Int(V.v[ic])
     let lights = front ? V.lightFront : V.lightBack
     let la = Int(lights[ia]), lb = Int(lights[ib]), lc = Int(lights[ic])
-    let bias = front ? 0 : Int(DeskSurfaceRaster.backBias)
+    let bias = front ? 0
+        : (V.folded[ia] || V.folded[ib] || V.folded[ic] ? 1 : -1) * Int(DeskSurfaceRaster.backBias)
     let area = s.area
     let fringe = pattern.fringe
     let onU = MatPattern.fringeOnU(width: matW, depth: matD)

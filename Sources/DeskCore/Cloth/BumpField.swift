@@ -15,12 +15,16 @@ public struct BumpField: Sendable {
     public private(set) var revision: UInt64 = 0
     private var from: [Float]
     private var target: [Float]
+    /// Stamping scratch, so an unchanged or changed pile set never allocates a new grid.
+    private var scratch: [Float]
+    private var lastPiles: [PileInput] = []
     private var easeFrame = BumpField.easeFrames
 
     public init() {
         heights = Array(repeating: 0, count: Self.cols * Self.rows)
-        from = heights
-        target = heights
+        from = Array(repeating: 0, count: Self.cols * Self.rows)
+        target = Array(repeating: 0, count: Self.cols * Self.rows)
+        scratch = Array(repeating: 0, count: Self.cols * Self.rows)
     }
 
     /// Bump height for a group of `n` tokens: `3 + 2·min(n−1, 6)`.
@@ -34,21 +38,27 @@ public struct BumpField: Sendable {
     public var maxHeight: Float { heights.max() ?? 0 }
 
     /// Rebuilds the target from the covered piles (clustered with radius 10). With `animated` the change eases in
-    /// over `easeFrames` calls to `advance()`; otherwise it applies at once.
+    /// over `easeFrames` calls to `advance()`; otherwise it applies at once. Passing the same piles again is cheap.
     public mutating func setCoveredPiles(_ piles: [PileInput], animated: Bool = true) {
-        let newGroups = PileClusterer.groups(piles, radius: 10)
-        let newTarget = Self.stamp(newGroups)
-        groups = newGroups
-        guard newTarget != target else { return }
-        target = newTarget
+        if piles == lastPiles && (animated || !isEasing) { return }
+        lastPiles = piles
+        groups = PileClusterer.groups(piles, radius: 10)
+        Self.stamp(groups, into: &scratch)
+        if scratch != target { swap(&scratch, &target) } else if animated || !isEasing { return }
         if animated {
-            from = heights
+            Self.copy(heights, into: &from)
             easeFrame = 0
         } else {
-            heights = newTarget
-            from = newTarget
+            Self.copy(target, into: &heights)
+            Self.copy(target, into: &from)
             easeFrame = Self.easeFrames
             revision &+= 1
+        }
+    }
+
+    private static func copy(_ src: [Float], into dst: inout [Float]) {
+        dst.withUnsafeMutableBufferPointer { d in
+            src.withUnsafeBufferPointer { s in for i in 0..<s.count { d[i] = s[i] } }
         }
     }
 
@@ -81,8 +91,8 @@ public struct BumpField: Sendable {
 
     /// Max over groups of a rounded box: full height within `r/2` of the members' bounding box, smoothstep to 0
     /// at `r`.
-    static func stamp(_ groups: [PileGroup]) -> [Float] {
-        var out = [Float](repeating: 0, count: cols * rows)
+    static func stamp(_ groups: [PileGroup], into out: inout [Float]) {
+        out.withUnsafeMutableBufferPointer { o in for i in 0..<o.count { o[i] = 0 } }
         for g in groups {
             let h = bumpHeight(count: g.count), r = bumpRadius(count: g.count), plateau = r / 2
             let lo = g.minPosition - SIMD2(repeating: r), hi = g.maxPosition + SIMD2(repeating: r)
@@ -107,6 +117,5 @@ public struct BumpField: Sendable {
                 }
             }
         }
-        return out
     }
 }

@@ -35,11 +35,11 @@ enum ClothFixtures {
         return cloth
     }
 
-    /// The back-right corner peeled in over the mat and released: a dog-ear lying underside-up.
+    /// The back-right corner peeled in past the middle of the mat and released: a dog-ear lying underside-up.
     static func dogEar() -> ClothSim {
         var cloth = ClothSim()
         run(&cloth, 10)
-        drag(&cloth, cloth.cornerIndices[2], by: SIMD2(-60, 18), frames: 30)
+        drag(&cloth, cloth.cornerIndices[2], by: SIMD2(-60, 27), frames: 30)
         run(&cloth, 30)
         return cloth
     }
@@ -257,5 +257,42 @@ struct ClothSimTests {
         ClothFixtures.run(&cloth, 60, bumps: bumps)
         let restored = try #require(ClothSim(state: cloth.matState(), bumps: bumps))
         for (a, b) in zip(restored.positions, cloth.positions) { #expect(abs(a.z - b.z) < 1e-3) }
+    }
+
+    @Test("restore(state:piles:) derives coverage and bumps first, so the saved pose and keyboard come back exactly")
+    func restoreHelper() throws {
+        let piles = [PileInput(id: 0, position: SIMD2(256, 50), count: 7), PileInput(id: 1, position: SIMD2(190, 40), count: 3),
+                     PileInput(id: 2, position: SIMD2(100, 50), count: 1)]
+        var scene = ClothScene(piles: piles)
+        scene.cloth.setKeyboard(DeskPlaneRect(x: 290, d: 10, width: 60, depth: 20))
+        scene.frames(30)
+        ClothFixtures.drag(&scene.cloth, scene.cloth.index(col: 10, row: 7), by: SIMD2(20, 0), frames: 15,
+                           bumps: scene.bumps)
+        scene.frames(240)
+        #expect(scene.cloth.isAsleep && scene.coverage.isCovered(0) && !scene.coverage.isCovered(2))
+        let saved = try #require(scene.cloth.keyboardCenter)
+        let state = try JSONDecoder().decode(MatState.self, from: JSONEncoder().encode(scene.cloth.matState()))
+        #expect(state.keyboard == [saved.x, saved.y])
+
+        let restored = try #require(ClothSim.restore(state: state, piles: piles, pileRadius: 5,
+                                                     keyboardSize: SIMD2(60, 20)))
+        #expect(restored.coverage.isCovered(0) && restored.coverage.isCovered(1) && !restored.coverage.isCovered(2))
+        #expect(restored.cloth.isAsleep)
+        for (a, b) in zip(restored.cloth.positions, scene.cloth.positions) {
+            #expect(abs(a.x - b.x) < 1e-4 && abs(a.y - b.y) < 1e-4 && abs(a.z - b.z) < 1e-3)
+        }
+        let kb = try #require(restored.cloth.keyboardCenter)
+        #expect(length2(kb - saved) < 1e-3)
+
+        // Running it on changes nothing: no wrinkles from a floor that shifted under it.
+        var next = ClothScene(restored.cloth, piles: piles, covered: false)
+        next.bumps = restored.bumps
+        next.coverage = restored.coverage
+        next.cloth.wake()
+        next.frames(120)
+        let shift = zip(next.cloth.positions, scene.cloth.positions).map { length2(SIMD2($0.x - $1.x, $0.y - $1.y)) }
+        #expect((shift.max() ?? 0) < 0.05)
+        #expect(abs(ClothMetrics.wrinkle(next.cloth) - ClothMetrics.wrinkle(scene.cloth)) < 0.005)
+        #expect(next.coverage.isCovered(0) && next.coverage.isCovered(1) && !next.coverage.isCovered(2))
     }
 }

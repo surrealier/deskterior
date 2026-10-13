@@ -18,9 +18,7 @@ struct ClothStage {
     func screen(_ i: Int) -> SIMD2<Float> { cloth.params.projection.project(cloth.position(i)) }
 
     func coveragePiles() -> [CoveragePile] {
-        piles.map {
-            CoveragePile(id: $0.id, position: $0.position, radius: 5, top: BumpField.bumpHeight(count: $0.count))
-        }
+        piles.map { CoveragePile(id: $0.id, position: $0.position, radius: 5) }
     }
 
     /// One frame: coverage → bumps → cloth.
@@ -45,7 +43,7 @@ struct ClothStage {
 
     /// Renders the desk background with the surface raster on top, cropped to `crop` (core px).
     mutating func render(crop: ArtRect = ClothReview.crop) -> PixelBuffer {
-        let billboards = piles.filter { !coverage.isCovered($0.id) }.map {
+        let billboards = piles.filter { !coverage.isCovered($0.id) }.compactMap {
             PileBillboard(id: $0.id, sprite: ClothReview.pileSprite(count: $0.count),
                           position: SIMD3($0.position.x, $0.position.y, 0))
         }
@@ -155,6 +153,7 @@ enum ClothReview {
         let (tugShots, tugSeq) = tug()
         shots += tugShots
         shots += transforms()
+        shots += review2()
 
         for (name, b) in shots { try write(b, "\(name).png", in: outDir, scale: 4) }
         // DESKTERIOR_CLOTH_ZOOM="x,y,w,h" (crop px) also writes ×8 close-ups for pixel inspection.
@@ -215,7 +214,7 @@ enum ClothReview {
         return (shots, seq)
     }
 
-    /// Peel the front-left corner up and in over a pile, then release (it lays back).
+    /// Peel the front-left corner up and in over a pile (O7), then release: short of the middle, it lays back.
     static func peel() -> ([Shot], [PixelBuffer]) {
         var s = stage(piles: [(0, SIMD2(166, 18), 2)])
         s.coverAll()
@@ -240,7 +239,7 @@ enum ClothReview {
         return (shots, seq)
     }
 
-    /// Fold: lift the front edge and carry it back over the mat, release, rest 300 steps.
+    /// Fold (O8): lift the front edge and carry it back past the middle of the mat, release, rest 300 steps.
     static func edgeFold() -> ([Shot], [PixelBuffer]) {
         var s = stage()
         s.frames(30)
@@ -249,7 +248,7 @@ enum ClothReview {
         let e0 = s.screen(edge)
         s.cloth.beginGrab(particle: edge, cursor: e0)
         for f in 1...40 {
-            s.cloth.moveGrab(to: e0 + SIMD2(0, -Float(f) * 0.75))
+            s.cloth.moveGrab(to: e0 + SIMD2(0, -Float(f)))
             s.frame()
             if f % 4 == 0 { seq.append(s.render()) }
         }
@@ -260,7 +259,7 @@ enum ClothReview {
         return ([held, shot("09-fold-persisted", &s)], seq)
     }
 
-    /// Dog-ear: peel the back-right corner in over the mat, release, rest; then Unfold.
+    /// Dog-ear: peel the back-right corner in past the middle, release, rest; then Unfold.
     static func dogEar() -> [Shot] {
         var s = stage()
         s.frames(10)
@@ -268,7 +267,7 @@ enum ClothReview {
         let p0 = s.screen(corner)
         s.cloth.beginGrab(particle: corner, cursor: p0)
         for f in 1...30 {
-            s.cloth.moveGrab(to: p0 + SIMD2(-Float(f) * 2, Float(f) * 0.6))
+            s.cloth.moveGrab(to: p0 + SIMD2(-Float(f) * 2, Float(f) * 0.9))
             s.frame()
         }
         var shots = [shot("09b-dogear-held", &s)]
@@ -326,6 +325,105 @@ enum ClothReview {
         resized.cloth.transform(size: SIMD2(150, 66), angle: 0)
         resized.frames(60)
         return [shot("13-rotated-30", &rotated), shot("14-resized-150x66", &resized)]
+    }
+
+    /// Review fixes: unpeel by hand, menu rotate fitted to the desk, edge tent, peel-to-reveal released, Smooth on a
+    /// dog-ear, the keyboard and a knock.
+    static func review2() -> [Shot] {
+        var shots: [Shot] = []
+        // Drag a dog-ear's tip back to where it lay: it opens and lays flat.
+        var u = stage()
+        u.frames(10)
+        let tip = u.cloth.cornerIndices[2]
+        let t0 = u.screen(tip)
+        u.cloth.beginGrab(particle: tip, cursor: t0)
+        for f in 1...30 {
+            u.cloth.moveGrab(to: t0 + SIMD2(-Float(f) * 2, Float(f) * 0.9))
+            u.frame()
+        }
+        u.cloth.endGrab()
+        u.frames(60)
+        let back = u.cloth.params.projection.project(SIMD3(358, 92, 1))
+        let from = u.screen(tip)
+        u.cloth.beginGrab(particle: tip, cursor: from)
+        for f in 1...24 {
+            u.cloth.moveGrab(to: from + (back - from) * (Float(f) / 24) + SIMD2(0, -10 * sin(Float(f) / 24 * .pi)))
+            u.frame()
+            if f == 12 { shots.append(shot("15-unpeel-half", &u)) }
+        }
+        u.cloth.endGrab()
+        u.frames(60)
+        shots.append(shot("16-unpeel-done", &u))
+
+        // Rotate +15° from the menu: the default mat turns only as far as it fits the desk depth.
+        var r = stage()
+        r.frames(5)
+        r.cloth.transform(size: r.cloth.restSize, angle: 15 * .pi / 180)
+        r.frames(60)
+        print(String(format: "rotate +15: angle %.2f°", r.cloth.matFrame().angle * 180 / .pi))
+        shots.append(shot("17-rotate-15-fitted", &r))
+
+        // Pull one point of the front edge up 24 px: a tongue, not the whole edge.
+        var e = stage()
+        e.frames(5)
+        let mid = e.cloth.index(col: 17, row: 0)
+        let m0 = e.screen(mid)
+        e.cloth.beginGrab(particle: mid, cursor: m0)
+        for f in 1...24 {
+            e.cloth.moveGrab(to: m0 + SIMD2(0, -Float(f)))
+            e.frame()
+        }
+        shots.append(shot("18-edge-tent-24", &e))
+
+        // Peel a corner far enough to reveal a pile 12 px in, hold, release: it lays back over the pile.
+        var p = stage(piles: [(0, SIMD2(166, 18), 2)])
+        p.coverAll()
+        p.frames(30)
+        let c = p.cloth.cornerIndices[0]
+        let c0 = p.screen(c)
+        p.cloth.beginGrab(particle: c, cursor: c0)
+        let dir = SIMD2<Float>(0.7, -0.75) / (0.7 * 0.7 + 0.75 * 0.75).squareRoot()
+        for f in 1...20 {
+            p.cloth.moveGrab(to: c0 + dir * 40 * Float(f) / 20)
+            p.frame()
+        }
+        p.frames(10)
+        shots.append(shot("19-peel-40-held", &p))
+        p.cloth.endGrab()
+        p.frames(60)
+        shots.append(shot("20-peel-40-released", &p))
+
+        // Smooth Mat on a dog-ear leaves the fold alone.
+        var d = stage()
+        d.frames(10)
+        let k = d.cloth.cornerIndices[2]
+        let k0 = d.screen(k)
+        d.cloth.beginGrab(particle: k, cursor: k0)
+        for f in 1...30 {
+            d.cloth.moveGrab(to: k0 + SIMD2(-Float(f) * 2, Float(f) * 0.9))
+            d.frame()
+        }
+        d.cloth.endGrab()
+        d.frames(60)
+        d.cloth.smooth()
+        d.frames(60)
+        shots.append(shot("21-dogear-smoothed", &d))
+
+        // Peek Under over a pile: it is revealed and stands in the lifted edge's shadow.
+        var k2 = stage(piles: [(0, SIMD2(256, 12), 2)])
+        k2.coverAll()
+        k2.frames(30)
+        k2.cloth.peekUnder(SIMD2(256, 16))
+        k2.frames(24)
+        shots.append(shot("23-peek-pile", &k2))
+
+        // A desk knock mid-hop.
+        var n = stage()
+        n.frames(5)
+        n.cloth.knock(from: SIMD2(256, 0))
+        n.frames(4)
+        shots.append(shot("22-knock", &n))
+        return shots
     }
 
     /// Frames in a grid with 2-px gutters.

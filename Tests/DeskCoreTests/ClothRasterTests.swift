@@ -21,7 +21,7 @@ struct ClothScene {
     mutating func frames(_ n: Int) {
         for _ in 0..<n {
             coverage.update(piles: piles.map {
-                CoveragePile(id: $0.id, position: $0.position, radius: 5, top: BumpField.bumpHeight(count: $0.count))
+                CoveragePile(id: $0.id, position: $0.position, radius: 5)
             }, cloth: cloth)
             bumps.setCoveredPiles(piles.filter { coverage.isCovered($0.id) })
             bumps.advance()
@@ -31,7 +31,7 @@ struct ClothScene {
 
     /// Revealed piles as billboards.
     var billboards: [PileBillboard] {
-        piles.filter { !coverage.isCovered($0.id) }.map {
+        piles.filter { !coverage.isCovered($0.id) }.compactMap {
             PileBillboard(id: $0.id, sprite: ClothFixtures.pileSprite, position: SIMD3($0.position.x, $0.position.y, 0))
         }
     }
@@ -76,7 +76,7 @@ struct ClothRasterTests {
         return s
     }
 
-    /// The front edge carried back over the mat and released: a folded strip, underside up.
+    /// The front edge carried back past the middle of the mat and released: a folded strip, underside up.
     static func fold() -> ClothScene {
         var s = ClothScene()
         s.frames(30)
@@ -84,7 +84,7 @@ struct ClothRasterTests {
         let c0 = ClothFixtures.screen(s.cloth, edge)
         s.cloth.beginGrab(particle: edge, cursor: c0)
         for f in 1...40 {
-            s.cloth.moveGrab(to: c0 + SIMD2(0, -Float(f) * 0.75))
+            s.cloth.moveGrab(to: c0 + SIMD2(0, -Float(f)))
             s.frames(1)
         }
         s.cloth.endGrab()
@@ -213,13 +213,13 @@ struct ClothRasterTests {
         func shown(_ id: Int) -> Int { raster.owner.filter { $0 == DeskSurfaceRaster.pileOwner(id) }.count }
         // Standing on the desk in front of the mat's front edge: the whole sprite shows.
         raster.render(cloth: scene.cloth, piles: [
-            PileBillboard(id: 3, sprite: ClothFixtures.pileSprite, position: SIMD3(256, 4, 0)),
+            PileBillboard(id: 3, sprite: ClothFixtures.pileSprite, position: SIMD3(256, 4, 0))!,
         ])
         #expect(shown(3) == 10 * 12)
         // Standing on the desk under the flat mat, only its bottom row (z 0.5) is below the cloth (z 1): covered piles
         // are the caller's to hide.
         raster.render(cloth: scene.cloth, piles: [
-            PileBillboard(id: 4, sprite: ClothFixtures.pileSprite, position: SIMD3(256, 50, 0)),
+            PileBillboard(id: 4, sprite: ClothFixtures.pileSprite, position: SIMD3(256, 50, 0))!,
         ])
         #expect(shown(4) == 10 * 11)
         // A pile standing behind the held, lifted front flap is partly hidden by it.
@@ -233,8 +233,84 @@ struct ClothRasterTests {
             held.frames(1)
         }
         raster.render(cloth: held.cloth, piles: [
-            PileBillboard(id: 5, sprite: ClothFixtures.pileSprite, position: SIMD3(256, 62, 0)),
+            PileBillboard(id: 5, sprite: ClothFixtures.pileSprite, position: SIMD3(256, 62, 0))!,
         ])
         #expect(shown(5) > 0 && shown(5) < 10 * 11)
+    }
+
+    /// Outline pixels whose four neighbours are all cloth: lines drawn inside the mat.
+    static func interiorOutlines(_ raster: DeskSurfaceRaster) -> Int {
+        let w = DeskSurfaceRaster.width, h = DeskSurfaceRaster.height, ink = MatPattern.felt.outline.color
+        var n = 0
+        for y in 1..<(h - 1) {
+            for x in 1..<(w - 1) where raster.image.pixel(x, y) == ink {
+                let i = y * w + x
+                if [i - 1, i + 1, i - w, i + w].allSatisfy({ raster.owner[$0] >= 0 }) { n += 1 }
+            }
+        }
+        return n
+    }
+
+    @Test("Single-layer cloth (bumps, carry wrinkles) draws no black lines inside the mat")
+    func noCracksOnOneLayer() {
+        #expect(Self.interiorOutlines(Self.bumps().render()) == 0)
+        var wrinkled = DeskSurfaceRaster()
+        wrinkled.render(cloth: ClothFixtures.wrinkled())
+        #expect(Self.interiorOutlines(wrinkled) == 0)
+        // A fold still outlines the flap where it lies over the base.
+        #expect(Self.interiorOutlines(Self.fold().render()) > 50)
+    }
+
+    @Test("A flat face is one solid shade, not a dither checkerboard")
+    func flatFacesAreSolid() throws {
+        // A plane tilted toward the light, shading level ≈ 2.45 (inside the old dither band).
+        let base = ClothSim()
+        let tilted = base.positions.map { SIMD3($0.x, $0.y, 1 + 0.2 * ($0.x - 154)) }
+        let cloth = ClothSim(positions: tilted, cols: 35, rows: 15, size: SIMD2(204, 84))
+        var raster = DeskSurfaceRaster()
+        raster.render(cloth: cloth)
+        let lit = MatPattern.felt.topRamp[4].color, flat = MatPattern.felt.topRamp[3].color
+        var counts = (flat: 0, lit: 0)
+        let w = DeskSurfaceRaster.width
+        for (i, c) in raster.image.pixels.enumerated() where raster.owner[i] >= 0 {
+            let u = cloth.uv[Int(raster.owner[i])]
+            guard u.x > 24 && u.x < 180 && u.y > 18 && u.y < 66, i % w > 0 else { continue }
+            if c == flat { counts.flat += 1 } else if c == lit { counts.lit += 1 }
+        }
+        #expect(counts.flat > 1000)
+        // Only the light fibre specks use the lit shade.
+        #expect(Float(counts.lit) < Float(counts.flat) * 0.06, "flat \(counts.flat), lit \(counts.lit)")
+    }
+
+    @Test("Felt specks do not repeat per tile; the underside never glows amber")
+    func patternDetails() {
+        let felt = MatPattern.felt
+        var differs = 0
+        for v in 12..<70 {
+            for u in 12..<170 where felt.top(u: u, v: v, width: 204, depth: 84) != felt.top(u: u + 16, v: v, width: 204, depth: 84) {
+                differs += 1
+            }
+        }
+        #expect(differs > 100)
+        for ink in [Ink.walnut4, .walnut5, Role.ledAmber, Role.lampGlow] { #expect(!felt.undersideRamp.contains(ink)) }
+        // Underside dots span two material rows, so the 2:1 squash keeps them at any phase.
+        #expect(felt.underside(u: 10, v: 4, width: 204, depth: 84) == felt.underside(u: 10, v: 5, width: 204, depth: 84))
+    }
+
+    @Test("A revealed pile under lifted cloth is shaded; billboards need a non-negative id")
+    func pileShadowAndIDs() {
+        #expect(PileBillboard(id: -1, sprite: ClothFixtures.pileSprite, position: .zero) == nil)
+        var scene = Self.flat()
+        scene.cloth.peekUnder(SIMD2(256, 16))
+        scene.frames(20)
+        var raster = DeskSurfaceRaster()
+        raster.render(cloth: scene.cloth, piles: [
+            PileBillboard(id: 1, sprite: ClothFixtures.pileSprite, position: SIMD3(256, 12, 0))!,
+        ])
+        let owned = zip(raster.image.pixels, raster.owner).filter { $0.1 == DeskSurfaceRaster.pileOwner(1) }.map(\.0)
+        #expect(owned.count > 40)
+        let shaded = Ink.neutral9.darker(2).color
+        #expect(owned.contains(shaded))
+        #expect(!owned.contains(Ink.neutral9.color) || owned.filter { $0 == shaded }.count > 10)
     }
 }

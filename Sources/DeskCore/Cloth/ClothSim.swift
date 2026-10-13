@@ -19,6 +19,9 @@ public struct ClothParams: Hashable, Sendable, Codable {
     public var stiction: Float = 0.03
     /// Fraction of in-plane motion removed per substep while in contact (sliding felt stops quickly).
     public var contactDamping: Float = 0.02
+    /// Extra floor penetration (px) the keyboard's weight adds under it, so its region grips the desk harder than
+    /// bare felt (a weighted particle is otherwise held to the floor but free in xy).
+    public var keyboardPressure: Float = 0.2
     /// Floor offset of a face-up particle (`z ≥ H + thickness`).
     public var thickness: Float = 1
     /// Floor offset of an underside-up particle, so a folded flap lies on top of the layer below.
@@ -52,7 +55,8 @@ public struct ClothParams: Hashable, Sendable, Codable {
     public var carryLift: Float = 6
     public var releaseKeep: Float = 0.4
     public var peelHeight: Float = 12
-    /// Half-width of the edge segment an edge peel holds, so an edge folds over in a straight line.
+    /// Half-width of the edge segment an edge peel holds. It also seeds the taper of the fold the peel guides along
+    /// the edge (σ = this + reach²/8), so pulling one point lifts a tongue that widens as the pull goes further.
     public var peelEdgeHalfWidth: Float = 18
     public var tugHeight: Float = 1.5
     public var tugConeDegrees: Float = 60
@@ -64,9 +68,10 @@ public struct ClothParams: Hashable, Sendable, Codable {
     public var foldGain: Float = 0.35
     /// A fold's direction stays within this of the grabbed corner's bisector (or edge's inward normal).
     public var foldConeDegrees: Float = 30
-    /// On release a fold stays folded only past this angle and drag distance; otherwise it lays back flat.
+    /// On release a peel stays folded only when it turned past this angle and the held point crossed this fraction of
+    /// the mat along the fold (O8, "past the middle"); otherwise it lays back flat (O7).
     public var foldKeepDegrees: Float = 120
-    public var foldKeepDistance: Float = 20
+    public var foldKeepFraction: Float = 0.5
     /// Speed cap for pinned particles chasing their targets (px/s).
     public var pinSpeed: Float = 720
 
@@ -85,6 +90,13 @@ public struct ClothParams: Hashable, Sendable, Codable {
     public var peekSeconds: Float = 1.5
     public var peekHeight: Float = 16
     public var peekReach: Float = 30
+    /// Desk knock: hop height (px), duration and the wavelength (px) of its ripple.
+    public var knockHeight: Float = 2
+    public var knockFrames = 12
+    public var knockWavelength: Float = 40
+
+    /// `matMode=flat` (DESIGN E9 fallbacks): bumps and covering stay; peel, fold, carry lift and Peek Under are off.
+    public var flatMode = false
 
     public var projection = DeskProjection.standard
 
@@ -150,6 +162,8 @@ struct ClothPin {
 /// Carry runtime: Gaussian patch plus global shape matching toward the grab-start pose + drag delta.
 struct CarryRuntime {
     var hit: Int32
+    /// Patch lift (px); grows with the drag so a press without motion does not tent the mat.
+    var lift: Float
     /// Grab-start xy of every particle.
     var rest: [SIMD2<Float>]
     var restCentroid: SIMD2<Float>
@@ -193,7 +207,11 @@ public struct ClothSim: Sendable {
     var script: ScriptState?
     var pins: [ClothPin] = []
     var carry: CarryRuntime?
-    var guide: FoldGuide?
+    /// This frame's fold guide (persistent storage): guided particles, their targets (relative z) and, per particle,
+    /// its slot in those arrays (−1 when unguided).
+    var guideIndices: [Int32] = []
+    var guideTargets: [SIMD3<Float>] = []
+    var guideSlot: [Int32] = []
     var frictionScale: Float = 1
     var keyboardOffset: SIMD2<Float>?
     var transformRun: TransformRun?
@@ -224,6 +242,7 @@ public struct ClothSim: Sendable {
             ))
         }
         self.parts = parts
+        guideSlot = Array(repeating: -1, count: cols * rows)
         rebuildConstraints()
     }
 
@@ -245,6 +264,7 @@ public struct ClothSim: Sendable {
             return ClothParticle(x: x, p: x, v: .zero, w: 1, floorOffset: params.thickness, ground: h, weighted: false)
         }
         if let bumps { seenBumpRevision = bumps.revision }
+        guideSlot = Array(repeating: -1, count: cols * rows)
         self.isAsleep = true
         rebuildConstraints()
         updateLayering()
@@ -306,6 +326,9 @@ public struct ClothSim: Sendable {
 
     /// Advances one frame (`dt`, default 1/60 s) of `params.substeps` XPBD substeps over the bump field's floor.
     /// A changed bump field (new `revision`) wakes the cloth; asleep cloth returns immediately.
+    ///
+    /// Pass the scene's one field every frame: particle heights are stored above the floor, so `nil` (a flat desk)
+    /// after a field with bumps drops the mat by their height.
     public mutating func step(dt: Float = 1.0 / 60, bumps: BumpField? = nil) {
         if let bumps, bumps.revision != seenBumpRevision {
             seenBumpRevision = bumps.revision
@@ -369,7 +392,8 @@ public struct ClothSim: Sendable {
                       params.bendCompliance / (h * h))
         let stretch = stretch, shear = shear, bend = bend
         let pins = pins
-        let carry = carry, carryLift = params.carryLift, guide = guide, foldGain = params.foldGain
+        let carry = carry, guideIndices = guideIndices, guideTargets = guideTargets, foldGain = params.foldGain
+        let press = params.keyboardPressure
         var maxSpeed2: Float = 0
 
         parts.withUnsafeMutableBufferPointer { P in
@@ -398,13 +422,11 @@ public struct ClothSim: Sendable {
                 stretch.withUnsafeBufferPointer { solve($0, P, alphas.0) }
                 shear.withUnsafeBufferPointer { solve($0, P, alphas.1) }
                 bend.withUnsafeBufferPointer { solve($0, P, alphas.2, acrossFolds: false) }
-                if let carry { applyCarry(carry, P, frac: frac, lift: carryLift) }
-                if let guide {
-                    for (k, index) in guide.indices.enumerated() {
-                        let i = Int(index)
-                        guard P[i].w > 0 else { continue }
-                        P[i].x += (guide.targets[k] - P[i].x) * foldGain
-                    }
+                if let carry { applyCarry(carry, P, frac: frac) }
+                for k in 0..<guideIndices.count {
+                    let i = Int(guideIndices[k])
+                    guard P[i].w > 0 else { continue }
+                    P[i].x += (guideTargets[k] - P[i].x) * foldGain
                 }
                 // Floor, friction, bounds, displacement clamp.
                 for i in 0..<n {
@@ -414,12 +436,11 @@ public struct ClothSim: Sendable {
                     let floorZ = P[i].floorOffset
                     var contact = false
                     if P[i].w > 0 {
-                        if P[i].weighted {
-                            x.z = floorZ
+                        let weighted = P[i].weighted
+                        if weighted || x.z < floorZ {
+                            // The keyboard holds its particles to the floor and presses them into it.
                             contact = true
-                        } else if x.z < floorZ {
-                            contact = true
-                            let pen = floorZ - x.z
+                            let pen = max(floorZ - x.z, 0) + (weighted ? press : 0)
                             x.z = floorZ
                             let tx = x.x - p.x, ty = x.y - p.y
                             let tl = (tx * tx + ty * ty).squareRoot()
@@ -544,9 +565,8 @@ private func solve(
 /// Carry: best-fit-rotation shape matching of every particle toward the grab-start pose moved by the drag,
 /// anchored at the grabbed particle, plus Gaussian-weighted patch targets that lift slightly.
 @inline(__always)
-private func applyCarry(
-    _ carry: CarryRuntime, _ P: UnsafeMutableBufferPointer<ClothParticle>, frac: Float, lift: Float
-) {
+private func applyCarry(_ carry: CarryRuntime, _ P: UnsafeMutableBufferPointer<ClothParticle>, frac: Float) {
+    let lift = carry.lift
     let n = P.count
     var cx: Float = 0, cy: Float = 0
     for i in 0..<n {

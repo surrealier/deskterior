@@ -35,8 +35,8 @@ struct ClothCoverageTests {
     func coverageWithCloth() {
         var cloth = ClothSim()
         ClothFixtures.run(&cloth, 5)
-        let pile = CoveragePile(id: 7, position: SIMD2(256, 50), radius: 5, top: 3)
-        let outside = CoveragePile(id: 8, position: SIMD2(100, 50), radius: 5, top: 3)
+        let pile = CoveragePile(id: 7, position: SIMD2(256, 50), radius: 5)
+        let outside = CoveragePile(id: 8, position: SIMD2(100, 50), radius: 5)
         #expect(ClothTriangleIndex(cloth).coveredSamples(pile) == 5)
         #expect(ClothTriangleIndex(cloth).coveredSamples(outside) == 0)
         var t = CoverageTracker()
@@ -44,12 +44,74 @@ struct ClothCoverageTests {
         #expect(!t.isCovered(7))
         #expect(t.update(piles: [pile, outside], cloth: cloth).map(\.id) == [7])
         #expect(t.isCovered(7) && !t.isCovered(8))
-        // A layer lifted higher than top + 6 does not cover.
-        let high = CoveragePile(id: 9, position: SIMD2(256, 50), radius: 5, top: -6)
-        #expect(ClothTriangleIndex(cloth).coveredSamples(high) == 0)
         // ⌥-slide the mat away to the right: the pile is revealed at once.
         ClothFixtures.drag(&cloth, cloth.index(col: 17, row: 7), by: SIMD2(120, 0), frames: 4, modifiers: .option)
         #expect(t.update(piles: [pile, outside], cloth: cloth).map(\.covered) == [false])
+    }
+
+    @Test("Clustered piles under a resting mat stay covered and the cloth sleeps: no cover/reveal loop")
+    func clusteredPilesSettle() {
+        for (a, b, gap) in [(3, 3, Float(8)), (2, 5, 9), (1, 1, 8), (4, 4, 12)] {
+            var s = ClothScene(piles: [PileInput(id: 0, position: SIMD2(250, 50), count: a),
+                                       PileInput(id: 1, position: SIMD2(250 + gap, 50), count: b)])
+            var flips = 0, asleep = 0
+            var last = [s.coverage.isCovered(0), s.coverage.isCovered(1)]
+            for _ in 0..<600 {
+                s.frames(1)
+                let now = [s.coverage.isCovered(0), s.coverage.isCovered(1)]
+                if now != last { flips += 1 }
+                last = now
+                if s.cloth.isAsleep { asleep += 1 }
+            }
+            #expect(flips == 0, "piles \(a)+\(b), \(gap) px apart: \(flips) coverage flips")
+            #expect(last == [true, true])
+            #expect(asleep > 500, "piles \(a)+\(b): asleep \(asleep) of 600 frames")
+        }
+    }
+
+    @Test("A tall single pile with default footprints stays covered and still")
+    func tallPileSettles() {
+        for n in [4, 7] {
+            let pile = PileInput(id: 0, position: SIMD2(256, 50), count: n)
+            var cloth = ClothSim()
+            var bumps = BumpField(), cov = CoverageTracker()
+            cov.setCovered(0, true)
+            bumps.setCoveredPiles([pile], animated: false)
+            var changes = 0
+            for _ in 0..<300 {
+                changes += cov.update(piles: [CoveragePile(id: 0, position: pile.position)], cloth: cloth).count
+                bumps.setCoveredPiles(cov.isCovered(0) ? [pile] : [])
+                bumps.advance()
+                cloth.step(bumps: bumps)
+            }
+            #expect(changes == 0 && cov.isCovered(0) && cloth.isAsleep, "n=\(n): \(changes) changes")
+        }
+    }
+
+    @Test("Coverage measures from the bump floor: a lifted edge reveals, a resting fold still covers")
+    func clearanceFromFloor() {
+        var cloth = ClothSim()
+        var bumps = BumpField()
+        bumps.setCoveredPiles([PileInput(id: 0, position: SIMD2(256, 50), count: 7)], animated: false)
+        ClothFixtures.run(&cloth, 60, bumps: bumps)
+        let index = ClothTriangleIndex(cloth)
+        // 16 px up on the bump, the cloth is still 1 px above its floor.
+        #expect(abs((index.clearance(at: SIMD2(256, 50)) ?? 0) - 1) < 0.1)
+        #expect(index.coveredSamples(CoveragePile(id: 0, position: SIMD2(256, 50), radius: 5)) == 5)
+        #expect(index.clearance(at: SIMD2(100, 50)) == nil)
+        var peek = ClothSim()
+        ClothFixtures.run(&peek, 5)
+        peek.peekUnder(SIMD2(256, 16))
+        ClothFixtures.run(&peek, 30)
+        #expect(ClothTriangleIndex(peek).coveredSamples(CoveragePile(id: 1, position: SIMD2(256, 12), radius: 5)) <= 1)
+        // A resting dog-ear lies 2 px above the floor (on the base layer or the desk): it covers.
+        let dogEar = ClothFixtures.dogEar()
+        let folded = ClothTriangleIndex(dogEar)
+        for i in 0..<dogEar.count where dogEar.isFolded(i) && dogEar.lift(i) < 1 {
+            let p = dogEar.position(i)
+            #expect((folded.clearance(at: SIMD2(p.x, p.y)) ?? 9) < 2.5)
+            #expect(folded.isCovered(SIMD2(p.x, p.y)))
+        }
     }
 
     @Test("A fold puts two layers over the desk")

@@ -2,9 +2,11 @@ import Foundation
 
 /// How a mat grab drives the cloth (DESIGN §2.2 E9, grab modes).
 public enum ClothGrabMode: String, Sendable, Hashable, CaseIterable {
-    /// Waiting for the first `decideDistance` px of motion to pick peel, tug or carry.
+    /// Waiting for the first `decideDistance` px of motion to pick peel, tug, unpeel or carry.
     case pending
     case carry, slide, peel, tug, transform
+    /// Dragging a folded flap back open (the reverse of a peel).
+    case unpeel
 }
 
 /// Modifier keys that affect a grab.
@@ -52,16 +54,36 @@ struct TransformGrab {
     var startDiagonal: SIMD2<Float>
 }
 
-/// A frame-by-frame eased resize/rotation about a fixed desk point.
+/// A frame-by-frame eased resize/rotation about a desk point (the material point `anchorUV01 · size`), which may
+/// itself ease from `fromAnchor` to `toAnchor` so the result fits the desk.
 struct TransformRun {
     var anchor: SIMD2<Float>
+    var anchorUV01: SIMD2<Float>
     var size: SIMD2<Float>
     var angle: Float
     var fromSize: SIMD2<Float>
     var fromAngle: Float
+    var fromAnchor: SIMD2<Float>
     var toSize: SIMD2<Float>
     var toAngle: Float
+    var toAnchor: SIMD2<Float>
     var progress: Float
+}
+
+/// Where a transform ends: size, angle (unwrapped near the current one) and anchor travel.
+struct TransformPlan {
+    var size: SIMD2<Float>
+    var angle: Float
+    var anchorUV01: SIMD2<Float>
+    var from: SIMD2<Float>
+    var to: SIMD2<Float>
+}
+
+/// An existing fold as a guide, plus the screen axis (the tip's folded → flat place) dragging along opens it.
+struct UnpeelPlan {
+    var spec: FoldSpec
+    var from: SIMD2<Float>
+    var to: SIMD2<Float>
 }
 
 struct GrabState {
@@ -74,12 +96,16 @@ struct GrabState {
     var modifiers: ClothGrabModifiers
     /// Absolute position of the hit particle at grab start.
     var hitStart: SIMD3<Float>
+    /// Farthest the cursor has been from `startCursor` (px).
+    var maxTravel: Float = 0
     var pinOffsets: [(index: Int32, offset: SIMD2<Float>)] = []
     var lastTarget: SIMD3<Float>?
     /// Flat frame of the mat when a peel started, the fold direction's axis, and the last fold it guided.
     var foldFrame: ClothFrame?
     var foldAxis = SIMD2<Float>(0, 1)
     var lastFold: FoldSpec?
+    /// Set when the hit particle lies underside-up in a fold.
+    var unpeel: UnpeelPlan?
     var carryRest: [SIMD2<Float>] = []
     var carryCentroid: SIMD2<Float> = .zero
     /// Bounding box of the grab-start pose, for keeping the carry on the desk.
@@ -99,13 +125,26 @@ struct FoldSpec {
     var normal: SIMD2<Float>
     var line: Float
     var angle: Float
+    /// With a finite `spread` the crease curves: its reach past `focus` (the grab point's flat xy) shrinks by a
+    /// Gaussian (σ = `spread`) of the distance along the line, so a pulled edge point folds a tongue that tapers
+    /// into the flat edge instead of the whole edge.
+    var focus: SIMD2<Float> = .zero
+    var spread: Float = .infinity
+    /// Explicit flap members (empty: the flap side) and each member's offset from the ideal fold at angle π, which
+    /// fades out as the fold opens, so an existing, imperfect fold turns back from exactly where it lies.
+    var members: [Int32] = []
+    var residual: [SIMD3<Float>] = []
+}
 
+extension FoldSpec {
     /// The fold that carries the grab point, flat at `frame.point(grabUV)`, toward `target` (xy) at `height` above
     /// the base layer: its line is equidistant from both, so the flap keeps its shape. Cloth folds locally, so the
     /// fold direction stays within `halfAngle` of `axis` (a corner's inward bisector or an edge's inward normal) and
-    /// the reach along it is the drag projected onto that direction. Nil below `minDistance`.
+    /// the reach along it is the drag projected onto that direction. With `band` (an edge peel) the crease tapers
+    /// along the edge with σ = `band + reach² / 8`: a short pull lifts a local tongue, a pull past the middle folds
+    /// nearly the whole edge. Nil below `minDistance`.
     init?(frame: ClothFrame, grabUV: SIMD2<Float>, target: SIMD2<Float>, height: Float, axis: SIMD2<Float>,
-          halfAngle: Float, minDistance: Float) {
+          halfAngle: Float, minDistance: Float, band: Float?) {
         let p0 = frame.point(grabUV), delta = target - p0
         guard length2(delta) > 1e-4 else { return nil }
         let base = atan2(Double(axis.y), Double(axis.x))
@@ -117,20 +156,9 @@ struct FoldSpec {
         guard dist >= minDistance else { return nil }
         let h = max(0, height)
         let reach = (dist * dist + h * h) / (2 * dist)
-        self.frame = frame
-        normal = n
-        line = dot2(p0, n) + reach
-        angle = Float(atan2(Double(h), Double(-(dist * dist - h * h) / (2 * dist))))
-    }
-}
-
-/// Per-frame guide targets (relative z) for the flap particles of a fold.
-struct FoldGuide {
-    var indices: [Int32]
-    var targets: [SIMD3<Float>]
-
-    func target(of index: Int32) -> SIMD3<Float>? {
-        indices.firstIndex(of: index).map { targets[$0] }
+        self.init(frame: frame, normal: n, line: dot2(p0, n) + reach,
+                  angle: Float(atan2(Double(h), Double(-(dist * dist - h * h) / (2 * dist)))),
+                  focus: p0, spread: band.map { $0 + reach * reach / 8 } ?? .infinity)
     }
 }
 
@@ -162,6 +190,9 @@ extension ClothSim {
     /// Particles currently pinned (w = 0) by a grab or script.
     public var pinnedParticles: [Int] { pins.map { Int($0.index) } }
 
+    /// Whether particle `i` lies underside-up (part of a folded flap).
+    public func isFolded(_ i: Int) -> Bool { parts[i].floorOffset != params.thickness }
+
     /// The region of particle `i` by its rest uv.
     public func region(of i: Int) -> ClothGrabRegion {
         let q = uv[i], band = params.edgeBand
@@ -183,26 +214,7 @@ extension ClothSim {
     }
 
     /// Best-fit rigid frame of the current pose (uv → desk xy).
-    public func matFrame() -> ClothFrame {
-        let n = Float(count)
-        var c = SIMD2<Float>.zero, cu = SIMD2<Float>.zero
-        for i in 0..<count {
-            c += SIMD2(parts[i].x.x, parts[i].x.y)
-            cu += uv[i]
-        }
-        c /= n
-        cu /= n
-        var sCross: Float = 0, sDot: Float = 0
-        for i in 0..<count {
-            let q = uv[i] - cu, r = SIMD2(parts[i].x.x, parts[i].x.y) - c
-            sCross += q.x * r.y - q.y * r.x
-            sDot += q.x * r.x + q.y * r.y
-        }
-        let angle = Float(atan2(Double(sCross), Double(sDot)))
-        let cs = Float(cos(Double(angle))), sn = Float(sin(Double(angle)))
-        let origin = c - SIMD2(cu.x * cs - cu.y * sn, cu.x * sn + cu.y * cs)
-        return ClothFrame(origin: origin, angle: angle)
-    }
+    public func matFrame() -> ClothFrame { fitFrame(0..<count) }
 
     /// Mean xy of all particles.
     public var centroid: SIMD2<Float> {
@@ -214,8 +226,8 @@ extension ClothSim {
     // MARK: - Grabs
 
     /// Starts a grab on particle `particle` (from the raster's `owner[]`) with the cursor at core art point `cursor`.
-    /// ⌥ picks slide (interior) or transform (corner) at once; interior grabs carry at once; edges and corners wait
-    /// for `decideDistance` px of motion. Cancels a running script.
+    /// ⌥ picks slide (interior) or transform (corner) at once; interior grabs carry at once; edges, corners and folded
+    /// flaps wait for `decideDistance` px of motion. Cancels a running script.
     public mutating func beginGrab(particle: Int, cursor: SIMD2<Float>, modifiers: ClothGrabModifiers = []) {
         guard particle >= 0 && particle < count, cursor.x.isFinite && cursor.y.isFinite else { return }
         if grab != nil { endGrab() }
@@ -238,6 +250,8 @@ extension ClothSim {
             } else {
                 g.mode = .slide
             }
+        } else if isFolded(particle), !params.flatMode, let plan = unpeelPlan(hit: particle) {
+            g.unpeel = plan
         } else if case .interior = region {
             g.mode = .carry
         }
@@ -250,6 +264,7 @@ extension ClothSim {
         guard var g = grab, cursor.x.isFinite && cursor.y.isFinite else { return }
         wake()
         g.cursor = cursor
+        g.maxTravel = max(g.maxTravel, length2(cursor - g.startCursor))
         g.modifiers = modifiers.union(g.modifiers.intersection(.option))
         grab = g
         if g.mode == .pending { decideMode() }
@@ -257,8 +272,10 @@ extension ClothSim {
     }
 
     /// Ends the grab. Carry keeps `releaseKeep` of the velocity; a tug's corner falls where it is. A guided peel is
-    /// finished over `layDownFrames`: a deliberate fold (turned past `foldKeepDegrees`, dragged at least
-    /// `foldKeepDistance` and held over the mat) is laid down folded and stays folded; a peek lays back flat.
+    /// finished over `layDownFrames`: a deliberate fold (turned past `foldKeepDegrees` with the held point carried
+    /// past the middle of the mat) is laid down folded, straight, and stays folded; anything less lays back flat
+    /// (O7: lifting part of the mat to reach a pile never leaves it dog-eared). An unpeel
+    /// finishes whichever way it is nearer: open past vertical lays flat, otherwise it folds back down.
     public mutating func endGrab() {
         guard let g = grab else { return }
         wake()
@@ -268,14 +285,16 @@ extension ClothSim {
             for i in parts.indices { parts[i].v *= params.releaseKeep }
         case .peel:
             for pin in pins { parts[Int(pin.index)].v = .zero }
-            if let fold = g.lastFold, let target = g.lastTarget {
-                let q = fold.frame.material(SIMD2(target.x, target.y))
-                let overMat = q.x > 0 && q.y > 0 && q.x < restSize.x && q.y < restSize.y
-                let moved = length2(SIMD2(target.x, target.y) - fold.frame.point(uv[g.hit]))
-                let keep = overMat && moved >= params.foldKeepDistance
-                    && fold.angle > params.foldKeepDegrees * .pi / 180
+            if var fold = g.lastFold, let target = g.lastTarget {
+                let keep = fold.angle > params.foldKeepDegrees * .pi / 180
+                    && pastMiddle(SIMD2(target.x, target.y), frame: fold.frame, region: g.region)
+                // A kept fold settles with a straight crease (a tapered one cannot lie flat without stretching).
+                if keep { fold.spread = .infinity }
                 lay = (fold, keep ? .pi : 0)
             }
+        case .unpeel:
+            for pin in pins { parts[Int(pin.index)].v = .zero }
+            if let fold = g.lastFold { lay = (fold, fold.angle > .pi / 2 ? .pi : 0) }
         case .tug:
             for pin in pins { parts[Int(pin.index)].v = .zero }
         default:
@@ -284,10 +303,28 @@ extension ClothSim {
         let held = g.pinOffsets.map(\.index)
         releasePins()
         carry = nil
-        setGuide(nil)
+        clearGuide()
         grab = nil
         if let (spec, to) = lay {
             script = .layFold(frame: 0, frames: params.layDownFrames, spec: spec, toAngle: to, pins: held)
+        }
+    }
+
+    /// Whether desk point `p` lies past the mat's middle as seen from the grabbed edge or corner (O8): beyond
+    /// `foldKeepFraction` of the width or depth, measured from that side in the mat's flat `frame`.
+    func pastMiddle(_ p: SIMD2<Float>, frame: ClothFrame, region: ClothGrabRegion) -> Bool {
+        let q = frame.material(p), f = params.foldKeepFraction, w = restSize.x, d = restSize.y
+        let fromLeft = q.x >= w * f, fromRight = q.x <= w * (1 - f)
+        let fromFront = q.y >= d * f, fromBack = q.y <= d * (1 - f)
+        switch region {
+        case .edge(let inward):
+            if inward.x > 0 { return fromLeft }
+            if inward.x < 0 { return fromRight }
+            return inward.y > 0 ? fromFront : fromBack
+        case .corner(let k):
+            return ((k == 0 || k == 3) ? fromLeft : fromRight) || ((k == 0 || k == 1) ? fromFront : fromBack)
+        case .interior:
+            return false
         }
     }
 
@@ -295,9 +332,19 @@ extension ClothSim {
         guard var g = grab else { return }
         let m = g.cursor - g.startCursor
         guard (m.x * m.x + m.y * m.y).squareRoot() >= params.decideDistance else { return }
+        if let plan = g.unpeel {
+            // Dragging a folded flap toward its flat place opens it; any other drag treats it as plain cloth.
+            if dot2(m, plan.to - plan.from) > 0 {
+                g.mode = .unpeel
+                g.pinOffsets = [(Int32(g.hit), .zero)]
+                grab = g
+                return
+            }
+            g.unpeel = nil
+        }
         let motion = SIMD2(m.x, -m.y / params.projection.k)
         let hitXY = SIMD2(parts[g.hit].x.x, parts[g.hit].x.y)
-        let canPeel = !parts[g.hit].weighted
+        let canPeel = !parts[g.hit].weighted && !params.flatMode
         switch g.region {
         case .corner:
             let out = hitXY - centroid
@@ -385,6 +432,51 @@ extension ClothSim {
         return members.map { (Int32($0), SIMD2(parts[$0].x.x - h.x, parts[$0].x.y - h.y)) }
     }
 
+    /// The fold that underside-up particle `hit` belongs to, as a guide reproducing the current pose at angle π
+    /// and lying flat at 0: members (folded or displaced particles) turn about the fold line fitted to them over the
+    /// face-up base. The drag axis runs from the flap tip (the member farthest past the line) to its flat place.
+    func unpeelPlan(hit: Int) -> UnpeelPlan? {
+        let up = (0..<count).filter { !isFolded($0) }
+        guard up.count >= 3 else { return nil }
+        let frame = fitFrame(up)
+        var members: [Int32] = [], flats: [SIMD2<Float>] = []
+        var dir = SIMD2<Float>.zero
+        for i in 0..<count {
+            let f = frame.point(uv[i]), cur = SIMD2(parts[i].x.x, parts[i].x.y)
+            guard isFolded(i) || length2(cur - f) > 3 else { continue }
+            members.append(Int32(i))
+            flats.append(f)
+            if isFolded(i) { dir += cur - f }
+        }
+        let len = length2(dir)
+        guard len > 1e-3, members.contains(Int32(hit)) else { return nil }
+        let n = dir / len
+        var line: Float = 0, folded = 0
+        for (k, index) in members.enumerated() where isFolded(Int(index)) {
+            let cur = SIMD2(parts[Int(index)].x.x, parts[Int(index)].x.y)
+            line += dot2((flats[k] + cur) / 2, n)
+            folded += 1
+        }
+        line /= Float(folded)
+        var residual: [SIMD3<Float>] = [], tip = 0, reach = -Float.infinity
+        residual.reserveCapacity(members.count)
+        for (k, index) in members.enumerated() {
+            let i = Int(index), r = line - dot2(flats[k], n)
+            let ideal = flats[k] + n * (2 * r)
+            residual.append(SIMD3(parts[i].x.x - ideal.x, parts[i].x.y - ideal.y, parts[i].x.z - params.foldedThickness))
+            if r > reach {
+                reach = r
+                tip = k
+            }
+        }
+        let t = Int(members[tip]), proj = params.projection
+        let spec = FoldSpec(frame: frame, normal: n, line: line, angle: .pi, members: members, residual: residual)
+        return UnpeelPlan(
+            spec: spec, from: proj.project(position(t)),
+            to: proj.project(SIMD3(flats[tip].x, flats[tip].y, parts[t].ground + params.thickness))
+        )
+    }
+
     // MARK: - Transform
 
     private mutating func updateTransformTarget() {
@@ -400,14 +492,13 @@ extension ClothSim {
         let scale = r / r0
         var angle = t.startAngle
             + Float(atan2(Double(diag.y), Double(diag.x)) - atan2(Double(t.startDiagonal.y), Double(t.startDiagonal.x)))
-        if g.modifiers.contains(.shift) {
-            let step = params.angleSnapDegrees * .pi / 180
-            angle = (angle / step).rounded() * step
-        }
+        let snap: Float? = g.modifiers.contains(.shift) ? params.angleSnapDegrees * .pi / 180 : nil
+        if let step = snap { angle = (angle / step).rounded() * step }
         let size = SIMD2(
             snapSize(t.startSize.x * scale, params.widthRange), snapSize(t.startSize.y * scale, params.depthRange)
         )
-        startTransform(size: size, angle: wrapAngle(angle), anchorCorner: t.anchorCorner)
+        startTransform(transformPlan(size: size, angle: wrapAngle(angle), anchorCorner: t.anchorCorner,
+                                     canShift: false, snap: snap))
     }
 
     private func snapSize(_ v: Float, _ range: ClosedRange<Float>) -> Float {
@@ -418,40 +509,164 @@ extension ClothSim {
         return s
     }
 
-    /// Eases the mat to `size` and `angle` over `transformSeconds`, keeping the material point at
-    /// `anchorCorner` (an index into `cornerIndices`) fixed on the desk; nil anchors the mat's centre.
-    /// Rest lengths and uv rescale with it, so the pattern never stretches.
-    public mutating func transform(size: SIMD2<Float>, angle: Float, anchorCorner: Int? = nil) {
-        wake()
-        let s = SIMD2(min(max(size.x, params.widthRange.lowerBound), params.widthRange.upperBound),
-                      min(max(size.y, params.depthRange.lowerBound), params.depthRange.upperBound))
-        startTransform(size: s, angle: wrapAngle(angle), anchorCorner: anchorCorner)
+    private func clampSize(_ size: SIMD2<Float>) -> SIMD2<Float> {
+        SIMD2(min(max(size.x, params.widthRange.lowerBound), params.widthRange.upperBound),
+              min(max(size.y, params.depthRange.lowerBound), params.depthRange.upperBound))
     }
 
-    private mutating func startTransform(size: SIMD2<Float>, angle: Float, anchorCorner: Int?) {
+    /// Eases the mat to `size` and `angle` over `transformSeconds` about the material point at `anchorCorner` (an
+    /// index into `cornerIndices`; nil: the centre). Rest lengths and uv rescale with it, so the pattern never
+    /// stretches. The pose is fitted to the desk first (`fittedTransform`): the mat turns only as far as its
+    /// footprint fits the desk depth and slides as needed to stay on it.
+    public mutating func transform(size: SIMD2<Float>, angle: Float, anchorCorner: Int? = nil) {
+        guard size.x.isFinite, size.y.isFinite, angle.isFinite else { return }
+        wake()
+        startTransform(transformPlan(size: clampSize(size), angle: wrapAngle(angle), anchorCorner: anchorCorner,
+                                     canShift: true))
+    }
+
+    /// The size and angle `transform(size:angle:)` would end at.
+    public func fittedTransform(size: SIMD2<Float>, angle: Float) -> (size: SIMD2<Float>, angle: Float) {
+        let plan = transformPlan(size: clampSize(size), angle: wrapAngle(angle), anchorCorner: nil, canShift: true)
+        return (plan.size, wrapAngle(plan.angle))
+    }
+
+    /// Whether `transform(size:angle:)` would visibly change the mat; menu items (Rotate ±15°, Size S/M/L) are
+    /// disabled when it would not.
+    public func canTransform(size: SIMD2<Float>, angle: Float) -> Bool {
+        let fit = fittedTransform(size: size, angle: angle)
+        let current = transformRun.map { ($0.toSize, $0.toAngle) } ?? (restSize, matFrame().angle)
+        return abs(wrapAngle(fit.angle - current.1)) > 0.25 * .pi / 180 || abs(fit.size.x - current.0.x) >= 1
+            || abs(fit.size.y - current.0.y) >= 1
+    }
+
+    private static func anchorUV01(_ corner: Int?) -> SIMD2<Float> {
+        switch corner {
+        case 0: SIMD2(0, 0)
+        case 1: SIMD2(1, 0)
+        case 2: SIMD2(1, 1)
+        case 3: SIMD2(0, 1)
+        default: SIMD2(0.5, 0.5)
+        }
+    }
+
+    /// Desk bounding box of a `size` mat at `angle` whose material point `anchorUV01 · size` sits at `anchor`.
+    private func footprint(_ size: SIMD2<Float>, _ angle: Float, anchor: SIMD2<Float>,
+                           anchorUV01: SIMD2<Float>) -> (lo: SIMD2<Float>, hi: SIMD2<Float>) {
+        let c = Float(cos(Double(angle))), s = Float(sin(Double(angle)))
+        var lo = SIMD2<Float>(repeating: .infinity), hi = SIMD2<Float>(repeating: -.infinity)
+        for corner in [SIMD2<Float>(0, 0), SIMD2(1, 0), SIMD2(1, 1), SIMD2(0, 1)] {
+            let q = (corner - anchorUV01) * size
+            let p = anchor + SIMD2(q.x * c - q.y * s, q.x * s + q.y * c)
+            lo = pointwiseMin(lo, p)
+            hi = pointwiseMax(hi, p)
+        }
+        return (lo, hi)
+    }
+
+    /// The pose a transform toward `size`/`angle` ends at. A pose whose footprint leaves the desk turns only as far
+    /// as fits (from the current angle, or from straight when even that does not fit the new size and the mat may
+    /// move); an anchored grab that cannot fit the size at its current angle grows or shrinks only as far as fits.
+    /// With `canShift` the anchor then slides so the footprint lies on the desk.
+    private func transformPlan(size: SIMD2<Float>, angle: Float, anchorCorner: Int?, canShift: Bool,
+                               snap: Float? = nil) -> TransformPlan {
+        let fromSize: SIMD2<Float>, fromAngle: Float, anchor: SIMD2<Float>, auv: SIMD2<Float>
+        if let run = transformRun {
+            (fromSize, fromAngle, anchor, auv) = (run.size, run.angle, run.anchor, run.anchorUV01)
+        } else {
+            let frame = matFrame()
+            auv = Self.anchorUV01(anchorCorner)
+            (fromSize, fromAngle, anchor) = (restSize, frame.angle, frame.point(auv * restSize))
+        }
+        let margin: Float = 0.5
+        let xr = params.xRange, dr = params.dRange
+        func fits(_ s: SIMD2<Float>, _ a: Float) -> Bool {
+            let (lo, hi) = footprint(s, a, anchor: anchor, anchorUV01: auv)
+            if canShift {
+                return hi.x - lo.x <= xr.upperBound - xr.lowerBound - 2 * margin
+                    && hi.y - lo.y <= dr.upperBound - dr.lowerBound - 2 * margin
+            }
+            return lo.x >= xr.lowerBound + margin && hi.x <= xr.upperBound - margin
+                && lo.y >= dr.lowerBound + margin && hi.y <= dr.upperBound - margin
+        }
+        let target = unwrap(angle, near: fromAngle)
+        var outSize = size, outAngle = target
+        if !fits(size, target) {
+            let straight = unwrap(0, near: fromAngle)
+            if fits(size, fromAngle) {
+                outAngle = farthest(from: fromAngle, to: target) { fits(size, $0) }
+            } else if canShift && fits(size, straight) {
+                outAngle = farthest(from: straight, to: target) { fits(size, $0) }
+            } else if fits(fromSize, fromAngle) {
+                outAngle = fromAngle
+                let t = farthest(from: 0, to: 1) { fits(fromSize + (size - fromSize) * $0, fromAngle) }
+                outSize = fromSize
+                let q = params.sizeSnap
+                var grid = fromSize + (size - fromSize) * t
+                for k in 0..<2 {
+                    let up = size[k] > fromSize[k]
+                    grid[k] = ((grid[k] / q).rounded(up ? .down : .up)) * q
+                    grid[k] = up ? max(grid[k], fromSize[k]) : min(grid[k], fromSize[k])
+                }
+                if fits(grid, fromAngle) { outSize = grid }
+            } else {
+                (outSize, outAngle) = (fromSize, fromAngle)
+            }
+            if let step = snap, outAngle != target {
+                // ⇧: the nearest whole step that still fits, or no turn at all.
+                let k = outAngle / step
+                let snapped = (outAngle > fromAngle ? k.rounded(.down) : k.rounded(.up)) * step
+                let between = (snapped - fromAngle) * (outAngle - fromAngle) >= 0
+                outAngle = between && fits(outSize, snapped) ? snapped : fromAngle
+            }
+        }
+        var to = anchor
+        if canShift {
+            let (lo, hi) = footprint(outSize, outAngle, anchor: anchor, anchorUV01: auv)
+            to.x += max(xr.lowerBound + margin - lo.x, 0) - max(hi.x - (xr.upperBound - margin), 0)
+            to.y += max(dr.lowerBound + margin - lo.y, 0) - max(hi.y - (dr.upperBound - margin), 0)
+        }
+        return TransformPlan(size: outSize, angle: outAngle, anchorUV01: auv, from: anchor, to: to)
+    }
+
+    /// The point nearest `b` on the way from `a` (assumed to pass `ok`) before `ok` first fails.
+    private func farthest(from a: Float, to b: Float, _ ok: (Float) -> Bool) -> Float {
+        let steps = max(1, Int((abs(b - a) / (0.5 * .pi / 180)).rounded(.up)))
+        var good = a
+        for k in 1...steps {
+            let x = a + (b - a) * Float(k) / Float(steps)
+            if ok(x) {
+                good = x
+                continue
+            }
+            var lo = good, hi = x
+            for _ in 0..<16 {
+                let mid = (lo + hi) / 2
+                if ok(mid) { lo = mid } else { hi = mid }
+            }
+            return lo
+        }
+        return good
+    }
+
+    private mutating func startTransform(_ plan: TransformPlan) {
         if var run = transformRun {
-            if run.toSize == size && run.toAngle == angle { return }
+            if run.toSize == plan.size && run.toAngle == plan.angle && run.toAnchor == plan.to { return }
             run.fromSize = run.size
             run.fromAngle = run.angle
-            run.toSize = size
-            run.toAngle = angle
+            run.fromAnchor = run.anchor
+            run.toSize = plan.size
+            run.toAngle = plan.angle
+            run.toAnchor = plan.to
             run.progress = 0
             transformRun = run
             return
         }
         let frame = matFrame()
-        let anchorUV01: SIMD2<Float>
-        switch anchorCorner {
-        case 0: anchorUV01 = SIMD2(0, 0)
-        case 1: anchorUV01 = SIMD2(1, 0)
-        case 2: anchorUV01 = SIMD2(1, 1)
-        case 3: anchorUV01 = SIMD2(0, 1)
-        default: anchorUV01 = SIMD2(0.5, 0.5)
-        }
-        let anchor = frame.point(anchorUV01 * restSize)
         transformRun = TransformRun(
-            anchor: anchor, size: restSize, angle: frame.angle, fromSize: restSize,
-            fromAngle: frame.angle, toSize: size, toAngle: unwrap(angle, near: frame.angle), progress: 0
+            anchor: plan.from, anchorUV01: plan.anchorUV01, size: restSize, angle: frame.angle, fromSize: restSize,
+            fromAngle: frame.angle, fromAnchor: plan.from, toSize: plan.size, toAngle: plan.angle, toAnchor: plan.to,
+            progress: 0
         )
     }
 
@@ -463,6 +678,7 @@ extension ClothSim {
         let t = run.progress * run.progress * (3 - 2 * run.progress)
         let size = run.fromSize + (run.toSize - run.fromSize) * t
         let angle = run.fromAngle + (run.toAngle - run.fromAngle) * t
+        let anchor = run.fromAnchor + (run.toAnchor - run.fromAnchor) * t
         let c0 = Float(cos(Double(run.angle))), s0 = Float(sin(Double(run.angle)))
         let c1 = Float(cos(Double(angle))), s1 = Float(sin(Double(angle)))
         let scale = size / run.size
@@ -470,7 +686,7 @@ extension ClothSim {
         func map(_ p: SIMD3<Float>) -> SIMD3<Float> {
             let dx = p.x - a.x, dy = p.y - a.y
             let lu = (dx * c0 + dy * s0) * scale.x, lv = (-dx * s0 + dy * c0) * scale.y
-            return SIMD3(a.x + lu * c1 - lv * s1, a.y + lu * s1 + lv * c1, p.z)
+            return SIMD3(anchor.x + lu * c1 - lv * s1, anchor.y + lu * s1 + lv * c1, p.z)
         }
         for i in parts.indices {
             parts[i].x = map(parts[i].x)
@@ -479,26 +695,28 @@ extension ClothSim {
         setRestSize(size)
         run.size = size
         run.angle = angle
+        run.anchor = anchor
         // A finished run ends unless the ⌥-corner grab that drives it is still held.
         transformRun = run.progress >= 1 && grab?.mode != .transform ? nil : run
     }
 
     // MARK: - Scripts
 
-    /// Smooth Mat: all four corners tugged `smoothPull` px outward for `smoothFrames` frames with friction
-    /// × `smoothFriction`. Bumps remain.
+    /// Smooth Mat: the face-up corners tugged `smoothPull` px outward for `smoothFrames` frames with friction
+    /// × `smoothFriction`. Bumps and folds remain.
     public mutating func smooth() {
         if grab != nil { endGrab() }
+        let corners = cornerIndices.filter { !isFolded($0) }
+        guard !corners.isEmpty else { return }
         wake()
         let c = centroid
-        let corners = cornerIndices.map { Int32($0) }
-        let starts = cornerIndices.map { parts[$0].x }
+        let starts = corners.map { parts[$0].x }
         let outward = starts.map { p -> SIMD2<Float> in
             let o = SIMD2(p.x, p.y) - c
             let l = length2(o)
             return l > 0 ? o / l : .zero
         }
-        script = .smooth(frame: 0, corners: corners, starts: starts, outward: outward)
+        script = .smooth(frame: 0, corners: corners.map { Int32($0) }, starts: starts, outward: outward)
     }
 
     /// Unfold: every displaced (flap) particle swings back to its flat place across the fold line over
@@ -507,7 +725,7 @@ extension ClothSim {
         if grab != nil { endGrab() }
         updateLayering()
         // Fit the base layer: particles still face-up.
-        let up = (0..<count).filter { parts[$0].floorOffset == params.thickness }
+        let up = (0..<count).filter { !isFolded($0) }
         guard up.count >= 3 else { return }
         let frame = fitFrame(up)
         var indices: [Int32] = [], from: [SIMD3<Float>] = [], to: [SIMD3<Float>] = [], arc: [Float] = []
@@ -515,7 +733,7 @@ extension ClothSim {
             let target = frame.point(uv[i])
             let cur = parts[i].x
             let dxy = length2(SIMD2(cur.x, cur.y) - target)
-            guard dxy > 3 || parts[i].floorOffset != params.thickness else { continue }
+            guard dxy > 3 || isFolded(i) else { continue }
             indices.append(Int32(i))
             from.append(cur)
             to.append(SIMD3(target.x, target.y, params.thickness))
@@ -528,7 +746,9 @@ extension ClothSim {
     }
 
     /// Peek Under: lifts the edge nearest desk point `point` back over it for `peekSeconds`, then lays it down.
+    /// Off in `flatMode`.
     public mutating func peekUnder(_ point: SIMD2<Float>) {
+        guard !params.flatMode, point.x.isFinite, point.y.isFinite else { return }
         if grab != nil { endGrab() }
         let frame = matFrame()
         let q = frame.material(point)
@@ -570,13 +790,34 @@ extension ClothSim {
         guard script != nil else { return }
         script = nil
         releasePins()
+        clearGuide()
         frictionScale = 1
+    }
+
+    /// Desk knock (E11): the cloth hops straight up and lands where it was over `knockFrames`, higher in a ripple
+    /// of `knockWavelength` around desk point `point`. Weighted particles stay down; ignored during a grab or script.
+    public mutating func knock(from point: SIMD2<Float>, strength: Float = 1) {
+        guard grab == nil, script == nil, strength > 0, strength.isFinite, point.x.isFinite, point.y.isFinite else {
+            return
+        }
+        let k = 2 * Float.pi / max(params.knockWavelength, 1), height = params.knockHeight * min(strength, 3)
+        var indices: [Int32] = [], at: [SIMD3<Float>] = [], arc: [Float] = []
+        for i in parts.indices where !parts[i].weighted {
+            let r = length2(SIMD2(parts[i].x.x, parts[i].x.y) - point)
+            indices.append(Int32(i))
+            at.append(parts[i].x)
+            arc.append(height * (0.6 + 0.4 * Float(cos(Double(r * k)))))
+        }
+        guard !indices.isEmpty else { return }
+        wake()
+        script = .path(frame: 0, frames: max(2, params.knockFrames), holdFrames: 0, indices: indices, from: at, to: at,
+                       arc: arc)
     }
 
     // MARK: - Keyboard weight
 
-    /// Weighs the particles currently under `footprint` (desk plane) to the floor every substep, free in xy;
-    /// they cannot be peeled. nil lifts the keyboard.
+    /// Weighs the particles currently under `footprint` (desk plane) to the floor every substep; they grip the desk
+    /// harder (`keyboardPressure`) and cannot be peeled. nil lifts the keyboard.
     public mutating func setKeyboard(_ footprint: DeskPlaneRect?) {
         for i in parts.indices { parts[i].weighted = false }
         keyboardOffset = nil
@@ -605,22 +846,89 @@ extension ClothSim {
 
     // MARK: - Frame drive
 
-    mutating func setGuide(_ fold: FoldGuide?) {
-        if let old = guide { for i in old.indices { parts[Int(i)].guided = false } }
-        guide = fold
-        if let fold { for i in fold.indices { parts[Int(i)].guided = true } }
+    /// Drops this frame's fold guide (keeping its storage).
+    mutating func clearGuide() {
+        for index in guideIndices {
+            parts[Int(index)].guided = false
+            guideSlot[Int(index)] = -1
+        }
+        guideIndices.removeAll(keepingCapacity: true)
+        guideTargets.removeAll(keepingCapacity: true)
+    }
+
+    /// The guide target of particle `index`, if this frame's fold guides it.
+    func guideTarget(_ index: Int32) -> SIMD3<Float>? {
+        let slot = guideSlot[Int(index)]
+        return slot >= 0 ? guideTargets[Int(slot)] : nil
+    }
+
+    /// Builds this frame's guide targets (relative z) for a paper fold. False, with no guide, when the fold is
+    /// degenerate: it moves nothing or the whole mat, or the flap holds keyboard-weighted particles.
+    mutating func applyGuide(_ spec: FoldSpec) -> Bool {
+        clearGuide()
+        let c = Float(cos(Double(spec.frame.angle))), s = Float(sin(Double(spec.frame.angle)))
+        let o = spec.frame.origin
+        let n = spec.normal, tangent = SIMD2(-n.y, n.x), line = spec.line
+        let cosPhi = Float(cos(Double(spec.angle))), sinPhi = Float(sin(Double(spec.angle)))
+        let base = params.thickness, rise = params.foldedThickness - params.thickness
+        let fade = min(max(spec.angle / .pi, 0), 1)
+        let spread2 = 2 * spec.spread * spec.spread
+        var ok = true
+        let lift = rise * (1 - cosPhi) / 2, focusDepth = dot2(spec.focus, n)
+        func add(_ i: Int, _ fp: SIMD2<Float>, _ line: Float, _ offset: SIMD3<Float>) {
+            let r = line - dot2(fp, n), foot = fp + n * r, xy = foot - n * (r * cosPhi)
+            var t = SIMD3(xy.x, xy.y, base + r * sinPhi + lift) + offset
+            t.z = max(t.z, base)
+            guideIndices.append(Int32(i))
+            guideTargets.append(t)
+        }
+        if spec.members.isEmpty {
+            for i in 0..<count {
+                let q = uv[i], fp = SIMD2(o.x + q.x * c - q.y * s, o.y + q.x * s + q.y * c)
+                var local = line
+                if spread2.isFinite {
+                    let a = dot2(fp - spec.focus, tangent)
+                    local = focusDepth + (line - focusDepth) * Float(exp(Double(-a * a / spread2)))
+                }
+                guard dot2(fp, n) < local else { continue }
+                if parts[i].weighted {
+                    ok = false
+                    break
+                }
+                add(i, fp, local, .zero)
+            }
+            if guideIndices.count == count { ok = false }
+        } else {
+            for (k, index) in spec.members.enumerated() {
+                let i = Int(index), q = uv[i]
+                if parts[i].weighted {
+                    ok = false
+                    break
+                }
+                add(i, SIMD2(o.x + q.x * c - q.y * s, o.y + q.x * s + q.y * c), line, spec.residual[k] * fade)
+            }
+        }
+        guard ok, !guideIndices.isEmpty else {
+            clearGuide()
+            return false
+        }
+        for (k, index) in guideIndices.enumerated() {
+            parts[Int(index)].guided = true
+            guideSlot[Int(index)] = Int32(k)
+        }
+        return true
     }
 
     mutating func releasePins() {
         for pin in pins { parts[Int(pin.index)].w = 1 }
-        pins = []
+        pins.removeAll(keepingCapacity: true)
     }
 
     /// Turns the grab/script state into this frame's pins, carry and fold guide.
     mutating func prepareFrame(dt: Float, bumps: BumpField?) {
         releasePins()
         carry = nil
-        setGuide(nil)
+        clearGuide()
         frictionScale = 1
         advanceTransform(dt: dt)
         if let s = script { runScript(s) }
@@ -646,11 +954,25 @@ extension ClothSim {
             } else {
                 g.carryActivity = 1
             }
+            // The grabbed patch rises only as the drag starts, so a click never tents the mat.
+            let lift = params.flatMode ? 0 : params.carryLift * min(1, g.maxTravel / max(params.decideDistance, 1e-3))
             carry = CarryRuntime(
-                hit: Int32(g.hit), rest: g.carryRest, restCentroid: g.carryCentroid, patch: g.carryPatch,
+                hit: Int32(g.hit), lift: lift, rest: g.carryRest, restCentroid: g.carryCentroid, patch: g.carryPatch,
                 gain: g.carryGain, activity: g.carryActivity, targetFrom: g.lastCarryTarget ?? target, targetTo: target
             )
             g.lastCarryTarget = target
+        case .unpeel:
+            // Progress along the tip's folded → flat screen axis opens the fold: θ = acos(2s − 1), π → 0.
+            guard let plan = g.unpeel else { break }
+            let axis = plan.to - plan.from, l2 = dot2(axis, axis)
+            let s = l2 > 1e-6 ? min(max(dot2(g.cursor - g.startCursor, axis) / l2, 0), 1) : 0
+            var spec = plan.spec
+            spec.angle = Float(acos(Double(2 * s - 1)))
+            if applyGuide(spec) {
+                g.lastFold = spec
+                let hit = Int32(g.hit)
+                if let to = guideTarget(hit) { addPin(hit, from: parts[g.hit].x, to: to) }
+            }
         case .peel, .tug:
             // Peel: rising cursor motion is spent lifting the held point straight up (it stays under the cursor,
             // never lurching toward the viewer) until `peelHeight`; sideways motion also lifts it, half as fast,
@@ -666,26 +988,28 @@ extension ClothSim {
             target.z = peel ? target.z - (bumps?.height(x: target.x, d: target.y) ?? 0) : params.tugHeight
             let previous = g.lastTarget ?? target
             // Far enough over, a peel becomes a guided paper fold: the flap turns about the fold line as a sheet.
-            var fold: FoldGuide?
+            var guided = false
             g.lastFold = nil
+            var band: Float?
+            if case .edge = g.region { band = params.peelEdgeHalfWidth }
             if peel, let frame = g.foldFrame,
                let spec = FoldSpec(frame: frame, grabUV: uv[g.hit], target: SIMD2(target.x, target.y),
                                    height: target.z - params.thickness, axis: g.foldAxis,
                                    halfAngle: params.foldConeDegrees * .pi / 180,
-                                   minDistance: params.foldMinDistance) {
-                fold = foldGuide(spec)
-                if fold != nil { g.lastFold = spec }
+                                   minDistance: params.foldMinDistance, band: band),
+               applyGuide(spec) {
+                g.lastFold = spec
+                guided = true
             }
             for (index, offset) in g.pinOffsets {
                 let o = SIMD3(offset.x, offset.y, 0)
-                if let to = fold?.target(of: index) {
+                if guided, let to = guideTarget(index) {
                     addPin(index, from: parts[Int(index)].x, to: to)
                 } else {
                     addPin(index, from: previous + o, to: target + o)
                 }
             }
             g.lastTarget = target
-            setGuide(fold)
         }
         g.appliedCursor = g.cursor
         grab = g
@@ -696,7 +1020,7 @@ extension ClothSim {
         func clamp(_ p: SIMD3<Float>) -> SIMD3<Float> {
             SIMD3(min(max(p.x, params.xRange.lowerBound), params.xRange.upperBound),
                   min(max(p.y, params.dRange.lowerBound), params.dRange.upperBound),
-                  min(p.z, params.zMax))
+                  min(max(p.z, 0), params.zMax))
         }
         parts[i].w = 0
         pins.append(ClothPin(index: index, from: clamp(from), to: clamp(to)))
@@ -712,14 +1036,13 @@ extension ClothSim {
             let t = Float(frame + 1) / Float(frames)
             var now = spec
             now.angle += (toAngle - spec.angle) * t * t * (3 - 2 * t)
-            guard let fold = foldGuide(now) else {
+            guard applyGuide(now) else {
                 script = nil
                 return
             }
             for index in held {
-                if let to = fold.target(of: index) { addPin(index, from: parts[Int(index)].x, to: to) }
+                if let to = guideTarget(index) { addPin(index, from: parts[Int(index)].x, to: to) }
             }
-            setGuide(fold)
             script = .layFold(frame: frame + 1, frames: frames, spec: spec, toAngle: toAngle, pins: held)
         case .smooth(let frame, let corners, let starts, let outward):
             let total = params.smoothFrames
@@ -753,30 +1076,6 @@ extension ClothSim {
         }
     }
 
-    /// Guide targets for a paper fold, or nil when the fold is degenerate: its line misses the mat (the whole mat
-    /// would turn), or the flap holds keyboard-weighted particles.
-    func foldGuide(_ spec: FoldSpec) -> FoldGuide? {
-        let c = Float(cos(Double(spec.frame.angle))), s = Float(sin(Double(spec.frame.angle)))
-        let o = spec.frame.origin
-        func flat(_ q: SIMD2<Float>) -> SIMD2<Float> { SIMD2(o.x + q.x * c - q.y * s, o.y + q.x * s + q.y * c) }
-        let n = spec.normal, line = spec.line
-        let cosPhi = Float(cos(Double(spec.angle))), sinPhi = Float(sin(Double(spec.angle)))
-        let lift = (params.foldedThickness - params.thickness) * (1 - cosPhi) / 2
-        var indices: [Int32] = [], targets: [SIMD3<Float>] = []
-        for i in 0..<count {
-            let fp = flat(uv[i])
-            let side = dot2(fp, n) - line
-            guard side < 0 else { continue }
-            if parts[i].weighted { return nil }
-            let r = -side, foot = fp + n * r
-            let xy = foot - n * (r * cosPhi)
-            indices.append(Int32(i))
-            targets.append(SIMD3(xy.x, xy.y, params.thickness + r * sinPhi + lift))
-        }
-        guard !indices.isEmpty, indices.count < count else { return nil }
-        return FoldGuide(indices: indices, targets: targets)
-    }
-
     /// Rigid translation of x and prev together (no injected velocity), limited to the desk bounds.
     private mutating func slide(by delta: SIMD2<Float>) {
         guard delta != .zero else { return }
@@ -794,8 +1093,8 @@ extension ClothSim {
         }
     }
 
-    /// Best-fit frame over a subset of particles.
-    private func fitFrame(_ subset: [Int]) -> ClothFrame {
+    /// Best-fit rigid frame (uv → desk xy) over a subset of particles.
+    func fitFrame<S: Collection<Int>>(_ subset: S) -> ClothFrame {
         let n = Float(subset.count)
         var c = SIMD2<Float>.zero, cu = SIMD2<Float>.zero
         for i in subset {

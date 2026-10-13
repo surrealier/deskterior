@@ -12,7 +12,7 @@ public struct MatPattern: Hashable, Sendable {
     public var outline: Ink
     /// Opaque shadow cast on the bare desk under lifted cloth.
     public var deskShadow: Ink
-    /// Felt tile size (art px).
+    /// Felt speck spacing (art px): about two light specks and one dark one per `tile × tile` of material.
     public var tile: Int
     /// Border band width along u-edges and v-edges (v is halved on screen, so its band is wider in material px).
     public var bandU: Int
@@ -35,11 +35,12 @@ public struct MatPattern: Hashable, Sendable {
     }
 
     /// Grey-blue felt (`Role.feltMat` flat, `Role.feltMatLight` lit) with a darker hem, light stitching and
-    /// fringed short edges over a walnut rubber underside.
+    /// fringed short edges over a walnut rubber underside whose lit side stays a muted brown (the amber walnut
+    /// steps are the lamp and LED glow colours).
     public static let felt = MatPattern(
         name: "felt",
         topRamp: [.neutral1, .neutral2, .neutral3, Role.feltMat, Role.feltMatLight, .neutral6, .neutral7],
-        undersideRamp: [.red0, .walnut0, .walnut1, .walnut2, .walnut3, .walnut4, .walnut5],
+        undersideRamp: [.red0, .walnut0, .walnut1, .walnut2, .oak2, .oak3, .oak3],
         outline: Role.outline,
         deskShadow: Role.deskShadow
     )
@@ -78,16 +79,19 @@ public struct MatPattern: Hashable, Sendable {
             }
             return .body(-1)
         }
-        // Felt tile: a few hashed fibre specks per 16×16.
-        let tu = ((u0 % tile) + tile) % tile, tv = ((v0 % tile) + tile) % tile
-        return .body(Self.fibre[tv * 16 + tu])
+        // Fibre specks scattered by a hash of the material cell, so no tile repeats; each spans two material rows
+        // so the 2:1 depth squash never drops it.
+        let cell = UInt64(UInt32(truncatingIfNeeded: u0)) << 32 | UInt64(UInt32(truncatingIfNeeded: v0 >> 1))
+        let m = SplitMix64.mix(cell ^ 0x5EED_F17E) % UInt64(max(tile * tile, 8))
+        return .body(m < 4 ? 1 : m < 6 ? -1 : 0)
     }
 
-    /// Underside texel: rubber with a dot grid, fringe threads darker.
+    /// Underside texel: rubber with a dot grid (dots two material rows tall, so the 2:1 squash keeps them), fringe
+    /// threads darker.
     public func underside(u: Int, v: Int, width: Int, depth: Int) -> Texel {
         if let t = fringeTexel(u: u, v: v, width: width, depth: depth, tone: 0) { return t }
         let row = v / 8
-        return .body((u + (row & 1) * 4) % 8 == 2 && v % 8 == 4 ? -1 : 0)
+        return .body((u + (row & 1) * 4) % 8 == 2 && (v % 8 == 4 || v % 8 == 5) ? -1 : 0)
     }
 
     private func fringeTexel(u: Int, v: Int, width: Int, depth: Int, tone: Int) -> Texel? {
@@ -102,14 +106,4 @@ public struct MatPattern: Hashable, Sendable {
         let shorten = Int(SplitMix64.mix(UInt64(along / period) &+ side) % 2)
         return across < shorten ? .gap : .thread(tone)
     }
-
-    /// 16×16 felt fibre tones (+1 light speck, −1 dark speck, 0 plain).
-    static let fibre: [Int] = {
-        var t = [Int](repeating: 0, count: 256)
-        let light = [(2, 3), (11, 1), (6, 9), (14, 12)]
-        let dark = [(9, 6)]
-        for (x, y) in light { t[y * 16 + x] = 1 }
-        for (x, y) in dark { t[y * 16 + x] = -1 }
-        return t
-    }()
 }
