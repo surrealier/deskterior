@@ -125,6 +125,8 @@ if [ ${#BINS[@]} -eq 1 ]; then
 else
   lipo -create -output "$CONTENTS/MacOS/Deskterior" "${BINS[@]}"
 fi
+# Drop debug symbols and the debug map (it records build-machine object paths); keeps exported symbols.
+strip -S -x "$CONTENTS/MacOS/Deskterior"
 
 PLIST="$CONTENTS/Info.plist"
 cp Packaging/Info.plist "$PLIST"
@@ -163,7 +165,10 @@ ZIP_NAME=""
 if [ "${ZIP:-0}" = "1" ]; then
   ZIP_NAME="Deskterior-$VERSION.zip"
   rm -f "build/$ZIP_NAME" "build/$ZIP_NAME.sha256"
-  ditto -c -k --sequesterRsrc --keepParent "$APP" "build/$ZIP_NAME"
+  # No resource forks, extended attributes, quarantine or ACLs: they would add __MACOSX/ entries (the
+  # signature lives in _CodeSignature, not in xattrs).
+  ditto -c -k --norsrc --noextattr --noqtn --noacl --keepParent "$APP" "build/$ZIP_NAME"
+  if unzip -Z1 "build/$ZIP_NAME" | grep -q '^__MACOSX/'; then die "zip contains __MACOSX entries"; fi
   (cd build && shasum -a 256 "$ZIP_NAME" > "$ZIP_NAME.sha256")
 fi
 
