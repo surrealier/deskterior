@@ -7,6 +7,8 @@ public struct ClothParams: Hashable, Sendable, Codable {
     public var substeps = 8
     public var gravity: Float = -600
     public var stretchCompliance: Float = 0
+    /// Tuned in the M8 review from the spec's starting 1e-4 / 1e-2: heavy felt barely shears (so the mat moves as
+    /// a whole instead of skewing) and holds a broad curve when lifted, yet still buckles into wrinkles.
     public var shearCompliance: Float = 1e-6
     public var bendCompliance: Float = 1e-3
     public var staticFriction: Float = 0.7
@@ -50,12 +52,11 @@ public struct ClothParams: Hashable, Sendable, Codable {
     public var carryLift: Float = 6
     public var releaseKeep: Float = 0.4
     public var peelHeight: Float = 12
-    public var peelPatchRadius: Float = 6.5
     /// Half-width of the edge segment an edge peel holds, so an edge folds over in a straight line.
     public var peelEdgeHalfWidth: Float = 18
     public var tugHeight: Float = 1.5
     public var tugConeDegrees: Float = 60
-    /// Frames over which a released flap held over the mat is laid down onto it.
+    /// Frames over which a released peel is finished: laid down folded, or laid back flat.
     public var layDownFrames = 8
     /// Peel fold guide: below this many px between the grab point's flat place and the held point, the lift is pure
     /// physics; beyond it the flap follows a paper fold at `foldGain` per substep.
@@ -320,7 +321,6 @@ public struct ClothSim: Sendable {
         } else {
             sampleGround(HeightSampler.flat)
         }
-        finishFrame()
         updateSleep()
     }
 

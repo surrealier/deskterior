@@ -53,6 +53,9 @@ public struct DeskSurfaceRaster: Sendable {
     static let depthScale: Float = 256
     /// Back faces win ties against the layer under them by this much (½ px).
     static let backBias: Int32 = 128
+    /// Shading-level fractions (·1024) between which neighbouring levels are Bayer-dithered.
+    static let ditherLow = 358
+    static let ditherHigh = 666
     /// Neighbour depth jump (1.5 px) that draws a crease or fold edge.
     static let creaseJump: Int32 = 384
     /// Material jump (6 px · 16) between neighbours that marks a different layer.
@@ -63,7 +66,10 @@ public struct DeskSurfaceRaster: Sendable {
     static let shadowLift: Int32 = 48
     /// Light from the upper left (−x, a little from the back, mostly above), normalized.
     static let light = SIMD3<Float>(-0.6, 0.1, 0.8) / (1.01 as Float).squareRoot()
-    static let shadeGain: Float = 4.5
+    /// Levels per unit of `n·L` change: slopes toward the light brighten faster than slopes away darken, so the
+    /// viewer-facing slopes that fill most of this oblique view stay felt-coloured and only turned-away faces darken.
+    static let shadeGainLit: Float = 4.5
+    static let shadeGainDark: Float = 2.8
 
     public private(set) var image: PixelBuffer
     /// `width × height`, row-major: −1 empty, ≥ 0 particle id, ≤ −2 pile (`pileID(owner:)`).
@@ -231,9 +237,13 @@ public struct DeskSurfaceRaster: Sendable {
                                 var level = Int(t.light)
                                 if S[i] != .min && S[i] >= t.depth - 320 { level -= 1280 }
                                 level = max(level, 0)
-                                // Crisp bands: round to the nearest level, so near-flat felt stays one solid colour
-                                // and slopes read as clean pixel-art steps.
-                                let lv = (level + 512) >> 10
+                                // Crisp bands with a short 4×4 Bayer ramp only around each half-way boundary, so
+                                // near-flat felt stays one solid colour and slopes read as clean pixel-art steps.
+                                let whole = level >> 10, frac = level & 1023
+                                let span = Self.ditherHigh - Self.ditherLow
+                                let ramp16 = min(max((frac - Self.ditherLow) * 16 / span, 0), 16)
+                                let bayer = Dither.bayer4(x: x + Self.origin.x, y: y + Self.origin.y)
+                                let lv = whole + (bayer < ramp16 ? 1 : 0)
                                 I[i] = ramp[min(max(lv + 1 + tone, 0), 6)]
                             }
                         }
@@ -271,14 +281,16 @@ struct VertexSet {
         lightBack = sx
         lift = sx
         valid = Array(repeating: true, count: n)
-        let L = DeskSurfaceRaster.light, gain = DeskSurfaceRaster.shadeGain
+        let L = DeskSurfaceRaster.light
+        let lit = DeskSurfaceRaster.shadeGainLit, dark = DeskSurfaceRaster.shadeGainDark
         func fixed(_ f: Float, _ scale: Float) -> Int32? {
             let s = (f * scale).rounded(.toNearestOrAwayFromZero)
             guard s.isFinite, abs(s) < 1_000_000 else { return nil }
             return Int32(s)
         }
         func shade(_ nx: Float, _ ny: Float, _ nz: Float) -> Int32 {
-            let s = 2 + gain * (nx * L.x + ny * L.y + nz * L.z - L.z)
+            let diff = nx * L.x + ny * L.y + nz * L.z - L.z
+            let s = 2 + diff * (diff > 0 ? lit : dark)
             return Int32((min(max(s, 0), 4.999) * 1024).rounded(.down))
         }
         cloth.parts.withUnsafeBufferPointer { P in

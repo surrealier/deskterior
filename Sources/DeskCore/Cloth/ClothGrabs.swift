@@ -55,8 +55,6 @@ struct TransformGrab {
 /// A frame-by-frame eased resize/rotation about a fixed desk point.
 struct TransformRun {
     var anchor: SIMD2<Float>
-    /// Material coordinates of the anchor (scaled with the size).
-    var anchorUV01: SIMD2<Float>
     var size: SIMD2<Float>
     var angle: Float
     var fromSize: SIMD2<Float>
@@ -253,7 +251,6 @@ extension ClothSim {
         wake()
         g.cursor = cursor
         g.modifiers = modifiers.union(g.modifiers.intersection(.option))
-        if !modifiers.contains(.shift) { g.modifiers.remove(.shift) }
         grab = g
         if g.mode == .pending { decideMode() }
         if grab?.mode == .transform { updateTransformTarget() }
@@ -366,7 +363,9 @@ extension ClothSim {
         let inwardUV: SIMD2<Float>
         switch g.region {
         case .edge(let inward): inwardUV = inward
-        case .corner(let k): inwardUV = [SIMD2<Float>(1, 1), SIMD2(-1, 1), SIMD2(-1, -1), SIMD2(1, -1)][k] * (0.5 as Float).squareRoot()
+        case .corner(let k):
+            let bisectors: [SIMD2<Float>] = [SIMD2(1, 1), SIMD2(-1, 1), SIMD2(-1, -1), SIMD2(1, -1)]
+            inwardUV = bisectors[k] * (0.5 as Float).squareRoot()
         case .interior: inwardUV = SIMD2(0, 1)
         }
         let c = Float(cos(Double(frame.angle))), s = Float(sin(Double(frame.angle)))
@@ -451,7 +450,7 @@ extension ClothSim {
         }
         let anchor = frame.point(anchorUV01 * restSize)
         transformRun = TransformRun(
-            anchor: anchor, anchorUV01: anchorUV01, size: restSize, angle: frame.angle, fromSize: restSize,
+            anchor: anchor, size: restSize, angle: frame.angle, fromSize: restSize,
             fromAngle: frame.angle, toSize: size, toAngle: unwrap(angle, near: frame.angle), progress: 0
         )
     }
@@ -480,8 +479,8 @@ extension ClothSim {
         setRestSize(size)
         run.size = size
         run.angle = angle
+        // A finished run ends unless the ⌥-corner grab that drives it is still held.
         transformRun = run.progress >= 1 && grab?.mode != .transform ? nil : run
-        if run.progress >= 1, grab?.mode == .transform { transformRun?.progress = 1 }
     }
 
     // MARK: - Scripts
@@ -691,8 +690,6 @@ extension ClothSim {
         g.appliedCursor = g.cursor
         grab = g
     }
-
-    func finishFrame() {}
 
     private mutating func addPin(_ index: Int32, from: SIMD3<Float>, to: SIMD3<Float>) {
         let i = Int(index)
