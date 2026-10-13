@@ -1,0 +1,20 @@
+{
+  "name": "00-layout",
+  "display": "1470x956@2",
+  "clock": "10:00",
+  "seed": 1,
+  "steps": [
+    { "comment": "The mirrored fixture on the monitor, by day, at night and in Lamp Only darkness." },
+    { "waitIdle": 10 },
+    { "expect": { "access": "connected", "monitor.power": "on", "monitor.overlay": "none", "pages": 1 } },
+    { "expect": { "token:보고서 final.pdf": "screen:1", "token:IMG_0001.png": "screen", "hidden": false } },
+    { "snapshot": "00-day" },
+    { "action": "lights:night" },
+    { "waitIdle": 2 },
+    { "expect": { "monitor.led": "on" } },
+    { "snapshot": "01-night" },
+    { "action": "lights:lamp" },
+    { "waitIdle": 2 },
+    { "snapshot": "02-lamp-only" }
+  ]
+}

@@ -3,10 +3,13 @@ import DeskCore
 import DeskScene
 import Metal
 import QuartzCore
+import QuickLookUI
 
 /// The desk's content view (DESIGN §4.5): backed by a `CAMetalLayer` (bgra8Unorm, sRGB, framebuffer-only) whose
-/// drawable is kept at the backing size, and the source of `InputEvent`s. Pointer locations go
-/// points (y-up) → y-down view points → canvas art px through the host's `PixelGrid`.
+/// drawable is kept at the backing size, and the source of `InputEvent`s and `KeyCommand`s. Pointer locations go
+/// points (y-up) → y-down view points → canvas art px through the host's `PixelGrid`. Keys (Errata 1): Space
+/// Quick Look, ⌘O/⌘↓ open, ⌘C copy file URLs, ⌘A select the page, ⌘F Find, ⌘Z/⇧⌘Z undo/redo, Esc, arrows; there
+/// is no ⌘⌫ and no other destructive key equivalent. It is also the Quick Look panel's controller.
 final class DeskView: NSView {
     let metalLayer = CAMetalLayer()
     weak var host: SceneHost?
@@ -14,8 +17,6 @@ final class DeskView: NSView {
     var emulatedScale: Double?
     /// Called when the drawable size or scale changes.
     var onGeometryChange: (() -> Void)?
-    /// The right-click menu.
-    var contextMenu: (() -> NSMenu?)?
 
     private var trackingArea: NSTrackingArea?
     private var reportedSize = CGSize.zero
@@ -92,9 +93,7 @@ final class DeskView: NSView {
     }
 
     override func mouseDown(with event: NSEvent) {
-        if let e = send(.down, event) {
-            Log.info("click art \(e.artPixel) (\(e.art.x), \(e.art.y)) x\(e.clickCount)")
-        }
+        send(.down, event)
     }
 
     override func mouseUp(with event: NSEvent) { send(.up, event) }
@@ -102,8 +101,8 @@ final class DeskView: NSView {
     override func mouseMoved(with event: NSEvent) { send(.move, event) }
 
     override func rightMouseDown(with event: NSEvent) {
-        if let e = send(.rightDown, event) { Log.info("right-click art \(e.artPixel)") }
-        if let menu = contextMenu?() { NSMenu.popUpContextMenu(menu, with: event, for: self) }
+        // The scene answers with a `SceneRequest.menu`, which the app shows through `showMenu`.
+        send(.rightDown, event)
     }
 
     override func scrollWheel(with event: NSEvent) {
@@ -115,23 +114,60 @@ final class DeskView: NSView {
         send(.scroll, event, scroll: delta)
     }
 
-    // MARK: Keys (M2: Esc and logging only)
+    // MARK: Keys
 
     override func keyDown(with event: NSEvent) {
-        if event.keyCode == 53 {
-            Log.info("key: Esc")
+        if let command = Self.command(for: event) {
+            host?.handleKey(command)
         } else {
-            Log.info("key: \(event.keyCode) '\(event.charactersIgnoringModifiers ?? "")'")
+            super.keyDown(with: event)
         }
-        send(.key, event)
     }
 
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
-        if event.type == .keyDown {
-            let command = event.modifierFlags.contains(.command) ? "⌘" : ""
-            Log.info("key equivalent: \(command)\(event.charactersIgnoringModifiers ?? "")")
-        }
-        return super.performKeyEquivalent(with: event)
+        guard event.type == .keyDown, event.modifierFlags.contains(.command), let command = Self.command(for: event)
+        else { return super.performKeyEquivalent(with: event) }
+        host?.handleKey(command)
+        return true
+    }
+
+    static func command(for event: NSEvent) -> KeyCommand? {
+        KeyCommand.from(keyCode: event.keyCode, characters: event.charactersIgnoringModifiers,
+                        mods: modifiers(event.modifierFlags))
+    }
+
+    // The hidden main menu's Edit items (Errata 1) route here too.
+    @objc func undo(_ sender: Any?) { host?.handleKey(.undo) }
+    @objc func redo(_ sender: Any?) { host?.handleKey(.redo) }
+    @objc func copy(_ sender: Any?) { host?.handleKey(.copy) }
+    @objc override func selectAll(_ sender: Any?) { host?.handleKey(.selectAll) }
+
+    // MARK: Menus
+
+    /// Pops `menu` up at a canvas art point.
+    func showMenu(_ menu: NSMenu, atArt p: SIMD2<Float>) {
+        menu.popUp(positioning: nil, at: viewPoint(fromArt: p), in: self)
+    }
+
+    /// The view point (y-up) of a canvas art point.
+    func viewPoint(fromArt p: SIMD2<Float>) -> NSPoint {
+        guard let grid = host?.grid else { return .zero }
+        let s = Double(grid.scale), backing = grid.display.backingScale
+        let x = (Double(p.x) * s - Double(grid.cropLeft)) / backing
+        let y = (Double(p.y) * s - Double(grid.cropTop)) / backing
+        return NSPoint(x: x, y: Double(bounds.height) - y)
+    }
+
+    // MARK: Quick Look (the panel finds us in the responder chain)
+
+    nonisolated override func acceptsPreviewPanelControl(_ panel: QLPreviewPanel!) -> Bool { true }
+
+    nonisolated override func beginPreviewPanelControl(_ panel: QLPreviewPanel!) {
+        MainActor.assumeIsolated { panel.dataSource = QuickLookSource.shared }
+    }
+
+    nonisolated override func endPreviewPanelControl(_ panel: QLPreviewPanel!) {
+        MainActor.assumeIsolated { panel.dataSource = nil }
     }
 
     // MARK: Conversion

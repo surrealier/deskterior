@@ -61,6 +61,11 @@ struct LaunchOptions: Equatable {
         case desk, windowed, headless
     }
 
+    /// Where token icons come from: real pixelated icons (default), or the kind icons only (deterministic).
+    enum Icons: String, CaseIterable {
+        case kind, live
+    }
+
     struct UsageError: Error, CustomStringConvertible {
         let description: String
     }
@@ -74,10 +79,15 @@ struct LaunchOptions: Equatable {
     var printWindowID = false
     var exitAfter: Double?
     var pixelSize = PixelSize.normal
-    /// Parsed and stored only in M2.
+    /// The folder to mirror (required, and never the real desktop, outside desk mode).
     var desktopFolder: String?
-    /// Parsed and stored only in M2.
+    /// Layout, icon cache and log folder (default: the app's own, or a temporary one outside desk mode).
     var stateDir: String?
+    /// `--demo FILE`: run a demo script headless (implies `--headless`).
+    var demo: String?
+    /// `--seed N`: reducer randomness (demo scripts may set their own).
+    var seed: UInt64?
+    var icons = Icons.live
     var showHelp = false
     var showVersion = false
     /// `--clock HH:MM` (today's date) or an ISO 8601 local date-time; nil follows the real clock.
@@ -87,7 +97,7 @@ struct LaunchOptions: Equatable {
     /// `--lights auto|day|night|lamp`.
     var lights = LightsMode.auto
 
-    var mode: Mode { headless ? .headless : (windowed != nil ? .windowed : .desk) }
+    var mode: Mode { headless || demo != nil ? .headless : (windowed != nil ? .windowed : .desk) }
     /// The scene's time source.
     var sceneClock: SceneClock { clock.map { .fixed($0) } ?? .live }
     /// The display `--windowed` and `--headless` emulate.
@@ -107,7 +117,11 @@ struct LaunchOptions: Equatable {
           --calibration              show the M2 calibration card instead of the room
           --print-window-id          print the window number (for screencapture -l)
           --exit-after SECONDS       quit after this long
-          --desktop-folder DIR, --state-dir DIR   (reserved; unused in this build)
+          --desktop-folder DIR       mirror this folder (required outside desk mode; never the real Desktop)
+          --state-dir DIR            layout, icon cache and log folder
+          --demo FILE                run a demo script headless (snapshots with --snapshot-dir)
+          --seed N                   reducer randomness
+          --icons kind|live          kind icons only, or pixelated real icons (default live)
           --version, --help
         Every option can also be set as DESKTERIOR_<NAME> in the environment, e.g. DESKTERIOR_SNAPSHOT_DIR.
         """
@@ -228,6 +242,15 @@ struct LaunchOptions: Equatable {
         },
         Spec(names: ["--calibration"], arity: .switch) { o, _ in o.calibration = true },
         Spec(names: ["--desktop-folder"], arity: .value) { o, v in o.desktopFolder = v },
+        Spec(names: ["--demo"], arity: .value) { o, v in o.demo = v },
+        Spec(names: ["--seed"], arity: .value) { o, v in
+            guard let v, let n = UInt64(v) else { throw UsageError(description: "--seed expects a non-negative integer") }
+            o.seed = n
+        },
+        Spec(names: ["--icons"], arity: .value) { o, v in
+            guard let v, let icons = Icons(rawValue: v) else { throw UsageError(description: "--icons expects kind or live") }
+            o.icons = icons
+        },
         Spec(names: ["--state-dir"], arity: .value) { o, v in o.stateDir = v },
         Spec(names: ["--help", "-h"], arity: .switch) { o, _ in o.showHelp = true },
         Spec(names: ["--version"], arity: .switch) { o, _ in o.showVersion = true },

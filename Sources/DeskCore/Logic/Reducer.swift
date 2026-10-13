@@ -84,6 +84,11 @@ public enum Reducer {
             }
             return [.play(.staticNoise, .monitor), .play(.osd, .monitor), .persist, .wakeLoop]
 
+        case .selectAV:
+            guard !s.monitor.av else { return [] }
+            s.monitor.av = true
+            return [.play(.staticNoise, .monitor), .play(.osd, .monitor), .persist, .wakeLoop]
+
         case let .cleanUp(order):
             let onScreen = s.tokens.keys { $0.isScreen }
             guard !onScreen.isEmpty else { return [] }
@@ -156,8 +161,12 @@ public enum Reducer {
             Placement.register(names, into: &s.hints, now: env.now)
             return []
 
-        case .clearDesk, .undo, .redo:
-            // TODO(M5 UndoJournal, M9 ClearDesk plan).
+        case .clearDesk:
+            // TODO(M9): the ClearDesk plan (monitor off, phone down, sweep under the mat), one undo.
+            return [.toast(.notYetAvailable)]
+
+        case .undo, .redo:
+            // Journaled by `reduce(_:journal:_:_:)`.
             return []
 
         case .requestConnect:

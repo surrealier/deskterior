@@ -2,41 +2,91 @@ import DeskCore
 import SpriteKit
 
 /// What a pointer is over: an element, and the most specific named anchor of it under the point.
-public struct Hit: Hashable, Sendable {
+public nonisolated struct Hit: Hashable, Sendable {
     public let element: String
-    /// An anchor name ("monitor.power", "riser.drawerL.handle", …), or nil for the element's body.
+    /// An anchor name ("monitor.power", "riser.drawerL.handle", …), "token" for a token, or nil for the element's
+    /// body.
     public let part: String?
-    /// Canvas rect to highlight: the part's anchor rect, or the element's bounds.
+    /// Canvas rect to highlight: the part's anchor rect, the token's icon, or the element's bounds.
     public let rect: ArtRect
+    /// The token under the pointer (token hits only).
+    public let token: TokenKey?
 
-    public init(element: String, part: String?, rect: ArtRect) {
+    public init(element: String, part: String?, rect: ArtRect, token: TokenKey? = nil) {
         self.element = element
         self.part = part
         self.rect = rect
+        self.token = token
     }
 }
 
-/// One interactive or decorative thing in the room (DESIGN §4.4). Elements own SpriteKit nodes under `root`,
-/// place them through `ArtSpace`, and answer pixel-precise hit tests in canvas art px.
+/// One interactive or decorative thing in the room (DESIGN §4.2, §4.4). Elements own SpriteKit nodes under `root`,
+/// place them through `ArtSpace`, answer pixel-precise hit tests in canvas art px, and react to gestures the
+/// `InputRouter` recognizes. Everything but identity, nodes, layout and hit-testing has a default, so a
+/// decorative element is a few lines and an interactive one implements only what it does:
+///
+/// - `apply` adopts committed model state (`SceneSync` pushes every change);
+/// - `hover`/`hoverStyle`/`tooltip` shape the 1-px ring and the delayed Galmuri9 tooltip;
+/// - `handle` answers a gesture: `.handled`, `.drag(controller)` to follow a drag, or `.pass` for the router's
+///   bare-desk fallback (clear the selection, the wall menu);
+/// - `dropVerdict` says where carried tokens released over the element go (`DropResolver` asks front to back);
+/// - `menu` builds the right-click `MenuSpec` (nil falls back to the desk menu);
+/// - `step`/`needsFrames`/`settle` run bounded animations under the frame loop (hard sleep calls `settle`);
+/// - `accessibilityItems` lists what VoiceOver should offer.
+///
+/// Elements change the model only by dispatching `DeskAction`s through their `SceneContext`; continuous motion
+/// stays in the scene until it settles.
 public protocol DeskElement: AnyObject {
     var id: String { get }
     var root: SKNode { get }
     /// Adopts a solved layout (canvas size, core placement, anchors).
     func layout(_ layout: SceneLayout)
+    /// Adopts committed model state.
+    func apply(_ state: DeskState)
     /// The hit under canvas pixel `p`, if any.
     func hitTest(_ p: ArtPoint) -> Hit?
+    /// The pointer moved onto one of this element's hits (nil: it left). True when something visible changed.
+    func hover(_ hit: Hit?) -> Bool
+    func hoverStyle(_ hit: Hit) -> HoverStyle
+    func tooltip(_ hit: Hit) -> TooltipSpec?
+    func handle(_ gesture: Gesture, _ hit: Hit) -> GestureResponse
+    /// Where `tokens` released at `p` would go, or nil when the element does not take drops there.
+    func dropVerdict(_ tokens: [TokenKey], at p: ArtPoint) -> DropVerdict?
+    func menu(_ hit: Hit) -> MenuSpec?
+    func accessibilityItems() -> [AXItem]
     /// True while the element animates on its own.
     var needsFrames: Bool { get }
     func step(_ dt: Double)
+    /// Hard sleep: jump every animation to its final frame.
+    func settle()
+}
+
+extension DeskElement {
+    public func apply(_ state: DeskState) {}
+    public func hover(_ hit: Hit?) -> Bool { false }
+    public func hoverStyle(_ hit: Hit) -> HoverStyle { .standard }
+    public func tooltip(_ hit: Hit) -> TooltipSpec? { nil }
+    public func handle(_ gesture: Gesture, _ hit: Hit) -> GestureResponse { .pass }
+    public func dropVerdict(_ tokens: [TokenKey], at p: ArtPoint) -> DropVerdict? { nil }
+    public func menu(_ hit: Hit) -> MenuSpec? { nil }
+    public func accessibilityItems() -> [AXItem] { [] }
+    public var needsFrames: Bool { false }
+    public func step(_ dt: Double) {}
+    public func settle() {}
 }
 
 /// The shared element for the M3 room: it shows the `RoomPlan` placements it owns (one sprite node each, z from
-/// the placement's layer) and hit-tests them by alpha, then by the element's anchors.
+/// the placement's layer) and hit-tests them by alpha, then by the element's anchors. Until an object gets its
+/// own element (waves 4b/5), this is all it does, plus a tooltip title and an optional fixed drop policy.
 public final class PlacedElement: DeskElement {
     public let id: String
     public let root = SKNode()
     /// Anchor names this element answers for: each prefix itself and every `prefix.…` below it.
     public let anchorPrefixes: [String]
+    /// The hover tooltip ("Desk Lamp"), if any.
+    public var title: String?
+    /// What tokens dropped on the element's pixels get (the drive hub bonks, E15).
+    public var dropPolicy: DropVerdict?
 
     private(set) var layoutValue: SceneLayout?
     private var space = ArtSpace(canvas: .zero)
@@ -134,7 +184,12 @@ public final class PlacedElement: DeskElement {
         return out
     }
 
-    public var needsFrames: Bool { false }
+    public func tooltip(_ hit: Hit) -> TooltipSpec? {
+        title.map { TooltipSpec(title: $0, anchor: hit.rect) }
+    }
 
-    public func step(_ dt: Double) {}
+    public func dropVerdict(_ tokens: [TokenKey], at p: ArtPoint) -> DropVerdict? {
+        guard let dropPolicy, hitTest(p) != nil else { return nil }
+        return dropPolicy
+    }
 }

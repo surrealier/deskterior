@@ -2,14 +2,16 @@ import DeskCore
 import DeskFiles
 import Foundation
 
-/// Mirrors the desktop folder into a `DeskState` (DESIGN §3.1, §4.3): loads `desk.json`, applies first-run
-/// gating, scans and watches the folder, reduces every change and saves the layout (debounced 1 s, at most 5 s
-/// behind a stream of changes). A scan that would remove most of the desk is confirmed by a second scan before
-/// it is applied, and the layout of a folder that stops being mirrored is kept aside for its return. All of it
-/// runs on a background queue; state snapshots and effects arrive on the main actor through `onState`.
+/// Mirrors the desktop folder into the `Store` (DESIGN §3.1, §4.3). It loads `desk.json` into the store, applies
+/// first-run gating (connect prompt, or the DESKTOP HIDDEN card when Finder hides desktop items), and runs the
+/// scanner, watcher and volume watcher on background queues (`MirrorEngine`); snapshots, access failures and
+/// volumes come back to the main actor and reach the model as actions. Its safety behaviours stay here:
 ///
-/// Not wired into the scene yet (M5 replaces the internal reducer loop with `Store`). Reading only: nothing
-/// here can change a user file.
+/// - a scan that would remove most of the desk is held and confirmed by a rescan `confirmDelay` later;
+/// - switching to another folder parks the old folder's layout (`StateStore.switchRoot`) before the snapshot;
+/// - the store's `LayoutSaver` debounces saves (1 s, at most 5 s behind).
+///
+/// Reading only: nothing here can change a user file.
 final class MirrorController {
     struct Configuration: Sendable {
         /// The folder to mirror (already checked by `SafetyGuard`).
@@ -24,40 +26,131 @@ final class MirrorController {
         var persistMaxWait: TimeInterval = 5
         /// How long a suspected mass removal waits for its confirming rescan.
         var confirmDelay: TimeInterval = 2
+        /// Overrides `FinderPrefs` for first-run gating (demo scripts).
+        var finderHidesItems: Bool?
     }
 
-    /// Called on the main actor after every change, with the effects the reducer produced (minus `.persist`).
-    var onState: (DeskState, [Effect]) -> Void
-    private(set) var state = DeskState()
-    private let engine: MirrorEngine
+    let configuration: Configuration
+    private unowned let store: Store
+    private let stateStore: StateStore?
+    private let engine = MirrorEngine()
+    /// When a suspected mass removal was first seen (its confirming rescan is due).
+    private var suspectSince: Date?
+    private(set) var started = false
+    /// Snapshots applied so far, and when the last one arrived (demo idle checks).
+    private(set) var snapshotCount = 0
+    private(set) var lastEventAt: Date?
+    /// True from a connect or rescan request until its snapshot arrives.
+    private(set) var awaitingScan = false
 
-    init(configuration: Configuration, onState: @escaping (DeskState, [Effect]) -> Void = { _, _ in }) {
-        self.onState = onState
-        engine = MirrorEngine(configuration: configuration)
-        engine.publish = { [weak self] state, effects in
+    init(configuration: Configuration, store: Store, stateStore: StateStore?) {
+        self.configuration = configuration
+        self.store = store
+        self.stateStore = stateStore
+        engine.onEvent = { [weak self] event in
             DispatchQueue.main.async {
-                MainActor.assumeIsolated {
-                    guard let self else { return }
-                    self.state = state
-                    self.onState(state, effects)
-                }
+                MainActor.assumeIsolated { self?.handle(event) }
+            }
+        }
+        engine.onVolumes = { [weak self] list in
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated { self?.store.dispatch(.volumes(list)) }
             }
         }
     }
 
-    /// Loads the saved layout and, if already connected (or in a development mode), starts mirroring.
-    func start() { engine.start() }
+    /// Loads the saved layout into the store and, if already connected (or in a development mode), starts
+    /// mirroring; otherwise shows the first-run card and waits for ⏻.
+    func start() {
+        guard !started else { return }
+        started = true
+        if let loaded = stateStore?.load() {
+            for problem in loaded.problems { log("desk.json: \(problem)") }
+            if let copy = loaded.corruptCopy { log("kept corrupt layout as \(copy.path)") }
+            if let document = loaded.document { store.replace { $0 = document.makeState() } }
+        }
+        let state = store.state
+        let rootMatches = state.root.map { $0.path == DesktopLocator.canonicalPath(configuration.folder) } ?? false
+        if configuration.connectImmediately || (state.access == .connected && rootMatches) {
+            store.replace { $0.access = .connecting }
+            connect()
+        } else {
+            store.replace { $0.access = .notConnected }
+            let hides = configuration.finderHidesItems ?? FinderPrefs.current().hidesDesktopItems
+            if hides && configuration.settings.showDespiteFinderHidden != true { store.dispatch(.finderHidesItems) }
+        }
+        engine.startVolumes()
+    }
 
-    /// Reduces `action` on the mirror queue.
-    func send(_ action: DeskAction) { engine.send(action) }
+    /// Starts watching, or rescans when the watcher already runs (`Effect.connectDesktop`, Choose Folder…).
+    func connect() {
+        awaitingScan = true
+        engine.watch(configuration.folder)
+    }
 
     /// Rescans now (wake, session active).
-    func rescan() { engine.rescan() }
+    func rescan() {
+        awaitingScan = true
+        engine.rescan(preservingContinuity: false)
+    }
 
-    /// Saves immediately (quit, sleep, session resign) and waits for the write.
-    func flush() { engine.flush() }
+    func stop() {
+        engine.stop()
+    }
 
-    func stop() { engine.stop() }
+    // MARK: Events (main actor)
+
+    private func handle(_ event: DesktopWatcher.Event) {
+        lastEventAt = Date()
+        switch event {
+        case let .snapshot(snapshot):
+            guard confirmed(snapshot) else { return }
+            awaitingScan = false
+            do {
+                try store.replace { try stateStore?.switchRoot(&$0, to: snapshot.rootPath, now: snapshot.scannedAt) }
+            } catch {
+                log("could not keep the previous folder's layout: \(error)")
+            }
+            snapshotCount += 1
+            store.dispatch(.snapshot(snapshot, now: snapshot.scannedAt))
+        case let .failed(.accessDenied(path)):
+            awaitingScan = false
+            log("no access to \(path)")
+            store.dispatch(.accessDenied)
+        case let .failed(failure):
+            // A vanished folder (iCloud Desktop toggling, unmounted volume) keeps the layout; RootChanged rescans.
+            awaitingScan = false
+            log("scan failed: \(failure)")
+        }
+    }
+
+    /// False while a scan that would remove most of the desk waits for a confirming rescan (a folder being
+    /// replaced, an iCloud toggle); the rescan, or any scan after `confirmDelay`, is applied.
+    private func confirmed(_ snapshot: DesktopSnapshot) -> Bool {
+        guard Reconciler.isMassRemoval(store.state, snapshot) else {
+            suspectSince = nil
+            return true
+        }
+        let now = Date()
+        if let since = suspectSince {
+            if now.timeIntervalSince(since) >= configuration.confirmDelay {
+                suspectSince = nil
+                return true
+            }
+            return false
+        }
+        suspectSince = now
+        log("a scan would remove most of the desk; confirming in \(configuration.confirmDelay) s")
+        let continuous = snapshot.continuous
+        DispatchQueue.main.asyncAfter(deadline: .now() + configuration.confirmDelay) { [weak self] in
+            MainActor.assumeIsolated { self?.engine.rescan(preservingContinuity: continuous) }
+        }
+        return false
+    }
+
+    private func log(_ message: String) {
+        FileHandle.standardError.write(Data("Deskterior mirror: \(message)\n".utf8))
+    }
 
     // MARK: Launch configuration
 
@@ -72,7 +165,7 @@ final class MirrorController {
         let mode: SafetyGuard.Mode = switch options.mode {
         case .desk: .desk
         case .windowed: .windowed
-        case .headless: .headless
+        case .headless: options.demo == nil ? .headless : .demo
         }
         let resolution = DesktopLocator.resolve(override: options.desktopFolder, environment: environment)
         let folder = try SafetyGuard.mirrorFolder(resolution, mode: mode)
@@ -107,205 +200,54 @@ final class MirrorController {
             exit(error.exitCode)
         }
     }
-
-    /// Headless entry: loads the layout from `stateDirectory` (if given), scans `folder` once, reconciles and
-    /// saves. Synchronous; call it off the main thread for large folders.
-    nonisolated static func mirrorOnce(
-        folder: URL, stateDirectory: URL?, now: Date = Date()
-    ) throws -> DeskState {
-        let store = try stateDirectory.map { try StateStore(directory: $0, mirrored: folder) }
-        var state = store?.load(now: now).document?.makeState() ?? DeskState()
-        let snapshot = try DesktopScanner(root: folder).scan(now: now)
-        try store?.switchRoot(&state, to: snapshot.rootPath, now: now)
-        _ = reduce(&state, .snapshot(snapshot, now: now), ReduceEnv(now: now))
-        try store?.save(state, now: now)
-        return state
-    }
 }
 
-/// The queue-confined half of `MirrorController`.
+/// The background half of `MirrorController`: the FSEvents watcher (with its scanner) and the volume watcher,
+/// confined to one serial queue. It never touches the model; events go out through `onEvent` / `onVolumes`.
 nonisolated final class MirrorEngine: @unchecked Sendable {
-    let configuration: MirrorController.Configuration
-    /// Set once by the controller before `start`.
-    var publish: @Sendable (DeskState, [Effect]) -> Void = { _, _ in }
+    /// Set once before use.
+    var onEvent: @Sendable (DesktopWatcher.Event) -> Void = { _ in }
+    var onVolumes: @Sendable ([VolumeEntry]) -> Void = { _ in }
 
     private let queue = DispatchQueue(label: "deskterior.mirror", qos: .userInitiated)
     // Confined to `queue`.
-    private var state = DeskState()
-    private var store: StateStore?
     private var watcher: DesktopWatcher?
     private var volumes: VolumeWatcher?
-    private var pendingSave: DispatchWorkItem?
-    /// When the oldest unsaved change was scheduled.
-    private var dirtySince: DispatchTime?
-    /// When a suspected mass removal was first seen (its confirming rescan is due).
-    private var suspectSince: DispatchTime?
-    private var lastSaveError: String?
-    private var started = false
 
-    init(configuration: MirrorController.Configuration) {
-        self.configuration = configuration
-    }
-
-    func start() {
+    /// Starts watching `folder` (with an initial scan), or rescans when already watching.
+    func watch(_ folder: URL) {
         queue.async { [self] in
-            guard !started else { return }
-            started = true
-            do {
-                store = try StateStore(directory: configuration.stateDirectory, mirrored: configuration.folder)
-            } catch {
-                log("state store unavailable: \(error)")
+            if let watcher {
+                watcher.rescanNow()
+                return
             }
-            if let loaded = store?.load() {
-                state = loaded.document?.makeState() ?? DeskState()
-                for problem in loaded.problems { log("desk.json: \(problem)") }
-                if let copy = loaded.corruptCopy { log("kept corrupt layout as \(copy.path)") }
-            }
-            let rootMatches = state.root.map { $0.path == DesktopLocator.canonicalPath(configuration.folder) } ?? false
-            if configuration.connectImmediately || (state.access == .connected && rootMatches) {
-                state.access = .connecting
-                startWatching()
-            } else {
-                state.access = .notConnected
-                if FinderPrefs.current().hidesDesktopItems && configuration.settings.showDespiteFinderHidden != true {
-                    _ = reduce(&state, .finderHidesItems, env())
-                }
-            }
-            publish(state, [.wakeLoop])
-
-            let volumes = VolumeWatcher { [weak self] list in self?.send(.volumes(list)) }
-            self.volumes = volumes
-            volumes.start()
+            let handler = onEvent
+            let watcher = DesktopWatcher(scanner: DesktopScanner(root: folder)) { event in handler(event) }
+            self.watcher = watcher
+            watcher.start()
         }
     }
 
-    func send(_ action: DeskAction) {
-        queue.async { [self] in apply(action) }
+    func rescan(preservingContinuity: Bool) {
+        queue.async { [self] in watcher?.rescanNow(preservingContinuity: preservingContinuity) }
     }
 
-    func rescan() {
-        queue.async { [self] in watcher?.rescanNow() }
-    }
-
-    func flush() {
-        queue.sync { save() }
+    func startVolumes() {
+        queue.async { [self] in
+            guard volumes == nil else { return }
+            let handler = onVolumes
+            let v = VolumeWatcher { list in handler(list) }
+            volumes = v
+            v.start()
+        }
     }
 
     func stop() {
         queue.sync {
-            save()
             watcher?.stop()
             watcher = nil
             volumes?.stop()
             volumes = nil
         }
-    }
-
-    // MARK: Queue-confined
-
-    private func env() -> ReduceEnv { ReduceEnv(now: Date()) }
-
-    private func apply(_ action: DeskAction) {
-        let effects = reduce(&state, action, env())
-        var forward: [Effect] = []
-        for effect in effects {
-            switch effect {
-            case .persist: scheduleSave()
-            case .connectDesktop: startWatching()
-            default: forward.append(effect)
-            }
-        }
-        if !effects.isEmpty { publish(state, forward) }
-    }
-
-    /// Starts the watcher, or rescans when it already runs (reconnecting after NO SIGNAL).
-    private func startWatching() {
-        if let watcher {
-            watcher.rescanNow()
-            return
-        }
-        let scanner = DesktopScanner(root: configuration.folder)
-        let watcher = DesktopWatcher(scanner: scanner) { [weak self] event in
-            guard let self else { return }
-            queue.async { self.handle(event) }
-        }
-        self.watcher = watcher
-        watcher.start()
-    }
-
-    private func handle(_ event: DesktopWatcher.Event) {
-        switch event {
-        case let .snapshot(snapshot):
-            guard confirmed(snapshot) else { return }
-            do {
-                try store?.switchRoot(&state, to: snapshot.rootPath, now: snapshot.scannedAt)
-            } catch {
-                log("could not keep the previous folder's layout: \(error)")
-            }
-            apply(.snapshot(snapshot, now: snapshot.scannedAt))
-        case let .failed(.accessDenied(path)):
-            log("no access to \(path)")
-            apply(.accessDenied)
-        case let .failed(failure):
-            // A vanished folder (iCloud Desktop toggling, unmounted volume) keeps the layout; RootChanged rescans.
-            log("scan failed: \(failure)")
-        }
-    }
-
-    /// False while a scan that would remove most of the desk waits for a confirming rescan (a folder being
-    /// replaced, an iCloud toggle); the rescan, or any scan after `confirmDelay`, is applied.
-    private func confirmed(_ snapshot: DesktopSnapshot) -> Bool {
-        guard Reconciler.isMassRemoval(state, snapshot) else {
-            suspectSince = nil
-            return true
-        }
-        let now = DispatchTime.now()
-        if let since = suspectSince {
-            if now >= since + configuration.confirmDelay {
-                suspectSince = nil
-                return true
-            }
-            return false
-        }
-        suspectSince = now
-        log("a scan would remove most of the desk; confirming in \(configuration.confirmDelay) s")
-        let continuous = snapshot.continuous
-        queue.asyncAfter(deadline: now + configuration.confirmDelay) { [weak self] in
-            self?.watcher?.rescanNow(preservingContinuity: continuous)
-        }
-        return false
-    }
-
-    /// Debounced by `persistDelay`, but never more than `persistMaxWait` after the first unsaved change.
-    private func scheduleSave() {
-        pendingSave?.cancel()
-        let now = DispatchTime.now()
-        let first = dirtySince ?? now
-        dirtySince = first
-        let item = DispatchWorkItem { [weak self] in self?.save() }
-        pendingSave = item
-        queue.asyncAfter(
-            deadline: min(now + configuration.persistDelay, first + configuration.persistMaxWait), execute: item
-        )
-    }
-
-    private func save() {
-        pendingSave?.cancel()
-        pendingSave = nil
-        dirtySince = nil
-        guard let store, state.root != nil else { return }
-        do {
-            try store.save(state)
-            lastSaveError = nil
-        } catch {
-            // A newer desk.json (or a full disk) fails every save; say so once.
-            let message = "could not save the layout: \(error)"
-            if message != lastSaveError { log(message) }
-            lastSaveError = message
-        }
-    }
-
-    private func log(_ message: String) {
-        FileHandle.standardError.write(Data("Deskterior mirror: \(message)\n".utf8))
     }
 }

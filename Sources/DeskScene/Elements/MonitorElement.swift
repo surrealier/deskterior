@@ -1,0 +1,414 @@
+import DeskCore
+import DeskPixels
+import SpriteKit
+
+/// The monitor and its power button (DESIGN §2.2 E1–E2): ⏻ (zero latency; on the first-run prompt it connects
+/// the desktop), INPUT (HDMI 1…n, AV, HDMI 1), page dots, the LED and "+N" badge, the CRT collapse and bloom, the
+/// static and OSD after an input change, the AV logo (≤ 10 s, restarted by hovering) and the full-screen cards
+/// (connect prompt, connecting, NO SIGNAL, DESKTOP HIDDEN with their buttons). It owns the glass for gestures:
+/// empty-screen clicks clear the selection, drags draw a marquee, scrolls change page. The monitor's static
+/// sprites stay in the room's `PlacedElement`, which this element uses for alpha hit tests; everything that
+/// changes is drawn here, over them. The visible state comes from `MonitorMachine`.
+public final class MonitorElement: DeskElement {
+    public let id = "monitor"
+    public let root = SKNode()
+    unowned let context: SceneContext
+    let screen: ScreenElement
+    /// The room's monitor sprites (body, stand, screen, LED, dots).
+    weak var placed: PlacedElement?
+    public private(set) var machine: MonitorMachine?
+    private(set) var state: DeskState?
+
+    private let cover = SKSpriteNode()
+    private let osdNode = SKSpriteNode()
+    private let ledNode = SKSpriteNode()
+    private let dotsNode = SKSpriteNode()
+    private let badgeNode = SKSpriteNode()
+    private let pressedNode = SKSpriteNode()
+    private let sparkleNode = SKSpriteNode()
+    /// The card currently shown and its buttons (screen px).
+    private(set) var card: ScreenCard.Rendered?
+    private var cardKey: (ScreenOverlay, SkyVariant)?
+    private var crtOff: [PixelBuffer] = []
+    private var crtOn: [PixelBuffer] = []
+    private(set) var pressedPart: String?
+    private var shownCover: String?
+    private var shownOSD: String?
+    private var shownLED: MonitorArt.LEDState?
+    private var shownDots: String?
+    private var shownBadge: String?
+    private var scrollAccum: SIMD2<Float> = .zero
+    private var scrollIdle: Double = 0
+    private var scrollLocked = false
+    private lazy var staticFrames = MonitorArt.staticFrames()
+
+    /// Scroll distance (art px) that flips one page.
+    static let pageScroll: Float = 24
+
+    init(context: SceneContext, screen: ScreenElement) {
+        self.context = context
+        self.screen = screen
+        for n in [cover, osdNode, ledNode, dotsNode, badgeNode, pressedNode, sparkleNode] {
+            n.isHidden = true
+            root.addChild(n)
+        }
+        screen.monitor = self
+    }
+
+    // MARK: State
+
+    public func layout(_ layout: SceneLayout) {
+        refresh(force: true)
+    }
+
+    public func apply(_ s: DeskState) {
+        let before = machine?.phase
+        if machine == nil {
+            machine = MonitorMachine(s)
+        } else {
+            machine!.sync(s)
+        }
+        state = s
+        if before == .on || before == .poweringOn, machine?.phase == .poweringOff {
+            crtOff = MonitorArt.powerOffFrames(from: picture(withTokens: true))
+        }
+        if before == .off || before == .poweringOff, machine?.phase == .poweringOn {
+            crtOn = MonitorArt.powerOnFrames(to: picture(withTokens: false))
+        }
+        refresh()
+    }
+
+    /// The screen glows (lit pass): on, or mid-transition.
+    var isEmissive: Bool { machine.map { $0.phase != .off } ?? true }
+
+    /// The full picture: wallpaper, then the card or the tokens.
+    private func picture(withTokens: Bool) -> PixelBuffer {
+        var c = PixelCanvas(MonitorArt.deskOSWallpaper(sky: context.sky))
+        guard let s = state else { return c.buffer }
+        switch ScreenOverlay.of(s) {
+        case .none:
+            if withTokens, let image = screen.image { c.blit(image, at: .zero) }
+        case .av:
+            return MonitorArt.noSignalScreen(logo: machine?.logo.position)
+        case let overlay:
+            if let card = ScreenCard.render(overlay, wallpaper: c.buffer, font: context.font) { return card.image }
+        }
+        return c.buffer
+    }
+
+    /// Re-renders what changed; `force` after a layout change.
+    private func refresh(force: Bool = false) {
+        guard let m = machine, let s = state else { return }
+        let space = context.space, layout = context.layout
+        let glass = layout.rect(CoreLayout.screen)
+        let base = context.placementZ("monitor.screen")
+        let top = context.placementZ("monitor.pageDots") + 0.5
+        screen.setVisibility(showsTokens: m.showsTokens, rowsShown: m.rowsShown)
+        screen.render()
+
+        // The cover: a CRT frame, static, the AV card or a full-screen card.
+        var coverKey: String?
+        var coverImage: (() -> PixelBuffer)?
+        if let crt = m.crtFrame {
+            switch crt {
+            case let .off(i) where i < crtOff.count:
+                coverKey = "off\(i)"
+                coverImage = { self.crtOff[i] }
+            case let .on(i) where i < crtOn.count:
+                coverKey = "on\(i)"
+                coverImage = { self.crtOn[i] }
+            default:
+                break
+            }
+        } else if m.showsPicture {
+            if let f = m.staticFrame {
+                coverKey = "static\(f)"
+                coverImage = { self.staticFrames[f] }
+            } else if m.overlay == .av {
+                let p = m.logo.position
+                coverKey = "av\(p.x),\(p.y)"
+                coverImage = { MonitorArt.noSignalScreen(logo: p) }
+            } else if m.overlay != .none {
+                let sky = context.sky
+                if card == nil || cardKey?.0 != m.overlay || cardKey?.1 != sky || force {
+                    card = ScreenCard.render(m.overlay, wallpaper: MonitorArt.deskOSWallpaper(sky: sky), font: context.font)
+                    cardKey = (m.overlay, sky)
+                }
+                if let card {
+                    coverKey = "card.\(m.overlay.rawValue).\(sky.rawValue)"
+                    coverImage = { card.image }
+                }
+            }
+        }
+        if m.overlay == .none || !m.showsPicture { card = m.overlay == .none ? nil : card }
+        if coverKey != shownCover || force {
+            shownCover = coverKey
+            if let coverImage {
+                cover.texture = TextureFactory.texture(coverImage())
+                space.place(cover, at: glass)
+                cover.zPosition = base + 0.3
+                cover.isHidden = false
+            } else {
+                cover.isHidden = true
+            }
+        }
+
+        // The OSD, top right of the glass.
+        let osd = m.showsPicture ? m.osdText : nil
+        if osd != shownOSD || force {
+            shownOSD = osd
+            if let osd, let font = context.font {
+                let text = PixelText.shadowed(osd, .green4, shadow: .neutral0, font: font)
+                var c = PixelCanvas(width: text.width + 6, height: text.height + 4)
+                c.roundedRectFill(c.bounds, radius: 1, .neutral1)
+                c.blit(text, at: ArtPoint(3, 2))
+                osdNode.texture = TextureFactory.texture(c.buffer)
+                space.place(osdNode, at: ArtRect(glass.maxX - c.width - 4, glass.minY + 4, c.width, c.height))
+                osdNode.zPosition = base + 0.4
+                osdNode.isHidden = false
+            } else {
+                osdNode.isHidden = true
+            }
+        }
+
+        // Sparkle when the AV logo hits a corner exactly.
+        if m.overlay == .av, m.showsPicture, m.logo.sparkle > 0 {
+            let p = m.logo.position
+            let frames = FXArt.sparkle().frames
+            let i = min(frames.count - 1, Int((BouncingLogo.sparkleDuration - m.logo.sparkle) * 12) % frames.count)
+            sparkleNode.texture = TextureFactory.texture(frames[i])
+            let corner = ArtPoint(glass.x + p.x + (p.x == 0 ? 0 : m.logo.size.w) - 3, glass.y + p.y + (p.y == 0 ? 0 : m.logo.size.h) - 3)
+            space.place(sparkleNode, at: ArtRect(origin: corner, size: frames[i].size))
+            sparkleNode.zPosition = base + 0.45
+            sparkleNode.isHidden = false
+        } else {
+            sparkleNode.isHidden = true
+        }
+
+        // LED, page dots, badge on the chin.
+        if m.led != shownLED || force {
+            shownLED = m.led
+            ledNode.texture = TextureFactory.texture(MonitorArt.led(m.led).image)
+            space.place(ledNode, at: layout.rect(CoreLayout.led))
+            ledNode.zPosition = top
+            ledNode.isHidden = false
+        }
+        let pages = min(8, s.pageCount())
+        let current = m.phase == .on || m.phase == .poweringOn ? (s.monitor.av ? -1 : s.monitor.page) : -1
+        let dotsKey = "\(pages).\(current)"
+        if dotsKey != shownDots || force {
+            shownDots = dotsKey
+            let dots = MonitorArt.pageDots(count: pages, current: current).image
+            dotsNode.texture = TextureFactory.texture(dots)
+            space.place(dotsNode, at: ArtRect(origin: layout.point(CoreLayout.pageDots.origin), size: dots.size))
+            dotsNode.zPosition = top
+            dotsNode.isHidden = false
+        }
+        if m.badge != shownBadge || force {
+            shownBadge = m.badge
+            if let badge = m.badge {
+                let image = Digits.badge(badge, fill: Role.ledAmber, ink: .neutral0, rim: .walnut2)
+                let led = layout.rect(CoreLayout.led)
+                badgeNode.texture = TextureFactory.texture(image)
+                space.place(badgeNode, at: ArtRect(led.x - image.width - 4, led.midY - image.height / 2 - 1, image.width, image.height))
+                badgeNode.zPosition = top
+                badgeNode.isHidden = false
+            } else {
+                badgeNode.isHidden = true
+            }
+        }
+    }
+
+    // MARK: Hit testing
+
+    /// Card buttons in canvas px (only while a card shows).
+    public var cardButtons: [String: ArtRect] {
+        guard let card, let m = machine, m.showsPicture, m.overlay != .none, m.overlay != .av, m.staticFrame == nil else {
+            return [:]
+        }
+        let glass = context.layout.rect(CoreLayout.screen)
+        return card.buttons.mapValues { $0.offsetBy(glass.x, glass.y) }
+    }
+
+    public func hitTest(_ p: ArtPoint) -> Hit? {
+        if let (name, r) = cardButtons.first(where: { $0.value.contains(p) }) {
+            return Hit(element: id, part: name, rect: r)
+        }
+        guard let h = placed?.hitTest(p) else { return nil }
+        if h.part == "monitor.pageDots" {
+            // One hit per dot, so its index survives in the rect.
+            let x0 = context.layout.x(CoreLayout.pageDots.x)
+            let i = max(0, (p.x - x0) / CoreLayout.pageDotPitch)
+            return Hit(element: id, part: h.part, rect: ArtRect(x0 + i * CoreLayout.pageDotPitch - 1, h.rect.y, 4, h.rect.h))
+        }
+        return Hit(element: id, part: h.part, rect: h.rect)
+    }
+
+    public func hover(_ hit: Hit?) -> Bool {
+        if hit?.part == "monitor.screen", machine?.overlay == .av {
+            let wasMoving = machine?.logo.isMoving ?? false
+            machine?.wakeLogo()
+            return !wasMoving && (machine?.logo.isMoving ?? false)
+        }
+        return false
+    }
+
+    public func hoverStyle(_ hit: Hit) -> HoverStyle {
+        hit.part == "monitor.screen" || hit.part == nil ? .none : .standard
+    }
+
+    public func tooltip(_ hit: Hit) -> TooltipSpec? {
+        guard let s = state, let m = machine else { return nil }
+        let title: String?
+        var detail: String?
+        switch hit.part {
+        case "monitor.power":
+            title = s.access == .notConnected && s.monitor.power == .on ? "Connect Desktop"
+                : (s.monitor.power == .on ? "Turn Display Off" : "Turn Display On")
+            if let badge = m.badge { detail = "\(badge.dropFirst()) new while off" }
+        case "monitor.input":
+            title = "Input"
+            detail = MonitorMachine.osdText(s)
+        case "monitor.pageDots":
+            title = "HDMI \(dotIndex(at: hit) + 1)"
+        default:
+            title = nil
+        }
+        return title.map { TooltipSpec(title: $0, detail: detail, anchor: hit.rect) }
+    }
+
+    // MARK: Gestures
+
+    public func handle(_ gesture: Gesture, _ hit: Hit) -> GestureResponse {
+        guard let s = state else { return .pass }
+        switch gesture {
+        case .press:
+            setPressed(hit.part == "monitor.power" || hit.part == "monitor.input" ? hit.part : nil)
+            return hit.part == "monitor.screen" ? .pass : .handled
+        case .cancelPress:
+            setPressed(nil)
+            return .handled
+        case let .click(_, mods, _):
+            setPressed(nil)
+            switch hit.part {
+            case "monitor.power":
+                context.dispatch(MonitorMachine.powerAction(s))
+            case "monitor.input":
+                if s.monitor.power == .on { context.dispatch(.cycleInput) }
+            case "monitor.pageDots":
+                if s.monitor.power == .on, dotIndex(at: hit) < s.pageCount() { context.dispatch(.setPage(dotIndex(at: hit))) }
+            case "card.show":
+                context.dispatch(.requestConnect)
+            case "card.keepHidden":
+                context.dispatch(.power(false))
+            case "card.openSettings":
+                context.dispatch(.requestPrivacySettings)
+            case "card.chooseFolder":
+                context.dispatch(.requestChooseFolder)
+            case "monitor.screen":
+                if mods.isEmpty { context.selection.clear() }
+                screen.refreshIfSelectionChanged()
+            default:
+                return .pass
+            }
+            return .handled
+        case let .dragBegan(from, at, mods):
+            setPressed(nil)
+            guard hit.part == "monitor.screen", screen.showsTokens else { return .pass }
+            let marquee = screen.beginMarquee(from: from, mods: mods)
+            marquee.moved(to: at, mods: mods)
+            return .drag(marquee)
+        case let .scroll(_, delta, _):
+            return scrollPages(delta, s)
+        }
+    }
+
+    /// Two-finger scroll over the screen pages (content moving left shows the next page).
+    private func scrollPages(_ delta: SIMD2<Float>, _ s: DeskState) -> GestureResponse {
+        guard s.monitor.power == .on, !s.monitor.av else { return .pass }
+        scrollIdle = 0
+        guard !scrollLocked else { return .handled }
+        scrollAccum += delta
+        let d = abs(scrollAccum.x) >= abs(scrollAccum.y) ? scrollAccum.x : scrollAccum.y
+        if abs(d) >= Self.pageScroll {
+            let page = s.monitor.page + (d < 0 ? 1 : -1)
+            if page >= 0, page < s.pageCount() { context.dispatch(.setPage(page)) }
+            scrollAccum = .zero
+            scrollLocked = true
+        }
+        return .handled
+    }
+
+    private func dotIndex(at hit: Hit) -> Int {
+        max(0, (hit.rect.x + 1 - context.layout.x(CoreLayout.pageDots.x)) / CoreLayout.pageDotPitch)
+    }
+
+    private func setPressed(_ part: String?) {
+        guard part != pressedPart else { return }
+        pressedPart = part
+        let layout = context.layout
+        switch part {
+        case "monitor.power":
+            pressedNode.texture = TextureFactory.texture(MonitorArt.powerButton(pressed: true).image)
+            context.space.place(pressedNode, at: layout.rect(CoreLayout.power))
+        case "monitor.input":
+            pressedNode.texture = TextureFactory.texture(MonitorArt.inputButton(pressed: true).image)
+            context.space.place(pressedNode, at: layout.rect(CoreLayout.input))
+        default:
+            pressedNode.isHidden = true
+            return
+        }
+        pressedNode.zPosition = context.placementZ("monitor.pageDots") + 0.6
+        pressedNode.isHidden = false
+    }
+
+    public func menu(_ hit: Hit) -> MenuSpec? {
+        state.map(MenuSpec.monitor)
+    }
+
+    public func accessibilityItems() -> [AXItem] {
+        guard let s = state else { return [] }
+        let layout = context.layout
+        var items = [
+            AXItem(id: "monitor.power", label: s.monitor.power == .on ? "Turn Display Off" : "Turn Display On",
+                   role: .button, frame: layout.rect(CoreLayout.powerHit)),
+            AXItem(id: "monitor.input", label: "Input: \(MonitorMachine.osdText(s))", role: .button,
+                   frame: layout.rect(CoreLayout.input)),
+        ]
+        for (name, r) in cardButtons.sorted(by: { $0.key < $1.key }) {
+            items.append(AXItem(id: name, label: Self.buttonTitles[name] ?? name, role: .button, frame: r))
+        }
+        return items
+    }
+
+    static let buttonTitles = [
+        "card.show": "Show", "card.keepHidden": "Keep hidden", "card.openSettings": "Open Settings",
+        "card.chooseFolder": "Choose Folder…",
+    ]
+
+    // MARK: Frames
+
+    public var needsFrames: Bool {
+        (machine?.needsFrames ?? false) || scrollAccum != .zero || scrollLocked
+    }
+
+    public func step(_ dt: Double) {
+        if scrollAccum != .zero || scrollLocked {
+            scrollIdle += dt
+            if scrollIdle > 0.25 {
+                scrollAccum = .zero
+                scrollLocked = false
+            }
+        }
+        guard machine?.needsFrames == true else { return }
+        machine?.step(dt)
+        refresh()
+    }
+
+    public func settle() {
+        machine?.settle()
+        scrollAccum = .zero
+        scrollLocked = false
+        refresh()
+    }
+}

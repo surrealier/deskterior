@@ -64,6 +64,9 @@ final class IconProvider {
         pump()
     }
 
+    /// Nothing waiting and nothing rendering.
+    var isIdle: Bool { inFlight == 0 && head >= pending.count }
+
     /// Drops everything not yet started.
     func cancelPending() {
         for r in pending[head...] { queued.remove(r.key) }

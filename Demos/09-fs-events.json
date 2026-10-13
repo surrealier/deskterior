@@ -1,0 +1,37 @@
+{
+  "name": "09-fs-events",
+  "display": "1470x956@2",
+  "clock": "10:00",
+  "seed": 1,
+  "steps": [
+    { "comment": "Finder-side changes reach the screen in under a second: new, renamed (keeps its cell), removed, folders." },
+    { "waitIdle": 10 },
+    { "expect": { "tokens": 40 } },
+    { "drag": { "from": "token:todo.txt", "to": "cell:8,4", "duration": 0.2 } },
+    { "waitIdle": 1 },
+    { "expect": { "token:todo.txt": "cell:0,8,4" } },
+
+    { "fs": { "touch": "새 파일.txt" } },
+    { "waitFor": { "expect": { "token:새 파일.txt": "screen" }, "within": 1 } },
+    { "wait": 0.1 },
+    { "snapshot": "01-print-in" },
+
+    { "fs": { "mv": ["todo.txt", "done.txt"] } },
+    { "waitFor": { "expect": { "token:done.txt": "cell:0,8,4", "token:todo.txt": "missing" }, "within": 1 } },
+
+    { "fs": { "rm": "readme.txt" } },
+    { "waitFor": { "expect": { "token:readme.txt": "missing" }, "within": 1 } },
+    { "wait": 0.12 },
+    { "snapshot": "02-poof" },
+
+    { "fs": { "mkdir": "New Folder" } },
+    { "waitFor": { "expect": { "token:New Folder": "screen" }, "within": 1 } },
+    { "waitIdle": 3 },
+    { "click": "token:done.txt" },
+    { "hover": "token:New Folder" },
+    { "hover": "token:done.txt" },
+    { "wait": 0.3 },
+    { "expect": { "tooltip": "done.txt", "tokens": 41 } },
+    { "snapshot": "03-after" }
+  ]
+}

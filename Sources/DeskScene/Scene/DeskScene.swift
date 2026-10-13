@@ -30,6 +30,11 @@ public enum SceneClock: Hashable, Sendable {
 /// The desk scene (DESIGN §4.4): `size = canvas × U`, anchor `.zero`, `.fill`, never attached to an `SKView`
 /// (`SKRenderer` draws it). Set up explicitly; no `didMove(to:)`. Shows the room by default; pushes the room's
 /// light mask and ambient level to the presenter it is connected to, and re-renders the clock each minute.
+///
+/// The app drives it with committed model state (`apply`), real icons (`setIcon`), model animations (`play`)
+/// and toasts; input arrives as `InputEvent`s and `KeyCommand`s, and what the user asks for leaves through
+/// `onAction` (a `DeskAction` for the store) and `onRequest` (menus, Inventory). Without a model it is the bare
+/// M3 room.
 public final class DeskScene: SKScene {
     public private(set) var grid: PixelGrid
     public private(set) var space: ArtSpace
@@ -51,6 +56,23 @@ public final class DeskScene: SKScene {
     }
     /// Asks the host to render one frame (the minute clock); set by the app.
     public var onRenderRequest: (() -> Void)?
+    /// Model actions the user asked for (clicks, drops, keys, menu picks on scene buttons).
+    public var onAction: ((DeskAction) -> Void)? {
+        didSet { wireRoom() }
+    }
+    /// App requests: context menus, Inventory.
+    public var onRequest: ((SceneRequest) -> Void)? {
+        didSet { wireRoom() }
+    }
+    /// The desk menu's extras (pause state, undo labels).
+    public var menuContext = MenuSpec.Context() {
+        didSet { room?.menuContext = menuContext }
+    }
+    /// The committed model (nil: the bare room).
+    public private(set) var deskState: DeskState?
+    /// Real icons by token, kept across content rebuilds.
+    private var icons: [TokenKey: PixelBuffer] = [:]
+    private var pushedEmissive: [ArtRect] = []
 
     private let backdrop = SKSpriteNode()
     private(set) var calibration: CalibrationContent?
@@ -104,18 +126,100 @@ public final class DeskScene: SKScene {
             addChild(c.root)
             calibration = c
         case .room:
-            let r = RoomContent(grid: grid, state: RoomState(time: clock.now(), lightsMode: lightsMode), avoid: avoidRects)
+            let r = RoomContent(grid: grid, state: roomState(for: deskState), avoid: avoidRects)
             addChild(r.root)
             room = r
+            r.menuContext = menuContext
+            wireRoom()
+            for (k, v) in icons { r.setIcon(k, v) }
+            if let deskState { r.apply(deskState) }
         }
         pushLighting()
     }
 
-    /// Re-reads the clock and lights into the room; true when the picture changed.
+    private func wireRoom() {
+        guard let room else { return }
+        room.context.onAction = { [weak self] in self?.onAction?($0) }
+        room.context.onRequest = { [weak self] in self?.onRequest?($0) }
+    }
+
+    /// The room state for the clock, the lights setting and (when known) the model's lamps, phone and drawers;
+    /// the monitor glows while its screen is lit. (The chair follows the model once it rolls, M6.)
+    private func roomState(for s: DeskState?) -> RoomState {
+        var r = RoomState(time: clock.now(), lightsMode: lightsMode)
+        guard let s else { return r }
+        r.lights = RoomLightState(
+            lampOn: s.lights.lamp, monitorOn: room?.monitor.isEmissive ?? (s.monitor.power == .on),
+            phoneFaceUp: !s.phone.faceDown, roomLightOn: s.lights.room
+        )
+        r.riserOpen = [ContainerID.riserLeft, .riserRight].map { Int(s.drawerOpening($0).rounded()) }
+        r.cabinetOpen = [ContainerID.cabinetTop, .cabinetMiddle, .cabinetFile].map { Int(s.drawerOpening($0).rounded()) }
+        return r
+    }
+
+    // MARK: Model
+
+    /// Adopts committed model state: every element follows it, and the room's lamps and monitor glow with it.
+    public func apply(_ state: DeskState) {
+        deskState = state
+        room?.apply(state)
+        refreshState()
+    }
+
+    /// A token's pixelated real icon (nil: back to the kind icon).
+    public func setIcon(_ key: TokenKey, _ icon: PixelBuffer?) {
+        icons[key] = icon
+        room?.setIcon(key, icon)
+    }
+
+    /// Drops icons of tokens that are gone.
+    public func pruneIcons(keeping live: Set<TokenKey>) {
+        for k in icons.keys where !live.contains(k) {
+            icons[k] = nil
+            room?.setIcon(k, nil)
+        }
+    }
+
+    /// Plays a model-requested animation (`Effect.play`).
+    public func play(_ id: AnimationID, _ target: AnimTarget) {
+        room?.play(id, target)
+    }
+
+    public func toast(_ key: ToastKey) {
+        room?.showToast(key)
+        syncLighting()
+    }
+
+    /// The selection (nil while showing calibration).
+    public var selection: Selection? { room?.context.selection }
+    public var screen: ScreenElement? { room?.screen }
+    public var monitor: MonitorElement? { room?.monitor }
+    /// Drops refused so far.
+    public var bonkCount: Int { room?.context.bonks ?? 0 }
+    /// The tooltip on show, if any.
+    public var tooltipShown: TooltipSpec? { room?.tooltip.spec }
+    /// The toast on show, if any.
+    public var toastShown: ToastKey? { room?.toast.key }
+    /// True while a drag (carry or marquee) is in hand.
+    public var isDragging: Bool { room?.router.drag != nil }
+
+    /// What VoiceOver should offer (rebuilt on state change).
+    public func accessibilityItems() -> [AXItem] {
+        guard let room else { return [] }
+        return room.routing.flatMap { $0.accessibilityItems() }
+    }
+
+    /// The menu a right-click at `p` would show (demo scripts, the app's status item uses the desk menu).
+    public func contextMenu(at p: ArtPoint) -> MenuSpec {
+        let t = room?.target(at: p)
+        return t.flatMap { $0.element.menu($0.hit) } ?? MenuSpec.desk(deskState ?? DeskState(), menuContext)
+    }
+
+    /// Re-reads the clock, lights and model into the room; true when the picture changed.
     @discardableResult
     public func refreshState() -> Bool {
         guard let room else { return false }
-        var s = room.state
+        var s = deskState == nil ? room.state : roomState(for: deskState)
         s.time = clock.now()
         s.lightsMode = lightsMode
         let changed = room.setState(s)
@@ -143,15 +247,25 @@ public final class DeskScene: SKScene {
 
     /// The light mask bytes and ambient the lit pass should use.
     public var lighting: (mask: [UInt8], ambient: AmbientLight) {
-        if let room { return (room.lightMask.bytes, room.ambient) }
-        return ([UInt8](repeating: 0, count: grid.artSize.area), .identity)
+        guard let room else { return ([UInt8](repeating: 0, count: grid.artSize.area), .identity) }
+        let ui = room.emissiveRects
+        guard !ui.isEmpty else { return (room.lightMask.bytes, room.ambient) }
+        var mask = room.lightMask
+        for r in ui { mask.addRect(r, level: 7, tint: .cool) }
+        return (mask.bytes, room.ambient)
     }
 
     private func pushLighting() {
+        pushedEmissive = room?.emissiveRects ?? []
         guard let presenter, presenter.artSize == grid.artSize else { return }
         let l = lighting
         try? presenter.setLightMask(l.mask)
         presenter.ambient = l.ambient
+    }
+
+    /// Re-pushes the mask when the UI's lit rects moved (tooltip, toast).
+    private func syncLighting() {
+        if (room?.emissiveRects ?? []) != pushedEmissive { pushLighting() }
     }
 
     // MARK: Minute clock
@@ -184,19 +298,57 @@ public final class DeskScene: SKScene {
     /// One fixed simulation step.
     public func step(_ dt: Double) {
         calibration?.step(dt)
+        guard let room else { return }
+        room.step(dt)
+        if deskState != nil, room.state.lights.monitorOn != room.monitor.isEmissive { refreshState() }
+        syncLighting()
     }
 
     /// Routes an input event; true when something visible changed.
     @discardableResult
     public func handle(_ event: InputEvent) -> Bool {
-        calibration?.handle(event) ?? room?.handle(event) ?? false
+        if let calibration { return calibration.handle(event) }
+        guard let room else { return false }
+        let changed = room.handle(event)
+        syncLighting()
+        return changed
+    }
+
+    /// Routes a keyboard command; true when it did something.
+    @discardableResult
+    public func handleKey(_ command: KeyCommand) -> Bool {
+        room?.router.key(command) ?? false
+    }
+
+    /// When the input router next needs `advanceInput` (the tooltip delay), in event time.
+    public var nextInputDeadline: Double? { room?.router.nextDeadline }
+
+    /// Fires input timers due by `time`; true when something visible changed.
+    @discardableResult
+    public func advanceInput(to time: Double) -> Bool {
+        let changed = room?.router.advance(to: time) ?? false
+        syncLighting()
+        return changed
+    }
+
+    /// Drops any press or drag in progress (carries spring back).
+    public func cancelInput() {
+        _ = room?.router.cancelAll()
     }
 
     /// True while anything moves on its own.
-    public var needsFrames: Bool { calibration?.needsFrames ?? false }
+    public var needsFrames: Bool { calibration?.needsFrames ?? room?.needsFrames ?? false }
+
+    /// True while a scripted, bounded animation (or a drag in hand) runs: the loop must not hard-sleep yet.
+    public var scriptedAnimating: Bool { room?.scriptedAnimating ?? false }
+
+    /// The 1-px screen shake of this frame (bonks).
+    public var shake: ArtPoint { room?.shake ?? .zero }
 
     /// Hard sleep: settle everything immediately.
     public func forceRest() {
         calibration?.forceRest()
+        room?.forceRest()
+        syncLighting()
     }
 }

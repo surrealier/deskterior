@@ -22,6 +22,8 @@ public enum DeskAction: Sendable {
     case setPage(Int)
     /// INPUT button: HDMI 1…n, then AV, then HDMI 1.
     case cycleInput
+    /// Monitor ▸ Input ▸ AV: the always-empty input.
+    case selectAV
     /// Monitor ▸ Clean Up By.
     case cleanUp(ScreenGrid.SortKey)
     case drawerSettled(ContainerID, Float)
@@ -36,8 +38,10 @@ public enum DeskAction: Sendable {
     /// Container ▸ Take All Out; nil takes out the loose desk piles and floor tokens.
     case takeAllOut(ContainerID?)
     case takeEverythingOut
+    /// Clear the Desk (presentation mode; the plan arrives in M9).
     case clearDesk
     case showOnDesk(TokenKey)
+    /// Undo and redo step through an `UndoJournal` (`Reducer.reduce(_:journal:_:_:)`); plain `reduce` ignores them.
     case undo
     case redo
     /// Our own operations announce where the files they create should land (name → location, 10 s TTL).

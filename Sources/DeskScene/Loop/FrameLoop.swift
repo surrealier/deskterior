@@ -92,13 +92,18 @@ public protocol FrameLoopHost: AnyObject {
     func frameLoopRender()
     /// True while anything still moves on its own.
     var frameLoopNeedsFrames: Bool { get }
+    /// True while a scripted, bounded animation runs (CRT, AV logo, print-in, a toast) or a drag is in hand:
+    /// each tick counts as activity, so hard sleep comes 3 s after it ends, never in the middle.
+    var frameLoopScriptedAnimating: Bool { get }
     /// Hard sleep: settle everything now.
     func frameLoopForceRest()
 }
 
 /// Drives a host from the view's `CADisplayLink` (macOS 14) at up to 60 Hz with a fixed 1/60 s step, and
-/// stops the link whenever nothing moves (DESIGN §4.6, §5): after 30 rest frames, or 3 s after the last
-/// activity (hard sleep), or while any `PauseReason` holds.
+/// stops the link whenever nothing moves (DESIGN §4.6, §5): after 30 rest frames (nothing needs frames: no
+/// element animating, no carry), or 3 s after the later of the last input and the end of the last scripted
+/// animation (hard sleep: the host settles everything), or while any `PauseReason` holds. Hover and tooltips
+/// render single frames (`renderOnce`) and never start the link.
 public final class FrameLoop {
     public weak var host: (any FrameLoopHost)?
     public private(set) var clock = FrameClock()
@@ -175,6 +180,7 @@ public final class FrameLoop {
         let steps = clock.advance(to: now)
         for _ in 0..<steps { host.frameLoopStep(FrameClock.step) }
         host.frameLoopRender()
+        if host.frameLoopScriptedAnimating { clock.noteActivity(at: now) }
         switch clock.finishTick(at: now, needsFrames: host.frameLoopNeedsFrames) {
         case .run:
             break

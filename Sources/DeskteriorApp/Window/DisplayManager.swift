@@ -15,8 +15,6 @@ final class DisplayManager {
     private(set) var window: NSWindow?
     private(set) var view: DeskView?
     private(set) var host: SceneHost?
-    /// The right-click menu.
-    var contextMenu: (() -> NSMenu?)?
 
     private var screenObserver: (any NSObjectProtocol)?
     private var pendingScreenChange: Task<Void, Never>?
@@ -45,7 +43,6 @@ final class DisplayManager {
         view.emulatedScale = options.windowed?.scale
         let host = try SceneHost(grid: grid(for: view, scale: view.deviceScale), device: device)
         view.host = host
-        view.contextMenu = { [weak self] in self?.contextMenu?() }
         window.contentView = view
         host.attach(to: view, layer: view.metalLayer)
         self.window = window
@@ -74,10 +71,12 @@ final class DisplayManager {
         host?.invalidate()
     }
 
-    /// Pause Desk: orders the window out and pauses the loop; resuming shows it and renders once.
+    /// Pause Desk: orders the window out and pauses the loop (a carry in hand springs back); resuming shows it and
+    /// renders once.
     func setUserPaused(_ paused: Bool) {
         guard let host else { return }
         if paused {
+            host.scene.cancelInput()
             host.loop.setPaused(.userPaused, true)
             window?.orderOut(nil)
         } else {

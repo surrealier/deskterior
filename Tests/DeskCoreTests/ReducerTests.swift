@@ -183,6 +183,25 @@ struct ReducerTests {
         #expect(seen == ["HDMI 2", "AV", "HDMI 1", "HDMI 2"])
     }
 
+    @Test("selectAV: switches to the empty AV input once; setPage leaves it")
+    func selectAV() {
+        var s = F.mirrored(["a"])
+        #expect(reduce(&s, .selectAV, env) == [.play(.staticNoise, .monitor), .play(.osd, .monitor), .persist, .wakeLoop])
+        #expect(s.monitor.av && Visibility.of(s.tokens.location(of: F.key(1))!, s).appearance == .notShown)
+        #expect(reduce(&s, .selectAV, env).isEmpty)
+        _ = reduce(&s, .setPage(0), env)
+        #expect(!s.monitor.av)
+    }
+
+    @Test("clearDesk: a toast until the M9 plan; plain reduce ignores undo and redo")
+    func clearDeskStub() {
+        var s = F.mirrored(["a"])
+        let before = s
+        #expect(reduce(&s, .clearDesk, env) == [.toast(.notYetAvailable)])
+        #expect(reduce(&s, .undo, env).isEmpty && reduce(&s, .redo, env).isEmpty)
+        #expect(s == before)
+    }
+
     @Test("cleanUp: repacks the screen tokens from HDMI 1 in the chosen order")
     func cleanUp() {
         var s = F.mirrored(["c", "a", "b"])
@@ -366,7 +385,7 @@ struct ReducerTests {
         return [
             .snapshot(F.snapshot([F.entry("a", 1), F.entry("n", 9)]), now: F.t0), .volumes([]), .accessDenied,
             .accessGranted, .finderHidesItems, .move(k, to: .container(.riserLeft, order: 0)), .settle(SettleReport()),
-            .power(false), .power(true), .setPage(0), .cycleInput, .cleanUp(.kind), .drawerSettled(.riserLeft, 10),
+            .power(false), .power(true), .setPage(0), .cycleInput, .selectAV, .cleanUp(.kind), .drawerSettled(.riserLeft, 10),
             .phoneFlip, .cupState(PenCupState()), .basketState(BasketState()), .matSettled(MatState()),
             .pilesSettled([:]), .chair(1, 1), .lights(LightsState()), .takeAllOut(.riserLeft), .takeAllOut(nil),
             .takeEverythingOut, .clearDesk, .showOnDesk(F.key(1)), .undo, .redo, .registerHints(["z": .floor(x: 0)]),
@@ -376,7 +395,7 @@ struct ReducerTests {
         ]
     }
 
-    @Test("Only request actions emit file effects, and nothing changes files in M4")
+    @Test("Only request actions emit file effects, and nothing changes files before M11")
     func fileEffectRule() {
         for action in Self.catalogue() {
             var s = F.mirrored(["a", "b", "c"])

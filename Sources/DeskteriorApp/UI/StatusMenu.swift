@@ -2,38 +2,29 @@ import AppKit
 import DeskCore
 import DeskPixels
 
-/// The menu-bar status item (DESIGN §4.9; M2: Pause/Resume Desk and Quit) with a 16-pt pixel template glyph.
+/// The menu-bar status item (DESIGN §4.9) with a 16-pt pixel template glyph. Its menu is rebuilt from
+/// `MenuSpec.status` each time it opens, so check marks, the undo label and the wastebasket count are current;
+/// the same items live on the bare wall's right-click menu for when menu-bar extras are hidden.
 final class StatusMenu: NSObject, NSMenuDelegate {
     private let item: NSStatusItem
-    private let pauseItem: NSMenuItem
-    private let isPaused: () -> Bool
-    private let togglePause: () -> Void
+    private let menu = NSMenu()
+    private let bridge: MenuBridge
+    private let spec: () -> MenuSpec
 
-    init(isPaused: @escaping () -> Bool, togglePause: @escaping () -> Void) {
-        self.isPaused = isPaused
-        self.togglePause = togglePause
+    init(spec: @escaping () -> MenuSpec, perform: @escaping (MenuCommand) -> Void) {
+        self.spec = spec
+        bridge = MenuBridge(perform: perform)
         item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
-        pauseItem = NSMenuItem(title: "Pause Desk", action: #selector(StatusMenu.togglePauseAction), keyEquivalent: "")
         super.init()
-
         item.button?.image = Self.templateImage()
         item.button?.toolTip = "Deskterior"
-        pauseItem.target = self
-        let menu = NSMenu()
         menu.delegate = self
-        menu.addItem(pauseItem)
-        menu.addItem(.separator())
-        let quit = #selector(NSApplication.terminate(_:))
-        menu.addItem(NSMenuItem(title: "Quit Deskterior", action: quit, keyEquivalent: "q"))
+        bridge.fill(menu, with: spec())
         item.menu = menu
     }
 
     func menuNeedsUpdate(_ menu: NSMenu) {
-        pauseItem.title = isPaused() ? "Resume Desk" : "Pause Desk"
-    }
-
-    @objc private func togglePauseAction() {
-        togglePause()
+        bridge.fill(menu, with: spec())
     }
 
     /// 16×16 desk with a monitor (template: only alpha matters).

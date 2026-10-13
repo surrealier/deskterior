@@ -63,7 +63,9 @@ public enum AnimTarget: Sendable, Equatable {
     case monitor
 }
 
-/// Pixel toasts. (Strings live in the L10n table.)
-public enum ToastKey: String, Sendable {
+/// Pixel toasts. (English strings live in DeskScene's `Toast`; the L10n table takes over in M12.)
+public enum ToastKey: String, Sendable, CaseIterable {
     case containerFull, accessDenied, notYetAvailable
+    /// A token dropped on a drive bonks: copying to drives is Finder's job in v0.1 (E15).
+    case drivesReadOnly
 }

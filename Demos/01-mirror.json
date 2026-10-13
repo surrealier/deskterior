@@ -1,0 +1,63 @@
+{
+  "name": "01-mirror",
+  "display": "1470x956@2",
+  "clock": "10:00",
+  "seed": 1,
+  "steps": [
+    { "comment": "Mirror the fixture, then select, hover, carry, drop, bonk, open, look, copy and undo." },
+    { "waitIdle": 10 },
+    { "expect": { "access": "connected", "tokens": 40, "screen.tokens": 40, "pages": 1 } },
+
+    { "click": "token:보고서 final.pdf" },
+    { "expect": { "selection": 1 } },
+    { "hover": "token:IMG_0001.png" },
+    { "wait": 0.1 },
+    { "expect": { "tooltip": "none" } },
+    { "wait": 0.3 },
+    { "expect": { "tooltip": "IMG_0001.png" } },
+    { "snapshot": "01-select-hover-tooltip" },
+
+    { "click": { "at": "token:IMG_0002.png", "mods": ["cmd"] } },
+    { "click": { "at": "token:IMG_0003.png", "mods": ["shift"] } },
+    { "expect": { "selection": 3 } },
+    { "snapshot": "02-multi-select" },
+    { "key": "esc" },
+    { "expect": { "selection": 0 } },
+
+    { "drag": { "from": "screen.empty", "to": "cell:1,1", "duration": 0.3 } },
+    { "expect": { "selection": 15 } },
+    { "key": "cmd+a" },
+    { "expect": { "selection": 40 } },
+    { "click": "screen.empty" },
+    { "expect": { "selection": 0 } },
+
+    { "drag": { "from": "token:todo.txt", "to": "cell:6,4", "duration": 0.3, "hold": true } },
+    { "expect": { "carrying": true } },
+    { "snapshot": "03-carry-mid-drag" },
+    { "release": true },
+    { "waitIdle": 1 },
+    { "expect": { "token:todo.txt": "cell:0,6,4", "carrying": false, "undo": "Move" } },
+    { "snapshot": "04-dropped" },
+
+    { "drag": { "from": "token:notes.md", "to": "hub", "duration": 0.3 } },
+    { "wait": 0.15 },
+    { "expect": { "bonks": 1, "toast": "drivesReadOnly", "token:notes.md": "screen" } },
+    { "snapshot": "05-bonk" },
+    { "waitIdle": 4 },
+
+    { "click": { "at": "token:slides.pdf", "count": 2 } },
+    { "expect": { "effect": "open" } },
+    { "key": "space" },
+    { "expect": { "effect": "quickLook" } },
+    { "menu": { "at": "token:slides.pdf", "item": "copy" } },
+    { "expect": { "effect": "copy" } },
+    { "key": "cmd+z" },
+    { "waitIdle": 1 },
+    { "expect": { "token:todo.txt": "cell:0,3,3", "undo": "none" } },
+    { "key": "shift+cmd+z" },
+    { "expect": { "token:todo.txt": "cell:0,6,4" } },
+    { "key": "cmd+f" },
+    { "expect": { "command": "inventory" } },
+    { "snapshot": "06-after-undo-redo" }
+  ]
+}

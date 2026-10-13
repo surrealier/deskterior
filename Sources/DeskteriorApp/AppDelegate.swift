@@ -4,13 +4,16 @@ import DeskFiles
 import DeskScene
 import Metal
 
-/// The app shell: desk (or `--windowed`) window, status item, system observers, and the dev flags that act
-/// after launch (`--print-window-id`, `--exit-after`). Headless runs never get here (`runHeadless`).
+/// The app shell: desk (or `--windowed`) window, the `DeskSession` (store, mirror, effects, scene sync), status
+/// item, context menus, Inventory, system observers, and the dev flags that act after launch
+/// (`--print-window-id`, `--exit-after`). Headless runs and demos never get here (`runHeadless`).
 final class AppDelegate: NSObject, NSApplicationDelegate {
     let options: LaunchOptions
     private var displays: DisplayManager?
     private var statusMenu: StatusMenu?
     private var observers: SystemObservers?
+    private var session: DeskSession?
+    private var inventory: InventoryWindowController?
     private(set) var isUserPaused = false
 
     init(options: LaunchOptions) {
@@ -21,29 +24,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         guard let device = MTLCreateSystemDefaultDevice() else { Self.fail("no Metal device") }
         installKeyRoutingMenu()
+        let configuration = MirrorController.configurationOrExit(options: options)
 
         let displays = DisplayManager(options: options, device: device)
-        displays.contextMenu = { [weak self] in self?.makeContextMenu() }
         do {
             try displays.start()
         } catch {
             Self.fail("could not start the desk: \(error)")
         }
         self.displays = displays
-        if let host = displays.host {
-            Self.configure(host, options)
-            host.scene.onRenderRequest = { [weak host] in host?.loop.renderOnce() }
-            host.scene.startClock()
-            host.loop.renderOnce()
-        }
+        guard let host = displays.host else { Self.fail("no scene host") }
+        Self.configure(host, options)
+        host.scene.onRenderRequest = { [weak host] in host?.loop.renderOnce() }
+        let session = DeskSession(host: host, options: options, configuration: configuration, dryRun: false)
+        session.isPaused = { [weak self] in self?.isUserPaused ?? false }
+        host.scene.onRequest = { [weak self] in self?.handle($0) }
+        self.session = session
+        session.start()
+        host.scene.startClock()
+        host.loop.renderOnce()
 
         statusMenu = StatusMenu(
-            isPaused: { [weak self] in self?.isUserPaused ?? false },
-            togglePause: { [weak self] in self?.togglePause() }
+            spec: { [weak self] in self?.statusSpec() ?? MenuSpec([]) },
+            perform: { [weak self] in self?.perform($0) }
         )
-        if let window = displays.window, let host = displays.host {
-            observers = SystemObservers(window: window, loop: host.loop) { [weak displays] in
+        if let window = displays.window {
+            observers = SystemObservers(window: window, loop: host.loop) { [weak displays, weak session] in
                 displays?.refreshGrid()
+                session?.mirror.rescan()
             }
         }
 
@@ -66,6 +74,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        session?.stop()
         observers?.invalidate()
         displays?.invalidate()
     }
@@ -78,23 +87,62 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard paused != isUserPaused else { return }
         isUserPaused = paused
         displays?.setUserPaused(paused)
+        session?.sync.refreshMenuContext()
         Log.info(paused ? "desk paused" : "desk resumed")
     }
 
-    /// The bare-desk right-click menu (M2: Pause Desk, Quit).
-    func makeContextMenu() -> NSMenu {
-        let menu = NSMenu()
-        let pause = NSMenuItem(title: "Pause Desk", action: #selector(pauseFromMenu), keyEquivalent: "")
-        pause.target = self
-        menu.addItem(pause)
-        menu.addItem(.separator())
-        let quit = #selector(NSApplication.terminate(_:))
-        menu.addItem(NSMenuItem(title: "Quit Deskterior", action: quit, keyEquivalent: ""))
-        return menu
+    // MARK: Commands
+
+    private func statusSpec() -> MenuSpec {
+        guard let session else { return MenuSpec([]) }
+        let store = session.store
+        return MenuSpec.status(store.state, MenuSpec.Context(paused: isUserPaused, undo: store.undoLabel, redo: store.redoLabel))
     }
 
-    @objc private func pauseFromMenu() {
-        setUserPaused(true)
+    /// Runs a menu command: model commands go to the store, the rest are the app's.
+    func perform(_ command: MenuCommand) {
+        if session?.perform(command) == true { return }
+        switch command {
+        case .inventory:
+            showInventory()
+        case let .pauseDesk(paused):
+            setUserPaused(paused)
+        case .openDesktopFolder:
+            if let folder = session?.configuration.folder { NSWorkspace.shared.open(folder) }
+        case .about:
+            NSApp.activate()
+            NSApp.orderFrontStandardAboutPanel(nil)
+        case .quit:
+            NSApp.terminate(nil)
+        case .peekDesk, .settings:
+            // TODO(M12): Peek Desk and the Settings window.
+            session?.host.scene.toast(.notYetAvailable)
+            session?.host.modelChanged()
+        default:
+            break
+        }
+    }
+
+    private func handle(_ request: SceneRequest) {
+        switch request {
+        case let .menu(spec, at):
+            guard let view = displays?.view else { return }
+            let bridge = MenuBridge { [weak self] in self?.perform($0) }
+            view.showMenu(bridge.menu(spec), atArt: at)
+            withExtendedLifetime(bridge) {}
+        case .inventory:
+            showInventory()
+        case let .command(command):
+            perform(command)
+        }
+    }
+
+    private func showInventory() {
+        guard let session else { return }
+        if inventory == nil {
+            inventory = InventoryWindowController(store: session.store) { [weak self] in self?.perform($0) }
+        }
+        inventory?.show()
     }
 
     /// An accessory app shows no menu bar (DESIGN Errata 1); this hidden main menu only routes key equivalents.
@@ -109,12 +157,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let editItem = NSMenuItem()
         let edit = NSMenu(title: "Edit")
-        edit.addItem(NSMenuItem(title: "Undo", action: Selector(("undo:")), keyEquivalent: "z"))
-        let redo = NSMenuItem(title: "Redo", action: Selector(("redo:")), keyEquivalent: "z")
+        edit.addItem(NSMenuItem(title: "Undo", action: #selector(DeskView.undo(_:)), keyEquivalent: "z"))
+        let redo = NSMenuItem(title: "Redo", action: #selector(DeskView.redo(_:)), keyEquivalent: "z")
         redo.keyEquivalentModifierMask = [.command, .shift]
         edit.addItem(redo)
-        edit.addItem(NSMenuItem(title: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c"))
-        edit.addItem(NSMenuItem(title: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a"))
+        edit.addItem(NSMenuItem(title: "Copy", action: #selector(DeskView.copy(_:)), keyEquivalent: "c"))
+        edit.addItem(NSMenuItem(title: "Select All", action: #selector(DeskView.selectAll(_:)), keyEquivalent: "a"))
         editItem.submenu = edit
         main.addItem(editItem)
         NSApp.mainMenu = main
@@ -123,6 +171,90 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private static func fail(_ message: String) -> Never {
         FileHandle.standardError.write(Data("Deskterior: \(message)\n".utf8))
         exit(1)
+    }
+}
+
+/// One desk's moving parts wired together (DESIGN §4.3): the `Store`, the `SceneSync` that shows it, the
+/// `EffectRunner` that carries out its effects, the `MirrorController` that feeds it the folder, and the
+/// `IconProvider` (unless `--icons kind`). The live app and the demo runner build the same session; a dry run
+/// records file effects instead of running them.
+final class DeskSession {
+    let host: SceneHost
+    let configuration: MirrorController.Configuration
+    let store: Store
+    let sync: SceneSync
+    let effects: EffectRunner
+    let mirror: MirrorController
+    let icons: IconProvider?
+    var isPaused: () -> Bool = { false } {
+        didSet { sync.isPaused = isPaused }
+    }
+    private let lights: LightsMode
+
+    init(host: SceneHost, options: LaunchOptions, configuration: MirrorController.Configuration, dryRun: Bool,
+         lights: LightsMode? = nil, seed: UInt64? = nil) {
+        self.host = host
+        self.configuration = configuration
+        self.lights = lights ?? options.lights
+        let stateStore: StateStore?
+        do {
+            stateStore = try StateStore(directory: configuration.stateDirectory, mirrored: configuration.folder)
+        } catch {
+            FileHandle.standardError.write(Data("Deskterior: state store unavailable: \(error)\n".utf8))
+            stateStore = nil
+        }
+        let saver = stateStore.map { LayoutSaver(store: $0, delay: configuration.persistDelay, maxWait: configuration.persistMaxWait) }
+        store = Store(saver: saver)
+        store.seed = seed ?? options.seed ?? 0
+        if options.icons == .live {
+            let cache = try? IconCache(directory: configuration.iconCacheDirectory, mirrored: configuration.folder)
+            icons = IconProvider(cache: cache)
+        } else {
+            icons = nil
+        }
+        sync = SceneSync(host: host, store: store, icons: icons)
+        effects = EffectRunner(host: host, folder: configuration.folder, dryRun: dryRun)
+        mirror = MirrorController(configuration: configuration, store: store, stateStore: stateStore)
+        effects.mirror = mirror
+        effects.onAccessGranted = { [weak self] in self?.store.dispatch(.accessGranted) }
+        let bundleID = AppIdentity.bundleID
+        store.effects = { [weak self] in self?.effects.run($0) }
+        store.willDispatch = { action, state in
+            // "Show them on the desk anyway" is remembered (DESIGN §4.8 showDespiteFinderHidden).
+            if case .requestConnect = action, state.access == .finderHidden, !dryRun {
+                UserDefaults(suiteName: bundleID)?.set(true, forKey: DeskSettings.Key.showDespiteFinderHidden.rawValue)
+            }
+        }
+        host.scene.onAction = { [weak self] in self?.store.dispatch($0) }
+    }
+
+    func start() {
+        store.observe { [weak self] new, old in
+            guard let self, new.lights.mode != old.lights.mode else { return }
+            host.scene.lightsMode = new.lights.mode
+        }
+        sync.start()
+        mirror.start()
+        host.scene.lightsMode = store.state.lights.mode
+        if lights != .auto, lights != store.state.lights.mode {
+            let l = store.state.lights
+            store.dispatch(.lights(LightsState(mode: lights, room: l.room, lamp: l.lamp)))
+        }
+    }
+
+    /// Runs a model menu command; false for app commands.
+    @discardableResult
+    func perform(_ command: MenuCommand) -> Bool {
+        guard let action = command.action(store.state) else { return false }
+        store.dispatch(action)
+        sync.refreshMenuContext()
+        return true
+    }
+
+    /// Saves and stops watching.
+    func stop() {
+        store.flush()
+        mirror.stop()
     }
 }
 
@@ -144,9 +276,10 @@ extension AppDelegate {
     }
 
     /// `--headless`: steps `--frames` fixed frames offscreen on the emulated display and, with
-    /// `--snapshot-dir`, writes `<name>.png` (art px) and `<name>@<N>x.png` (see `snapshotName`). Returns the
-    /// exit code.
+    /// `--snapshot-dir`, writes `<name>.png` (art px) and `<name>@<N>x.png` (see `snapshotName`); with `--demo`,
+    /// runs the script (`DemoRunner`). Returns the exit code.
     static func runHeadless(_ options: LaunchOptions) -> Int32 {
+        if options.demo != nil { return DemoRunner.runBlocking(options) }
         let display = options.emulatedDisplay
         let grid = PixelGrid(display: display.geometry(), pixelSize: options.pixelSize)
         guard let device = MTLCreateSystemDefaultDevice() else {

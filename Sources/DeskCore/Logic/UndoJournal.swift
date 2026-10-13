@@ -1,0 +1,162 @@
+import Foundation
+
+/// The layout an undoable action can change: where every token rests, pile positions, and the element states a
+/// global action touches (monitor, phone, drawers).
+public struct LayoutSnapshot: Sendable, Equatable {
+    public var locations: [TokenKey: Location]
+    public var piles: [PileID: SIMD2<Float>]
+    public var monitor: MonitorState
+    public var phone: PhoneState
+    public var drawers: [ContainerID: DrawerState]
+
+    public init(_ s: DeskState) {
+        var locations: [TokenKey: Location] = [:]
+        for key in s.tokens.records.keys {
+            if let loc = s.tokens.restingLocation(of: key), loc != .carried { locations[key] = loc }
+        }
+        self.locations = locations
+        piles = s.piles
+        monitor = s.monitor
+        phone = s.phone
+        drawers = s.drawers
+    }
+}
+
+/// Undo and redo for layout changes (DESIGN §4.2, §2.2 E16: Take Everything Out and Clear the Desk are one undo
+/// each). Up to `capacity` entries, each the layout before and after one action.
+///
+/// Undo applies the inverse of what the action changed, not the whole old layout: tokens the action moved go
+/// back (following re-keys; files removed since are skipped, and a cell taken since sends its token to the
+/// nearest free cell), and only the monitor, phone and drawer fields the action changed are restored. So files
+/// that arrived or left in between, and settings changed in between, survive an undo. Redo replays the forward
+/// change the same way. File operations join the journal in M11.
+public struct UndoJournal: Sendable, Equatable {
+    public struct Entry: Sendable, Equatable {
+        /// "Move", "Take Everything Out"… (menus show "Undo <label>").
+        public var label: String
+        public var before: LayoutSnapshot
+        public var after: LayoutSnapshot
+    }
+
+    public static let capacity = 20
+
+    public private(set) var undoStack: [Entry] = []
+    public private(set) var redoStack: [Entry] = []
+
+    public init() {}
+
+    public var undoLabel: String? { undoStack.last?.label }
+    public var redoLabel: String? { redoStack.last?.label }
+
+    /// The label of an action that is journaled, or nil.
+    public static func label(for action: DeskAction) -> String? {
+        switch action {
+        case let .move(keys, _): keys.count > 1 ? "Move \(keys.count) Items" : "Move"
+        case .takeAllOut: "Take All Out"
+        case .takeEverythingOut: "Take Everything Out"
+        case .cleanUp: "Clean Up"
+        case .clearDesk: "Clear the Desk"
+        default: nil
+        }
+    }
+
+    /// Records one change (clearing redo); a no-op change is not recorded.
+    public mutating func record(_ label: String, before: LayoutSnapshot, after: LayoutSnapshot) {
+        guard before != after else { return }
+        undoStack.append(Entry(label: label, before: before, after: after))
+        if undoStack.count > Self.capacity { undoStack.removeFirst(undoStack.count - Self.capacity) }
+        redoStack.removeAll()
+    }
+
+    public mutating func undo(_ s: inout DeskState, grid: ScreenGrid = .standard) -> [Effect] {
+        guard let entry = undoStack.popLast() else { return [] }
+        Self.apply(from: entry.after, to: entry.before, onto: &s, grid: grid)
+        redoStack.append(entry)
+        return [.persist, .wakeLoop]
+    }
+
+    public mutating func redo(_ s: inout DeskState, grid: ScreenGrid = .standard) -> [Effect] {
+        guard let entry = redoStack.popLast() else { return [] }
+        Self.apply(from: entry.before, to: entry.after, onto: &s, grid: grid)
+        undoStack.append(entry)
+        return [.persist, .wakeLoop]
+    }
+
+    /// Re-applies the difference `from → to` onto `s`.
+    static func apply(from: LayoutSnapshot, to: LayoutSnapshot, onto s: inout DeskState, grid: ScreenGrid) {
+        // Tokens the change moved (present on both sides), now under their current keys.
+        var targets: [(key: TokenKey, to: Location)] = []
+        var seen = Set<TokenKey>()
+        for (key, a) in from.locations {
+            guard let b = to.locations[key], a != b else { continue }
+            let live = s.currentKey(for: key)
+            guard s.tokens.contains(live), seen.insert(live).inserted else { continue }
+            targets.append((live, b))
+        }
+        targets.sort { Self.placementOrder($0.to, $1.to) ?? ($0.key < $1.key) }
+
+        for t in targets { s.tokens.move(t.key, to: .carried) }
+        var allocator = ScreenGrid.Allocator(grid: grid, occupied: s.tokens.occupiedCells)
+        for t in targets {
+            let pilePos = t.to.pile.map { to.piles[$0] ?? s.piles[$0] ?? Placement.defaultPilePos }
+            let loc = Placement.resolve(t.to, pilePos: pilePos, in: &s, allocator: &allocator)
+            if !s.tokens.move(t.key, to: loc, grid: grid) { s.tokens.move(t.key, to: allocator.next().location, grid: grid) }
+        }
+
+        for (pile, pos) in to.piles where from.piles[pile] != pos && !s.tokens.members(of: pile).isEmpty {
+            s.piles[pile] = pos
+        }
+        if from.monitor.power != to.monitor.power { s.monitor.power = to.monitor.power }
+        if from.monitor.av != to.monitor.av { s.monitor.av = to.monitor.av }
+        if from.monitor.page != to.monitor.page { s.monitor.page = to.monitor.page }
+        if s.monitor.power == .on { s.monitor.pendingNew = 0 }
+        if from.phone != to.phone { s.phone = to.phone }
+        for (id, d) in to.drawers where from.drawers[id] != d { s.drawers[id] = d }
+        Placement.pruneEmptyPiles(&s)
+        s.monitor.page = min(max(0, s.monitor.page), s.pageCount(grid: grid) - 1)
+    }
+
+    /// Screen cells in reading order, then containers and piles by order, so restored orders come out dense and
+    /// as they were. Nil when the two locations are unrelated (ties broken by key).
+    private static func placementOrder(_ a: Location, _ b: Location) -> Bool? {
+        switch (a, b) {
+        case (.screen, .screen): return a.cell! < b.cell!
+        case let (.container(i, x), .container(j, y)): return i != j ? i < j : x < y
+        case let (.desk(p, x), .desk(q, y)): return p != q ? p < q : x < y
+        default:
+            let ra = rank(a), rb = rank(b)
+            return ra != rb ? ra < rb : nil
+        }
+    }
+
+    private static func rank(_ l: Location) -> Int {
+        switch l {
+        case .screen: 0
+        case .container: 1
+        case .desk: 2
+        case .floor: 3
+        case .carried: 4
+        }
+    }
+}
+
+extension Reducer {
+    /// `reduce` with an undo journal: journaled actions record the layout before and after, and `.undo` / `.redo`
+    /// step through the journal. The `Store` uses this entry point; plain `reduce` ignores undo and redo.
+    public static func reduce(
+        _ s: inout DeskState, journal: inout UndoJournal, _ a: DeskAction, _ env: ReduceEnv
+    ) -> [Effect] {
+        switch a {
+        case .undo:
+            return journal.undo(&s, grid: env.grid)
+        case .redo:
+            return journal.redo(&s, grid: env.grid)
+        default:
+            guard let label = UndoJournal.label(for: a) else { return reduce(&s, a, env) }
+            let before = LayoutSnapshot(s)
+            let effects = reduce(&s, a, env)
+            journal.record(label, before: before, after: LayoutSnapshot(s))
+            return effects
+        }
+    }
+}

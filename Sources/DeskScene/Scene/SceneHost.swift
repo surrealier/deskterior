@@ -1,11 +1,13 @@
 import AppKit
+import Foundation
 import DeskCore
 import Metal
 import QuartzCore
 
 /// One display's scene stack: the `DeskScene`, its `PixelPresenter` and the `FrameLoop` that drives them.
 /// Rebuilds for a new `PixelGrid`, routes input and decides what input does to the loop: pointer moves only
-/// re-render when something changed; every other event counts as activity and wakes the loop.
+/// re-render when something changed (the tooltip delay is a one-shot timer, not a running loop); every other
+/// event counts as activity and wakes the loop.
 public final class SceneHost: FrameLoopHost {
     public let presenter: PixelPresenter
     public let scene: DeskScene
@@ -17,8 +19,9 @@ public final class SceneHost: FrameLoopHost {
     public var simTime: Double { FrameClock.time(steps: stepCount) }
     /// Where frames are presented; nil when headless.
     public private(set) weak var layer: CAMetalLayer?
-    /// Screen-shake offset in art px.
+    /// Screen-shake offset in art px (added to the scene's own bonk shake).
     public var shake = ArtPoint.zero
+    private var inputTimer: Timer?
 
     public init(grid: PixelGrid, device: any MTLDevice) throws {
         self.grid = grid
@@ -38,6 +41,8 @@ public final class SceneHost: FrameLoopHost {
 
     /// Stops the display link; call before dropping the host.
     public func invalidate() {
+        inputTimer?.invalidate()
+        inputTimer = nil
         loop.invalidate()
         layer = nil
     }
@@ -54,6 +59,7 @@ public final class SceneHost: FrameLoopHost {
 
     public func handle(_ event: InputEvent) {
         let changed = scene.handle(event)
+        scheduleInputTimer()
         if event.kind == .move {
             if changed { loop.renderOnce() }
             return
@@ -61,6 +67,36 @@ public final class SceneHost: FrameLoopHost {
         loop.noteInput()
         loop.wake()
         if changed { loop.renderOnce() }
+    }
+
+    /// Routes a keyboard command (keys count as activity).
+    public func handleKey(_ command: KeyCommand) {
+        let changed = scene.handleKey(command)
+        loop.noteInput()
+        if scene.needsFrames { loop.wake() } else if changed { loop.renderOnce() }
+    }
+
+    /// After a model change: run the loop if something now animates, else render one frame.
+    public func modelChanged() {
+        if scene.needsFrames { loop.wake() } else { loop.renderOnce() }
+    }
+
+    /// A one-shot timer for the router's next deadline (the tooltip), in event time (seconds since boot).
+    private func scheduleInputTimer() {
+        inputTimer?.invalidate()
+        inputTimer = nil
+        guard let due = scene.nextInputDeadline else { return }
+        let delay = max(0, due - ProcessInfo.processInfo.systemUptime)
+        let timer = Timer(timeInterval: delay, repeats: false) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.inputTimer = nil
+                if self.scene.advanceInput(to: due) { self.loop.renderOnce() }
+            }
+        }
+        timer.tolerance = 0.02
+        RunLoop.main.add(timer, forMode: .common)
+        inputTimer = timer
     }
 
     // MARK: FrameLoopHost
@@ -73,10 +109,12 @@ public final class SceneHost: FrameLoopHost {
 
     public func frameLoopRender() {
         guard let layer else { return }
-        presenter.present(to: layer, params: UpscaleParams(grid: grid, shake: shake))
+        presenter.present(to: layer, params: UpscaleParams(grid: grid, shake: shake + scene.shake))
     }
 
     public var frameLoopNeedsFrames: Bool { scene.needsFrames }
+
+    public var frameLoopScriptedAnimating: Bool { scene.scriptedAnimating }
 
     public func frameLoopForceRest() {
         scene.forceRest()
