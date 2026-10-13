@@ -136,6 +136,8 @@ struct StateStoreTests {
             IconCache.key(inode: 1, modified: t, size: 10, kind: .image, pixels: 16, paletteVersion: 2),
         ]
         #expect(Set(variants + [base]).count == variants.count + 1)
+        // Sub-millisecond differences (lost in desk.json) do not change the key.
+        #expect(base == IconCache.key(inode: 1, modified: t + 0.0002, size: 10, kind: .image, pixels: 16, paletteVersion: 1))
     }
 
     @Test("Icon cache stores and loads PNG bytes under valid keys only")

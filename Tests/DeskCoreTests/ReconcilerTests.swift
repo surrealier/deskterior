@@ -120,6 +120,35 @@ struct ReconcilerTests {
         #expect(events == [.added(F.key(2), .screen(page: 0, col: 1, row: 0), .new)])
     }
 
+    @Test("Big swaps stay fast: 1000 files leave while 1000 others (some returning) arrive")
+    func largeBatchPerformance() {
+        var s = DeskState()
+        let first = (0..<1000).map { F.entry("old \($0).txt", UInt64($0 + 1)) }
+        Reconciler.reconcile(&s, F.snapshot(first), now: F.t0)
+        Reconciler.reconcile(&s, F.snapshot([]), now: F.t0 + 60)
+        #expect(s.tombstones.count == 1000)
+        // Half return under new inodes (tombstone by name), half are new; a volume change re-keys everything.
+        let second = (0..<1000).map { F.entry($0 % 2 == 0 ? "old \($0).txt" : "new \($0).txt", UInt64(5000 + $0)) }
+        let start = Date()
+        let events = Reconciler.reconcile(&s, F.snapshot(second), now: F.t0 + 120)
+        #expect(Date().timeIntervalSince(start) < 1)
+        #expect(events.filter { if case .added(_, _, .restored) = $0 { true } else { false } }.count == 500)
+        #expect(s.tombstones.count == 500)
+        #expect(s.violations().isEmpty)
+    }
+
+    @Test("Only the newest tombstones are kept")
+    func tombstoneCap() {
+        var s = F.mirrored(["a.txt"])
+        s.tombstones = (0..<Tombstone.maxCount).map {
+            Tombstone(key: F.key(UInt64(1000 + $0)), name: "old\($0)", kind: .text, loc: .floor(x: 0), until: F.t0 + Double($0))
+        }
+        Reconciler.reconcile(&s, F.snapshot([]), now: F.t0)
+        #expect(s.tombstones.count == Tombstone.maxCount)
+        #expect(s.tombstones.contains { $0.key == F.key(1) })
+        #expect(!s.tombstones.contains { $0.key == F.key(1000) })
+    }
+
     @Test("A pile that emptied comes back at its old desk position")
     func pileRestore() {
         var s = F.mirrored(["a.txt", "b.txt"])

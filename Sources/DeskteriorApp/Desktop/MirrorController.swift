@@ -202,8 +202,12 @@ nonisolated final class MirrorEngine: @unchecked Sendable {
         if !effects.isEmpty { publish(state, forward) }
     }
 
+    /// Starts the watcher, or rescans when it already runs (reconnecting after NO SIGNAL).
     private func startWatching() {
-        guard watcher == nil else { return }
+        if let watcher {
+            watcher.rescanNow()
+            return
+        }
         let scanner = DesktopScanner(root: configuration.folder)
         let watcher = DesktopWatcher(scanner: scanner) { [weak self] event in
             guard let self else { return }

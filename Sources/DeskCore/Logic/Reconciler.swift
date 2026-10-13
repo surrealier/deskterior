@@ -69,19 +69,20 @@ public enum Reconciler {
         var vanished = state.tokens.sortedKeys.filter { !seen.contains($0) }
 
         // 2. Safe-save swaps within this batch: same NFC name and kind, new key.
+        var vanishedByName: [NameKind: [TokenKey]] = [:]
+        for key in vanished { vanishedByName[NameKind(state.tokens.meta(of: key)!), default: []].append(key) }
         var unmatched: [DesktopEntry] = []
         for entry in fresh {
-            let match = vanished.firstIndex { key in
-                let m = state.tokens.meta(of: key)!
-                return m.displayName == entry.meta.displayName && m.kind == entry.meta.kind
-            }
-            if let i = match, state.tokens.rekey(vanished[i], to: entry.key, meta: entry.meta) {
-                events.append(.rekeyed(from: vanished[i], to: entry.key))
-                vanished.remove(at: i)
+            let nk = NameKind(entry.meta)
+            if let old = vanishedByName[nk]?.first, state.tokens.rekey(old, to: entry.key, meta: entry.meta) {
+                vanishedByName[nk]!.removeFirst()
+                events.append(.rekeyed(from: old, to: entry.key))
             } else {
                 unmatched.append(entry)
             }
         }
+        let rekeyed = Set(events.compactMap { if case let .rekeyed(old, _) = $0 { old } else { nil } })
+        vanished.removeAll { rekeyed.contains($0) }
 
         // 3. Removals leave tombstones (7 days, persisted) with the places they had before this batch.
         let before = vanished.map { state.tokens[$0]! }
@@ -96,20 +97,28 @@ public enum Reconciler {
             }
             events.append(.removed(key, record.location, name: record.meta.name))
         }
+        if state.tombstones.count > Tombstone.maxCount {
+            state.tombstones.sort { $0.until < $1.until }
+            state.tombstones.removeFirst(state.tombstones.count - Tombstone.maxCount)
+        }
         Placement.pruneEmptyPiles(&state)
 
         // 4. Arrivals. Those with a remembered place go first so new files cannot take their cells.
+        var stones = TombstoneIndex(state.tombstones)
         var placed: [(DesktopEntry, Location?, SIMD2<Float>?, DeskEvent.Arrival)] = []
         var newcomers: [DesktopEntry] = []
         for entry in unmatched {
             if let loc = Placement.takeHint(named: entry.meta.name, from: &state.hints, now: now) {
                 placed.append((entry, loc, nil, .hint))
-            } else if let tomb = takeTombstone(for: entry, from: &state.tombstones, now: now) {
-                placed.append((entry, tomb.stone.loc, tomb.stone.pilePos, tomb.arrival))
+            } else if let stone = stones.take(for: entry) {
+                let recent = now.timeIntervalSince(stone.removedAt) <= Placement.safeSaveWindow
+                let arrival: DeskEvent.Arrival = stone.key != entry.key && recent ? .safeSave : .restored
+                placed.append((entry, stone.loc, stone.pilePos, arrival))
             } else {
                 newcomers.append(entry)
             }
         }
+        state.tombstones = stones.remaining
         placed += newcomers.map { ($0, nil, nil, .new) }
 
         var allocator = ScreenGrid.Allocator(grid: grid, occupied: state.tokens.occupiedCells)
@@ -125,20 +134,50 @@ public enum Reconciler {
         return events
     }
 
-    /// The tombstone a returning file should use: same key first, then the newest with the same NFC name and
-    /// kind. Removes it from `stones`.
-    private static func takeTombstone(
-        for entry: DesktopEntry, from stones: inout [Tombstone], now: Date
-    ) -> (stone: Tombstone, arrival: DeskEvent.Arrival)? {
-        if let i = stones.firstIndex(where: { $0.key == entry.key }) {
-            return (stones.remove(at: i), .restored)
+    /// Matching key for safe-save swaps and tombstones. `String` equality and hashing already follow canonical
+    /// equivalence, so NFD and NFC spellings of a name match.
+    struct NameKind: Hashable {
+        let name: String
+        let kind: FileKind
+
+        init(_ meta: TokenMeta) {
+            name = meta.displayName
+            kind = meta.kind
         }
-        let candidates = stones.indices.filter {
-            TextLayout.nfc(stones[$0].name) == entry.meta.displayName && stones[$0].kind == entry.meta.kind
+
+        init(_ stone: Tombstone) {
+            name = TextLayout.nfc(stone.name)
+            kind = stone.kind
         }
-        guard let i = candidates.max(by: { stones[$0].until < stones[$1].until }) else { return nil }
-        let stone = stones.remove(at: i)
-        let recent = now.timeIntervalSince(stone.removedAt) <= Placement.safeSaveWindow
-        return (stone, recent ? .safeSave : .restored)
+    }
+
+    /// Tombstones indexed for one pass: by key first, then the newest with the same NFC name and kind.
+    struct TombstoneIndex {
+        private var stones: [Tombstone]
+        private var byKey: [TokenKey: Int] = [:]
+        private var byName: [NameKind: [Int]] = [:]
+        private var taken = Set<Int>()
+
+        init(_ stones: [Tombstone]) {
+            self.stones = stones
+            for (i, t) in stones.enumerated() {
+                byKey[t.key] = i
+                byName[NameKind(t), default: []].append(i)
+            }
+            for k in byName.keys { byName[k]!.sort { stones[$0].until > stones[$1].until } }
+        }
+
+        mutating func take(for entry: DesktopEntry) -> Tombstone? {
+            if let i = byKey[entry.key], taken.insert(i).inserted { return stones[i] }
+            guard let list = byName[NameKind(entry.meta)], let i = list.first(where: { !taken.contains($0) }) else {
+                return nil
+            }
+            taken.insert(i)
+            return stones[i]
+        }
+
+        var remaining: [Tombstone] {
+            stones.indices.filter { !taken.contains($0) }.map { stones[$0] }
+        }
     }
 }

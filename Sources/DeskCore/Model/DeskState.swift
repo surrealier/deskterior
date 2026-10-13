@@ -348,6 +348,8 @@ public struct DesktopRoot: Codable, Sendable, Equatable {
 /// A removed token's last place, kept 7 days so a returning file goes back there (DESIGN §3.2).
 public struct Tombstone: Codable, Sendable, Equatable {
     public static let lifetime: TimeInterval = 7 * 24 * 3600
+    /// The newest tombstones kept, so a churning desktop cannot grow `desk.json` without bound.
+    public static let maxCount = 2000
 
     public var key: TokenKey
     /// Raw file name.

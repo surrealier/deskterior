@@ -98,7 +98,7 @@ public struct DesktopScanner: Sendable {
         let name = url.lastPathComponent
         let isDirectory = values.isDirectory ?? false
         let isPackage = values.isPackage ?? false
-        let isDataless = status != nil && status != .current
+        let isDataless = (status != nil && status != .current) || hasDatalessFlag(url)
         let type = values.contentType
         let isImage = type?.conforms(to: .image) ?? false
         let isCapture = isImage && !isDataless && hasScreenCaptureAttribute(url)
@@ -112,6 +112,15 @@ public struct DesktopScanner: Sendable {
         )
         let volume = values.volumeUUIDString ?? (rootVolume.isEmpty ? "unknown" : rootVolume)
         return DesktopEntry(key: TokenKey(volume: volume, inode: inode), meta: meta)
+    }
+
+    /// `SF_DATALESS`: the content lives in a file provider (iCloud and others) and reading it would download.
+    private static func hasDatalessFlag(_ url: URL) -> Bool {
+        url.withUnsafeFileSystemRepresentation { path in
+            var st = stat()
+            guard let path, lstat(path, &st) == 0 else { return false }
+            return st.st_flags & UInt32(SF_DATALESS) != 0
+        }
     }
 
     private static func hasScreenCaptureAttribute(_ url: URL) -> Bool {

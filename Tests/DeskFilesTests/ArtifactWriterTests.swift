@@ -22,6 +22,7 @@ struct ArtifactWriterTests {
 
     @Test("The default desktop comes from FileManager")
     func defaultDesktop() {
+        defer { cleanUp() }
         let url = DesktopLocator.defaultDesktopURL()
         #expect(url.isFileURL)
         #expect(url.lastPathComponent == "Desktop")
