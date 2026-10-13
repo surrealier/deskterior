@@ -49,15 +49,11 @@ public enum SafetyGuard {
         let url = resolution.url
         if mode.requiresSandboxFolder {
             guard resolution.isOverride else { throw Refusal(reason: .noFolderGiven, path: url.path) }
-            let canonical = DesktopLocator.canonicalPath(url).lowercased()
-            if canonical == DesktopLocator.canonicalPath(realDesktop).lowercased() {
-                throw Refusal(reason: .realDesktop, path: url.path)
-            }
-            if DesktopLocator.isInsideDesktop(url, desktop: realDesktop) {
-                throw Refusal(reason: .insideRealDesktop, path: url.path)
-            }
-            if DesktopLocator.enclosesDesktop(url, desktop: realDesktop) {
-                throw Refusal(reason: .enclosesRealDesktop, path: url.path)
+            switch DesktopLocator.relation(of: url, to: realDesktop) {
+            case .same: throw Refusal(reason: .realDesktop, path: url.path)
+            case .inside: throw Refusal(reason: .insideRealDesktop, path: url.path)
+            case .encloses: throw Refusal(reason: .enclosesRealDesktop, path: url.path)
+            case .unrelated: break
             }
         }
         var isDir: ObjCBool = false

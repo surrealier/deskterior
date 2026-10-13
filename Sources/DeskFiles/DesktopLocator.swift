@@ -32,18 +32,46 @@ public enum DesktopLocator {
 
     /// True when `url` is `desktop` or anything below it, after resolving `.`/`..` and symlinks. Paths that do
     /// not exist yet resolve through their deepest existing ancestor. Case is ignored (default APFS volumes are
-    /// case-insensitive), so the check errs toward "inside".
+    /// case-insensitive), so the check errs toward "inside". A path that is inside by spelling alone is answered
+    /// without touching the file system, so checking it never looks inside a protected folder.
     public static func isInsideDesktop(_ url: URL, desktop: URL = defaultDesktopURL()) -> Bool {
         let root = canonicalPath(desktop).lowercased()
-        let path = canonicalPath(url).lowercased()
-        if path == root { return true }
-        return path.hasPrefix(root.hasSuffix("/") ? root : root + "/")
+        let lexical = url.standardizedFileURL.path.lowercased()
+        let lexicalRoot = desktop.standardizedFileURL.path.lowercased()
+        if isSameOrBelow(lexical, lexicalRoot) || isSameOrBelow(lexical, root) { return true }
+        return isSameOrBelow(canonicalPath(url).lowercased(), root)
+    }
+
+    private static func isSameOrBelow(_ path: String, _ root: String) -> Bool {
+        path == root || path.hasPrefix(root.hasSuffix("/") ? root : root + "/")
+    }
+
+    /// How a path relates to the desktop folder.
+    public enum Relation: Sendable, Equatable {
+        case same, inside, encloses, unrelated
+    }
+
+    /// `url` compared with `desktop` (case-insensitive, `..` and symlinks resolved). Spelling is checked
+    /// first, so a path that is plainly the desktop or inside it is classified without any file-system lookup.
+    public static func relation(of url: URL, to desktop: URL = defaultDesktopURL()) -> Relation {
+        let rootC = canonicalPath(desktop).lowercased()
+        let rootL = desktop.standardizedFileURL.path.lowercased()
+        let lexical = url.standardizedFileURL.path.lowercased()
+        for root in [rootL, rootC] {
+            if lexical == root { return .same }
+            if isSameOrBelow(lexical, root) { return .inside }
+        }
+        let canonical = canonicalPath(url).lowercased()
+        if canonical == rootC { return .same }
+        if isSameOrBelow(canonical, rootC) { return .inside }
+        if isSameOrBelow(rootC, canonical) || isSameOrBelow(rootL, lexical) { return .encloses }
+        return .unrelated
     }
 
     /// True when `url` is a strict ancestor of `desktop` (for example the home folder): mirroring it would
     /// put the desktop folder itself on the desk.
     public static func enclosesDesktop(_ url: URL, desktop: URL = defaultDesktopURL()) -> Bool {
-        isInsideDesktop(desktop, desktop: url) && !isInsideDesktop(url, desktop: desktop)
+        relation(of: url, to: desktop) == .encloses
     }
 
     /// `realpath(3)` of `url`, or of its deepest existing ancestor with the remaining components appended.

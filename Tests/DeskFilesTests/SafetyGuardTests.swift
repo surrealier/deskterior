@@ -35,12 +35,26 @@ struct SafetyGuardTests {
             #expect(refusal(override(link.path), mode) == .realDesktop)
             #expect(refusal(override(real.appendingPathComponent("demo").path), mode) == .insideRealDesktop)
             #expect(refusal(override(real.appendingPathComponent("a/../b/c").path), mode) == .insideRealDesktop)
-            #expect(refusal(override(link.appendingPathComponent("sub").path), mode) == .insideRealDesktop)
             #expect(refusal(override(home.path), mode) == .enclosesRealDesktop)
             #expect(refusal(override("/"), mode) == .enclosesRealDesktop)
             #expect(refusal(DesktopLocator.resolve(override: nil), mode) == .noFolderGiven)
         }
-        #expect(!FileManager.default.fileExists(atPath: real.appendingPathComponent("demo").path))
+    }
+
+    @Test("Symlinks into a desktop are followed (fake desktop, so nothing real is looked up)")
+    func symlinksIntoDesktop() throws {
+        let d = try TempDesk()
+        let fakeDesk = try d.mkdir("FakeDesk")
+        try d.mkdir("FakeDesk/sub")
+        let link = d.url("link-to-sub")
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: fakeDesk.appendingPathComponent("sub"))
+        let r = DesktopLocator.resolve(override: link.path)
+        #expect(throws: SafetyGuard.Refusal(reason: .insideRealDesktop, path: r.url.path)) {
+            try SafetyGuard.mirrorFolder(r, mode: .demo, realDesktop: fakeDesk)
+        }
+        #expect(throws: SafetyGuard.Refusal(reason: .insideRealDesktop, path: d.url("link-to-sub/x").path)) {
+            try SafetyGuard.mirrorFolder(DesktopLocator.resolve(override: d.url("link-to-sub/x").path), mode: .test, realDesktop: fakeDesk)
+        }
     }
 
     @Test("Development modes accept an existing scratch folder; missing folders and files are refused")
@@ -99,5 +113,9 @@ struct SafetyGuardTests {
         #expect(!SafetyGuard.isDirectChild(desk, of: desk))
         #expect(DesktopLocator.enclosesDesktop(d.root, desktop: desk))
         #expect(!DesktopLocator.enclosesDesktop(desk, desktop: desk))
+        #expect(DesktopLocator.relation(of: desk, to: desk) == .same)
+        #expect(DesktopLocator.relation(of: desk.appendingPathComponent("x/y"), to: desk) == .inside)
+        #expect(DesktopLocator.relation(of: d.root, to: desk) == .encloses)
+        #expect(DesktopLocator.relation(of: d.url("Desk2"), to: desk) == .unrelated)
     }
 }
