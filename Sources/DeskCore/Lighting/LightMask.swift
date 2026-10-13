@@ -185,6 +185,12 @@ extension LightMask {
             m.addEllipse(layout.rect(CoreLayout.phone).insetBy(-7, -3), level: 4, tint: .cool, edge: 6)
             m.addRect(layout.rect(PropArt.phoneScreenRect), level: 7, tint: .cool)
         }
+        if time.isDark && lights.roomLightOn {
+            for p in layout.decor(.pendant) {
+                let bulb = DecorArt.pendantBulb(in: p.rect.size).offsetBy(p.rect.x, p.rect.y)
+                m.addEllipse(bulb.insetBy(-10, -6), level: 7, tint: .warm, edge: 6)
+            }
+        }
         if time.isDark {
             for lights in layout.decor(.stringLights) {
                 for bulb in RoomArt.stringLightBulbs(in: lights.rect) {

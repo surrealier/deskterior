@@ -476,16 +476,19 @@ public enum PropArt {
         c.hline(x: 1, y: r.h - 2, length: r.w - 2, .neutral5)
         c.hline(x: 2, y: r.h - 1, length: r.w - 4, .neutral3)
         // Rows of (width) keys; 0 = default 4.
+        // Key widths per row (1-px gaps) fill the 90-px plate exactly.
         let rows: [[Int]] = [
-            [4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 9],
-            [6, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 7],
-            [7, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 11],
-            [5, 5, 5, 34, 5, 5, 4, 4, 4],
+            Array(repeating: 4, count: 16) + [10],
+            [7] + Array(repeating: 4, count: 14) + [12],
+            [8] + Array(repeating: 4, count: 14) + [11],
+            [5, 5, 5, 45, 5, 5, 4, 4, 4],
         ]
         for (ri, row) in rows.enumerated() {
             var x = 3
             let y = 1 + ri * 3
-            for (ki, kw) in row.enumerated() {
+            for (ki, w0) in row.enumerated() {
+                // The last key of each row stretches to the plate's right edge.
+                let kw = ki == row.count - 1 ? r.w - 3 - x : w0
                 let isPressed = pressed.map { $0.row == ri && $0.col == ki } ?? false
                 var cap: Ink = .neutral9, side: Ink = .neutral6
                 if ri == 0 && ki == 0 { (cap, side) = (.red4, .red2) }

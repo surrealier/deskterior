@@ -60,6 +60,8 @@ public enum RoomArt {
         softEdge(&c, y: deep, x: desk.minX..<desk.maxX)
         softEdge(&c, y: shadeBottom, x: desk.minX..<desk.maxX)
 
+        // Contact shadow on the wall just above the desk's back edge.
+        for x in desk.minX..<desk.maxX where c.ink(at: x, desk.y - 1) == wall { c.plot(x, desk.y - 1, wallShade) }
         drawDeskTop(&c, desk)
         drawWallShadows(&c, layout)
         drawDeskShadows(&c, layout)
@@ -151,20 +153,20 @@ public enum RoomArt {
     static func drawDeskTop(_ c: inout PixelCanvas, _ d: ArtRect) {
         c.fill(d, Role.desk)
         // Long, quiet grain streaks; a few highlights where the window light falls.
-        for i in 0..<28 {
+        for i in 0..<22 {
             let y = d.y + 3 + ArtKit.noise(i, 1, seed: 11, d.h - 6)
             let x = d.x + ArtKit.noise(i, 2, seed: 11, d.w - 40)
-            let len = min(16 + ArtKit.noise(i, 3, seed: 11, 52), d.maxX - 2 - x)
-            // Broken streaks read as grain rather than scratches.
-            var gx = x
+            let len = min(30 + ArtKit.noise(i, 3, seed: 11, 70), d.maxX - 2 - x)
+            // Long streaks that drift a row up or down now and then read as grain, not scratches.
+            var gx = x, gy = y
             var k = 0
             while gx < x + len {
-                let seg = 6 + ArtKit.noise(i, k, seed: 17, 14)
-                c.hline(x: gx, y: y, length: min(seg, x + len - gx), Role.deskEdge)
-                gx += seg + 3 + ArtKit.noise(k, i, seed: 19, 4)
+                let seg = 10 + ArtKit.noise(i, k, seed: 17, 22)
+                c.hline(x: gx, y: gy, length: min(seg, x + len - gx), Role.deskEdge)
+                gx += seg
+                gy = min(max(gy + (ArtKit.noise(k, i, seed: 19, 2) == 0 ? -1 : 1), d.y + 3), d.maxY - 3)
                 k += 1
             }
-            if ArtKit.noise(i, 4, seed: 11, 3) == 0 { c.hline(x: x + len / 3, y: y + 1, length: len / 4, Role.deskEdge) }
         }
         for i in 0..<8 {
             let y = d.y + 4 + ArtKit.noise(i, 5, seed: 13, d.h - 10)
@@ -650,7 +652,67 @@ public enum DecorArt {
         case .painting: painting(d.rect.size)
         case .floorPlant: floorPlant(d.rect.size)
         case .crown: RoomArt.crown(width: d.rect.w)
+        case .pendant: pendant(d.rect.size, lit: lit)
+        case .hangingPlant: hangingPlant(d.rect.size)
         }
+    }
+
+    /// The pendant's bulb (sprite-local), emissive when the room light is on in the dark.
+    public static func pendantBulb(in size: ArtSize) -> ArtRect { ArtRect(size.w / 2 - 3, size.h - 3, 6, 3) }
+
+    /// A mustard enamel pendant lamp on a long cord.
+    public static func pendant(_ size: ArtSize, lit: Bool) -> SpriteAsset {
+        var c = PixelCanvas(width: size.w, height: size.h)
+        let cx = size.w / 2
+        c.fill(ArtRect(cx - 3, 0, 6, 2), .neutral7)
+        c.vline(x: cx, y: 2, length: size.h - 14, .neutral3)
+        let top = size.h - 12
+        c.fill(ArtRect(cx - 2, top, 4, 3), .neutral4)
+        // Dome shade.
+        c.ellipseFill(ArtRect(0, top + 2, size.w, 14), .walnut2)
+        c.ellipseFill(ArtRect(1, top + 2, size.w - 2, 12), .walnut4)
+        c.ellipseFill(ArtRect(3, top + 3, size.w / 2 - 2, 5), .walnut5)
+        c.fill(ArtRect(0, size.h - 4, size.w, 4), .clear)
+        c.hline(x: 0, y: size.h - 5, length: size.w, .walnut2)
+        let bulb = pendantBulb(in: size)
+        c.fill(bulb, lit ? .neutral9 : .neutral7)
+        c.hline(x: bulb.x + 1, y: bulb.maxY - 1, length: bulb.w - 2, lit ? .walnut5 : .neutral6)
+        return SpriteAsset(lit ? "decor.pendant.lit" : "decor.pendant", c, anchor: .zero)
+    }
+
+    /// A pothos in a macramé hanger.
+    public static func hangingPlant(_ size: ArtSize) -> SpriteAsset {
+        var c = PixelCanvas(width: size.w, height: size.h)
+        let cx = size.w / 2
+        let potTop = size.h - 26
+        c.fill(ArtRect(cx - 2, 0, 4, 2), .neutral7)
+        c.vline(x: cx, y: 2, length: potTop - 14, .oak4)
+        let knot = potTop - 12
+        c.fill(ArtRect(cx - 1, knot, 3, 3), .oak3)
+        for dx in [-6, 0, 6] {
+            c.line(from: ArtPoint(cx, knot + 2), to: ArtPoint(cx + dx, potTop + 1), .oak4)
+        }
+        var foliage = PixelCanvas(width: size.w, height: size.h)
+        for (dx, dy) in [(-9, -4), (-5, -6), (0, -7), (4, -6), (7, -4), (-10, 0), (8, 0)] {
+            leaf(&foliage, cx + dx, potTop + dy)
+        }
+        for (vx, len, dir) in [(cx - 7, 20, -1), (cx + 2, 14, 1), (cx + 7, 22, 1)] {
+            for i in 0..<len {
+                let y = potTop + 8 + i, xx = vx + ((i / 5) % 2 == 0 ? 0 : dir)
+                guard y < size.h - 2 else { break }
+                foliage.plot(xx, y, .green1)
+                if i % 3 == 1 { leaf(&foliage, i % 2 == 0 ? xx - 3 : xx + 1, y) }
+            }
+        }
+        c.blit(ArtKit.outline(foliage.buffer, .green0).cropped(to: ArtRect(1, 1, size.w, size.h)), at: .zero)
+        c.blit(foliage.buffer, at: .zero)
+        let pot = ArtRect(cx - 6, potTop, 12, 9)
+        c.roundedRectFill(pot, radius: 2, .neutral6)
+        c.fill(pot.insetBy(1, 0), .neutral9)
+        c.vline(x: pot.maxX - 2, y: pot.y + 1, length: pot.h - 2, .neutral8)
+        c.hline(x: pot.x + 1, y: pot.y + 3, length: pot.w - 2, .oak4)
+        c.hline(x: pot.x, y: pot.y, length: pot.w, .neutral8)
+        return SpriteAsset("decor.hangingPlant", c, anchor: .zero)
     }
 
     /// Floating shelf: books, a framed photo and a trailing pothos over the edge.

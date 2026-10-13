@@ -61,8 +61,8 @@ final class RoomContent {
         setHovered(nil)
     }
 
-    /// Refreshes only the placements in `ids` (state changes).
-    private func refresh(_ ids: Set<String>) {
+    /// Refreshes only the placements in `ids` (state changes); `relight` also rebuilds the light mask.
+    private func refresh(_ ids: Set<String>, relight: Bool) {
         let fresh = RoomPlan.placements(layout, state, only: ids)
         var groups: [String: [RoomPlacement]] = [:]
         for p in fresh { groups[Self.elementID(for: p.id), default: []].append(p) }
@@ -70,7 +70,7 @@ final class RoomContent {
             guard let e = byID[eid] else { return rebuild() }
             e.apply(ps, replacingAll: false, z: zPosition)
         }
-        updateLighting()
+        if relight { updateLighting() }
     }
 
     private func zPosition(_ p: RoomPlacement) -> CGFloat {
@@ -124,7 +124,8 @@ final class RoomContent {
             && old.effectiveLights == new.effectiveLights && old.lightsMode == new.lightsMode
         let sameRest = old.riserOpen == new.riserOpen && old.cabinetOpen == new.cabinetOpen
             && old.chairX == new.chairX && old.chairFacing == new.chairFacing
-        refresh(sameLight && sameRest ? RoomPlan.minuteIDs : RoomPlan.stateDependentIDs)
+        let minuteOnly = sameLight && sameRest
+        refresh(minuteOnly ? RoomPlan.minuteIDs : RoomPlan.stateDependentIDs, relight: !minuteOnly)
         return true
     }
 

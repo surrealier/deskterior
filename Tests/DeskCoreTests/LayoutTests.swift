@@ -77,7 +77,8 @@ struct LayoutTests {
                     CoreLayout.lampHead, CoreLayout.phone, CoreLayout.driveHub, CoreLayout.deskTop].map(layout.rect)
         for d in layout.decor {
             #expect(canvas.contains(d.rect), "\(d) off canvas")
-            if d.kind != .crown { #expect(d.rect.minY >= layout.visible.minY, "\(d) behind the menu bar") }
+            let hangsFromCeiling: Set<WallDecor.Kind> = [.crown, .pendant, .hangingPlant]
+            if !hangsFromCeiling.contains(d.kind) { #expect(d.rect.minY >= layout.visible.minY, "\(d) behind the menu bar") }
             if d.kind == .floorPlant { continue }
             for r in core where d.kind != .stringLights || r.minY < d.rect.maxY {
                 #expect(!d.rect.intersects(r), "\(row.name) \(dock): \(d) overlaps \(r)")
@@ -98,7 +99,7 @@ struct LayoutTests {
     func portraitDecor() {
         let layout = LayoutSolver.solve(display: pixelGridDesignTable[8].display())
         let kinds = Set(layout.decor.map(\.kind))
-        #expect(kinds.isSuperset(of: [.crown, .painting, .stringLights, .shelf]))
+        #expect(kinds.isSuperset(of: [.crown, .painting, .stringLights, .shelf, .pendant, .hangingPlant]))
         let painting = layout.decor(.painting)[0].rect
         #expect(painting.maxY <= layout.coreOrigin.y)
     }

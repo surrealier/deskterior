@@ -33,6 +33,8 @@ public enum ArtCatalog {
             DecorArt.shelf(ArtSize(92, 36)), DecorArt.shelf(ArtSize(60, 36)).renamed("decor.shelf.narrow"),
             DecorArt.frame(ArtSize(32, 40)), DecorArt.pegboard(ArtSize(40, 44)), DecorArt.painting(ArtSize(112, 64)),
             DecorArt.floorPlant(ArtSize(38, 92)), RoomArt.crown(width: 64),
+            DecorArt.pendant(ArtSize(24, 60), lit: false), DecorArt.pendant(ArtSize(24, 60), lit: true),
+            DecorArt.hangingPlant(ArtSize(32, 90)),
         ])
     }
 
@@ -206,7 +208,8 @@ public enum RoomPlan {
         }
         if wanted("decor") {
             for (i, d) in layout.decor.enumerated() {
-                out.append(RoomPlacement("decor.\(d.kind.rawValue).\(i)", .backdrop, DecorArt.sprite(d, lit: tod.isDark),
+                let lit = d.kind == .pendant ? tod.isDark && lights.roomLightOn : tod.isDark
+                out.append(RoomPlacement("decor.\(d.kind.rawValue).\(i)", .backdrop, DecorArt.sprite(d, lit: lit),
                                          at: d.rect.origin))
             }
         }

@@ -15,6 +15,10 @@ public struct WallDecor: Hashable, Sendable, CustomStringConvertible {
         case floorPlant
         /// Crown moulding where a tall wall meets the ceiling.
         case crown
+        /// Pendant lamp hanging from the ceiling of a very tall wall (`rect` = cord and shade).
+        case pendant
+        /// Macramé hanging plant from the ceiling of a very tall wall.
+        case hangingPlant
     }
 
     public var kind: Kind
@@ -156,6 +160,15 @@ public enum LayoutSolver {
             let w = 112, h = 64
             let r = ArtRect(c.x + 264 - w / 2, lightsTop - 10 - h, w, h)
             if r.minY >= ceiling, clear(r) { out.append(WallDecor(.painting, r)) }
+        }
+
+        // Very tall walls: things hang from the ceiling into the space above the scene.
+        if wallAbove >= 220 {
+            let ceilingY = c.y > 150 ? 6 : top
+            let pendant = ArtRect(c.x + 92, ceilingY, 24, c.y - 96 - ceilingY)
+            if clear(pendant) { out.append(WallDecor(.pendant, pendant)) }
+            let hanging = ArtRect(c.x + 438, ceilingY, 32, c.y - 46 - ceilingY)
+            if clear(hanging) { out.append(WallDecor(.hangingPlant, hanging)) }
         }
 
         // Right wall: the shelf hangs over the phone and hub; it widens into a wide right margin.
