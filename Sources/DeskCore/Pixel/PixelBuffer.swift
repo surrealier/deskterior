@@ -5,8 +5,10 @@
 public struct PixelBuffer: Equatable, Sendable {
     public let width: Int
     public let height: Int
-    /// `width * height` pixels, row-major from the top-left.
-    public var pixels: [RGBA8]
+    /// `width * height` pixels, row-major from the top-left. Writable only inside DeskCore (so other modules
+    /// cannot break the `count == width * height` invariant); use `set`, the subscript or
+    /// `withUnsafeMutablePixels` to write from elsewhere.
+    public internal(set) var pixels: [RGBA8]
 
     public init(width: Int, height: Int, fill: RGBA8 = .clear) {
         precondition(width >= 0 && height >= 0, "negative PixelBuffer size")
@@ -31,7 +33,6 @@ public struct PixelBuffer: Equatable, Sendable {
     }
 
     /// Bounds-checked access (traps when out of bounds).
-    @inlinable
     public subscript(x: Int, y: Int) -> RGBA8 {
         get {
             precondition(inBounds(x, y), "PixelBuffer read out of bounds (\(x),\(y)) in \(width)x\(height)")
@@ -50,7 +51,6 @@ public struct PixelBuffer: Equatable, Sendable {
     }
 
     /// Clipped write: silently ignores coordinates outside the buffer.
-    @inlinable
     public mutating func set(_ x: Int, _ y: Int, _ c: RGBA8) {
         if inBounds(x, y) { pixels[y * width + x] = c }
     }
@@ -59,14 +59,36 @@ public struct PixelBuffer: Equatable, Sendable {
     public mutating func fill(_ rect: ArtRect, _ c: RGBA8) {
         let r = rect.intersection(bounds)
         guard !r.isEmpty else { return }
-        for y in r.minY..<r.maxY {
-            let row = y * width
-            for x in r.minX..<r.maxX { pixels[row + x] = c }
+        let w = width
+        pixels.withUnsafeMutableBufferPointer { p in
+            for y in r.minY..<r.maxY {
+                let start = y * w + r.minX
+                UnsafeMutableBufferPointer(rebasing: p[start..<(start + r.w)]).update(repeating: c)
+            }
         }
     }
 
     public mutating func fillAll(_ c: RGBA8) {
-        for i in pixels.indices { pixels[i] = c }
+        pixels.withUnsafeMutableBufferPointer { $0.update(repeating: c) }
+    }
+
+    /// Read-only access to the pixel storage for hot loops (row-major, `width * height` elements).
+    @inlinable
+    public func withUnsafePixels<R>(_ body: (UnsafeBufferPointer<RGBA8>) throws -> R) rethrows -> R {
+        try pixels.withUnsafeBufferPointer(body)
+    }
+
+    /// Mutable access to the pixel storage for hot loops. The buffer's size cannot change.
+    public mutating func withUnsafeMutablePixels<R>(
+        _ body: (UnsafeMutableBufferPointer<RGBA8>) throws -> R
+    ) rethrows -> R {
+        try pixels.withUnsafeMutableBufferPointer { try body($0) }
+    }
+
+    /// The pixel storage as raw R,G,B,A bytes (`RGBA8` is exactly 4 bytes in that order).
+    @inlinable
+    public func withUnsafeBytes<R>(_ body: (UnsafeRawBufferPointer) throws -> R) rethrows -> R {
+        try pixels.withUnsafeBytes(body)
     }
 
     /// Copies `src` with its top-left at `origin`. With `alphaTest`, transparent source pixels are skipped
@@ -74,14 +96,24 @@ public struct PixelBuffer: Equatable, Sendable {
     public mutating func blit(_ src: PixelBuffer, at origin: ArtPoint, alphaTest: Bool = true) {
         let dst = ArtRect(origin.x, origin.y, src.width, src.height).intersection(bounds)
         guard !dst.isEmpty else { return }
-        for y in dst.minY..<dst.maxY {
-            let sy = y - origin.y
-            for x in dst.minX..<dst.maxX {
-                let c = src.pixels[sy * src.width + (x - origin.x)]
-                if alphaTest && c.a == 0 { continue }
-                pixels[y * width + x] = c
+        let w = width, sw = src.width
+        src.pixels.withUnsafeBufferPointer { s in
+            pixels.withUnsafeMutableBufferPointer { d in
+                for y in dst.minY..<dst.maxY {
+                    let srow = (y - origin.y) * sw - origin.x, drow = y * w
+                    for x in dst.minX..<dst.maxX {
+                        let c = s[srow + x]
+                        if alphaTest && c.a == 0 { continue }
+                        d[drow + x] = c
+                    }
+                }
             }
         }
+    }
+
+    /// Like `blit`, but mirrors `src` horizontally first (for symmetric furniture drawn from one half).
+    public mutating func blitFlipped(_ src: PixelBuffer, at origin: ArtPoint, alphaTest: Bool = true) {
+        blit(src.flippedHorizontally(), at: origin, alphaTest: alphaTest)
     }
 
     /// Returns the sub-image inside `rect` (clipped; empty when there is no overlap).
@@ -143,23 +175,14 @@ public struct PixelBuffer: Equatable, Sendable {
 
     /// Raw bytes in R,G,B,A memory order (premultiplied-safe because alpha is binary and clear is zero).
     public var rgbaBytes: [UInt8] {
-        var bytes = [UInt8](repeating: 0, count: pixels.count * 4)
-        for (i, c) in pixels.enumerated() {
-            bytes[i * 4] = c.r
-            bytes[i * 4 + 1] = c.g
-            bytes[i * 4 + 2] = c.b
-            bytes[i * 4 + 3] = c.a
-        }
-        return bytes
+        pixels.withUnsafeBytes { Array($0) }
     }
 
     /// Builds a buffer from R,G,B,A bytes (row 0 = top).
     public init(width: Int, height: Int, rgbaBytes bytes: [UInt8]) {
         precondition(bytes.count == width * height * 4, "byte count mismatch")
         var px = [RGBA8](repeating: .clear, count: width * height)
-        for i in 0..<(width * height) {
-            px[i] = RGBA8(bytes[i * 4], bytes[i * 4 + 1], bytes[i * 4 + 2], bytes[i * 4 + 3])
-        }
+        px.withUnsafeMutableBytes { dst in bytes.withUnsafeBytes { dst.copyMemory(from: $0) } }
         self.init(width: width, height: height, pixels: px)
     }
 }

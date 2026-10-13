@@ -33,6 +33,35 @@ public struct PixelCanvas: Equatable, Sendable {
     public var size: ArtSize { buffer.size }
     public var bounds: ArtRect { buffer.bounds }
 
+    // MARK: - Local scopes
+
+    /// Draws a part in its own coordinates: `body` receives a `size`-sized canvas whose (0, 0) is `origin`
+    /// in this canvas, pre-filled with what is already there. Everything it draws (including erasing with
+    /// `.clear`) is copied back, clipped to this canvas. The dither phase stays absolute, so dithers line up
+    /// across parts.
+    public mutating func drawing(at origin: ArtPoint, size: ArtSize, _ body: (inout PixelCanvas) -> Void) {
+        var part = PixelCanvas(width: size.w, height: size.h, artOrigin: artOrigin + origin)
+        part.buffer.blit(buffer, at: ArtPoint(-origin.x, -origin.y), alphaTest: false)
+        body(&part)
+        buffer.blit(part.buffer, at: origin, alphaTest: false)
+    }
+
+    /// Draws a horizontally symmetric part from its left half: `body` draws the left `ceil(w/2)` columns in
+    /// local coordinates, which are then mirrored onto the right half (the centre column is shared for odd
+    /// widths). Clipped like `drawing(at:size:_:)`.
+    public mutating func drawingMirrored(at origin: ArtPoint, size: ArtSize, _ body: (inout PixelCanvas) -> Void) {
+        let half = (size.w + 1) / 2
+        var left = PixelCanvas(width: half, height: size.h, artOrigin: artOrigin + origin)
+        left.buffer.blit(buffer, at: ArtPoint(-origin.x, -origin.y), alphaTest: false)
+        body(&left)
+        var whole = PixelBuffer(width: size.w, height: size.h)
+        whole.blit(left.buffer, at: .zero, alphaTest: false)
+        let mirrored = left.buffer.flippedHorizontally()
+        whole.blit(mirrored.cropped(to: ArtRect(half * 2 - size.w, 0, size.w - half, size.h)),
+                   at: ArtPoint(half, 0), alphaTest: false)
+        buffer.blit(whole, at: origin, alphaTest: true)
+    }
+
     // MARK: - Pixels
 
     public mutating func plot(_ x: Int, _ y: Int, _ ink: Ink) {

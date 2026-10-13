@@ -126,3 +126,34 @@ public enum Role {
     public static let wallDay = Ink.neutral9     // ebede9
     public static let wallDayShade = Ink.neutral8 // c7cfcc
 }
+
+// MARK: - Ramp steps
+
+extension Ink {
+    /// The ink for `step` (0 = darkest) of `ramp`, clamped to the ramp's range.
+    public init(ramp: Apollo.Ramp, step: Int) {
+        let r = ramp.indices
+        self.init(palette: r.lowerBound + min(max(step, 0), r.count - 1))
+    }
+
+    /// The ramp this ink belongs to (nil for `.clear`).
+    public var ramp: Apollo.Ramp? { paletteIndex.map { Apollo.ramp(of: $0) } }
+
+    /// Position within its ramp, 0 = darkest (nil for `.clear`).
+    public var step: Int? {
+        guard let i = paletteIndex else { return nil }
+        return i - Apollo.ramp(of: i).indices.lowerBound
+    }
+
+    /// `n` steps darker along the same ramp, clamped at its darkest colour. `.clear` stays clear.
+    public func darker(_ n: Int = 1) -> Ink {
+        guard let ramp, let step else { return self }
+        return Ink(ramp: ramp, step: step - n)
+    }
+
+    /// `n` steps lighter along the same ramp, clamped at its lightest colour. `.clear` stays clear.
+    public func lighter(_ n: Int = 1) -> Ink {
+        guard let ramp, let step else { return self }
+        return Ink(ramp: ramp, step: step + n)
+    }
+}
