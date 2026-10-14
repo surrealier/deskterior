@@ -84,6 +84,37 @@ final class DropInController {
         }
     }
 
+    // MARK: Walls (M12)
+
+    /// The operation a wall answers a drag of `urls` with: as over the desk, without a landing to bracket (they go to
+    /// the monitor's first free cell), nothing while the desk folder is not connected.
+    func wallOperation(_ urls: [URL], copy: Bool, drag: Int) -> NSDragOperation {
+        let s = store.state
+        guard !urls.isEmpty, s.access == .connected, let root = s.root else { return [] }
+        if volumesChecked?.drag != drag {
+            volumesChecked = (drag, Self.crossesVolumes(urls, desk: URL(fileURLWithPath: root.path, isDirectory: true)))
+        }
+        switch DropIn.dragOperation(bonks: false, forcedCopy: copy, crossesVolumes: volumesChecked?.crosses ?? true) {
+        case .move?: return .move
+        case .copy?: return .copy
+        case nil: return []
+        }
+    }
+
+    /// Takes `urls` dropped on a wall (another display): they land on the monitor's first free cell (DESIGN §4.10)
+    /// through the same request, and the same undo, as a drop on the desk.
+    @discardableResult
+    func dropOnWall(_ urls: [URL], copy: Bool) -> Bool {
+        let s = store.state
+        guard s.access == .connected, let root = s.root else { return false }
+        let files = urls.filter(\.isFileURL).map { Self.spelled($0, underRoot: root.path) }
+        guard !files.isEmpty else { return false }
+        let cell = ScreenGrid.standard.firstFree(s.tokens.occupiedCells)
+        let request = DropIn(urls: files, location: cell.location, op: copy ? .copy : .move)
+        effects.withOrigin(.drop) { store.dispatch(.requestDropIn(request)) }
+        return true
+    }
+
     /// `url` spelled under the model's root when its folder is the desk folder by any spelling (symlinks, `/var`
     /// for `/private/var`, case), so the reducer sees it is on the desk already; otherwise as it came.
     static func spelled(_ url: URL, underRoot root: String) -> URL {

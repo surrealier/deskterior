@@ -190,6 +190,6 @@ final class FileActions {
 
     /// "Copying 37 files… ⌘Z stops".
     static func progressLine(_ items: Int) -> String {
-        "Copying \(items) \(items == 1 ? "item" : "items")… ⌘Z stops"
+        L10n.tr("Copying \(items) \(items == 1 ? "item" : "items")… ⌘Z stops")
     }
 }

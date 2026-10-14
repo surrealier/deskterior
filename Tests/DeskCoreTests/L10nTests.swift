@@ -98,7 +98,21 @@ struct L10nTests {
         for id in ContainerID.allCases {
             collect(MenuSpec.container(id, s))
         }
+        // The desk mat's menu (List Items Under Mat shows file names) and the drive hub's (drive names are kept).
+        var mat = MenuSpec.MatInfo()
+        mat.folded = true
+        mat.under = [keys[0]]
+        let matMenu = MenuSpec.mat(s, mat)
+        for id in matMenu.ids where !id.hasPrefix("under.") {
+            if let item = matMenu.item(id), !item.isSeparator { titles.insert(item.title) }
+        }
+        let stick = VolumeEntry(id: "U", name: "Stick", path: "/Volumes/Stick", kind: .removable, isEjectable: true)
+        for id in MenuSpec.drive(stick).ids {
+            if let item = MenuSpec.drive(stick).item(id), !item.isSeparator { titles.insert(item.title) }
+        }
         for t in UndoJournal.l10nCoverageLabels { titles.insert("Undo \(t)") }
+        // File entries' labels (`FileReport`).
+        for t in ["Move to Trash", "Empty Wastebasket", "Move In", "Copy In", "Drop In"] { titles.insert("Undo \(t)") }
         let missing = titles.filter { !L10n.knows($0) }.sorted()
         #expect(missing.isEmpty, "untranslated menu titles: \(missing)")
     }
@@ -157,6 +171,16 @@ struct L10nTests {
             // ToastKey.english (DeskScene)
             "That's full.", "No access to the Desktop folder.", "Not available yet.", "Use Finder to copy to drives.",
             "Widgets cover part of the desk.",
+            // File actions (M11)
+            "It changed on disk. Nothing was done.", "That file is gone already.", "macOS did not allow that.",
+            "Use Finder's Put Back.", "Some items stayed where they were.", "That did not work. Nothing changed.",
+            "Can't drop the Desktop or a folder holding it.", "The drive could not be ejected.", "Too many items with that name.",
+            "Some changed on disk, so they stayed.", "Some were gone already.", "macOS kept some items where they were.",
+            "Drag files from the drive, not the drive.", "The desk isn't connected to its folder.",
+            "Nothing to undo there: those items are gone.", "Still working on that.", "Stopping the copy…",
+            "Put back from the Trash.", "Sent back where they came from.", "Copies moved to the Trash.",
+            "Sent back; copies moved to the Trash.", "macOS would not let it go back.",
+            "Copying 1 item… ⌘Z stops", "Copying 37 items… ⌘Z stops",
             // ScreenCard (DeskScene)
             "PRESS", "TO CONNECT", "DESKTOP", "Shows your Desktop files here.", "CONNECTING…", "Can't read the Desktop folder.",
             "Allow access, or choose it:", "Open Settings", "Choose Folder…", "DESKTOP HIDDEN", "Finder hides desktop items.",

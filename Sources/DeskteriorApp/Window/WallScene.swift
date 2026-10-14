@@ -56,9 +56,11 @@ final class WallController {
 final class WallView: NSView {
     /// Files dropped here (copy when ⌥ was held or the source only copies).
     var onDrop: (([URL], _ copy: Bool) -> Void)?
-    /// File drags are taken at all. Off until dropped files are imported (M11): until then a drag over the wall is
-    /// refused rather than shown as accepted and then answered with "Not available yet".
+    /// File drags are taken at all.
     var acceptsFiles = false
+    /// The operation the desk's drop-in gives these files (copy when one lies on another volume; nothing while the
+    /// desk folder is not connected), given the copy the source's operations and ⌥ ask for.
+    var operationFor: (([URL], _ copy: Bool, _ drag: Int) -> NSDragOperation)?
     /// A right-click (or VoiceOver's Show Desk Menu) at a view point.
     var onMenu: ((NSPoint) -> Void)?
     private var image: CGImage?
@@ -131,12 +133,10 @@ final class WallView: NSView {
     }
 
     private func operation(_ sender: any NSDraggingInfo) -> NSDragOperation {
-        guard !Self.fileURLs(sender.draggingPasteboard).isEmpty else { return [] }
-        switch importOp(sender) {
-        case .move: return .move
-        case .copy: return .copy
-        case nil: return []
-        }
+        let urls = Self.fileURLs(sender.draggingPasteboard)
+        guard !urls.isEmpty, let op = importOp(sender) else { return [] }
+        if let operationFor { return operationFor(urls, op == .copy, sender.draggingSequenceNumber) }
+        return op == .copy ? .copy : .move
     }
 
     /// What dropping now would do: the source's allowed operations and ⌥ (`ImportOp.forDrop`), nil when refused.

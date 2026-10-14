@@ -50,8 +50,7 @@ final class SettingsModel {
 
 /// Settings (DESIGN §4.8; M12), a small SwiftUI form: lights, Reduce Motion, the pixel size, the mirrored folder, the
 /// Peek hotkey and Launch at Login (both off until turned on here), pausing on battery, the desk display and the
-/// other displays' walls, the language, and About & Credits. The desk mat's Cloth/Flat picker joins once the mat
-/// element reads `DeskSettings.matMode` (the mat's milestone; Errata 18).
+/// other displays' walls, the language, the desk mat's Cloth/Flat, and About & Credits.
 struct SettingsView: View {
     @Bindable var model: SettingsModel
 
@@ -69,6 +68,10 @@ struct SettingsView: View {
                     Text(tr(.reduceMotionFollow)).tag(DeskSettings.ReduceMotion.followSystem)
                     Text(tr(.reduceMotionOn)).tag(DeskSettings.ReduceMotion.on)
                     Text(tr(.reduceMotionOff)).tag(DeskSettings.ReduceMotion.off)
+                }
+                Picker(tr(.matMode), selection: model.binding(\.matMode)) {
+                    Text(tr(.matCloth)).tag(DeskSettings.MatMode.cloth)
+                    Text(tr(.matFlat)).tag(DeskSettings.MatMode.flat)
                 }
                 Picker(tr(.pixelSize), selection: model.binding(\.pixelSize)) {
                     Text(tr(.pixelChunky)).tag(PixelSize.chunky)

@@ -63,6 +63,18 @@ public enum L10nKey: String, CaseIterable, Sendable {
     // MARK: Panels and status lines
     case panelUseFolder, panelChooseDesktop, resetFailed, hotkeyTaken, loginTranslocated
 
+    // MARK: Desk mat menus (M9)
+    case smoothDeskMat, smoothMat, unfoldMat, rotateMat, rotateMinus15, rotatePlus15, straightenMat, matSize, matSmall
+    case matMedium, matLarge, peekUnder, listItemsUnderMat, resetMat
+
+    // MARK: File actions (M11): the drive menu, undo labels, toasts, Empty Wastebasket's sheet, the copy progress
+    case ejectNamed, undoEmptyWastebasket, undoMoveIn, undoCopyIn, undoDropIn
+    case toastFileChanged, toastFileGone, toastFileNotPermitted, toastUsePutBack, toastSomeNotDone, toastFileFailed
+    case toastDropHoldsDesk, toastEjectFailed, toastNameTaken, toastSomeChanged, toastSomeGone, toastSomeNotPermitted
+    case toastDropWholeDrive, toastFilesUnavailable, toastNothingToUndo, toastFileBusy, toastStoppingCopy
+    case toastUndidTrash, toastUndidMoveIn, toastUndidCopyIn, toastUndidDropIn, toastCantMoveBack
+    case sheetEmptyOne, sheetEmptyMany, sheetAndMore, sheetEmptyExplain, copyingOne, copyingMany
+
     public var en: String { Self.table[self]?.en ?? rawValue }
     public var ko: String { Self.table[self]?.ko ?? rawValue }
 
@@ -310,5 +322,57 @@ public enum L10nKey: String, CaseIterable, Sendable {
         .hotkeyTaken: p("Another app is using ⌃⌥⌘D, so the shortcut is off.", "다른 앱이 ⌃⌥⌘D를 쓰고 있어서 단축키를 껐어요."),
         .loginTranslocated: p("Move Deskterior to the Applications folder to launch it at login.",
                               "로그인 시 실행하려면 Deskterior를 응용 프로그램 폴더로 옮겨 주세요."),
+
+        // Desk mat menus
+        .smoothDeskMat: p("Smooth Desk Mat", "책상 매트 펴기"),
+        .smoothMat: p("Smooth Mat", "매트 펴기"),
+        .unfoldMat: p("Unfold", "접힌 곳 펴기"),
+        .rotateMat: p("Rotate", "돌리기"),
+        .rotateMinus15: p("Rotate −15°", "−15° 돌리기"),
+        .rotatePlus15: p("Rotate +15°", "+15° 돌리기"),
+        .straightenMat: p("Straighten", "똑바로 놓기"),
+        .matSize: p("Size", "크기"),
+        .matSmall: p("Small", "작게"),
+        .matMedium: p("Medium", "보통"),
+        .matLarge: p("Large", "크게"),
+        .peekUnder: p("Peek Under", "밑 들춰 보기"),
+        .listItemsUnderMat: p("List Items Under Mat", "매트 밑 항목 보기"),
+        .resetMat: p("Reset Mat", "매트 처음대로"),
+
+        // File actions
+        .ejectNamed: p("Eject “%@”", "“%@” 추출"),
+        .undoEmptyWastebasket: p("Empty Wastebasket", "쓰레기통 비우기"),
+        .undoMoveIn: p("Move In", "옮겨 오기"),
+        .undoCopyIn: p("Copy In", "복사해 오기"),
+        .undoDropIn: p("Drop In", "가져오기"),
+        .toastFileChanged: p("It changed on disk. Nothing was done.", "디스크에서 바뀌어서 그대로 뒀어요."),
+        .toastFileGone: p("That file is gone already.", "그 파일은 이미 없어요."),
+        .toastFileNotPermitted: p("macOS did not allow that.", "macOS가 허락하지 않았어요."),
+        .toastUsePutBack: p("Use Finder's Put Back.", "Finder의 되돌려 놓기를 쓰세요."),
+        .toastSomeNotDone: p("Some items stayed where they were.", "일부 항목은 그대로 있어요."),
+        .toastFileFailed: p("That did not work. Nothing changed.", "안 됐어요. 바뀐 건 없어요."),
+        .toastDropHoldsDesk: p("Can't drop the Desktop or a folder holding it.", "바탕화면이나 그 상위 폴더는 놓을 수 없어요."),
+        .toastEjectFailed: p("The drive could not be ejected.", "드라이브를 추출하지 못했어요."),
+        .toastNameTaken: p("Too many items with that name.", "같은 이름의 항목이 너무 많아요."),
+        .toastSomeChanged: p("Some changed on disk, so they stayed.", "일부는 디스크에서 바뀌어서 그대로 뒀어요."),
+        .toastSomeGone: p("Some were gone already.", "일부는 이미 없었어요."),
+        .toastSomeNotPermitted: p("macOS kept some items where they were.", "macOS가 일부 항목을 그대로 뒀어요."),
+        .toastDropWholeDrive: p("Drag files from the drive, not the drive.", "드라이브 말고 그 안의 파일을 끌어 오세요."),
+        .toastFilesUnavailable: p("The desk isn't connected to its folder.", "책상이 폴더에 연결되지 않았어요."),
+        .toastNothingToUndo: p("Nothing to undo there: those items are gone.", "되돌릴 게 없어요. 그 항목들은 사라졌어요."),
+        .toastFileBusy: p("Still working on that.", "아직 처리 중이에요."),
+        .toastStoppingCopy: p("Stopping the copy…", "복사를 멈추는 중…"),
+        .toastUndidTrash: p("Put back from the Trash.", "휴지통에서 되돌려 놓았어요."),
+        .toastUndidMoveIn: p("Sent back where they came from.", "원래 있던 곳으로 돌려보냈어요."),
+        .toastUndidCopyIn: p("Copies moved to the Trash.", "복사본을 휴지통으로 옮겼어요."),
+        .toastUndidDropIn: p("Sent back; copies moved to the Trash.", "돌려보내고 복사본은 휴지통으로 옮겼어요."),
+        .toastCantMoveBack: p("macOS would not let it go back.", "macOS가 되돌리지 못하게 했어요."),
+        .sheetEmptyOne: p("Move the item in the wastebasket to the Trash?", "쓰레기통의 항목을 휴지통으로 옮길까요?"),
+        .sheetEmptyMany: p("Move the %d items in the wastebasket to the Trash?", "쓰레기통의 항목 %d개를 휴지통으로 옮길까요?"),
+        .sheetAndMore: p("and %d more", "외 %d개"),
+        .sheetEmptyExplain: p("The wastebasket only hides files on the desk. This moves them to the Trash; Undo or Finder's Put Back returns them.",
+                              "쓰레기통은 책상 위 파일을 숨기기만 해요. 이 작업은 파일을 휴지통으로 옮기고, 실행 취소나 Finder의 되돌려 놓기로 돌려놓을 수 있어요."),
+        .copyingOne: p("Copying %d item… ⌘Z stops", "항목 %d개 복사 중… ⌘Z로 멈춤"),
+        .copyingMany: p("Copying %d items… ⌘Z stops", "항목 %d개 복사 중… ⌘Z로 멈춤"),
     ]
 }

@@ -9,16 +9,16 @@ import DeskPixels
 enum EmptyBasketSheet {
     /// The question, e.g. "Move the 5 items in the wastebasket to the Trash?".
     static func message(count: Int) -> String {
-        count == 1 ? "Move the item in the wastebasket to the Trash?" : "Move the \(count) items in the wastebasket to the Trash?"
+        L10n.tr(count == 1 ? "Move the item in the wastebasket to the Trash?" : "Move the \(count) items in the wastebasket to the Trash?")
     }
 
     /// The names, one per line, then "and N more", then what happens.
     static func details(names: [String], more: Int) -> String {
         var lines = names.map { "• \($0)" }
-        if more > 0 { lines.append("and \(more) more") }
+        if more > 0 { lines.append(L10n.tr("and \(more) more")) }
         lines.append("")
-        lines.append("The wastebasket only hides files on the desk. This moves them to the Trash; Undo or Finder's Put "
-            + "Back returns them.")
+        lines.append(L10n.tr("The wastebasket only hides files on the desk. This moves them to the Trash; Undo or Finder's "
+            + "Put Back returns them."))
         return lines.joined(separator: "\n")
     }
 
@@ -31,9 +31,9 @@ enum EmptyBasketSheet {
             alert.messageText = message(count: count)
             alert.informativeText = details(names: names, more: more)
         }
-        let cancel = alert.addButton(withTitle: "Cancel")
+        let cancel = alert.addButton(withTitle: tr(.cancel))
         cancel.keyEquivalent = "\r"
-        let trash = alert.addButton(withTitle: "Move to Trash")
+        let trash = alert.addButton(withTitle: tr(.moveToTrash))
         trash.keyEquivalent = ""
         trash.hasDestructiveAction = true
         if let icon = basketIcon() { alert.icon = icon }

@@ -24,6 +24,7 @@ final class InventoryWindowController: NSObject, NSWindowDelegate {
     var coveredPiles: () -> Set<PileID> {
         get { model.coveredPiles }
         set { model.coveredPiles = newValue }
+    }
     // MARK: files
     /// Move to Trash from the Inventory (an `inventory` intent; no key equivalent).
     var moveToTrash: (([TokenKey]) -> Void)? {
@@ -227,7 +228,7 @@ struct InventoryView: View {
                 }
                 // MARK: files
                 Divider()
-                Button("Move to Trash") { model.trash(Array(keys)) }
+                Button(tr(.moveToTrash)) { model.trash(Array(keys)) }
                     .disabled(model.moveToTrash == nil)
             } primaryAction: { keys in
                 if keys.count == 1, let key = keys.first { model.showOnDesk(key) }
@@ -246,7 +247,7 @@ struct InventoryView: View {
                 Button(tr(.takeOut)) { model.takeOut() }
                     .disabled(model.takeOutKeys.isEmpty)
                 // MARK: files (no key equivalent: nothing destructive has one)
-                Button("Move to Trash") { model.trash(model.selectedKeys) }
+                Button(tr(.moveToTrash)) { model.trash(model.selectedKeys) }
                     .disabled(model.selectedKeys.isEmpty || model.moveToTrash == nil)
                 Spacer()
                 Button(tr(.takeEverythingOut)) { model.run(.takeEverythingOut) }

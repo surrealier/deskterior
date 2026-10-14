@@ -42,9 +42,8 @@ final class AppSystem {
     private var hotkeyTaken = false
     /// How long after the last click, key or menu command a desk frozen on battery stays live.
     static let inputSpellSeconds: TimeInterval = 30
-    /// Walls take file drags once dropped files are imported (`.importDropped` reaches `FileOperator`, M11); until
-    /// then they refuse the drag (DESIGN §4.10, Errata 18).
-    static let wallsImportFiles = false
+    /// Walls take file drags: a drop on one goes to the monitor through the desk's drop-in (M11; DESIGN §4.10).
+    static let wallsImportFiles = true
 
     init(options: LaunchOptions, settings: SettingsStore, displays: DisplayManager, session: DeskSession) {
         self.options = options
@@ -71,6 +70,7 @@ final class AppSystem {
         host.scene.onToastShown = { [weak self] in self?.accessibility?.announce($0) }
         displays.view?.onInput = { [weak self] in self?.userInput() }
         displays.wallsAcceptFiles = Self.wallsImportFiles
+        host.scene.matFlat = settings.settings.matMode == .flat  // the desk mat's Cloth/Flat (M9)
         if let window = displays.window { observers.watchOcclusion(of: window) }
         peek.onChange = { [weak self] on in self?.observers.send(.peeking(on)) }
         peek.resumeIfPaused = { [weak self] in
@@ -86,6 +86,9 @@ final class AppSystem {
             self.peek.relayout()
         }
         displays.onWallDrop = { [weak self] urls, copy in self?.wallDrop(urls, copy: copy) }
+        displays.wallOperation = { [weak self] urls, copy, drag in
+            self?.session.dropIn.wallOperation(urls, copy: copy, drag: drag) ?? []
+        }
         displays.onWallMenu = { [weak self] view, p in self?.wallMenu(view, at: p) }
         displays.settingsChanged()
         settings.observe { [weak self] new, old in self?.settingsChanged(new, old) }
@@ -178,9 +181,7 @@ final class AppSystem {
 
     /// Files dropped on a wall go to the monitor, like a drop on its glass (DESIGN §4.10).
     private func wallDrop(_ urls: [URL], copy: Bool) {
-        let s = session.store.state
-        let cell = ScreenGrid.standard.firstFree(s.tokens.occupiedCells)
-        session.store.dispatch(.importDropped(urls, at: cell.location, op: copy ? .copy : .move))
+        session.dropIn.dropOnWall(urls, copy: copy)
         session.host.modelChanged()
     }
 
@@ -251,6 +252,7 @@ final class AppSystem {
         if new.pixelSize != old.pixelSize { displays.settingsChanged() }
         if new.pauseOnBattery != old.pauseOnBattery { observers.setPauseOnBattery(new.pauseOnBattery) }
         if new.reduceMotion != old.reduceMotion { reduceMotion.refresh() }
+        if new.matMode != old.matMode { session.host.scene.matFlat = new.matMode == .flat }
         if new.deskDisplayUUID != old.deskDisplayUUID || new.coverOtherDisplays != old.coverOtherDisplays {
             displays.settingsChanged()
         }

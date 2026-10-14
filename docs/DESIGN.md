@@ -309,7 +309,7 @@
       before the desk starts; Reset Layout keeps the saved layout as `desk.reset-<date>.json` and saves a fresh desk that
       keeps only the mirrored folder and the lights.
     - **Widgets** are probed at launch, on display changes, on wake and when another app activates (never on a timer).
-18. **System integration review (M12).** These refine Errata 17.
+22. **System integration review (M12).** These refine Errata 21.
     - **Settings domain.** Inside the .app, settings live in the app's own defaults domain (`UserDefaults.standard`):
       macOS refuses a suite named after the app's own bundle id. Unbundled builds use the `io.github.deskterior.dev`
       suite. Every setting goes through `SettingsStore`, `mirroredFolder` and `showDespiteFinderHidden` included;
@@ -336,6 +336,18 @@
     - **Safe Mode** keeps the saved file byte for byte as the reset backup.
     - **Measurements.** Demo 11 holds the §5 budgets (first frame with 500 files ≤ 1 s, frame ≤ 4 ms, ≤ 150 MB);
       `soak.sh` fails a run that ends before its minutes are up. The soak stays headless.
+23. **Wave 5 glue (M9 + M11 + M12).** These refine Errata 17–22 and win where they differ.
+    - **Menus.** `MenuSpec.pending` is empty: Clear the Desk, Move to Trash, Empty Wastebasket, Peek Desk and
+      Settings… all run.
+    - **Walls import.** A file drag over a wall gets the desk's answer (`DropInController.wallOperation`: a copy when
+      an item lies on another volume or ⌥ is held, nothing while the folder is not connected), and a drop goes to the
+      monitor's first free cell as one `requestDropIn` with a `drop` origin (`dropOnWall`), the same request, undo and
+      toasts as a drop on the glass. Only the drop-in and drag-out controllers build file requests (the lint).
+    - **Desk mat setting.** Settings ▸ Desk mat (Cloth/Flat) is back; `AppSystem` sets `DeskScene.matFlat` from the
+      launch's `SettingsStore` at start and whenever the setting changes (Reduce Motion still flattens it too).
+    - **Strings.** The mat's menu, the drive menu's Eject, the file actions' toasts and undo labels, Empty
+      Wastebasket's sheet and the copy progress line are in the English/Korean table; the scene's tooltips and
+      "TIDY!" stay English in v0.1, as Errata 21 says of tooltips.
 
 ---
 
