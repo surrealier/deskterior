@@ -4,7 +4,7 @@ All notable changes to Deskterior are listed here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.1.0] - 2026-10-14
+## [0.1.0] - 2026-10-15
 
 The first release: milestones M0–M13 of [docs/DESIGN.md](docs/DESIGN.md).
 
@@ -26,7 +26,7 @@ The first release: milestones M0–M13 of [docs/DESIGN.md](docs/DESIGN.md).
 - **Hiding places.** Two riser drawers and a cubby, a three-drawer filing cabinet (interlocked, folder tabs in the
   bottom drawer, blocked by the chair until it rolls aside), a phone that turns face down, a pen cup, and a
   wastebasket that hides and never deletes. Drawers chomp dropped files, rest ajar when overfull, jam and bonk when
-  full, peek on scroll, spring-load during a drag and slam shut. List Contents, Take All Out, Move to ▸.
+  full, peek on scroll, spring-load during a drag and slam shut. List Contents, Move Contents to ▸, Take All Out.
 - **Desk physics.** Files set down on the desk form piles that slide and stack; flicks fly in arcs off the desk onto
   the floor or into the wastebasket (SWISH!, rim bounces, misses). The pen cup can be carried, tipped and stood up;
   the basket can be tipped and dug through. Double-clicking the desk's apron knocks it; knocks never change where a
@@ -46,14 +46,15 @@ The first release: milestones M0–M13 of [docs/DESIGN.md](docs/DESIGN.md).
 - **File actions, only when asked.** Move to Trash and Empty Wastebasket… (with a sheet listing the names) go to the
   macOS Trash; drop-in from Finder moves or copies files into the Desktop folder (never overwriting); drag-out hands
   files to other apps, Mail and the Dock's Trash; Eject from the drive hub. Every one is logged; all but Eject and
-  drags out to other apps can be undone with ⌘Z. A locked file is never moved in (⌥ copies it), and the hidden
-  folder an interrupted copy leaves behind is reported and listed under Settings ▸ Leftover copies, never removed
-  by itself.
+  drags out to other apps (save a Dock Trash drop Deskterior trashes itself) can be undone with ⌘Z. A locked file is
+  never moved in (⌥ copies it), and the hidden folder an interrupted copy can leave behind is reported and listed
+  under Settings ▸ Leftover copies, never removed by itself.
 - **System integration.** Covers Finder's icons without changing Finder; menu bar item and bare-wall menu; walls on
   other displays (drops go to the monitor); Peek Desk (optional ⌃⌥⌘D shortcut, off by default) and Pause Desk;
   pausing for full-screen apps, sleep, lock, user switching, and optionally on battery; widget avoidance; Launch at
   Login (off by default); Settings; Safe Mode (hold ⌥ at launch); App Translocation note; welcome window; a
-  template menu bar icon. A saved layout with impossible values is repaired when it loads.
+  template menu bar icon. A saved layout with impossible values is repaired when it loads, and a chosen folder that is
+  missing at launch shows the Desktop that time instead of stopping the app.
 - **Accessibility and languages.** VoiceOver lists every file and control; Reduce Motion (following the system by
   default) replaces shakes, flickers and arcs and holds the AV logo still; English and Korean menus, cards, toasts, windows and settings.
 - **Packaging.** A universal (Apple silicon and Intel) app built with the Command Line Tools only, ad-hoc signed or
@@ -73,7 +74,9 @@ The first release: milestones M0–M13 of [docs/DESIGN.md](docs/DESIGN.md).
   Downloads ([docs/SPIKES.md](docs/SPIKES.md)).
 - Clicking the wallpaper to reveal the desktop does not work over the desk; widgets stay above it.
 - A Finder desktop selection made before the desk covered it can still be trashed with ⌘⌫ in Finder.
-- A mirrored folder on an exFAT drive cannot take drops (exFAT lacks the no-overwrite rename); nothing changes.
-- The scene's own lettering is English only: tooltips, the NO SIGNAL logo, BONK, SWISH! and TIDY!.
+- A mirrored folder on an exFAT drive cannot take drops, and ⌘Z cannot bring trashed files back into it (exFAT lacks
+  the no-overwrite rename); nothing changes.
+- Parts of the scene stay English only: tooltips, VoiceOver's names for desk objects, the AV input's NO SIGNAL logo,
+  BONK, SWISH! and TIDY!.
 
 [0.1.0]: ../../releases/tag/v0.1.0

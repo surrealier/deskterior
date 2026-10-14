@@ -125,10 +125,20 @@ struct ReleaseDocsTests {
 
     @Test("Pasted shell blocks have no # comments (interactive zsh passes them on as arguments)")
     func noShellComments() throws {
-        for path in ["README.md", "README.ko.md", ".github/release-notes.md", "docs/SIGNING.md"] {
+        for path in ["README.md", "README.ko.md", ".github/release-notes.md", "docs/SIGNING.md", "docs/SPIKES.md"] {
             for line in Self.shellBlocks(try Self.text(path)).joined() {
                 #expect(!line.hasPrefix("#") && !line.contains(" #"), "\(path): \(line)")
             }
+        }
+    }
+
+    @Test("The owner's checklist reads Finder's keys so an unset key prints the same line before and after")
+    func finderReads() throws {
+        let reads = Self.shellBlocks(try Self.text("docs/SPIKES.md")).joined().filter { $0.contains("defaults read com.apple.") }
+        #expect(reads.count == 2, "a before and an after line")
+        for line in reads {
+            // `defaults` stamps the time and its pid on "does not exist": captured, the diff could never pass.
+            #expect(!line.contains("2>&1") && line.components(separatedBy: "2>/dev/null || echo unset").count == 3, "\(line)")
         }
     }
 

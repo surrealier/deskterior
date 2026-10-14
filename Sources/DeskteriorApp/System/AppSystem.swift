@@ -221,6 +221,8 @@ final class AppSystem {
             model.pixelSizeLocked = options.pixelSizeGiven
             model.loginLocked = isTranslocated
             model.hotkeyStatus = hotkeyTaken ? tr(.hotkeyTaken) : nil
+            // The saved folder was not there at launch: the desk shows the Desktop and the setting is kept.
+            if session.configuration.savedFolderUnavailable != nil { model.folderNote = tr(.folderMissing) }
             settingsModel = model
             settingsWindow = AppWindow.make(title: tr(.settingsTitle), view: SettingsView(model: model))
         }
@@ -262,6 +264,7 @@ final class AppSystem {
         if new.pauseOnBattery != old.pauseOnBattery { observers.setPauseOnBattery(new.pauseOnBattery) }
         if new.reduceMotion != old.reduceMotion { reduceMotion.refresh() }
         if new.matMode != old.matMode { session.host.scene.matFlat = new.matMode == .flat }
+        if new.dragOutMode != old.dragOutMode { session.dragOut.alwaysCopy = new.dragOutMode == .alwaysCopy }
         if new.deskDisplayUUID != old.deskDisplayUUID || new.coverOtherDisplays != old.coverOtherDisplays {
             displays.settingsChanged()
         }

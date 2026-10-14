@@ -16,11 +16,13 @@ struct FileActionsReviewTests {
         var all: [String] { lock.withLock { items } }
     }
 
-    static func wait(_ semaphore: DispatchSemaphore) async {
-        await withCheckedContinuation { (done: CheckedContinuation<Void, Never>) in
+    /// Waits off the cooperative pool for `semaphore`, at most `seconds`: false when it never came (a hang becomes a
+    /// failure with a message, never a stuck suite). Generous: on a starved pool a long synchronous test elsewhere can
+    /// hold a task back for minutes.
+    static func wait(_ semaphore: DispatchSemaphore, seconds: Double = 600) async -> Bool {
+        await withCheckedContinuation { (done: CheckedContinuation<Bool, Never>) in
             DispatchQueue.global().async {
-                semaphore.wait()
-                done.resume()
+                done.resume(returning: semaphore.wait(timeout: .now() + seconds) == .success)
             }
         }
     }
@@ -30,16 +32,17 @@ struct FileActionsReviewTests {
         let rig = try FileRig()
         let entered = DispatchSemaphore(value: 0)
         let release = DispatchSemaphore(value: 0)
+        defer { release.signal() }  // a failed run never leaves the unmount waiting
         let order = Order()
         await rig.op.setHooks(FileOperator.Hooks(ejectable: { _ in true }, unmount: { _ in
             entered.signal()
-            release.wait()
+            _ = release.wait(timeout: .now() + 600)
             order.add("unmounted")
         }))
         let volume = URL(fileURLWithPath: "/Volumes/Slow", isDirectory: true)
-        let intent = rig.intent()
-        let eject = Task { await rig.op.eject(volume, intent) }
-        await Self.wait(entered)
+        // Minted inside the task, as the copy tests do, so a task a busy pool starts late still holds a fresh intent.
+        let eject = Task { await rig.op.eject(volume, rig.intent()) }
+        try #require(await Self.wait(entered), "the eject never reached the unmount: \(rig.log.entries().map(\.outcome))")
         // An actor held by the unmount would serve the trash only after this failsafe lets the unmount go.
         let failsafe = Task {
             try? await Task.sleep(for: .seconds(5))

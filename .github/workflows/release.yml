@@ -29,6 +29,8 @@ jobs:
       - name: Build
         run: swift build
       - name: Test
+        # A hung test fails the job with a log instead of holding it for GitHub's 6-hour limit (about 9 min when green).
+        timeout-minutes: 30
         run: scripts/swift-test.sh
         env:
           # As in ci.yml: the desk-plane physics tests need a Metal device; fail rather than skip them.
@@ -46,6 +48,7 @@ jobs:
     env:
       # Secrets cannot appear in `if:` directly.
       HAS_P12: ${{ secrets.SIGNING_P12_BASE64 != '' }}
+      # After a move to another account, `BUNDLE_ID: <the old id>` here keeps it for the build and Verify (SIGNING.md).
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
@@ -71,8 +74,9 @@ jobs:
           plutil -lint build/Deskterior.app/Contents/Info.plist
           info() { plutil -extract "$1" raw -o - build/Deskterior.app/Contents/Info.plist; }
           owner="$(printf '%s' "$GITHUB_REPOSITORY_OWNER" | tr '[:upper:]' '[:lower:]')"
-          [ "$(info CFBundleIdentifier)" = "io.github.$owner.deskterior" ] ||
-            { echo "bundle id $(info CFBundleIdentifier) is not io.github.$owner.deskterior"; exit 1; }
+          want="${BUNDLE_ID:-io.github.$owner.deskterior}"
+          [ "$(info CFBundleIdentifier)" = "$want" ] ||
+            { echo "bundle id $(info CFBundleIdentifier) is not $want"; exit 1; }
           v="${GITHUB_REF_NAME#v}"
           [ "$(info CFBundleShortVersionString)" = "${v%%[-+]*}" ] ||
             { echo "CFBundleShortVersionString $(info CFBundleShortVersionString) is not ${v%%[-+]*}"; exit 1; }

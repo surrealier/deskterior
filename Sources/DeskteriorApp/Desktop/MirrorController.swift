@@ -30,6 +30,9 @@ final class MirrorController {
         var finderHidesItems: Bool?
         /// Follow the mounted volumes for the drive hub (demos list their own, never the real ones).
         var watchesVolumes = true
+        /// Settings' mirrored folder, when it could not be mirrored at launch (gone, or a drive not mounted yet): the
+        /// desk shows the Desktop this time and the setting stays.
+        var savedFolderUnavailable: String?
     }
 
     let configuration: Configuration
@@ -167,7 +170,10 @@ final class MirrorController {
     /// show up as tokens, and every save would rescan into another save).
     ///
     /// Desk mode mirrors the folder chosen in Settings (`settings.mirroredFolder`) when no `--desktop-folder` is given,
-    /// unless `useSavedFolder` is false (Settings is switching folders right now). `settings` are the launch's
+    /// unless `useSavedFolder` is false (Settings is switching folders right now). A saved folder that cannot be
+    /// mirrored (renamed, deleted, on a drive not mounted yet at login) is never a refusal: the launch mirrors the
+    /// Desktop instead, keeps the setting and says so (`savedFolderUnavailable`), so Safe Mode and the desk still
+    /// open. `settings` are the launch's
     /// (`SettingsStore`: the app's in desk mode, throwaway ones otherwise); nothing here reads `UserDefaults`.
     /// `realDesktop` and `home` are the user's (tests pass stand-ins, so the refusal is checked without ever naming
     /// the real folder).
@@ -183,8 +189,17 @@ final class MirrorController {
         case .headless: options.demo == nil ? .headless : .demo
         }
         let saved = useSavedFolder && mode == .desk ? settings.mirroredFolder : nil
-        let resolution = DesktopLocator.resolve(override: options.desktopFolder ?? saved, environment: environment)
-        let folder = try SafetyGuard.mirrorFolder(resolution, mode: mode, realDesktop: realDesktop, home: home)
+        let folder: URL
+        var unavailable: String?
+        do throws(SafetyGuard.Refusal) {
+            let resolution = DesktopLocator.resolve(override: options.desktopFolder ?? saved, environment: environment)
+            folder = try SafetyGuard.mirrorFolder(resolution, mode: mode, realDesktop: realDesktop, home: home)
+        } catch {
+            guard options.desktopFolder == nil, let saved else { throw error }
+            unavailable = saved
+            folder = try SafetyGuard.mirrorFolder(DesktopLocator.resolve(override: nil, environment: environment),
+                                                  mode: mode, realDesktop: realDesktop, home: home)
+        }
         let stateDir: URL
         let cacheDir: URL
         if let dir = options.stateDir {
@@ -199,10 +214,12 @@ final class MirrorController {
         }
         try SafetyGuard.checkOwnFolder(stateDir, desktop: realDesktop, mirrored: folder)
         try SafetyGuard.checkOwnFolder(cacheDir, desktop: realDesktop, mirrored: folder)
-        return Configuration(
+        var configuration = Configuration(
             folder: folder, stateDirectory: stateDir, iconCacheDirectory: cacheDir, connectImmediately: mode != .desk,
             settings: settings
         )
+        configuration.savedFolderUnavailable = unavailable
+        return configuration
     }
 
     // MARK: harden

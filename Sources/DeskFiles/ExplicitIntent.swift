@@ -64,22 +64,27 @@ public struct ExplicitIntent: Sendable, Equatable {
 }
 
 /// The intents issued in this process and not yet spent. `FileOperator` spends each one with its first request;
-/// an id the ledger never issued (a forged value) or already spent (a copy) is refused. Entries older than
-/// `horizon` are dropped: their intents are long stale.
+/// an id the ledger never issued (a forged value) or already spent (a copy) is refused. Once `capacity` entries are
+/// open, those older than `horizon` are dropped: their intents are long stale, and a stale intent is refused anyway
+/// (`ExplicitIntent.maxAge`). Below it nothing is dropped, so an intent whose request is held up (a test on its own
+/// clock, on a busy runner) is never taken for a spent one.
 final class IntentLedger: @unchecked Sendable {
     static let shared = IntentLedger()
     static let horizon: Duration = .seconds(60)
+    static let capacity = 256
 
     private let lock = NSLock()
     private var open: [UUID: ContinuousClock.Instant] = [:]
 
-    func issue(_ id: UUID) {
-        let now = ContinuousClock.now
+    func issue(_ id: UUID, at now: ContinuousClock.Instant = .now) {
         lock.withLock {
-            open = open.filter { $0.value.duration(to: now) <= Self.horizon }
+            if open.count >= Self.capacity { open = open.filter { $0.value.duration(to: now) <= Self.horizon } }
             open[id] = now
         }
     }
+
+    /// Entries open now (tests).
+    var openCount: Int { lock.withLock { open.count } }
 
     /// True the first time an issued id is spent; false for any other id.
     func spend(_ id: UUID) -> Bool {

@@ -41,7 +41,8 @@ too. `scripts/build-app.sh` picks it:
 | `BUNDLE_ID=…` set | that value |
 
 The id is frozen at the first release. If the repository ever moves to another account, set `BUNDLE_ID` to the old
-id in `release.yml` so users keep their permissions, settings and layout.
+id in the release job's `env:` in `release.yml`, so the build and its Verify step both use it and users keep their
+permissions, settings and layout.
 
 ## 1. Create the certificate (Keychain Access)
 

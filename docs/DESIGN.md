@@ -517,6 +517,52 @@
       template menu bar icon.
     - **Media.** `docs/media` is regenerated with `make gif` from the integrated tree, so the tour and stills show the
       shipped build (for example the mat drawn over the keyboard while it is peeled).
+28. **Release review (v0.1.0).** These refine §3.6, §3.7 items 7 and 8, §4.8, §4.9, §6 and Errata 14, 17, 21, 24–27.
+    - **A mat command during a peek.** Rotate, Size and Straighten picked while Peek Under (or Show on Desk's peek, or
+      any cloth script) is still up first lay the cloth down (`settleNow`), then turn or resize it. Before, the peek's
+      closing pass (`peekRest`, Erratum 26) eased the cloth back to its pose before the peek: the command was undone,
+      and a resize crumpled the mat, which was then saved. Ending the script inside `ClothSim.transform` instead would
+      drop the raised tongue into a wrinkle.
+    - **A flat mat adopts no folds.** A mat the scene adopts from the model while it is flat (`--reduce-motion` at
+      launch, or a parked folder's folded layout coming back while Flat or Reduce Motion is on) unfolds and settles at
+      once, and that pose is saved, as entering flat mode does (Erratum 17).
+    - **The keyboard's cover follows a relayout.** The mat's `layout(_:)` re-places `keyboardCover` with the keyboard,
+      so a widget nudge at rest moves it at once (its texels are core-relative; no render is needed).
+    - **Cards follow the language.** A monitor card on show is cached by overlay, sky and language, so Settings ▸
+      Language redraws it at once (the first-run card included). A pressed card button is drawn in the card's language.
+      VoiceOver labels stay English (Erratum 21).
+    - **Folder switch.** Every session hands the desk view its own drop-in and drag-out (`DeskSession.attach(to:)`),
+      at launch and after Settings ▸ Mirrored folder switches folders. The view kept the old session's controllers,
+      whose store and effect runner were gone, and the next drag over the desk trapped.
+    - **Saved folder missing at launch.** In desk mode, a saved `mirroredFolder` that `SafetyGuard.mirrorFolder`
+      refuses (renamed, deleted, or on a drive not mounted yet at login) no longer exits 64 with no window: the launch
+      mirrors the Desktop (or the environment's override), keeps the setting, logs it, and Settings says "The chosen
+      folder wasn't there at launch, so the desk shows the Desktop." (`Configuration.savedFolderUnavailable`). Safe
+      Mode, which resolves the same configuration first, opens too. The desk waits for ⏻ as usual (the saved layout's
+      root is the other folder). A folder named by `--desktop-folder`, and the development modes, still refuse with 64.
+    - **Drag-out: Always copy.** `dragOutMode` is applied: at launch and on every folder switch (from the
+      configuration's settings) and when it changes while running, `alwaysCopy` narrows the drag to `.copy` (so no Dock
+      Trash delete either). v0.1 has no Settings control for it; like `windowLevel` it is a hidden setting.
+    - **Plain `--headless`.** Without `--demo` it reads no folder: with no `--desktop-folder` it renders the empty
+      scene and exits 0, so §3.7 item 7's exit 64 does not apply to it. Given a folder, it runs the same launch guard
+      (`configurationOrExit`) as the other modes and exits 64 for a missing folder or the real Desktop.
+    - **Check for Updates… is deferred.** §4.9's status item "Check for Updates…" is not in v0.1.0: the app makes no
+      network calls and has no updater. New versions are on the GitHub Releases page the README links.
+    - **Lint.** The file-safety lint also flags a `write(` call whose arguments start on the next line, and
+      `setPersistentDomain`, `removePersistentDomain` (and their volatile forms) and `setDesktopImageURL` anywhere:
+      other apps' settings are read-only and the wallpaper is never set (§3.7 item 8).
+    - **Tests and CI.** The slow-eject test mints its intent inside its task, and its waits are bounded (600 s: a
+      starved pool can hold a task back for minutes): on a starved runner the task could start after `IntentLedger`'s
+      60-s horizon, its eject was refused as a spent intent, and the suite waited forever. The ledger now drops entries
+      past the horizon only once `capacity` (256) are open, so a test on its own clock whose request a busy runner holds
+      up is never refused as spent (a stale intent is still refused by `maxAge`, so this weakens nothing; Errata 14).
+      The app tests' `eventually` waits up to 600 s too. Both workflows' Test steps stop after 30 minutes (a green run
+      takes about 9).
+    - **Release docs.** `.github/release-notes.md` keeps each paragraph and list item on one line, because a release
+      body turns single newlines into line breaks. SPIKES' owner's checklist has no `#` comments in its shell blocks
+      (`ReleaseDocsTests.noShellComments` reads SPIKES too) and reads Finder's keys as `unset` when they are not set,
+      so the before and after files can match. After a repository move, `BUNDLE_ID` set in the release job's `env:`
+      is what both the build and the Verify step use. The CHANGELOG heading carries the day the tag is pushed.
 
 ---
 

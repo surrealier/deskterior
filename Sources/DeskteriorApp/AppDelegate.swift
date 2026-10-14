@@ -59,6 +59,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let configuration = MirrorController.configurationOrExit(
             options: options, settings: settingsStore?.settings ?? DeskSettings()
         )
+        if let saved = configuration.savedFolderUnavailable {
+            Log.info("mirrored folder not available, showing the Desktop this time: \(saved)")
+        }
 
         let displays = DisplayManager(options: options, device: device)
         // M12: the desk display and walls follow the settings from the start.
@@ -77,9 +80,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         session.settings = settingsStore
         host.scene.onRequest = { [weak self] in self?.handle($0) }
         self.session = session
-        // MARK: files
-        displays.view?.dragOut = session.dragOut
-        displays.view?.dropIn = session.dropIn
+        session.attach(to: displays.view)  // MARK: files
         session.start()
         host.scene.startClock()
         host.loop.renderOnce()
@@ -216,6 +217,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         new.isPaused = { [weak self] in self?.isUserPaused ?? false }
         new.settings = settingsStore
         session = new
+        new.attach(to: displays?.view)
         inventory?.close()
         inventory = nil
         new.start()
@@ -357,6 +359,7 @@ final class DeskSession {
         effects.files = files
         dropIn = DropInController(host: host, store: store, effects: effects)
         dragOut = DragOutController(host: host, store: store, effects: effects)
+        dragOut.alwaysCopy = configuration.settings.dragOutMode == .alwaysCopy  // "Drag-out: Always copy" (§3.6)
         mirror = MirrorController(configuration: configuration, store: store, stateStore: stateStore)
         leftovers = LeftoverCopies(folder: configuration.folder, host: host)  // MARK: harden
         effects.mirror = mirror
@@ -425,6 +428,13 @@ final class DeskSession {
         return done
     }
 
+    /// Hands the desk view this session's drop-in and drag-out (at launch and after every folder switch): the old
+    /// session's hold its store and effect runner unowned, and those go with it.
+    func attach(to view: DeskView?) {
+        view?.dragOut = dragOut
+        view?.dropIn = dropIn
+    }
+
     // MARK: harden
 
     /// Settings ▸ Leftover copies ▸ Move to Trash: the button is the gesture (a menu intent). `done` gets the line
@@ -479,6 +489,8 @@ extension AppDelegate {
     /// runs the script (`DemoRunner`). Returns the exit code.
     static func runHeadless(_ options: LaunchOptions) -> Int32 {
         if options.demo != nil { return DemoRunner.runBlocking(options) }
+        // Plain --headless reads no folder; given one, it is held to the launch guard (exit 64) like the other modes.
+        if options.desktopFolder != nil { _ = MirrorController.configurationOrExit(options: options) }
         let display = options.emulatedDisplay
         let grid = PixelGrid(display: display.geometry(), pixelSize: options.pixelSize)
         guard let device = MTLCreateSystemDefaultDevice() else {

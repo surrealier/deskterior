@@ -33,7 +33,7 @@ free and open source (MIT)
 | **Pen cup** | Drop a file in and it becomes a pen; the cap colour tells its kind. | Drag the last pen out of the cup. A quick flick of the cup with three or more pens in it tips it over, and the pens spill onto the desk; click it to stand it up. |
 | **Wastebasket** | Drop or toss a file in. It is crumpled up, **not deleted**: "hidden, not deleted". | Drag the top ball out, or drag the rim sideways to tip the basket over. *Empty Wastebasket…* moves its contents to the macOS Trash, after a confirmation that lists them. |
 | **Desk mat** and **brush** | Drop a file on the mat and it slides under, leaving a bump; taller stacks make bigger bumps. Push piles in with the brush, or with a sideways two-finger scroll over the desk. | Peel an edge or corner back: the piles underneath stand up and can be taken. Or right-click ▸ Peek Under. With the Flat mat (or Reduce Motion) the mat does not lift: right-click it ▸ List Items Under Mat ▸ a name puts that file back on the monitor, and Find Item… (⌘F) works too. |
-| **Lamp** and **Lamp Only** | At night, switch the room light off and keep the desk lamp on: only the lamp's pool, the monitor's glow and the phone's glow light anything. Files in the dark are silhouettes: no names, no clicks. | Use the lamp as a flashlight, switch the room light back on, or pick Lights ▸ Auto. |
+| **Lamp** and **Lamp Only** | At night, switch the room light off and keep the desk lamp on: only the lamp's pool, the monitor's glow and the phone's glow light anything. Files in the dark are silhouettes: no names, no clicks. | Files in the lamp's pool or the monitor's or face-up phone's glow can still be picked; switch the room light back on, or pick Lights ▸ Auto. |
 | **Drive hub** | Deskterior covers Finder's drive icons too, so mounted drives plug into the hub on the desk. | Double-click to open; Eject from the drive's menu. |
 | **Clear the Desk** | One menu item: the monitor goes off, the phone turns over, drawers shut and the brush sweeps every loose pile under the mat. "TIDY!" | One ⌘Z puts everything back exactly. |
 | **Find Item…** (⌘F) | — | Lists every file and where it is (with search). **Show on Desk** opens whatever hides it and points the file out; **Take Out** brings it back to the monitor. **Take Everything Out** (menu) brings them all back. |
@@ -56,7 +56,7 @@ a menu, Find Item…, Show on Desk or Take Everything Out.
 | **Tug** | Drag a corner of the mat outward to pull its creases flat (or double-click an edge, or Smooth Desk Mat). |
 | **⌥ (Option)** | Over the mat, shows its handles: ⌥-drag a corner to resize and turn it (⇧ snaps to 15°); ⌥-drag the middle to slide it without creases. |
 | **Two-finger scroll** | Sideways over the desk: the **scroll-broom** sweeps piles under the mat. Over the screen: changes page. Over a closed drawer: peeks inside. |
-| **Right-click** | A menu for everything: files (Open, Quick Look, Show in Finder, Copy, **Move to ▸** any hiding place, Move to Trash), the monitor, each container, the mat (Peek Under, Smooth, Rotate, Size, List Items Under Mat ▸), drives. Right-click the bare wall for the same menu as the menu bar icon. |
+| **Right-click** | A menu for everything: files (Open, Quick Look, Show in Finder, Copy, **Move to ▸** a monitor page or a drawer, the cubby, the phone, the pen cup or the wastebasket, Move to Trash), the monitor, each container, the mat (Peek Under, Smooth, Rotate, Size, List Items Under Mat ▸), drives. Right-click the bare wall for the same menu as the menu bar icon. |
 | **Keys** (after clicking the desk) | Space: Quick Look · ⌘O / ⌘↓: open · arrows: move the selection · ⌘A · ⌘C: copy · ⌘F: Find Item… · ⌘Z / ⌘⇧Z: undo and redo · Esc: cancel a carry or end a peek. There is no delete key. |
 
 <img src="docs/media/mat-peel.png" width="576" alt="The desk around the mat: its front edge peeled back, rubber side up, and a pile of three files standing where it lay">
@@ -74,19 +74,22 @@ Deskterior has no Dock icon. Its menu is the small pixel icon in the menu bar, o
   - **Empty Wastebasket…**, after a confirmation that lists the names;
   - dropping files from Finder onto the desk (moved into your Desktop folder; copied when they come from another
     disk, or when you hold ⌥);
-  - dragging a file out to another app (that app does what it would do with a drag from Finder);
+  - dragging a file out to another app (that app does what it would do with a drag from Finder; dropped on the
+    Dock's Trash, Deskterior moves it to the Trash itself if the Dock has not);
   - **Eject** from a drive's menu;
   - **Move to Trash** under Settings ▸ Leftover copies, which appears only after an interrupted copy (below).
 - **Trash, never delete.** Deskterior moves files to the macOS Trash and never deletes anything. It never
   overwrites a file: a name that is taken gets " 2", " 3"…
 - **Locked files stay put.** A locked file dropped onto the desk is not moved into your Desktop folder (hold ⌥ to
-  copy it instead). If a copy is cut short, for example by quitting mid-copy, its hidden `.deskterior-partial-…`
-  folder stays in your Desktop folder: Deskterior tells you once and lists it under Settings ▸ Leftover copies
-  (Show in Finder, Move to Trash), but never removes it by itself.
+  copy it instead). If a copy is cut short, for example by quitting mid-copy, it can leave a hidden
+  `.deskterior-partial-…` folder in your Desktop folder (only when macOS offers no temporary folder on that disk):
+  Deskterior tells you once each launch while it is there and lists it under Settings ▸ Leftover copies (Show in
+  Finder, Move to Trash), but never removes it by itself.
 - **Undo.** ⌘Z undoes layout changes and Deskterior's own file actions (Move to Trash, Empty Wastebasket…, drops
   onto the desk): trashed files come back to the same spot on the desk, dropped files go back where they came from
-  (copies go to the Trash). Eject and drags out to other apps cannot be undone. If macOS will not let Deskterior
-  reach the Trash, it says so and you can use Finder's Put Back.
+  (copies go to the Trash). Eject and drags out to other apps cannot be undone, except a drag onto the Dock's Trash
+  that Deskterior carried out. If macOS will not let Deskterior reach the Trash, it says so and you can use Finder's
+  Put Back.
 - **Finder is left alone.** The desk is a window just above Finder's desktop icons: it covers them, it does not hide
   them by changing any Finder setting (Finder's settings are only read). Quit Deskterior, or use Pause Desk, and your
   normal desktop is back.
@@ -114,8 +117,9 @@ signed, so macOS blocks the first launch of every downloaded version once. That 
 4. Do this again after each update. Because the build is ad-hoc signed, macOS may also ask for Desktop folder access
    again after an update.
 
-To check a download, compare it with the `.sha256` file from the same release, or verify that the release workflow
-built it from this repository (with the GitHub CLI; replace OWNER with the account in this page's URL):
+To check a download, open Terminal in the folder you downloaded both files to (usually: `cd ~/Downloads`) and compare
+it with the `.sha256` file from the same release, or verify that the release workflow built it from this repository
+(with the GitHub CLI; replace OWNER with the account in this page's URL):
 
 ```sh
 shasum -a 256 -c Deskterior-0.1.0.zip.sha256
@@ -153,6 +157,9 @@ Menu bar icon ▸ **Settings…**
 | Pause the desk on battery power | On / off (a still frame until you use it) | Off |
 | Desk display, cover other displays | Shown with more than one display | Menu bar display |
 | Language | System, English, 한국어 | System |
+
+If the chosen folder is missing at launch (renamed, deleted, or on a drive that is not mounted yet), the desk shows
+your Desktop for that launch and Settings says so; the choice is kept for the next launch.
 
 Settings ▸ **About & Credits…** shows the version and credits.
 
@@ -249,12 +256,13 @@ More: [docs/DESIGN.md](docs/DESIGN.md) (the design), [docs/DEMOS.md](docs/DEMOS.
 - Desktop widgets stay above the desk; Deskterior shifts the room a little to keep them off the monitor and drawers
   when it can.
 - In scaled display modes the pixels are slightly soft.
-- A mirrored folder on an **exFAT** drive cannot take drops or undo them: exFAT does not support the no-overwrite
-  rename Deskterior uses for every move, so it refuses and changes nothing. FAT32 and APFS work.
+- A mirrored folder on an **exFAT** drive cannot take drops, and ⌘Z cannot bring trashed files back into it: exFAT
+  does not support the no-overwrite rename Deskterior uses for every move, so it refuses and changes nothing. FAT32
+  and APFS work.
 - Finder's own desktop is still there underneath. If Finder had icons selected on the desktop before Deskterior
   covered it, ⌘⌫ in Finder can still move them to the Trash (Finder's Undo puts them back).
-- The scene's own lettering is in English in v0.1, also with the Korean language setting: its tooltips, the
-  NO SIGNAL logo, BONK, SWISH! and TIDY!.
+- Parts of the scene stay in English in v0.1, also with the Korean language setting: its tooltips, VoiceOver's names
+  for the desk's objects, the AV input's NO SIGNAL logo, BONK, SWISH! and TIDY!.
 
 ## Credits
 

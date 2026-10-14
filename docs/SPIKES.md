@@ -87,15 +87,17 @@ with slow ticks; the review could not reproduce the 60 Hz figure (2.3 %), so it 
 ### Owner's manual checklist (DESIGN §8.3; release build in /Applications, macOS 26.6)
 
 Run these yourself; no automation runs desk mode. Before you start, install the release build and write down what is
-on your Desktop and how Finder is set, so you can prove nothing changed:
+on your Desktop and how Finder is set, so you can prove nothing changed. The first line builds build/Deskterior.app
+0.1.0 and copies it to /Applications; the second prints 0.1.0; the third prints the bundle id that later commands use
+as `$ID`; the listing records names, inodes, flags, times and extended attributes; the last line prints Finder's two
+keys (`unset` for a key never set, the usual case):
 
 ```sh
-make install VERSION=0.1.0                                      # builds build/Deskterior.app 0.1.0 → /Applications
-defaults read /Applications/Deskterior.app/Contents/Info CFBundleShortVersionString   # 0.1.0
-ID=$(defaults read /Applications/Deskterior.app/Contents/Info CFBundleIdentifier); echo "$ID"   # used below
-ls -lAiTO@ ~/Desktop | grep -v -e '^total ' -e ' \.DS_Store$' > /tmp/desk-before.txt   # inodes, flags, times, xattrs
-defaults read com.apple.finder CreateDesktop 2>&1 | tee /tmp/finder-before.txt
-defaults read com.apple.WindowManager StandardHideDesktopIcons 2>&1 | tee -a /tmp/finder-before.txt
+make install VERSION=0.1.0
+defaults read /Applications/Deskterior.app/Contents/Info CFBundleShortVersionString
+ID=$(defaults read /Applications/Deskterior.app/Contents/Info CFBundleIdentifier); echo "$ID"
+ls -lAiTO@ ~/Desktop | grep -v -e '^total ' -e ' \.DS_Store$' > /tmp/desk-before.txt
+{ defaults read com.apple.finder CreateDesktop 2>/dev/null || echo unset; defaults read com.apple.WindowManager StandardHideDesktopIcons 2>/dev/null || echo unset; } | tee /tmp/finder-before.txt
 ```
 
 | # | Do this | Expect |
@@ -104,7 +106,7 @@ defaults read com.apple.WindowManager StandardHideDesktopIcons 2>&1 | tee -a /tm
 | 2 | Click empty wallpaper areas of the desk; use Mission Control, Show Desktop (F11 or the gesture), Spaces and Stage Manager. | No "click wallpaper to reveal desktop"; the desk stays put on every Space; Show Desktop and Stage Manager behave. |
 | 3 | Click a token, press Space, ⌘Z, Esc; then click another app and type. | The click activates Deskterior; Quick Look opens; ⌘Z undoes; Esc works; keys never reach the desk after clicking another app. |
 | 4 | With another app frontmost, hover desk objects. | Hover rings and tooltips still show. |
-| 5 | A true first run: on the very first launch, or else quit Deskterior, run `tccutil reset SystemPolicyDesktopFolder "$ID"` and move its saved layout aside (`mv ~/Library/Application\ Support/"$ID" ~/Library/Application\ Support/"$ID".saved`; a saved, connected layout reconnects at launch, so the prompt would come then). Launch, watch for the Desktop access prompt, press ⏻ on the monitor. Then deny once and use Choose Folder…; turn on Finder's "hide desktop items" if you use it. Afterwards put the saved folder back (quit first) and Finder's setting as it was. | The prompt appears only after ⏻. Denied → NO SIGNAL card → Choose Folder… restores the desk. With Finder hiding items, the DESKTOP HIDDEN card asks first (unless "Show them on the desk anyway" was chosen before: that is remembered). |
+| 5 | A true first run: on the very first launch, or else quit Deskterior, run `tccutil reset SystemPolicyDesktopFolder "$ID"` and move its saved layout aside (`mv ~/Library/Application\ Support/"$ID" ~/Library/Application\ Support/"$ID".saved`; a saved, connected layout reconnects at launch, so the prompt would come then). Launch, watch for the Desktop access prompt, press ⏻ on the monitor. Then deny once and use Choose Folder…; turn on Finder's "hide desktop items" if you use it. Afterwards quit and put the saved layout back (`mv ~/Library/Application\ Support/"$ID" ~/Library/Application\ Support/"$ID".firstrun && mv ~/Library/Application\ Support/"$ID".saved ~/Library/Application\ Support/"$ID"`; the first-run launch made a new folder there, and a plain reverse `mv` would put the saved one inside it), and Finder's setting as it was. | The prompt appears only after ⏻. Denied → NO SIGNAL card → Choose Folder… restores the desk. With Finder hiding items, the DESKTOP HIDDEN card asks first (unless "Show them on the desk anyway" was chosen before: that is remembered). |
 | 6 | Take a screenshot (⌘⇧3); have an iCloud-only (dataless) item on the Desktop. | The screenshot prints in on the monitor; the iCloud item shows its kind icon and is not downloaded. |
 | 7 | Hide tokens in every spot: power off, AV input, both riser drawers, the cubby, the 3 cabinet drawers, the phone (face down), the pen cup, the wastebasket, under the mat, Lamp Only. Then Find Item, Show on Desk, Take Everything Out, Clear the Desk and its ⌘Z. | Each hides and reveals; Find/Show on Desk/Take Everything Out bring them back; Clear the Desk undoes in one step. |
 | 8 | Overfill a drawer and the cup; double-click the apron to knock. | Overfill bonks; jammed drawers stay shut; nothing un-hides without a direct gesture. |
@@ -114,13 +116,13 @@ defaults read com.apple.WindowManager StandardHideDesktopIcons 2>&1 | tee -a /tm
 | 12 | Move to Trash from a token's menu and undo; put files in the wastebasket and choose Empty Wastebasket…, first Cancel (and Esc), then Move to Trash. | The sheet lists the names, Cancel is the default and changes nothing; confirming moves them to the Trash; undo or Finder's Put Back restores them. |
 | 13 | Mount a USB stick or disk image. | It plugs into the hub; Eject from its menu ejects it. |
 | 14 | With a second display: answer the cover prompt; drop a file on the wall display; unplug and replug; change Settings ▸ Desk display; toggle the Dock position and auto-hide. | Walls cover the other display; wall drops land on the monitor; the desk follows the display changes. |
-| 15 | Open a full-screen app; sleep and wake; lock; fast-user-switch; turn on Low Power Mode. | The loop pauses (check Activity Monitor: ~0 % CPU) and resumes with no physics explosion. |
-| 16 | Peek Desk from the menu; turn on the ⌃⌥⌘D hotkey in Settings and use it; quit and relaunch holding ⌥. | Peek floats the desk with "× Done" (Esc ends it); the hotkey works only while on; ⌥ at launch opens Safe Mode. |
+| 15 | Open a full-screen app; sleep and wake; lock; fast-user-switch; then turn on Low Power Mode. | The loop pauses (check Activity Monitor: ~0 % CPU) and resumes with no physics explosion; Low Power Mode does not pause it, it only caps it at 30 frames a second. |
+| 16 | Peek Desk from the menu; turn on the ⌃⌥⌘D hotkey in Settings, use it, then turn it off again; quit and relaunch holding ⌥. | Peek floats the desk with "× Done" (Esc ends it); the hotkey works only while on; ⌥ at launch opens Safe Mode. |
 | 17 | Look at System Settings ▸ General ▸ Login Items, then turn Launch at Login on in Settings; quit, update (`make install VERSION=0.1.1`, then `defaults read /Applications/Deskterior.app/Contents/Info CFBundleShortVersionString` prints 0.1.1), open it once, and log out and in. | Off by default (not listed); on shows "Login item added"; after the update it still launches at login. Turn it off again unless you want it (checked at the end). |
 | 18 | Quit from the menu; relaunch; then `kill -9 $(pgrep -x Deskterior)`. Optionally kill it during a long drop-in copy from an external drive and relaunch. | Quit and the crash both bring Finder's icons back at once. After a killed copy, either nothing is left (the copy staged outside the Desktop) or the toast "Interrupted copy left files. See Settings." appears once and Settings ▸ Leftover copies offers Show in Finder and Move to Trash; nothing is removed until you press it. |
 | 19 | Turn on VoiceOver (⌘F5) over the desk; open Find Item and use it with the keyboard only. | Tokens and controls are read; the Inventory is fully keyboard-accessible. |
 | 20 | `make idle` (and `scripts/measure-idle.sh --exit-after 70`); `scripts/soak.sh --release` (1 hour); download the release zip in Safari and open it. | Idle ≤ 0.3 % CPU; the soak grows < 10 MB; the Open Anyway flow works as the README says. |
-| 21 | Settings ▸ Reduce Motion: On. Fling a token off the desk, drop onto a full wastebasket, click the basket and the pen cup, double-click the apron, switch to AV, press ⏻ twice. Then set it back. | No screen shake, jiggle or wobble; tosses land at once with a puff; the AV logo holds still; the CRT is a 2-frame fade. |
+| 21 | Settings ▸ Reduce motion: Always. Fling a token off the desk, drop onto a full wastebasket, click the basket and the pen cup, double-click the apron, switch to AV, press ⏻ twice. Then set it back to Follow System. | No screen shake, jiggle or wobble; tosses land at once with a puff; the AV logo holds still; the CRT is a 2-frame fade. |
 | 22 | Switch to AV and watch Deskterior in Activity Monitor (CPU) while the NO SIGNAL logo bounces and for a while after it stops (10 s). | The logo steps evenly (never a hold, then a jump of two); a few percent at most while it bounces, then ~0 %. |
 | 23 | With two or more HDMI pages, carry a token and rest it on INPUT. | The page turns every 0.6 s, wrapping to HDMI 1, never to AV. |
 
@@ -132,13 +134,13 @@ them, or take the "before" files again after them. Opening a file lets macOS not
 ```sh
 ls -lAiTO@ ~/Desktop | grep -v -e '^total ' -e ' \.DS_Store$' > /tmp/desk-after.txt
 diff /tmp/desk-before.txt /tmp/desk-after.txt && echo "Desktop unchanged"
-{ defaults read com.apple.finder CreateDesktop; defaults read com.apple.WindowManager StandardHideDesktopIcons; } \
-  > /tmp/finder-after.txt 2>&1; diff /tmp/finder-before.txt /tmp/finder-after.txt && echo "Finder settings unchanged"
-ls -A ~/Desktop | grep -c deskterior-partial                   # 0: no leftovers
-defaults read "$ID" launchAtLogin 2>&1; defaults read "$ID" peekHotkeyEnabled 2>&1   # 0, or "does not exist"
+{ defaults read com.apple.finder CreateDesktop 2>/dev/null || echo unset; defaults read com.apple.WindowManager StandardHideDesktopIcons 2>/dev/null || echo unset; } > /tmp/finder-after.txt; diff /tmp/finder-before.txt /tmp/finder-after.txt && echo "Finder settings unchanged"
+ls -A ~/Desktop | grep -c deskterior-partial
+defaults read "$ID" launchAtLogin 2>&1; defaults read "$ID" peekHotkeyEnabled 2>&1
 ```
 
 `diff` prints nothing (same names, inodes, flags, sizes, times to the second and extended attributes; `.DS_Store` is
 Finder's own and left out) and the Finder keys read as before: Deskterior never writes Finder's or the WindowManager's
-settings, so they cannot differ. Launch at Login and the hotkey read 0 (off), and System Settings ▸ General ▸ Login
-Items no longer lists Deskterior, unless you chose to keep them.
+settings, so they cannot differ. The count prints 0 (no leftovers); the two reads print 0 or "does not exist": Launch
+at Login and the hotkey are off, and System Settings ▸ General ▸ Login Items no longer lists Deskterior, unless you
+chose to keep them.

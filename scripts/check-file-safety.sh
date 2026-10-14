@@ -86,6 +86,10 @@ _ = FileHandle(forUpdatingAtPath: "/x")
 _ = open("/x", O_WRONLY | O_TRUNC)
 _ = open("/x", 0x0001 | 0x0200 | 0x0400)
 _ = OutputStream(toFileAtPath: "/x", append: false)
+try d.write(
+UserDefaults.standard.setPersistentDomain([:], forName: "com.apple.finder")
+UserDefaults.standard.removePersistentDomain(forName: "com.apple.finder")
+NSWorkspace.shared.setDesktopImageURL(u, for: screen, options: [:])
 _ = mkfifo("/x", 0o600)
 _ = try FileManager.default.url(for: .itemReplacementDirectory, in: .userDomainMask, appropriateFor: u, create: true)
 let p = Process(); p.executableURL = URL(fileURLWithPath: "/bin/mv")
@@ -285,6 +289,7 @@ DESTRUCTIVE_PATTERNS='\brecycle[[:space:]]*\(
 \bDADisk(Unmount|Eject|Rename)\b
 \bperformFileOperation\b'
 WRITE_PATTERNS='\bwrite[[:space:]]*\([[:space:]]*(to|toFile|toURL)[[:space:]]*:
+\bwrite[[:space:]]*\([[:space:]]*$
 \bwriteTo(File|URL)\b
 \bcreateFile\b
 \bcreateDirectory\b
@@ -318,6 +323,8 @@ killall
 defaults[[:space:]]+write
 \bCFPreferencesSet(App)?Value\b
 \bCFPreferencesSetMultiple\b
+\b(set|remove)(Persistent|Volatile)Domain\b
+\bsetDesktopImageURL\b
 suiteName:[[:space:]]*"com\.apple\.'
 # Calls by name, around every pattern above.
 DYNAMIC_PATTERNS='@_silgen_name

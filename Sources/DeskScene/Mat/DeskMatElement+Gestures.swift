@@ -305,6 +305,12 @@ extension DeskMatElement {
     func perform(_ command: MatCommand) {
         guard isLive else { return }
         if cloth.grabMode != nil { cloth.endGrab(immediately: true) }
+        // A turn or resize starts from the cloth at rest: a peek (or any script) still up lays down first, so its
+        // closing pass never eases the cloth back to the pose before the command.
+        switch command {
+        case .rotate, .size, .straighten: if cloth.isScriptRunning { cloth.settleNow(bumps: bumps) }
+        default: break
+        }
         let angle = cloth.matFrame().angle
         switch command {
         case .smooth: cloth.smooth()

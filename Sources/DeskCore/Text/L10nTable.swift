@@ -35,8 +35,8 @@ public enum L10nKey: String, CaseIterable, Sendable {
     case settingsTitle, settingsDesk, settingsLook, settingsSystem, lightsMode, reduceMotion, reduceMotionFollow
     case reduceMotionOn, reduceMotionOff, matMode, matCloth, matFlat, pixelSize, pixelChunky, pixelNormal, pixelFine
     case peekHotkey, peekHotkeyNote, launchAtLogin, loginAdded, loginRemoved, loginNeedsApproval, loginFailed
-    case mirroredFolder, useDesktop, folderSetByFlag, folderUnavailable, language, languageSystem, languageEnglish
-    case languageKorean, deskDisplay, mainDisplay, coverDisplays, pauseOnBattery, aboutCredits
+    case mirroredFolder, useDesktop, folderSetByFlag, folderUnavailable, folderMissing, language, languageSystem
+    case languageEnglish, languageKorean, deskDisplay, mainDisplay, coverDisplays, pauseOnBattery, aboutCredits
 
     // MARK: About
     case aboutTitle, version, aboutTagline, aboutInspired, aboutIndependent, aboutFont, aboutPalette, aboutLicense
@@ -223,6 +223,8 @@ public enum L10nKey: String, CaseIterable, Sendable {
         .useDesktop: p("Use Desktop", "바탕화면 쓰기"),
         .folderSetByFlag: p("Set by --desktop-folder for this run.", "이번 실행에서는 --desktop-folder로 정해졌어요."),
         .folderUnavailable: p("That folder can't be mirrored.", "그 폴더는 보여 줄 수 없어요."),
+        .folderMissing: p("The chosen folder wasn't there at launch, so the desk shows the Desktop.",
+                          "고른 폴더가 실행할 때 없어서 바탕화면을 보여 주고 있어요."),
         .language: p("Language", "언어"),
         .languageSystem: p("System", "시스템"),
         .languageEnglish: p("English", "English"),

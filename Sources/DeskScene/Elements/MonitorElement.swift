@@ -25,11 +25,14 @@ public final class MonitorElement: DeskElement {
     private let ledNode = SKSpriteNode()
     private let dotsNode = SKSpriteNode()
     private let badgeNode = SKSpriteNode()
-    private let pressedNode = SKSpriteNode()
+    /// A card button or the bezel's button drawn pressed (internal for tests).
+    let pressedNode = SKSpriteNode()
     private let sparkleNode = SKSpriteNode()
     /// The card currently shown and its buttons (screen px).
     private(set) var card: ScreenCard.Rendered?
-    private var cardKey: (ScreenOverlay, SkyVariant)?
+    private var cardKey: (ScreenOverlay, SkyVariant, Language)?
+    /// The language cards are drawn in: the app's (Settings ▸ Language); tests pass their own.
+    var language: () -> Language = { L10n.language }
     private var crtOff: [PixelBuffer] = []
     private var crtOn: [PixelBuffer] = []
     /// Reduce Motion's fade in place of the CRT collapse or bloom: its frames and how long it has run.
@@ -108,7 +111,9 @@ public final class MonitorElement: DeskElement {
         case .av:
             return MonitorArt.noSignalScreen(logo: machine?.logo.position)
         case let overlay:
-            if let card = ScreenCard.render(overlay, wallpaper: c.buffer, font: context.font) { return card.image }
+            if let card = ScreenCard.render(overlay, wallpaper: c.buffer, font: context.font, language: language()) {
+                return card.image
+            }
         }
         return c.buffer
     }
@@ -151,13 +156,15 @@ public final class MonitorElement: DeskElement {
                 coverKey = "av\(p.x),\(p.y),\(input)"
                 coverImage = { MonitorArt.noSignalScreen(logo: p, input: input) }
             } else if m.overlay != .none {
-                let sky = context.sky
-                if card == nil || cardKey?.0 != m.overlay || cardKey?.1 != sky || force {
-                    card = ScreenCard.render(m.overlay, wallpaper: MonitorArt.deskOSWallpaper(sky: sky), font: context.font)
-                    cardKey = (m.overlay, sky)
+                // A card on show follows Settings ▸ Language as it follows the sky.
+                let sky = context.sky, language = self.language()
+                if card == nil || cardKey?.0 != m.overlay || cardKey?.1 != sky || cardKey?.2 != language || force {
+                    card = ScreenCard.render(m.overlay, wallpaper: MonitorArt.deskOSWallpaper(sky: sky), font: context.font,
+                                             language: language)
+                    cardKey = (m.overlay, sky, language)
                 }
                 if let card {
-                    coverKey = "card.\(m.overlay.rawValue).\(sky.rawValue)"
+                    coverKey = "card.\(m.overlay.rawValue).\(sky.rawValue).\(language.rawValue)"
                     coverImage = { card.image }
                 }
             }
@@ -418,8 +425,10 @@ public final class MonitorElement: DeskElement {
             pressedNode.texture = TextureFactory.texture(MonitorArt.inputButton(pressed: true).image)
             context.space.place(pressedNode, at: layout.rect(CoreLayout.input))
         case let name? where cardButtons[name] != nil && context.font != nil && Self.buttonTitles[name] != nil:
-            let image = ScreenCard.button(Self.buttonTitles[name]!, primary: ScreenCard.primaryButtons.contains(name),
-                                          pressed: true, font: context.font!)
+            // Drawn in the card's language, like the button it presses (its VoiceOver label stays English).
+            let image = ScreenCard.button(L10n.tr(Self.buttonTitles[name]!, cardKey?.2),
+                                          primary: ScreenCard.primaryButtons.contains(name), pressed: true,
+                                          font: context.font!)
             pressedNode.texture = TextureFactory.texture(image)
             context.space.place(pressedNode, at: ArtRect(origin: cardButtons[name]!.origin, size: image.size))
             z = context.placementZ("monitor.screen") + 0.35

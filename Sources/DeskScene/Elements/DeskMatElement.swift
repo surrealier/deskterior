@@ -247,6 +247,8 @@ final class DeskMatElement: DeskElement, Knockable {
         placed("mat")?.root.isHidden = true
         placeSurface()
         followKeyboard(force: true)
+        // The cover's texels are core-relative; only where it sits follows the core (a widget nudge at rest).
+        coverKeyboard()
     }
 
     func apply(_ s: DeskState) {
@@ -298,10 +300,18 @@ final class DeskMatElement: DeskElement, Knockable {
             coverage = CoverageTracker()
             judged.removeAll()
         }
+        // Flat cloth keeps no folds, a restored one included (`--reduce-motion`, a parked folder's folded mat): it lies
+        // back at once, and that pose is saved.
+        let unfolded = isFlat && ClothMetrics.foldedCount(cloth) > 0
+        if unfolded {
+            cloth.unfold()
+            cloth.settleNow(bumps: bumps)
+        }
         indexFresh = false
         rasterDirty = true
         coverageDirty = true
         hub?.syncBodies()
+        if unfolded { commit() }
     }
 
     func number(_ id: PileID) -> Int {

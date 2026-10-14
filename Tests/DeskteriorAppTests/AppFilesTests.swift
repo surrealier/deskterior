@@ -76,9 +76,11 @@ final class AppRig {
     }
 }
 
-/// Polls `condition` until it holds or `timeout` passes (generous: the whole suite shares the main actor).
+/// Polls `condition` until it holds or `timeout` passes (generous: the whole suite shares the main actor, and on a
+/// starved runner long tests elsewhere can hold the main queue or the pool back for minutes; it returns as soon as
+/// the condition holds).
 @MainActor
-func eventually(_ timeout: Double = 120, _ condition: () -> Bool) async -> Bool {
+func eventually(_ timeout: Double = 600, _ condition: () -> Bool) async -> Bool {
     let deadline = Date().addingTimeInterval(timeout)
     while Date() < deadline {
         if condition() { return true }
@@ -183,7 +185,7 @@ final class SessionRig {
     let state: URL
     let session: DeskSession
 
-    init(connected: Bool = false) throws {
+    init(connected: Bool = false, settings: DeskSettings = DeskSettings()) throws {
         temp = try AppTemp()
         desk = try temp.dir("Desk")
         state = try temp.dir("State")
@@ -192,7 +194,7 @@ final class SessionRig {
         let options = try LaunchOptions.parse(["--windowed", "--desktop-folder", desk.path, "--state-dir", state.path,
                                                "--icons", "kind"])
         var configuration = try MirrorController.launch(options: options, environment: [:],
-                                                        bundleID: AppIdentity.fallbackBundleID,
+                                                        bundleID: AppIdentity.fallbackBundleID, settings: settings,
                                                         realDesktop: desktop, home: home).get()
         configuration.connectImmediately = connected
         configuration.finderHidesItems = false

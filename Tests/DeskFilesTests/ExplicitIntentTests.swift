@@ -43,6 +43,26 @@ struct ExplicitIntentTests {
         #expect(!IntentLedger.shared.spend(UUID()))
     }
 
+    @Test("The ledger keeps an intent whose request is held up; only past its capacity are long-stale entries dropped")
+    func ledgerHorizon() {
+        let ledger = IntentLedger(), t0 = ContinuousClock.now
+        let held = UUID()
+        ledger.issue(held, at: t0)
+        // Another request minted long after (a busy runner kept the first one waiting): the first is still open.
+        let later = UUID()
+        ledger.issue(later, at: t0 + .seconds(600))
+        #expect(ledger.spend(held) && !ledger.spend(held) && ledger.spend(later))
+        // Full: the next issue drops what is past the horizon and keeps the rest.
+        let old = (0..<IntentLedger.capacity).map { _ in UUID() }
+        for id in old { ledger.issue(id, at: t0) }
+        let recent = UUID()
+        ledger.issue(recent, at: t0 + IntentLedger.horizon)
+        let late = UUID()
+        ledger.issue(late, at: t0 + IntentLedger.horizon + .seconds(1))
+        #expect(!ledger.spend(old[0]) && ledger.spend(recent) && ledger.spend(late))
+        #expect(ledger.openCount == 0)
+    }
+
     @Test("Every mutating FileOperator method refuses a stale intent and changes nothing",
           arguments: [Double(11), 600, -5])
     func staleRejected(age: Double) async throws {
