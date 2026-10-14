@@ -193,13 +193,15 @@ struct ReducerTests {
         #expect(!s.monitor.av)
     }
 
-    @Test("clearDesk: a toast until the M9 plan; plain reduce ignores undo and redo")
+    @Test("clearDesk: the monitor goes off and the scene plays the plan (ClearDeskPlanTests); plain reduce ignores undo and redo")
     func clearDeskStub() {
         var s = F.mirrored(["a"])
-        let before = s
-        #expect(reduce(&s, .clearDesk, env) == [.toast(.notYetAvailable)])
+        let effects = reduce(&s, .clearDesk, env)
+        #expect(effects.first == .play(.crtOff, .monitor) && s.monitor.power == .off && s.phone.faceDown)
+        #expect(effects.contains { if case .play(.clearDesk, .clearDesk) = $0 { true } else { false } })
+        let after = s
         #expect(reduce(&s, .undo, env).isEmpty && reduce(&s, .redo, env).isEmpty)
-        #expect(s == before)
+        #expect(s == after)
     }
 
     @Test("cleanUp: repacks the screen tokens from HDMI 1 in the chosen order")
@@ -392,6 +394,8 @@ struct ReducerTests {
             .requestConnect, .requestOpen(k), .requestQuickLook(k), .requestReveal(k), .requestCopy(k), .requestTrash(k),
             .requestEmptyWastebasket, .requestEject("U"), .importDropped([URL(fileURLWithPath: "/tmp/x")], at: .floor(x: 0), op: .copy),
             .requestPrivacySettings, .requestChooseFolder, .clock(F.t0),
+            // MARK: mat
+            .mat(.smooth), .mat(.rotate(degrees: 15)), .brushSettled([400, 60]),
         ]
     }
 

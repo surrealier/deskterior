@@ -745,7 +745,8 @@ extension ClothSim {
         script = .path(frame: 0, frames: frames, holdFrames: 0, indices: indices, from: from, to: to, arc: arc)
     }
 
-    /// Peek Under: lifts the edge nearest desk point `point` back over it for `peekSeconds`, then lays it down.
+    /// Peek Under: lifts the edge nearest desk point `point` back over it for `peekSeconds`, then lays it back where
+    /// it was.
     /// Off in `flatMode`.
     public mutating func peekUnder(_ point: SIMD2<Float>) {
         guard !params.flatMode, point.x.isFinite, point.y.isFinite else { return }
@@ -772,7 +773,7 @@ extension ClothSim {
             guard onEdge, abs(along) <= params.peekReach, !parts[i].weighted else { continue }
             let fall = 0.5 + 0.5 * Float(cos(Double(along / params.peekReach) * .pi))
             let cur = parts[i].x
-            let reach = (depthIn + 8) * fall
+            let reach = (depthIn + params.peekBeyond) * fall
             indices.append(Int32(i))
             from.append(cur)
             to.append(SIMD3(cur.x + inward.x * reach, cur.y + inward.y * reach,
@@ -1059,12 +1060,16 @@ extension ClothSim {
             frictionScale = params.smoothFriction
             script = .smooth(frame: frame + 1, corners: corners, starts: starts, outward: outward)
         case .path(let frame, let frames, let hold, let indices, let from, let to, let arc):
-            guard frame < frames + hold else {
+            // A held path (Peek Under) is carried back to where it started, so the lifted edge lays back flat rather
+            // than falling over folded (M9).
+            let back = hold > 0 ? frames : 0
+            guard frame < frames + hold + back else {
                 script = nil
                 return
             }
             func at(_ f: Int, _ k: Int) -> SIMD3<Float> {
-                let t = Float(min(f, frames)) / Float(frames)
+                var t = Float(min(f, frames)) / Float(frames)
+                if back > 0, f > frames + hold { t = max(0, 1 - Float(f - frames - hold) / Float(back)) }
                 let e = (1 - Float(cos(Double(t) * .pi))) / 2
                 var p = from[k] + (to[k] - from[k]) * e
                 p.z += arc[k] * Float(sin(Double(t) * .pi))

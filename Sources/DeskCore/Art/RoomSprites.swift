@@ -60,14 +60,36 @@ public enum RoomArt {
         return c.buffer
     }
 
-    /// The desk top face in desk-local px, with the contact shadows of the back-strip props and the keyboard.
-    /// It is the same for every layout, so it is built once.
+    /// The desk top face in desk-local px, with the contact shadows of the back-strip props (the keyboard's is a
+    /// sprite of its own, `keyboardShadow`, since it rides on the mat). It is the same for every layout, so it is
+    /// built once.
     static let deskSurface: PixelBuffer = {
         let d = CoreLayout.deskTop
         var c = PixelCanvas(width: d.w, height: d.h)
         drawDeskTop(&c, c.bounds)
         drawDeskShadows(&c, offset: ArtPoint(-d.x, -d.y))
         return c.buffer
+    }()
+
+    /// The keyboard's contact shadow on the bare desk (one oak step darker: a row under its front face and a column on
+    /// its right), with its top-left at `CoreLayout.keyboard.origin`. The bare room draws it where the backdrop once
+    /// had it baked in; the scene's desk mat, which the keyboard rides on, draws its own on the felt instead.
+    public static func keyboardShadow() -> SpriteAsset { keyboardShadowSprite }
+
+    private static let keyboardShadowSprite: SpriteAsset = {
+        let d = CoreLayout.deskTop, k = CoreLayout.keyboard
+        let base = PixelCanvas(deskSurface)
+        var shaded = base
+        ArtKit.castShadow(of: PropArt.keyboard().image, at: ArtPoint(k.x - d.x, k.y - d.y), offset: ArtPoint(1, 1),
+                          ink: Role.deskEdge, into: &shaded, where: { $0 == Role.desk || $0 == Role.deskHighlight })
+        var c = PixelCanvas(width: k.w + 1, height: k.h + 1)
+        for y in 0..<c.height {
+            for x in 0..<c.width {
+                let p = ArtPoint(k.x - d.x + x, k.y - d.y + y)
+                if let ink = shaded.ink(at: p.x, p.y), ink != base.ink(at: p.x, p.y) { c.plot(x, y, ink) }
+            }
+        }
+        return SpriteAsset("keyboard.shadow", c, anchor: .zero)
     }()
 
     /// The floor under the desk darkens toward the wall in two plank-aligned steps (`602c2c`, then `7a4841`),
@@ -262,7 +284,7 @@ public enum RoomArt {
     }
 
     /// Contact shadows on the desk top (one oak step darker, onto bare desk only): the back-strip props cast
-    /// theirs down-right; the keyboard a 1-px row under its front face and a column on its right.
+    /// theirs down-right (the keyboard's is `keyboardShadow`).
     /// `offset` moves core px into the canvas being drawn.
     static func drawDeskShadows(_ c: inout PixelCanvas, offset: ArtPoint) {
         func onDesk(_ i: Ink) -> Bool { i == Role.desk || i == Role.deskHighlight }
@@ -273,7 +295,6 @@ public enum RoomArt {
             (PropArt.phoneStand(faceUp: true).image, PropArt.phoneStandRect, ArtPoint(3, 2)),
             (PropArt.driveHub().image, CoreLayout.driveHub, ArtPoint(3, 2)),
             (PropArt.lamp(on: false).image, PropArt.lampRect, ArtPoint(3, 2)),
-            (PropArt.keyboard().image, CoreLayout.keyboard, ArtPoint(1, 1)),
         ]
         for (img, core, shift) in props {
             ArtKit.castShadow(of: img, at: core.origin + offset, offset: shift, ink: Role.deskEdge, into: &c, where: onDesk)

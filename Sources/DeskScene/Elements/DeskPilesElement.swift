@@ -90,7 +90,8 @@ final class DeskPilesElement: DeskElement, Knockable {
         for id in hub.bodies.ids {
             guard let p = world.position(of: id), p.isFinite else { continue }
             let keys = visibleKeys(id)
-            guard !keys.isEmpty else { continue }
+            // MARK: mat (a pile under lifted cloth stands in the mat's raster, behind the flap that lifts over it)
+            guard !keys.isEmpty, !hub.drawnByMat(id) else { continue }
             keep.insert(id)
             let lift = hops.map { $0.plan.pileHops[id]?.offset(atFrame: $0.frame) ?? 0 } ?? 0
             let selected = keys.allSatisfy(selection.contains)

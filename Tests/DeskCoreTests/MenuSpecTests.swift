@@ -95,9 +95,11 @@ struct MenuSpecTests {
         let status = MenuSpec.status(s, MenuSpec.Context(paused: true))
         #expect(status.item("pause")?.title == "Resume Desk")
         #expect(wall.ids == status.ids)
-        for id in ["clearDesk", "peekDesk", "settings", "emptyWastebasket"] {
+        for id in ["peekDesk", "settings", "emptyWastebasket"] {
             #expect(wall.item(id)?.isEnabled == false, "\(id) waits for its milestone")
         }
+        // MARK: mat
+        #expect(wall.item("clearDesk")?.isEnabled == true && wall.item("smoothMat")?.command == .mat(.smooth))
         #expect(wall.item("find")?.isEnabled == true && wall.item("about")?.isEnabled == true)
         // Lights commands keep the other switches.
         if case let .lights(l)? = MenuCommand.lightsMode(.lampOnly).action(s) {

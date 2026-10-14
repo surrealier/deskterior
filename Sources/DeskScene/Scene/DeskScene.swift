@@ -76,6 +76,11 @@ public final class DeskScene: SKScene {
     public var reduceMotion = false {
         didSet { room?.context.reduceMotion = reduceMotion }
     }
+    // MARK: mat
+    /// `matMode=flat` (DESIGN §4.8, hidden setting): the mat keeps bumps and covering, without lifts and folds.
+    public var matFlat = false {
+        didSet { room?.matElement?.flatSetting = matFlat }
+    }
     /// The committed model (nil: the bare room).
     public private(set) var deskState: DeskState?
     /// Real icons by token, kept across content rebuilds.
@@ -141,6 +146,7 @@ public final class DeskScene: SKScene {
             r.menuContext = menuContext
             r.router.setPointsPerArtPx(pointsPerArtPx)
             r.context.reduceMotion = reduceMotion
+            r.matElement?.flatSetting = matFlat  // MARK: mat
             wireRoom()
             for (k, v) in icons { r.showIcon(k, v) }
             if let deskState { r.apply(deskState) }

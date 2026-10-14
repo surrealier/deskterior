@@ -38,7 +38,7 @@ public enum DeskAction: Sendable {
     /// Container ▸ Take All Out; nil takes out the loose desk piles and floor tokens.
     case takeAllOut(ContainerID?)
     case takeEverythingOut
-    /// Clear the Desk (presentation mode; the plan arrives in M9).
+    /// Clear the Desk (presentation mode): one journaled change (`ClearDeskPlan`) that the scene then plays.
     case clearDesk
     case showOnDesk(TokenKey)
     /// Undo and redo step through an `UndoJournal` (`Reducer.reduce(_:journal:_:_:)`); plain `reduce` ignores them.
@@ -83,6 +83,12 @@ public enum DeskAction: Sendable {
     /// (`cupState`/`basketState`, then `settle`).
     case tipOver(ContainerID)
     case standUp(ContainerID)
+    // MARK: mat
+    /// A desk-mat command (Smooth, Unfold, Rotate, Size, Peek Under, Reset): the scene's mat plays it on the cloth and
+    /// commits the pose once the cloth settles (`matSettled`). Not journaled.
+    case mat(MatCommand)
+    /// The desk brush came to rest at desk-plane point `(x, d)` (E10). Not journaled.
+    case brushSettled(SIMD2<Float>)
 
     /// Explicit user requests. Only these may produce file effects (`Effect.touchesFiles`).
     public var isRequest: Bool {

@@ -16,7 +16,9 @@ final class PhysicsStage {
     var requests: [SceneRequest] = []
     var t: Double = 100
 
-    init(_ state: DeskState, physics: Bool) throws {
+    /// With `mat` false (the default for the desk plane's own tests) the desk mat is put away, so piles anywhere on
+    /// the desk top stay bare piles.
+    init(_ state: DeskState, physics: Bool, mat: Bool = false) throws {
         if physics {
             guard let device = MTLCreateSystemDefaultDevice() else { throw RenderError.noDevice }
             let host = try SceneHost(grid: PixelGrid(display: calibrationDisplay), device: device)
@@ -27,6 +29,7 @@ final class PhysicsStage {
             scene = DeskScene(grid: PixelGrid(display: calibrationDisplay))
         }
         self.state = state
+        if !mat { scene.room?.matElement?.isPutAway = true }  // MARK: mat
         scene.clock = .fixed(WallTime(hour: 10, minute: 0))
         scene.onAction = { [unowned self] in dispatch($0) }
         scene.onRequest = { [unowned self] in requests.append($0) }

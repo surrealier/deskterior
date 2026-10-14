@@ -261,6 +261,10 @@ public enum RoomPlan {
         add("phone", .deskBack, PropArt.phoneStand(faceUp: lights.phoneFaceUp), core: CoreLayout.phone.origin)
         add("hub", .deskBack, PropArt.driveHub(), core: CoreLayout.driveHub.origin)
 
+        // The desk-surface layer is the scene's desk mat (it takes this slot); the bare room shows only the keyboard's
+        // contact shadow here.
+        add("mat.keyboardShadow", .deskSurface, RoomArt.keyboardShadow(), core: CoreLayout.keyboard.origin)
+
         add("keyboard", .deskFront, PropArt.keyboard(), core: CoreLayout.keyboard.origin)
         add("brush", .deskFront, PropArt.brush(), core: CoreLayout.brush.origin)
         add("pencup", .deskFront, PropArt.penCupOnDesk(), core: CoreLayout.penCup.origin)

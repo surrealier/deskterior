@@ -81,6 +81,22 @@ public struct DemoDrag: Codable, Sendable, Equatable {
     }
 }
 
+/// Moves a held drag (after a `drag` with `hold`) on to `to` over `duration` seconds, one move per frame, without
+/// letting go: for frame dumps of a gesture in progress.
+public struct DemoMove: Codable, Sendable, Equatable {
+    public var to: String
+    /// Seconds (default 0.3).
+    public var duration: Double?
+    /// Modifier keys held during the move (as the drag's).
+    public var mods: [String]?
+
+    public init(to: String, duration: Double? = nil, mods: [String]? = nil) {
+        self.to = to
+        self.duration = duration
+        self.mods = mods
+    }
+}
+
 public struct DemoScroll: Codable, Sendable, Equatable {
     public var at: String
     /// Art px, y-down (the direction the content moves).
@@ -211,6 +227,8 @@ public enum DemoStep: Codable, Sendable, Equatable {
     case drag(DemoDrag)
     /// Ends a held drag where the pointer is.
     case release
+    /// Moves a held drag on without letting go.
+    case move(DemoMove)
     case scroll(DemoScroll)
     /// `space`, `esc`, `left`, `cmd+a`, `cmd+z`, `shift+cmd+z`…
     case key(String)
@@ -224,6 +242,7 @@ public enum DemoStep: Codable, Sendable, Equatable {
 
     private enum Key: String, CodingKey, CaseIterable {
         case waitIdle, wait, snapshot, click, hover, drag, release, scroll, key, menu, fs, action, expect, waitFor, comment
+        case move
     }
 
     public init(from decoder: Decoder) throws {
@@ -242,6 +261,7 @@ public enum DemoStep: Codable, Sendable, Equatable {
         case .hover: self = .hover(try c.decode(String.self, forKey: key))
         case .drag: self = .drag(try c.decode(DemoDrag.self, forKey: key))
         case .release: _ = try c.decode(Bool.self, forKey: key); self = .release
+        case .move: self = .move(try c.decode(DemoMove.self, forKey: key))
         case .scroll: self = .scroll(try c.decode(DemoScroll.self, forKey: key))
         case .key: self = .key(try c.decode(String.self, forKey: key))
         case .menu: self = .menu(try c.decode(DemoMenu.self, forKey: key))
@@ -263,6 +283,7 @@ public enum DemoStep: Codable, Sendable, Equatable {
         case let .hover(t): try c.encode(t, forKey: .hover)
         case let .drag(d): try c.encode(d, forKey: .drag)
         case .release: try c.encode(true, forKey: .release)
+        case let .move(m): try c.encode(m, forKey: .move)
         case let .scroll(s): try c.encode(s, forKey: .scroll)
         case let .key(k): try c.encode(k, forKey: .key)
         case let .menu(m): try c.encode(m, forKey: .menu)

@@ -165,8 +165,7 @@ public enum Reducer {
             return []
 
         case .clearDesk:
-            // TODO(M9): the ClearDesk plan (monitor off, phone down, sweep under the mat), one undo.
-            return [.toast(.notYetAvailable)]
+            return reduceClearDesk(&s, env)
 
         case .undo, .redo:
             // Journaled by `reduce(_:journal:_:_:)`.
@@ -212,6 +211,9 @@ public enum Reducer {
         // MARK: physics
         case .dropOnDesk, .dropOnFloor, .tipOver, .standUp:
             return reducePhysics(&s, a, env)
+        // MARK: mat
+        case .mat, .brushSettled:
+            return reduceMat(&s, a, env)
         }
     }
 

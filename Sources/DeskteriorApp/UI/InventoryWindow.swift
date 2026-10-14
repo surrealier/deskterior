@@ -19,6 +19,12 @@ final class InventoryWindowController: NSObject, NSWindowDelegate {
     private unowned let store: Store
     /// The monitor's glass in screen coordinates, for Show on Desk.
     var monitorFrame: (() -> NSRect?)?
+    // MARK: mat
+    /// The piles the desk mat covers now ("Under mat").
+    var coveredPiles: () -> Set<PileID> {
+        get { model.coveredPiles }
+        set { model.coveredPiles = newValue }
+    }
 
     init(store: Store, perform: @escaping (MenuCommand) -> Void) {
         self.store = store
@@ -93,13 +99,17 @@ final class InventoryModel {
     let perform: (MenuCommand) -> Void
     var onShowOnDesk: (() -> Void)?
     var onClose: (() -> Void)?
+    // MARK: mat
+    @ObservationIgnored var coveredPiles: () -> Set<PileID> = { [] }
 
     init(state: DeskState, perform: @escaping (MenuCommand) -> Void) {
         self.state = state
         self.perform = perform
     }
 
-    var items: [InventoryItem] { InventoryQuery.items(state, search: search).sorted(using: sortOrder) }
+    var items: [InventoryItem] {
+        InventoryQuery.items(state, search: search, coverage: .init(coveredPiles: coveredPiles())).sorted(using: sortOrder)  // MARK: mat
+    }
 
     var selectedKeys: [TokenKey] { items.map(\.key).filter(selection.contains) }
 

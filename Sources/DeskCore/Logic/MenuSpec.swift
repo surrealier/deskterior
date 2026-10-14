@@ -134,6 +134,9 @@ public enum MenuCommand: Sendable, Equatable {
     /// The pen cup or the wastebasket: Tip Over, Stand Up.
     case tipOver(ContainerID)
     case standUp(ContainerID)
+    // MARK: mat
+    /// The desk mat's menu and the status item's Smooth Desk Mat.
+    case mat(MatCommand)
 
     /// The model action this command dispatches; nil for app commands.
     public func action(_ s: DeskState) -> DeskAction? {
@@ -165,6 +168,8 @@ public enum MenuCommand: Sendable, Equatable {
         // MARK: physics
         case let .tipOver(id): .tipOver(id)
         case let .standUp(id): .standUp(id)
+        // MARK: mat
+        case let .mat(command): .mat(command)
         }
     }
 }
@@ -187,9 +192,8 @@ extension MenuSpec {
     }
 
     /// Commands whose milestone has not landed yet: shown, but disabled (each track removes its own).
-    /// Move to Trash and Empty Wastebasket need `FileOperator` (M11), Clear the Desk the mat (M9), Peek Desk and
-    /// Settings… their windows (M12).
-    public static let pending: Set<String> = ["trash", "emptyWastebasket", "clearDesk", "peekDesk", "settings"]
+    /// Move to Trash and Empty Wastebasket need `FileOperator` (M11), Peek Desk and Settings… their windows (M12).
+    public static let pending: Set<String> = ["trash", "emptyWastebasket", "peekDesk", "settings"]
 
     /// Right-click on tokens (the selection): open, look, reveal, copy, move to another page or a hiding place,
     /// trash.
@@ -319,6 +323,8 @@ extension MenuSpec {
                      enabled: hidden > 0 || !on || s.monitor.av),
             MenuItem("clearDesk", "Clear the Desk", .clearDesk, enabled: !pending.contains("clearDesk")),
             MenuItem("peekDesk", "Peek Desk", .peekDesk, enabled: !pending.contains("peekDesk")),
+            // MARK: mat
+            MenuItem("smoothMat", "Smooth Desk Mat", .mat(.smooth)),
             MenuItem("emptyWastebasket", binned > 0 ? "Empty Wastebasket… (\(binned))" : "Empty Wastebasket…",
                      .emptyWastebasket, enabled: binned > 0 && !pending.contains("emptyWastebasket")),
         ]

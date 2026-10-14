@@ -53,6 +53,13 @@ final class PhysicsHub {
     private var syncedHidden: Set<TokenKey> = []
     /// A carry's tokens while its landing commits (still in the hand's set until the carry finishes).
     private var landing: Set<TokenKey> = []
+    // MARK: mat
+    /// The desk mat's say over the plane (DESIGN §2.2 E9, §4.7; `RoomContent+Mat`): a pile it covers has no body; a
+    /// pile under lifted cloth is drawn in the mat's raster, not by `piles`; a landing on the mat tucks under it (the
+    /// spot it rests at, and the covered pile within reach it joins).
+    var isUnderMat: (PileID) -> Bool = { _ in false }
+    var drawnByMat: (PileID) -> Bool = { _ in false }
+    var matLanding: (SIMD2<Float>) -> (pile: PileID?, at: SIMD2<Float>)? = { _ in nil }
 
     /// Within this distance (plane px) a landing joins a pile instead of starting one: about a pile's width, so two
     /// stacks never stand half over each other.
@@ -154,7 +161,7 @@ final class PhysicsHub {
         for (id, p) in s.piles {
             let members = s.tokens.members(of: id)
             if members.contains(where: inAir.contains) { flying.insert(id) }
-            if members.contains(where: { !hidden.contains($0) }) { shown[id] = p }
+            if members.contains(where: { !hidden.contains($0) }), !isUnderMat(id) { shown[id] = p }
         }
         bodies.sync(shown, obstacles: obstacles, flying: flying)
     }
@@ -369,11 +376,18 @@ final class PhysicsHub {
 
     /// On the desk: joins a pile within `joinRadius` (one the movers do not wholly make up), else starts a pile at
     /// the nearest free spot with `velocity` (plane px/s). `keys` are front first: the first ends on top.
-    func landOnDesk(_ keys: [TokenKey], at point: SIMD2<Float>, velocity: SIMD2<Float>, journaled: Bool,
+    func landOnDesk(_ keys: [TokenKey], at aim: SIMD2<Float>, velocity: SIMD2<Float>, journaled: Bool,
                     origins: [TokenKey: Location]? = nil) {
         guard let s = state else { return }
         let live = unmoved(keys, since: origins)
         guard !live.isEmpty else { return }
+        // MARK: mat
+        let tuck = matLanding(aim)
+        if let id = tuck?.pile, let at = s.piles[id] {
+            commitDesk(live, pile: id, at: at, journaled: journaled)
+            return
+        }
+        let point = tuck?.at ?? aim
         let movers = Set(live)
         var others: [PileID: SIMD2<Float>] = [:]
         for (id, p) in bodies.positions where p.isFinite && !s.tokens.members(of: id).allSatisfy(movers.contains) {

@@ -55,6 +55,9 @@ public enum AnimationID: String, Sendable {
     // MARK: physics
     /// The pen cup or the wastebasket tips over / stands back up (`.container`).
     case tipOver, standUp
+    // MARK: mat
+    /// A mat command for the scene's cloth (`.mat`); Clear the Desk's brush pass and tucks (`.clearDesk`).
+    case matCommand, clearDesk
 }
 
 public enum AnimTarget: Sendable, Equatable {
@@ -64,6 +67,9 @@ public enum AnimTarget: Sendable, Equatable {
     case location(Location)
     case container(ContainerID)
     case monitor
+    // MARK: mat
+    case mat(MatCommand)
+    case clearDesk(ClearDeskPlan)
 }
 
 /// Pixel toasts. (English strings live in DeskScene's `Toast`; the L10n table takes over in M12.)

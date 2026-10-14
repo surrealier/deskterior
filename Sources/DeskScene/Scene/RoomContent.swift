@@ -132,6 +132,7 @@ final class RoomContent: GestureTarget {
         installContainers()
         installRoomControls()
         installPhysics()
+        installMat()  // MARK: mat
         rebuild()
     }
 
@@ -319,6 +320,7 @@ final class RoomContent: GestureTarget {
     /// Plays a model-requested animation (`Effect.play`).
     func play(_ id: AnimationID, _ target: AnimTarget) {
         if playPhysics(id, target) { return }
+        if playMat(id, target) { return }  // MARK: mat
         switch (id, target) {
         case let (.printIn, .tokens(keys)), let (.parade, .tokens(keys)):
             screen.playPrintIn(keys)

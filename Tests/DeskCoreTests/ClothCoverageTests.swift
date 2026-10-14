@@ -157,8 +157,8 @@ struct ClothCoverageTests {
         #expect(!field.isEasing)
         #expect(field.height(x: 100, d: 40) == 7)                  // h = 3 + 2·(3−1)
         #expect(field.height(x: 100 + 4, d: 40) == 7)              // inside the plateau (r/2 = 5)
-        #expect(field.height(x: 100 + 10, d: 40) == 0)             // r = 7 + 3
-        #expect(field.height(x: 100 + 7, d: 40) > 0 && field.height(x: 100 + 7, d: 40) < 7)
+        #expect(field.height(x: 100 + 14, d: 40) == 0)             // r/2 + a skirt of 1.25·h (M9: r = 7 + 3 was 10)
+        #expect(field.height(x: 100 + 8, d: 40) > 0 && field.height(x: 100 + 8, d: 40) < 7)
         field.advance()
         #expect(field.revision == 15)                               // settled: no more revisions
         // Same piles again: nothing to do.

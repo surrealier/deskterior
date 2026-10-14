@@ -89,12 +89,27 @@ public struct BumpField: Sendable {
         }
     }
 
-    /// Max over groups of a rounded box: full height within `r/2` of the members' bounding box, smoothstep to 0
-    /// at `r`.
+    /// How wide a bump's skirt is for its height (at least): the steepest smoothstep slope, 1.5·h/skirt, stays near
+    /// 50°, below the 63° the 2:1 view looks down at, so a tall stack's far side never turns its back to the viewer
+    /// and the 6-px cloth can follow it as a soft mound (M9 review).
+    static let skirtPerHeight: Float = 1.25
+
+    /// The skirt of a bump of height `h` and radius `r`: smoothstep from full height at `r/2` down to 0 over it.
+    static func skirt(height h: Float, radius r: Float) -> Float { max(r / 2, skirtPerHeight * h) }
+
+    /// How far a lone stack of `n` tokens raises the floor from its centre: its plateau and its skirt.
+    public static func extent(count n: Int) -> Float {
+        let r = bumpRadius(count: n)
+        return r / 2 + skirt(height: bumpHeight(count: n), radius: r)
+    }
+
+    /// Max over groups of a rounded box: full height within `r/2` of the members' bounding box, smoothstep to 0 over
+    /// the skirt beyond it (`r` for low stacks, wider for tall ones).
     static func stamp(_ groups: [PileGroup], into out: inout [Float]) {
         out.withUnsafeMutableBufferPointer { o in for i in 0..<o.count { o[i] = 0 } }
         for g in groups {
-            let h = bumpHeight(count: g.count), r = bumpRadius(count: g.count), plateau = r / 2
+            let h = bumpHeight(count: g.count), plateau = bumpRadius(count: g.count) / 2
+            let r = plateau + skirt(height: h, radius: 2 * plateau)
             let lo = g.minPosition - SIMD2(repeating: r), hi = g.maxPosition + SIMD2(repeating: r)
             let i0 = max(0, Int(((lo.x - origin.x) / cell).rounded(.down)))
             let i1 = min(cols - 1, Int(((hi.x - origin.x) / cell).rounded(.up)))

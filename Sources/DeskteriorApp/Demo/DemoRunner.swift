@@ -164,6 +164,14 @@ final class DemoRunner {
         case .release:
             send(.up, pointer, count: 1)
             frame()
+        case let .move(m):
+            // MARK: mat (frame dumps of a gesture in progress)
+            let from = pointer, to = try point(m.to), mods = try modifiers(m.mods ?? [])
+            let n = max(1, Int(((m.duration ?? 0.3) * 60).rounded()))
+            for k in 1...n {
+                send(.drag, from + (to - from) * (Float(k) / Float(n)), mods: mods)
+                frame()
+            }
         case let .scroll(s):
             send(.scroll, try point(s.at), scroll: SIMD2(Float(s.dx ?? 0), Float(s.dy ?? 0)))
             frame()
@@ -344,7 +352,9 @@ final class DemoRunner {
         if target.hasPrefix("token:") {
             let name = String(target.dropFirst(6))
             guard let key = tokenKey(named: name) else { throw ScriptError(description: "no token named '\(name)'") }
-            guard let r = screen.iconRect(of: key) ?? host.scene.miniRect(of: key) ?? host.scene.deskTokenRect(key) else {
+            guard let r = screen.iconRect(of: key) ?? host.scene.miniRect(of: key) ?? host.scene.deskTokenRect(key)
+                ?? host.scene.matTokenRect(key)  // MARK: mat
+            else {
                 throw ScriptError(description: "token '\(name)' is not on show")
             }
             return center(r)
@@ -372,6 +382,8 @@ final class DemoRunner {
         }
         // Desk-plane objects that move (the pen cup) answer where they are now.
         if let r = host.scene.physicsAnchor(target) { return center(r) }
+        // MARK: mat (the mat's corners and edges, the brush and the keyboard, where they are now)
+        if let r = host.scene.matAnchor(target) { return center(r) }
         guard let r = host.scene.liveAnchor(target) ?? layout.anchors[target] else {
             throw ScriptError(description: "unknown target '\(target)'")
         }
@@ -422,7 +434,7 @@ final class DemoRunner {
                 guard case let .bool(hidden) = value else { throw ScriptError(description: "hidden takes true or false") }
                 for name in expect.keys.filter({ $0.hasPrefix("token:") }).map({ String($0.dropFirst(6)) }) {
                     guard let k = tokenKey(named: name), let loc = s.tokens.location(of: k) else { continue }
-                    let isHidden = Visibility.of(loc, s).isHidden
+                    let isHidden = Visibility.of(loc, s, scene.matCoverage).isHidden  // MARK: mat (covered piles)
                     if isHidden != hidden { out.append("\(name) hidden is \(isHidden), expected \(hidden)") }
                 }
             case "monitor.power": check(key, s.monitor.power.rawValue, value)
@@ -475,7 +487,7 @@ final class DemoRunner {
                 let p = try point(String(k.dropFirst(6)))
                 check(key, String(scene.lightLevel(at: ArtPoint(Int(p.x.rounded(.down)), Int(p.y.rounded(.down))))), value)
             default:
-                guard let actual = scene.physicsExpectation(key) else {
+                guard let actual = scene.physicsExpectation(key) ?? scene.matExpectation(key) else {  // MARK: mat
                     throw ScriptError(description: "unknown expectation '\(key)'")
                 }
                 check(key, actual, value)

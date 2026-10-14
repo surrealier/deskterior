@@ -145,6 +145,35 @@
     - A desk knock reaches the drawers through `Knockable` (they close themselves on their live sims), and the knock
       plan sees the live drawer sims, so a held or chomping drawer is left alone. A slam knocks the desk where the
       drawer shut (§2.2 E3). Floor landings keep clear of the chair where it actually stands.
+17. **The mat, the brush and Clear the Desk in the scene (M9).** These refine §2.1 (DropResolver, scroll), §2.2 E9,
+    E10, E16, §4.4 and §4.7.
+    - **Drawing.** The raster uploads through `TextureFactory.dynamicTexture` (SPIKES S8), only when something it draws
+      changed. The bare room (no model) has no mat: the desk-surface slot holds only the keyboard's contact shadow
+      (`mat.keyboardShadow`). The keyboard rides on the mat: the room's keyboard placement moves with the weighted
+      particles, and its shadow is drawn on the felt.
+    - **Covering.** A pile that appears or jumps (a drop, an undo, a relaunch, Clear the Desk) is judged at once; moving
+      piles and moving cloth go through the 6-frame hysteresis. A covered pile has no body (`PhysicsHub.isUnderMat`).
+      A pile that goes under slides in to `ClearDeskPlan.inset(count:)` = max(16, its bump's reach + 6) px inside
+      the edges (not 6), so its bump never holds the hem up; a covered pile that grows (a drop joins it) slides
+      further in. Bumps keep `h` and full height within `r/2`, but their skirt is max(r/2, 1.25·h), so a tall stack
+      never turns its far side to the 2:1 view.
+    - **Drops on the mat** go through the desk plane's landing (no separate verdict): a landing on the cloth, or within
+      18 plane px in front of its front edge (a stack's base sits below the pointer), tucks under and joins a covered
+      pile within 10 px. A revealed pile the cloth still lies over is drawn in the raster (`PhysicsHub.drawnByMat`) and
+      picked through `owner[]`.
+    - **Peek Under** (and Show on Desk) aims at the covered pile nearest the click (within 40 px), draws the edge back
+      16 px past it (`ClothParams.peekBeyond`; the core's default stays 8) and carries the edge back to where it was
+      before letting go, so it never falls over folded.
+    - **Mat commands** are `DeskAction.mat(MatCommand)` → `.play(.matCommand, .mat(…))`, not journaled; the status and
+      wall menus gain Smooth Desk Mat. List Items Under Mat picks fly a token to the monitor, as List Contents does.
+    - **Brush.** `brushSettled` commits where it stopped. The scroll-broom takes horizontal scrolls over the mat or the
+      bare desk below the back strip (the mat answers that band, as part `desk`; clicks and menus there pass through):
+      a 6×24 invisible broom, 1.5 plane px per scroll px, ending 0.25 s after the scroll stops.
+    - **Clear the Desk** also shuts open drawers. Floor stacks become new piles. The brush goes round the mat between
+      pushes (in front of it, or behind when the mat lies at the desk's front) and the pass is fitted into 2.4 s;
+      "TIDY!" follows. With Reduce Motion everything is under at once.
+    - **`matMode=flat`** comes from the setting or Reduce Motion (`DeskScene.matFlat`).
+    - **Demos** gain a `move` step (a held drag moved on, for frame dumps).
 
 ---
 

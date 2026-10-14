@@ -50,6 +50,7 @@ Every step is an object with one key.
 | `hover` | `{"hover": "token:a.txt"}` | Moves the pointer there. |
 | `drag` | `{"drag": {"from": "token:a.txt", "to": "cell:3,2", "duration": 0.4, "hold": true, "mods": []}}` | Press, move over `duration` s (one move per frame), release unless `hold`. |
 | `release` | `{"release": true}` | Releases a held drag where the pointer is. |
+| `move` | `{"move": {"to": "core:290,208", "duration": 0.3, "mods": []}}` | Moves a held drag on without letting go (frame dumps of a gesture in progress). |
 | `scroll` | `{"scroll": {"at": "monitor.screen", "dx": -30, "dy": 0}}` | Two-finger scroll, art px (content direction). |
 | `key` | `{"key": "shift+cmd+z"}` | `space`, `esc`, `left`/`right`/`up`/`down`, `cmd+o`, `cmd+down`, `cmd+c`, `cmd+a`, `cmd+f`, `cmd+z`, `shift+cmd+z`. |
 | `menu` | `{"menu": {"at": "token:a.txt", "item": "copy"}}` | Right-clicks there and picks the item with that `MenuItem.id` (fails if it is disabled). |
@@ -70,13 +71,14 @@ Every step is an object with one key.
 | `card.<button>` | A button on a monitor card: `card.show`, `card.keepHidden`, `card.openSettings`, `card.chooseFolder`. |
 | `core:<x>,<y>` / `point:<x>,<y>` | Core px / canvas px. |
 | `pencup`, `pencup.mouth`, `pencup.body`, `wastebasket`, `wastebasket.mouth`, `wastebasket.body` | Where the cup and the basket are now (the cup can be carried; `.body` grabs it rather than a pen). `token:<name>` also finds a token in a desk pile or on the floor. |
+| `mat.center`, `mat.corner.nw\|ne\|se\|sw`, `mat.edge.n\|s\|e\|w`, `mat.flap`, `brush`, `keyboard` | Where the mat's parts are now (just inside each corner and each edge's middle; `n` is the back edge; a folded flap), the brush and the keyboard. `token:<name>` also finds a token in a pile the mat's lifted cloth stands over (its front icon). |
 
 ### Expectations
 
 | Key | Value |
 |---|---|
 | `token:<name>` | `screen`, `screen:<HDMI n>`, `cell:<page>,<col>,<row>` (page from 0), `container`, `container:<id>`, `desk`, `floor`, `present`, `missing`. |
-| `hidden` | `true`/`false` for every token named in the same `expect` (Visibility matrix). |
+| `hidden` | `true`/`false` for every token named in the same `expect` (Visibility matrix; a pile the mat covers is hidden). |
 | `monitor.power` | `on` / `off` (the model). |
 | `monitor.input` | `HDMI 1`, `HDMI 2`… or `AV`. |
 | `monitor.phase` | `on`, `poweringOff`, `off`, `poweringOn` (the scene's `MonitorMachine`). |
@@ -103,6 +105,11 @@ Every step is an object with one key.
 | `keyboard.key` / `plant.jiggle` | The keyboard key drawn pressed (`row,col`) or `none`; whether the plant jiggles. |
 | `penCup` / `wastebasket` | The model's state: `upright`, `lyingLeft`/`lyingRight`; `upright`, `tippedLeft`/`tippedRight`. (`penCup.pose` / `wastebasket.pose`: the scene machine's phase.) |
 | `pens` / `balls` / `piles` / `floor` / `flying` / `swishes` / `knocks` | Counts: tokens in the cup, in the basket; desk piles holding tokens; floor tokens; tokens in the air; clean tosses into the basket; desk knocks. |
+| `underMat` / `revealed` / `visible` | Counts: tokens the mat covers; tokens on show inside the mat's rectangle (under lifted or folded cloth); tokens not hidden (Visibility matrix with the mat's coverage). |
+| `bumps` / `bump.max` | Bump groups under the mat; the tallest bump (px). |
+| `mat.folded` / `mat.asleep` / `mat.saved` / `mat.wrinkled` / `mat.handles` | `true`/`false`: a flap lies folded; the cloth sleeps; the model holds its resting pose (it survives a relaunch); wrinkle metric W > 0.25 px; the ⌥ transform handles show. |
+| `mat.grab` / `mat.size` / `mat.angle` / `mat.keyboard` / `mat.mode` | The grab mode (`carry`, `peel`, `tug`, `transform`, `slide`, `unpeel`, `pending` or `none`); rest size `WxD`; angle in degrees; the keyboard's plane centre `x,d`; `cloth` or `flat`. |
+| `brush` / `brush.home` / `clearDesk` | The brush's plane position `x,d`; whether it is at its rest spot; Clear the Desk's pass `running` or `idle`. |
 
 ## The demos
 
@@ -112,8 +119,10 @@ Every step is an object with one key.
 | `01-mirror` | Select, ⌘/⇧ extend, hover tooltip, marquee, ⌘A, a carry mid-drag and its drop, a bonk on the drive hub, double-click open, Space, Copy, undo/redo, ⌘F. |
 | `02-monitor-power` | First run: connect prompt, DESKTOP HIDDEN, connect; INPUT static, OSD and the AV logo; the CRT collapse, files arriving while off (amber LED, +N), the bloom and pop-in; NO SIGNAL with its buttons. |
 | `03-drawers` | The riser: a chomp into the shut left drawer, a stack of eight leaving it overfull and ajar, a scroll peek, click open (minis, hover name, select), five more jamming it (a click shut boings off the paper; the next drop bonks). The cubby's silhouettes, one dragged back out. The chair rolled in front of the cabinet: a pull opens 3 px and thunks it aside, then opens fully. Four into the file drawer (the chomp shuts the open top drawer: interlocked), its folder tabs; spring-loading the middle drawer. The right drawer opened from its menu and flicked shut (slam), then Take All Out (the emptied drawer slides shut). |
+| `04-rug-homage` | The homage to the rug, O1–O10: the felt mat with the keyboard on it; a file dropped on it tucks under (a bump), four more on the same spot make the bump taller; the brush pushes a pile set down beside the mat in under its edge (frames), and the scroll-broom sweeps another under the left edge; Peek Under lifts the edge nearest the click (rubber side up, the piles under it standing in its shadow) and the pile is carried back to the monitor; the front-right corner peeled back past the middle stays folded (frames), persists, and a double-click on the flap unfolds it; a fast carry moves the mat as a whole with the keyboard riding along and leaves creases that are saved; a corner tugged outward and Smooth Mat pull them flat; ⌥-dragging a corner shows the handles and grows the mat; Rotate +15° turns it as far as it fits; Reset Mat. |
 | `05-pencup-spill` | Pens dropped in the cup (hover lists them), piles set down on the desk (a second joins the first), the cup carried along the desk, a flick that tips it (mid-tip and spill frames), pens sliding out of the lying cup's mouth as piles along the flick, a click standing it up, a desk knock (nothing moves house), a pen pulled back out, Tip Over / Stand Up from the menu. |
 | `06-wastebasket` | Tosses off the desk's front edge: a SWISH! (mid-arc frame), a rim bounce (the basket jiggles, the rim sparks), a miss to the floor; a sideways toss from the floor up over the rim; the heap above the rim from the 11th ball, full at 24 and the cap bonk; a dig; a sustained rim drag that tips it and the balls rolling out onto the floor, clear of the chair (those that do not fit stand as one floor stack with its count); standing it up; Tip Over / Stand Up from the menu. |
 | `07-night-lamp` | Dusk; the clock's minute hand dragged to 19:10 (night falls, the room light warms the room) and its spring back; a file set down on the right of the desk; Lights ▸ Lamp Only from the wall menu; only the lamp's pool, the monitor's glow and the phone light a token (`lit:`); the pile in the dark hovers as `token.dark`; the wall switch in and out of Lamp Only; the lamp's three-frame flicker and the room without it; the monitor's glow leaving with the CRT; a key press and the plant's jiggle; Lights ▸ Auto. |
 | `08-phone` | Drops become 5×5 app minis with a sparkle; six fill it and a seventh bonks; hover and select a mini; a click on the stand flips it face down (three edge frames; the minis hide and drops bonk), Turn Face Up from its menu, and a mini carried back to the screen. |
 | `09-fs-events` | Finder-side changes within a second: a new file prints in, a rename keeps its cell, a removal poofs, a new folder. |
+| `10-clear-desk` | A busy desk (piles beside the mat, files on the floor, an open drawer, an app on the phone, the monitor on) cleared with one menu pick: the monitor's CRT collapses, the phone turns over, the drawer shuts, the brush goes round the mat pushing each pile under an edge, the floor files hop onto the mat's edge and tuck under (frames), "TIDY!"; nothing is left on show. One ⌘Z puts every token, the drawer, the phone and the monitor back exactly. |

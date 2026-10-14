@@ -37,6 +37,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.displays = displays
         guard let host = displays.host else { Self.fail("no scene host") }
         Self.configure(host, options)
+        // MARK: mat (the hidden `matMode` setting; demos and headless runs keep the cloth)
+        let settings = UserDefaults(suiteName: AppIdentity.bundleID)
+        host.scene.matFlat = DeskSettings(reading: { settings?.object(forKey: $0) }).matMode == .flat
         host.scene.onRenderRequest = { [weak host] in host?.loop.renderOnce() }
         let session = DeskSession(host: host, options: options, configuration: configuration, dryRun: false)
         session.isPaused = { [weak self] in self?.isUserPaused ?? false }
@@ -159,6 +162,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if inventory == nil {
             let controller = InventoryWindowController(store: session.store) { [weak self] in self?.perform($0) }
             controller.monitorFrame = { [weak self] in self?.monitorScreenFrame() }
+            controller.coveredPiles = { [weak self] in self?.session?.host.scene.matCoverage.coveredPiles ?? [] }  // MARK: mat
             inventory = controller
         }
         inventory?.show()

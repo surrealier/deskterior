@@ -90,6 +90,9 @@ public struct ClothParams: Hashable, Sendable, Codable {
     public var peekSeconds: Float = 1.5
     public var peekHeight: Float = 16
     public var peekReach: Float = 30
+    /// How far past the peeked point (plane px) the lifted edge is drawn back. The scene's mat draws it back 16 px,
+    /// a pile's footprint and then some, so a pile tucked deeper under the edge is revealed too (M9).
+    public var peekBeyond: Float = 8
     /// Desk knock: hop height (px), duration and the wavelength (px) of its ripple.
     public var knockHeight: Float = 2
     public var knockFrames = 12
