@@ -402,8 +402,8 @@
       (volume, inode, and for a file its size). Anything else is left where it is, untouched, and the copy is refused
       (`identityChanged`, no undo step).
     - **Leftover copies.** A `.deskterior-partial-<uuid>` staging folder (the in-desk fallback) cut short by a quit or a
-      crash is never touched automatically. Once the desk is connected (never before ⏻), the mirrored folder's top level
-      is listed off the main thread (`PartialCopies.find`, read-only); leftovers are logged, toasted once per session
+      crash is never touched automatically. After the mirror's first snapshot (never before ⏻), the mirrored folder's top
+      level is listed off the main thread (`PartialCopies.find`, read-only); leftovers are logged, toasted once per session
       ("An interrupted copy left files. See Settings.") and listed in Settings ▸ Leftover copies with Show in Finder and
       Move to Trash. Only that button removes them: the session names the gesture (`withOrigin(.menuItem)` in
       AppDelegate.swift), `EffectRunner.trashLeftovers` mints the intent, and `FileOperator.trash` re-checks each

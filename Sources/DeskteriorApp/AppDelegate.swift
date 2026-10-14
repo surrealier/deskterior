@@ -390,10 +390,8 @@ final class DeskSession {
             guard let self, new.lights.mode != old.lights.mode else { return }
             host.scene.lightsMode = new.lights.mode
         }
-        // MARK: harden: once the folder may be read (never before ⏻ on a first run), look for leftover copies.
-        store.observe { [weak self] new, old in
-            if new.access == .connected, old.access != .connected { self?.leftovers.look() }
-        }
+        // MARK: harden: once the mirror has read the folder (never before ⏻ on a first run), look for leftover copies.
+        mirror.onSnapshot = { [weak self] count in if count == 1 { self?.leftovers.look() } }
         sync.start()
         mirror.start()
         host.scene.lightsMode = store.state.lights.mode

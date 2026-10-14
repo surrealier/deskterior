@@ -44,6 +44,10 @@ final class MirrorController {
     private(set) var lastEventAt: Date?
     /// True from a connect or rescan request until its snapshot arrives.
     private(set) var awaitingScan = false
+    // MARK: harden
+    /// Called after each snapshot reaches the model, with how many have so far: the folder has been read, so the
+    /// privacy prompt (if any) came from ⏻ (the session then looks for leftover copies).
+    var onSnapshot: ((Int) -> Void)?
 
     init(configuration: Configuration, store: Store, stateStore: StateStore?) {
         self.configuration = configuration
@@ -115,6 +119,7 @@ final class MirrorController {
             }
             snapshotCount += 1
             store.dispatch(.snapshot(snapshot, now: snapshot.scannedAt))
+            onSnapshot?(snapshotCount)
         case let .failed(.accessDenied(path)):
             awaitingScan = false
             log("no access to \(path)")

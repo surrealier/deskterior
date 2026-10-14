@@ -3,9 +3,9 @@ import DeskCore
 import DeskFiles
 import DeskScene
 
-/// Leftovers of an interrupted drop-in copy in the mirrored folder (`PartialCopies`; Errata 25). Once the desk is
-/// connected to its folder (so reading it never brings up the privacy prompt before ⏻), its top level is listed off the
-/// main thread; leftovers are logged and, once per session, a toast points at Settings, which lists them with Show in
+/// Leftovers of an interrupted drop-in copy in the mirrored folder (`PartialCopies`; Errata 25). Once the mirror has
+/// read the folder (its first snapshot, so this never brings up the privacy prompt before ⏻), its top level is listed
+/// off the main thread; leftovers are logged and, once per session, a toast points at Settings, which lists them with Show in
 /// Finder and Move to Trash. Nothing here changes a file: the trash is the user's Settings button, through
 /// `EffectRunner.trashLeftovers` and `FileOperator` (a menu intent, into the Trash, re-checked by identity).
 final class LeftoverCopies {
