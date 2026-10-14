@@ -6,8 +6,9 @@ import SpriteKit
 /// one-shot minute timer (no running loop). Dragging on the face turns the minute hand (the hand jumps to where the
 /// face was grabbed, then follows the pointer round, an hour per turn) to preview another time: the phase, sky,
 /// window, wallpaper and light follow live through `SceneLightOverrides.previewTime` (under Auto; a forced Day,
-/// Night or Lamp Only keeps its phase). On release the hands spring back to the real time over 0.5 s, overshooting
-/// a little; with Reduce Motion they jump back.
+/// Night or Lamp Only keeps its phase; past midnight the calendar turns too). On release the preview first drops
+/// whole hours, so the hands spring back the short way round the dial (at most half a turn, the light jumping most
+/// of the way at once) over 0.5 s, overshooting a little; with Reduce Motion they jump back.
 public final class ClockElement: DeskElement {
     public let id = "clock"
     public let root = SKNode()
@@ -21,7 +22,8 @@ public final class ClockElement: DeskElement {
     private var spring: (from: Double, t: Double)?
 
     static let springDuration = 0.5
-    /// `easeOutBack`'s overshoot constant: the hands swing about 7 % past the real time and settle.
+    /// `easeOutBack`'s overshoot constant: the hands swing about 5 % past the real time (at most a minute and a
+    /// half from half a turn away) and settle.
     static let overshoot = 1.2
 
     init(context: SceneContext, placed: @escaping () -> PlacedElement?) {
@@ -97,16 +99,25 @@ public final class ClockElement: DeskElement {
         publish()
     }
 
-    /// The hand was let go: spring back to the real time (at once with Reduce Motion).
+    /// The hand was let go: spring back to the real time (at once with Reduce Motion). Whole hours drop at once, so
+    /// the minute hand only swings the short way round (a long preview would spin it many turns in 0.5 s, strobing,
+    /// and flash the light through every phase on the way).
     func release() {
         guard let o = offset else { return }
-        if context.reduceMotion || o.rounded() == 0 {
+        let short = Self.shortWay(o)
+        if context.reduceMotion || short.rounded() == 0 {
             offset = nil
             spring = nil
-            publish()
         } else {
-            spring = (o, 0)
+            offset = short
+            spring = (short, 0)
         }
+        publish()
+    }
+
+    /// `minutes` less whole hours: the same minute-hand angle, at most 30 minutes either way.
+    static func shortWay(_ minutes: Double) -> Double {
+        minutes - 60 * (minutes / 60).rounded()
     }
 
     /// Hands the preview time to the room (nil: the real time).
@@ -115,9 +126,21 @@ public final class ClockElement: DeskElement {
             context.lightOverrides.previewTime = nil
             return
         }
-        let total = ((base.minuteOfDay + Int(o.rounded())) % 1440 + 1440) % 1440
-        context.lightOverrides.previewTime = WallTime(year: base.year, month: base.month, day: base.day,
-                                                      hour: total / 60, minute: total % 60)
+        let minutes = base.minuteOfDay + Int(o.rounded())
+        let days = Int((Double(minutes) / 1440).rounded(.down))
+        let total = minutes - days * 1440
+        context.lightOverrides.previewTime = Self.date(of: base, plusDays: days, hour: total / 60, minute: total % 60)
+    }
+
+    /// `t`'s date `days` later (or earlier) at `hour:minute`: a preview past midnight turns the calendar.
+    static func date(of t: WallTime, plusDays days: Int, hour: Int, minute: Int) -> WallTime {
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = TimeZone(secondsFromGMT: 0) ?? cal.timeZone
+        guard days != 0, let day = cal.date(from: DateComponents(year: t.year, month: t.month, day: t.day)),
+              let moved = cal.date(byAdding: .day, value: days, to: day)
+        else { return WallTime(year: t.year, month: t.month, day: t.day, hour: hour, minute: minute) }
+        let c = cal.dateComponents([.year, .month, .day], from: moved)
+        return WallTime(year: c.year ?? t.year, month: c.month ?? t.month, day: c.day ?? t.day, hour: hour, minute: minute)
     }
 
     /// `easeOutBack`: 0 → 1 with a small overshoot before it settles.

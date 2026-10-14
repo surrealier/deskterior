@@ -1,9 +1,11 @@
 import Foundation
 
-/// The hue a dimmed pixel drifts toward: moonlight / outdoor light (`cool`, toward `253a5e`) or
-/// lamplight (`warm`, toward `de9e41`).
+/// The hue a dimmed pixel drifts toward: moonlight / outdoor light (`cool`, toward `253a5e`), lamplight
+/// (`warm`, toward `de9e41`), or a screen's cold white light (`screen`: as `cool`, but wood turns grey-blue
+/// instead of keeping its tan, so the monitor's and phone's glows never read as a warm lamp). Ambient light is only ever
+/// `cool` or `warm`; `screen` is for light masks.
 public enum Tint: Int, Sendable, CaseIterable {
-    case cool, warm
+    case cool, warm, screen
 }
 
 /// Precomputed relighting table (DESIGN §1.4): palette index × light level 0…7 × tint → palette index.
@@ -16,7 +18,9 @@ public enum Tint: Int, Sendable, CaseIterable {
 /// snap to its own ramp, the tint's ramps (blue and purple for `cool`, walnut and oak for `warm`) or the
 /// four darkest neutrals; leaving the own ramp costs a bias that fades with the level, and a column moves
 /// one way only (own ramp → tint ramps → dark neutrals). Each `(index, tint)` column is also monotonic: a
-/// level is never lighter than the level above it.
+/// level is never lighter than the level above it. Screen light (`screen`) follows `cool`, except that oak and
+/// walnut lose their hue to the cool greys and blues, never the felt mat's greys (M10 review: a monitor's glow on
+/// the oak desk read as lamplight).
 public struct LightRamp: Sendable {
     /// Number of light levels (0…7).
     public static let levelCount = 8
@@ -32,7 +36,7 @@ public struct LightRamp: Sendable {
     }
 
     /// Flattened table, one palette index per byte at offset `((tint * 8) + level) * 46 + index`.
-    /// Upload as a 2D `.r8Uint` texture of width 46 (index) × height 16 (row `tint * 8 + level`),
+    /// Upload as a 2D `.r8Uint` texture of width 46 (index) × height 24 (row `tint * 8 + level`),
     /// `bytesPerRow` 46; the lit pass reads `ramp.read(uint2(index, tint * 8 + level))`.
     public let gpuBytes: [UInt8]
 
@@ -61,7 +65,7 @@ public struct LightRamp: Sendable {
     }
 
     /// `gpuBytes` expanded to RGBA8 colours (4 bytes per entry, same order), for a lit pass that wants
-    /// colours instead of indices: a 46 × 16 `.rgba8Unorm` texture with `bytesPerRow` 184.
+    /// colours instead of indices: a 46 × 24 `.rgba8Unorm` texture with `bytesPerRow` 184.
     public var gpuRGBABytes: [UInt8] {
         var out = [UInt8]()
         out.reserveCapacity(gpuBytes.count * 4)
@@ -95,9 +99,14 @@ public struct LightRamp: Sendable {
             ? lightnessFloor + (lab.L - lightnessFloor) * lightnessScale(level: level)
             : lab.L
         let fade = lab.L > 0 ? pow(L / lab.L, chromaExponent) : 1
-        let (hue, maxWeight) = tint == .cool ? (coolHue, 0.9) : (warmHue, 0.6)
-        let w = maxWeight * pow(1 - Double(level) / Double(maxLevel), tintExponent)
+        let (hue, maxWeight) = tint == .warm ? (warmHue, 0.6) : (coolHue, 0.9)
+        var w = maxWeight * pow(1 - Double(level) / Double(maxLevel), tintExponent)
         let glow = tint == .warm && warmFriendly(ownRamp) ? warmGlow[level] : 0
+        if tint == .screen && screenGreys(ownRamp) {
+            // Wood under a screen's light: its hue gives way to the cool grey's.
+            w = max(w, screenWash)
+            return OKLab(L: L, a: lab.a * fade * (1 - w) + screenGrey.a * w, b: lab.b * fade * (1 - w) + screenGrey.b * w)
+        }
         return OKLab(
             L: L,
             a: lab.a * fade * (1 - w) + hue.a * w + glow * warmDirection.a,
@@ -116,10 +125,21 @@ public struct LightRamp: Sendable {
         return (warmHue.a / n, warmHue.b / n)
     }()
 
-    /// Ramps lamplight visibly warms (wood, walnut, red, the greys of walls, paper, metal and felt); blue, green
-    /// and purple only dim.
+    /// Ramps lamplight visibly warms (wood, walnut, red, the greys of walls, paper, metal and felt; `biasScale`
+    /// keeps metal grey at level 6); blue, green and purple only dim.
     private static func warmFriendly(_ ramp: Apollo.Ramp) -> Bool {
         ramp == .oak || ramp == .walnut || ramp == .red || ramp == .neutral
+    }
+
+    /// Screen light: the grey wood drifts toward (`819796`) and how much of its own hue it gives up.
+    private static let screenGrey = OKLab(RGBA8(hex: 0x819796))
+    private static let screenWash = 0.85
+    /// Under screen light, leaving oak or walnut for a neutral grey costs only this share of `ownRampBias`.
+    private static let screenBiasScale = 0.2
+
+    /// Ramps a screen's light greys (the woods); everything else dims as under `cool`.
+    private static func screenGreys(_ ramp: Apollo.Ramp) -> Bool {
+        ramp == .oak || ramp == .walnut
     }
 
     /// Snap penalty (squared OKLab units) for leaving the source's own ramp, scaled by level / 7: hue
@@ -137,27 +157,49 @@ public struct LightRamp: Sendable {
     private static let darkNeutrals = Apollo.Ramp.neutral.indices.prefix(4)
 
     /// Palette indices `index` may become under `tint`, ascending: its own ramp, the tint's ramps (blue and
-    /// purple for `cool`, walnut and oak for `warm`) and the four darkest neutrals.
+    /// purple for `cool` and `screen`, walnut and oak for `warm`) and the four darkest neutrals; under `screen`,
+    /// oak and walnut may also become the light neutrals, but never the felt mat's greys (`feltGreys`).
     static func candidates(for index: Int, tint: Tint) -> [Int] {
-        let tintRamps: [Apollo.Ramp] = tint == .cool ? [.blue, .purple] : [.walnut, .oak]
-        var set = Set(Apollo.ramp(of: index).indices).union(darkNeutrals)
+        let own = Apollo.ramp(of: index)
+        var tintRamps: [Apollo.Ramp] = tint == .warm ? [.walnut, .oak] : [.blue, .purple]
+        if tint == .screen && screenGreys(own) { tintRamps.append(.neutral) }
+        var set = Set(own.indices).union(darkNeutrals)
         for ramp in tintRamps { set.formUnion(ramp.indices) }
+        if tint == .screen && screenGreys(own) { set.subtract(feltGreys) }
         return set.sorted()
     }
 
+    /// The felt mat's greys (`394a50`, `577277`): a glow on the desk must not turn it into felt.
+    private static let feltGreys: Set<Int> = [Ink.neutral4.paletteIndex!, Ink.neutral5.paletteIndex!]
+
+    /// The share of `ownRampBias` that leaving `index`'s ramp for one of the tint's costs at `level`: lamplight
+    /// lets wood, red and the greys warm (but the room light's level 6 only the light greys of walls and paper, so
+    /// metal stays grey), screen light lets wood grey; otherwise all of it.
+    private static func biasScale(index: Int, level: Int, tint: Tint) -> Double {
+        let own = Apollo.ramp(of: index)
+        switch tint {
+        case .warm where warmFriendly(own):
+            return own == .neutral && level == 6 && index < Ink.neutral8.paletteIndex! ? 1 : warmBiasScale
+        case .screen where screenGreys(own):
+            return screenBiasScale
+        default:
+            return 1
+        }
+    }
+
     /// The candidate nearest `t` (L, plus a/b weighted by `chromaSnapWeight`) at or past `minStage`, with
-    /// `ownRampBias` added outside the own ramp; ties go to the lowest index.
+    /// `ownRampBias` added outside the own ramp (`scale` of it toward the tint's ramps); ties go to the lowest
+    /// index.
     private static func snap(
-        _ t: OKLab, level: Int, tint: Tint, among candidates: [Int], ownRamp: Apollo.Ramp, minStage: Int
+        _ t: OKLab, level: Int, scale tintScale: Double, among candidates: [Int], ownRamp: Apollo.Ramp, minStage: Int
     ) -> Int {
         var best = -1, bestD = Double.infinity
-        let warmScale = tint == .warm && warmFriendly(ownRamp) ? warmBiasScale : 1
         for i in candidates where stage(of: i, ownRamp: ownRamp) >= minStage {
             let p = Apollo.oklab[i]
             let dL = t.L - p.L, da = t.a - p.a, db = t.b - p.b
             var d = dL * dL + chromaSnapWeight * (da * da + db * db)
             if Apollo.ramp(of: i) != ownRamp {
-                let scale = darkNeutrals.contains(i) ? 1 : warmScale
+                let scale = darkNeutrals.contains(i) ? 1 : tintScale
                 d += ownRampBias * Double(level) / Double(maxLevel) * scale
             }
             if d < bestD { (best, bestD) = (i, d) }
@@ -175,7 +217,8 @@ public struct LightRamp: Sendable {
                 table[offset(index: index, level: maxLevel, tint: tint)] = UInt8(index)
                 for level in stride(from: maxLevel - 1, through: 0, by: -1) {
                     let t = target(Apollo.oklab[index], level: level, tint: tint, ownRamp: ownRamp)
-                    var j = snap(t, level: level, tint: tint, among: allowed, ownRamp: ownRamp, minStage: minStage)
+                    var j = snap(t, level: level, scale: biasScale(index: index, level: level, tint: tint),
+                                 among: allowed, ownRamp: ownRamp, minStage: minStage)
                     if Apollo.oklab[j].L > Apollo.oklab[above].L { j = above }
                     table[offset(index: index, level: level, tint: tint)] = UInt8(j)
                     minStage = max(minStage, stage(of: j, ownRamp: ownRamp))

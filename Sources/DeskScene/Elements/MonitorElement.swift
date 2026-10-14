@@ -32,6 +32,8 @@ public final class MonitorElement: DeskElement {
     private var cardKey: (ScreenOverlay, SkyVariant)?
     private var crtOff: [PixelBuffer] = []
     private var crtOn: [PixelBuffer] = []
+    /// Reduce Motion's fade in place of the CRT collapse or bloom: its frames and how long it has run.
+    private var fade: (frames: [PixelBuffer], t: Double)?
     private(set) var pressedPart: String?
     private var shownCover: String?
     private var shownOSD: String?
@@ -81,13 +83,17 @@ public final class MonitorElement: DeskElement {
         if before == .off || before == .poweringOff, machine?.phase == .poweringOn {
             crtOn = MonitorArt.powerOnFrames(to: picture(withTokens: false))
         }
-        // Reduce Motion: no CRT collapse or bloom, the screen is simply off or on (M10).
-        if context.reduceMotion, machine?.phase == .poweringOff || machine?.phase == .poweringOn { machine?.settle() }
+        // Reduce Motion: no CRT collapse or bloom; the machine is off or on at once and the glass fades (M10).
+        if context.reduceMotion, let phase = machine?.phase, phase == .poweringOff || phase == .poweringOn {
+            let image = picture(withTokens: phase == .poweringOff)
+            fade = (MonitorArt.fadeFrames(image, poweringOn: phase == .poweringOn), 0)
+            machine?.settle()
+        }
         refresh()
     }
 
-    /// The screen glows (lit pass): on, or mid-transition.
-    var isEmissive: Bool { machine.map { $0.phase != .off } ?? true }
+    /// The screen glows (lit pass): on, or mid-transition (a Reduce Motion fade included).
+    var isEmissive: Bool { fade != nil || (machine.map { $0.phase != .off } ?? true) }
     /// The screen lights the wall and desk: on or blooming, never while it collapses (M10).
     var glows: Bool { machine.map { $0.phase == .on || $0.phase == .poweringOn } ?? true }
 
@@ -119,7 +125,11 @@ public final class MonitorElement: DeskElement {
         // The cover: a CRT frame, static, the AV card or a full-screen card.
         var coverKey: String?
         var coverImage: (() -> PixelBuffer)?
-        if let crt = m.crtFrame {
+        if let f = fade {
+            let i = min(f.frames.count - 1, Int((f.t + 1e-9) / MonitorMachine.crtFrameTime))
+            coverKey = "fade\(i)"
+            coverImage = { f.frames[i] }
+        } else if let crt = m.crtFrame {
             switch crt {
             case let .off(i) where i < crtOff.count:
                 coverKey = "off\(i)"
@@ -444,7 +454,7 @@ public final class MonitorElement: DeskElement {
     // MARK: Frames
 
     public var needsFrames: Bool {
-        (machine?.needsFrames ?? false) || scrollAccum != .zero || scrollLocked || dotBlink != nil
+        (machine?.needsFrames ?? false) || scrollAccum != .zero || scrollLocked || dotBlink != nil || fade != nil
     }
 
     public func step(_ dt: Double) {
@@ -459,6 +469,11 @@ public final class MonitorElement: DeskElement {
             dotBlink = b.t + dt >= Self.dotBlinkDuration ? nil : (b.pages, b.t + dt)
             if machine?.needsFrames != true { refresh() }
         }
+        if let f = fade {
+            let t = f.t + dt
+            fade = t + 1e-9 >= Double(f.frames.count) * MonitorMachine.crtFrameTime ? nil : (f.frames, t)
+            if machine?.needsFrames != true { refresh() }
+        }
         guard machine?.needsFrames == true else { return }
         machine?.step(dt)
         refresh()
@@ -466,6 +481,7 @@ public final class MonitorElement: DeskElement {
 
     public func settle() {
         machine?.settle()
+        fade = nil
         scrollAccum = .zero
         scrollLocked = false
         dotBlink = nil

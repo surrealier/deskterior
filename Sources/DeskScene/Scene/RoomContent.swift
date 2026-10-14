@@ -45,7 +45,11 @@ public final class SceneContext {
     func dispatch(_ action: DeskAction) { onAction?(action) }
     func request(_ r: SceneRequest) { onRequest?(r) }
     func toast(_ key: ToastKey) { onToast?(key) }
-    func shake(frames: Int) { shakeFrames = max(shakeFrames, frames) }
+    /// The 1-px screen shake (none with Reduce Motion, DESIGN §2.1).
+    func shake(frames: Int) {
+        guard !reduceMotion else { return }
+        shakeFrames = max(shakeFrames, frames)
+    }
     /// The z of a room placement ("monitor.screen"), for drawing just above it.
     func placementZ(_ id: String) -> CGFloat { placementZs[id] ?? CGFloat(RoomLayer.deskBack.rawValue * 1000 + 999) }
     /// Elements that may take dropped tokens, front to back.
@@ -82,6 +86,8 @@ final class RoomContent: GestureTarget {
     /// Stable draw order of every placement id (from the last full build).
     private var order: [String: Int] = [:]
     let hoverNode = SKSpriteNode()
+    /// The hover ring on show, which the lit pass lights in the dark (`litOverlay`).
+    private(set) var hoverRing: HoverRingLight?
     /// Drags that ended but still animate home.
     private var settling: [any DragController] = []
     /// Interactive elements and the placed object whose hit-test slot they fill (front first).
@@ -275,6 +281,8 @@ final class RoomContent: GestureTarget {
         let minuteOnly = sameLight && sameRest
         refresh(minuteOnly ? RoomPlan.minuteIDs : RoomPlan.stateDependentIDs, relight: !minuteOnly)
         if skyChanged, let s = context.state { monitor.apply(s) }
+        // The light moved under a resting pointer: a token it reached or left is hovered (or not) anew (`DarkHit`).
+        if !minuteOnly { relit() }
         return true
     }
 
@@ -288,11 +296,12 @@ final class RoomContent: GestureTarget {
         router.reaimDrag()
     }
 
-    /// Drops selected tokens no element shows any more (power off, AV, another page, moved into hiding).
+    /// Drops selected tokens no element shows any more (power off, AV, another page, moved into hiding) or that
+    /// the light no longer reaches (`darkTokens`).
     func pruneSelection() {
         guard !context.selection.isEmpty else { return }
         let shown = extras.reduce(into: Set<TokenKey>()) { $0.formUnion($1.shownTokens) }
-        context.selection.restrict(to: shown)
+        context.selection.restrict(to: shown.subtracting(darkTokens()))
         screen.refreshIfSelectionChanged()
     }
 
@@ -426,6 +435,7 @@ final class RoomContent: GestureTarget {
         let shown = hit?.element == "room" ? nil : hit
         guard shown != hovered else { return false }
         hovered = shown
+        hoverRing = nil
         guard let hit = shown, let element else {
             hoverNode.isHidden = true
             return true
@@ -455,6 +465,7 @@ final class RoomContent: GestureTarget {
                 return true
             }
         }
+        hoverRing = HoverRingLight(element: element, image: ring, origin: origin)
         hoverNode.texture = TextureFactory.texture(ring)
         space.place(hoverNode, at: ArtRect(origin: origin, size: ring.size))
         hoverNode.isHidden = false

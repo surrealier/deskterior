@@ -197,7 +197,7 @@ import Testing
         IndexLUT.prewarm()
         LightRamp.prewarm()
         #expect(IndexLUT.shared.bytes.count == IndexLUT.byteCount)
-        #expect(LightRamp.shared.gpuBytes.count == 2 * 8 * Apollo.count)
+        #expect(LightRamp.shared.gpuBytes.count == Tint.allCases.count * 8 * Apollo.count)
     }
 
     private func driftOffsets() -> [(Int, Int, Int)] {
@@ -216,7 +216,7 @@ import Testing
     let ramp = LightRamp.shared
 
     @Test func tableShapeAndClosure() {
-        #expect(ramp.gpuBytes.count == 2 * 8 * Apollo.count)
+        #expect(ramp.gpuBytes.count == Tint.allCases.count * 8 * Apollo.count)
         #expect(ramp.gpuBytes.allSatisfy { Int($0) < Apollo.count })
         #expect(ramp.gpuRGBABytes.count == ramp.gpuBytes.count * 4)
     }
@@ -290,10 +290,12 @@ import Testing
         #expect(Apollo.ramp(of: ramp.map(white, level: 1, tint: .warm)) == .walnut)
     }
 
-    /// Moonlight drifts toward blue/purple, lamplight toward walnut/oak; nothing jumps to an unrelated hue.
+    /// Moonlight and screen light drift toward blue/purple, lamplight toward walnut/oak, and screen light greys
+    /// wood; nothing jumps to an unrelated hue.
     static func allowedRamps(for index: Int, tint: Tint) -> Set<Apollo.Ramp> {
         var ramps: Set<Apollo.Ramp> = [Apollo.ramp(of: index)]
-        ramps.formUnion(tint == .cool ? [.blue, .purple] : [.walnut, .oak])
+        ramps.formUnion(tint == .warm ? [.walnut, .oak] : [.blue, .purple])
+        if tint == .screen, [Apollo.Ramp.oak, .walnut].contains(Apollo.ramp(of: index)) { ramps.insert(.neutral) }
         return ramps
     }
 
@@ -369,12 +371,20 @@ private enum LightRampGolden {
         "36 0 0 0 1 1 37 38 38 6 6 6 37 38 0 39 39 1 36 37 38 0 39 39 36 37 24 24 24 25 36 30 30 30 30 30 36 36 36 37 37 38 39 39 39 1", // cool 1
         "36 36 37 37 0 0 36 36 37 37 0 0 36 37 37 37 38 0 36 36 37 37 37 38 36 36 36 37 37 37 36 36 37 37 37 30 36 36 36 36 36 37 37 37 38 0", // cool 0
         "0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 41 42 43 44 45", // warm 7
-        "0 1 2 3 4 4 6 7 8 9 9 11 12 13 14 21 15 16 18 19 20 21 21 22 24 25 26 27 28 29 30 31 32 33 33 35 36 37 37 39 40 41 14 15 16 17", // warm 6
+        "0 1 2 3 4 4 6 7 8 9 9 11 12 13 14 21 15 16 18 19 20 21 21 22 24 25 26 27 28 29 30 31 32 33 33 35 36 37 37 39 40 41 42 42 16 17", // warm 6
         "0 0 1 2 3 4 6 7 7 8 9 9 12 13 20 21 21 22 18 19 20 21 21 21 24 25 26 27 27 21 30 31 31 32 33 34 36 36 37 38 12 20 20 14 15 16", // warm 5
         "0 0 1 2 2 3 6 6 7 8 8 8 12 19 20 20 21 21 18 19 19 20 21 21 24 25 19 26 27 20 30 30 31 32 32 13 36 36 37 38 12 19 20 14 14 15", // warm 4
         "0 0 0 1 2 2 6 6 7 7 8 8 18 19 20 20 20 20 18 18 19 20 20 20 24 18 19 19 20 20 30 30 31 31 19 13 36 36 37 37 18 12 13 20 20 14", // warm 3
         "37 0 0 39 12 13 37 6 6 7 7 7 18 18 19 19 19 20 18 18 18 19 19 20 24 18 18 19 19 19 36 30 18 31 19 19 36 36 36 37 38 39 12 19 13 13", // warm 2
         "36 37 0 39 39 12 36 6 6 6 6 6 18 18 18 19 19 19 36 18 18 18 19 19 36 18 18 18 19 19 36 30 18 18 18 12 36 36 36 36 37 38 18 12 12 19", // warm 1
         "36 36 36 37 37 18 36 36 36 18 18 18 36 36 18 18 18 18 36 36 18 18 18 18 36 36 36 18 18 18 36 36 36 18 18 18 36 36 36 36 36 36 18 18 18 18", // warm 0
+        "0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 41 42 43 44 45", // screen 7
+        "0 1 2 3 4 4 6 7 8 8 9 11 12 13 14 42 43 43 18 18 2 21 42 43 24 25 26 27 28 29 30 31 32 32 33 35 36 37 38 39 40 41 42 42 43 44", // screen 6
+        "0 1 1 2 3 4 6 6 7 8 9 9 0 12 13 42 42 42 0 18 1 20 42 42 24 24 25 26 27 28 30 31 31 32 33 34 36 37 37 38 39 40 41 42 42 43", // screen 5
+        "0 0 1 2 2 3 6 6 7 7 8 8 0 12 13 2 42 42 0 18 1 2 42 42 24 24 25 26 26 27 30 30 31 32 32 32 36 37 37 38 39 40 41 41 42 42", // screen 4
+        "0 0 1 1 2 2 6 6 6 7 7 7 0 12 12 2 2 2 0 18 39 1 2 2 24 24 25 25 26 26 30 30 31 31 31 32 36 36 37 38 39 39 40 40 41 41", // screen 3
+        "0 0 0 1 1 2 37 6 6 6 7 7 0 0 39 1 1 2 37 0 39 39 1 1 24 24 24 25 25 25 30 30 30 31 31 31 36 36 37 37 38 39 39 40 40 40", // screen 2
+        "36 0 0 0 1 1 37 38 38 6 6 6 37 38 39 39 39 39 36 37 38 39 39 39 36 37 24 24 24 25 36 30 30 30 30 30 36 36 36 37 37 38 39 39 39 1", // screen 1
+        "36 36 37 37 0 0 36 36 37 37 0 0 36 37 37 37 38 38 36 36 37 37 37 38 36 36 36 37 37 37 36 36 37 37 37 30 36 36 36 36 36 37 37 37 38 0", // screen 0
     ]
 }

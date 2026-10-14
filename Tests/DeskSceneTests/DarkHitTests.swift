@@ -33,6 +33,10 @@ struct DarkHitTests {
             return .handled
         }
         func menu(_ hit: Hit) -> MenuSpec? { MenuSpec([MenuItem("open", "Open", .open([hit.token!]))]) }
+        var shownTokens: Set<TokenKey> { Set(tokens.map(\.key)) }
+        func accessibilityItems() -> [AXItem] {
+            tokens.map { AXItem(id: "stub.\($0.key.inode)", label: "stub", role: .token, frame: $0.rect, token: $0.key) }
+        }
     }
 
     /// Lamp Only at 22:00 with the stub in the wastebasket's hit-test slot: a token in the lamp's pool and one on the
@@ -141,15 +145,22 @@ struct DarkHitTests {
         #expect(scene.roomState?.effectiveLights.monitorGlows == true && scene.lightLevel(at: desk) == 5)
     }
 
-    @Test("Reduce Motion: power off and on without the CRT; the glow follows at once")
+    @Test("Reduce Motion: power off and on without the CRT, a 2-frame fade on the glass; the glow follows at once")
     func reduceMotionCRT() throws {
         let (store, _, _, _) = try Self.setUp()
         let scene = store.scene
+        let p = Pointer(scene: scene)
         scene.reduceMotion = true
         store.dispatch(.power(false))
-        #expect(scene.monitor?.machine?.phase == .off && scene.roomState?.effectiveLights.monitorOn == false)
+        #expect(scene.monitor?.machine?.phase == .off && scene.roomState?.effectiveLights.monitorGlows == false)
+        // The glass fades out over two 12 fps frames, then goes dark.
+        #expect(scene.roomState?.effectiveLights.monitorOn == true && scene.needsFrames)
+        p.frames(12)
+        #expect(scene.roomState?.effectiveLights.monitorOn == false && !scene.needsFrames)
         store.dispatch(.power(true))
         #expect(scene.monitor?.machine?.phase == .on && scene.roomState?.effectiveLights.monitorGlows == true)
+        p.frames(12)
+        #expect(!scene.needsFrames)
     }
 
     @Test("A face-down phone casts no glow")

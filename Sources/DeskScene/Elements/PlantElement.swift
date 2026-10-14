@@ -64,7 +64,8 @@ public final class PlantElement: DeskElement {
         shownFrame = frame
         let image = PropArt.plantJiggle(frame)
         jiggleNode.texture = TextureFactory.texture(image)
-        context.space.place(jiggleNode, at: ArtRect(origin: origin, size: image.size))
+        let at = ArtPoint(origin.x - PropArt.plantJigglePad, origin.y)
+        context.space.place(jiggleNode, at: ArtRect(origin: at, size: image.size))
         jiggleNode.zPosition = context.placementZ(id) + 0.5
         jiggleNode.isHidden = false
         pl.root.isHidden = true

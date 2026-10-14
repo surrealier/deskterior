@@ -27,7 +27,7 @@ struct LightRampWarmTests {
         }
     }
 
-    @Test("Walls, paper and light metal turn cream and tan at 6; the felt greys warm at 5")
+    @Test("Walls and paper turn cream and tan at 6; the felt greys warm at 5")
     func greys() {
         let paper = Ink.neutral9.paletteIndex!, wallShade = Ink.neutral8.paletteIndex!
         #expect(ramp.map(paper, level: 6, tint: .warm) == Ink.oak5.paletteIndex!)

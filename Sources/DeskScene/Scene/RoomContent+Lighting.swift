@@ -30,7 +30,8 @@ final class DarkTokenElement: DeskElement {
     /// Never in the routing order: `RoomContent.darkFiltered` hands it out.
     func hitTest(_ p: ArtPoint) -> Hit? { nil }
 
-    /// A 1-px outline round the token in the label white the dark dims to a faint blue (no name, no tooltip).
+    /// A 1-px outline round the token in label white, lit only to `ringLevel` (`HoverRingLight`), so it shows
+    /// faintly in the dark (no name, no tooltip).
     func hoverStyle(_ hit: Hit) -> HoverStyle {
         let r = hit.rect.insetBy(-1, -1)
         var c = PixelCanvas(width: r.w, height: r.h)
@@ -41,6 +42,35 @@ final class DarkTokenElement: DeskElement {
     func handle(_ gesture: Gesture, _ hit: Hit) -> GestureResponse { .handled }
 
     static let ink = Ink.neutral9
+    /// The light the outline gets: faint (`577277` at ambient 1), not the full white of a lit ring.
+    static let ringLevel = DarkHit.minimumLevel
+}
+
+/// The hover ring's own pixels, which the lit pass lights so whatever the pointer finds shows in the dark (the
+/// lamp, the wall switch, the clock): at full light, or `DarkTokenElement.ringLevel` for a dark token's outline.
+struct HoverRingLight: Equatable {
+    let image: PixelBuffer
+    let origin: ArtPoint
+    let level: Int
+
+    init(element: any DeskElement, image: PixelBuffer, origin: ArtPoint) {
+        self.image = image
+        self.origin = origin
+        level = element is DarkTokenElement ? DarkTokenElement.ringLevel : LightRamp.maxLevel
+    }
+}
+
+/// What the lit pass lights over the room's mask: the tooltip and toast rects at full light, and the hover ring.
+struct LitOverlay: Equatable {
+    var rects: [ArtRect] = []
+    var ring: HoverRingLight?
+
+    var isEmpty: Bool { rects.isEmpty && ring == nil }
+
+    func apply(to mask: inout LightMask) {
+        for r in rects { mask.addRect(r, level: LightRamp.maxLevel, tint: .cool) }
+        if let ring { mask.addSprite(ring.image, at: ring.origin, level: ring.level, tint: .cool) }
+    }
 }
 
 extension RoomContent {
@@ -61,6 +91,32 @@ extension RoomContent {
     func darkFiltered(_ hit: Hit, _ element: any DeskElement) -> (hit: Hit, element: any DeskElement) {
         guard hit.token != nil, !isTokenLit(hit.rect) else { return (hit, element) }
         return (Hit(element: Self.darkToken.id, part: "token.dark", rect: hit.rect), Self.darkToken)
+    }
+
+    /// After the light changed: re-hover under a resting pointer (a token the light reached or left) and let go of
+    /// selected tokens now in the dark.
+    func relit() {
+        router.refreshHover()
+        pruneSelection()
+    }
+
+    /// Shown tokens drawn where the light does not reach (`DarkHit`, by their accessibility frames): the selection
+    /// lets them go, so keys and menus never act on a token the user cannot see. None while a drag is in hand (a
+    /// carry keeps its stack) or while the ambient light alone lets every token be seen.
+    func darkTokens() -> Set<TokenKey> {
+        guard router.drag == nil, ambient.level < DarkHit.minimumLevel else { return [] }
+        var out = Set<TokenKey>()
+        for e in extras {
+            for item in e.accessibilityItems() {
+                if let key = item.token, !isTokenLit(item.frame) { out.insert(key) }
+            }
+        }
+        return out
+    }
+
+    /// What the lit pass adds over the light mask: the tooltip and toast, and while the room is dim, the hover ring.
+    var litOverlay: LitOverlay {
+        LitOverlay(rects: emissiveRects, ring: ambient.level < LightRamp.maxLevel ? hoverRing : nil)
     }
 
     /// Whether a token drawn in `rect` can be seen under the room's light now.

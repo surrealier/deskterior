@@ -494,7 +494,7 @@ final class DemoRunner {
         case "clock": return room.map { String(format: "%02d:%02d", $0.time.hour, $0.time.minute) } ?? "none"
         case "glow.monitor": return onOff(lit.map { $0.monitorOn && $0.monitorGlows })
         case "glow.phone": return onOff(lit?.phoneFaceUp)
-        case "glow.lamp": return onOff(lit?.lampOn)
+        case "glow.lamp": return onOff(lit?.lampOn == true && room.map { RoomArt.lampGlows($0.timeOfDay) } == true)
         case "hover.part": return scene.hoveredHit.map { $0.part ?? $0.element } ?? "none"
         case "keyboard.key":
             return (scene.roomElement("keyboard") as? KeyboardElement)?.pressedKey.map { "\($0.row),\($0.col)" } ?? "none"

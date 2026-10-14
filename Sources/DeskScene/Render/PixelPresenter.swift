@@ -59,8 +59,8 @@ public final class PixelPresenter {
         lightMask = [UInt8](repeating: 0, count: size.area)
     }
 
-    /// Replaces the light mask: one byte per art px, row 0 = top; low 3 bits = level 0…7, bit 3 = warm tint.
-    /// Uploads only when the bytes change.
+    /// Replaces the light mask: one byte per art px, row 0 = top; low 3 bits = level 0…7, bits 3–4 = tint
+    /// (0 cool, 1 warm, 2 screen). Uploads only when the bytes change.
     public func setLightMask(_ mask: [UInt8]) throws {
         precondition(mask.count == artSize.area, "light mask must have one byte per art px")
         guard mask != lightMask else { return }

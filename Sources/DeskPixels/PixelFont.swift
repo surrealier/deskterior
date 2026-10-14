@@ -12,7 +12,8 @@ import Foundation
 /// the font lacks fall back to the system font at the same size (also without anti-aliasing; then its
 /// non-colour cascade fonts); colour emoji are drawn large, area-averaged down to a small square on the
 /// baseline and snapped to Apollo with binary alpha (they keep their own colours whatever the text colour); a
-/// hollow box stands in for anything that still draws nothing.
+/// variation selector no font maps is dropped for its base character; a hollow box stands in for anything that
+/// still draws nothing.
 ///
 /// Verified against Galmuri9's BDF: CoreText reproduces the designed bitmaps exactly (ASCII, Latin-1/Ext-A,
 /// kana, all 11,172 Hangul syllables). Glyph bitmaps are cached and the type is thread-safe (`CTFont` is
@@ -192,6 +193,8 @@ public final class PixelFont: @unchecked Sendable {
 
     private func makeGlyph(_ c: Character) -> Glyph {
         if c.isNewline || c == "\t" { return glyph(" ") }
+        // Text presentation ("☺︎", "✈︎") asks for the plain glyph of its base character.
+        if let base = Self.textPresentationBase(c) { return glyph(base) }
         if let g = rasterize(c, font: primary, source: .primary) { return g }
         if let fallback {
             if let g = rasterize(c, font: fallback, source: .systemFallback) { return g }
@@ -204,6 +207,8 @@ public final class PixelFont: @unchecked Sendable {
                 return g
             }
         }
+        // A variation selector no font maps: the base character before the box.
+        if let base = Self.strippingVariationSelectors(c) { return glyph(base) }
         return boxGlyph()
     }
 
@@ -212,8 +217,9 @@ public final class PixelFont: @unchecked Sendable {
 
     /// A colour emoji (`font` is a colour font, e.g. Apple Color Emoji): drawn large through a `CTLine` (so ZWJ
     /// sequences, flags and skin tones shape as one picture), trimmed to its ink, reduced into a `pixelSize`
-    /// square standing on the baseline (`featureAverage`, so eyes and outlines survive), alpha thresholded and
-    /// snapped to Apollo. Nil when nothing is drawn.
+    /// square standing on the baseline (`featureAverage`, so eyes and outlines survive), alpha thresholded,
+    /// snapped to Apollo by lightness first (`snapEmoji`) and given a light rim where its edge is dark
+    /// (`liftDarkRim`). Nil when nothing is drawn.
     private func rasterizeColor(_ c: Character, font: CTFont) -> Glyph? {
         let box = max(3, min(baseline, pixelSize))
         let big = CTFontCreateCopyWithAttributes(font, CGFloat(box * Self.colorOversample), nil, nil)
@@ -233,7 +239,7 @@ public final class PixelFont: @unchecked Sendable {
         let bounds = IconPixelator.alphaBounds(drawn, minAlpha: 32)
         guard !bounds.isEmpty else { return nil }
         let fit = IconPixelator.fitted(bounds.size, into: ArtSize(box, box))
-        let snapped = Quantizer.mapToPalette(Self.featureAverage(drawn.cropped(to: bounds), to: fit))
+        let snapped = Self.liftDarkRim(Self.snapEmoji(Self.featureAverage(drawn.cropped(to: bounds), to: fit)))
         guard !snapped.opaqueBounds().isEmpty else { return nil }
 
         let advance = fit.w + 1

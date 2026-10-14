@@ -53,7 +53,7 @@ public enum RenderError: Error, CustomStringConvertible {
 /// The two post passes after SpriteKit (DESIGN §1.1), compiled from MSL source at runtime (the Command Line
 /// Tools have no `metal` compiler):
 /// - **lit**: art texel → 64³ index LUT → palette index; `level = max(ambient, mask)`; colour from the
-///   46 × 16 light ramp;
+///   46 × 24 light ramp (cool, warm, screen);
 /// - **upscale**: nearest integer upscale of the lit frame into the drawable, with crop and shake.
 public final class PostPass {
     public let device: any MTLDevice
@@ -61,7 +61,7 @@ public final class PostPass {
     private let upscalePipeline: any MTLRenderPipelineState
     /// `IndexLUT.shared` as a 64³ `.r8Uint` texture.
     let lutTexture: any MTLTexture
-    /// `LightRamp.shared.gpuRGBABytes` as a 46 × 16 `.rgba8Unorm` texture.
+    /// `LightRamp.shared.gpuRGBABytes` as a 46 × 24 `.rgba8Unorm` texture.
     let rampTexture: any MTLTexture
 
     /// Pixel format of the art, lit and output textures.
@@ -220,7 +220,7 @@ public final class PostPass {
             uint m = mask.read(p).r;
             uint maskLevel = m & 7u;
             uint level = max(u.ambientLevel, maskLevel);
-            uint tint = maskLevel > u.ambientLevel ? ((m >> 3) & 1u) : u.ambientTint;
+            uint tint = maskLevel > u.ambientLevel ? min((m >> 3) & 3u, 2u) : u.ambientTint;
             return ramp.read(uint2(index, tint * 8u + level));
         }
 

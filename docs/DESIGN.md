@@ -89,6 +89,40 @@
     - A `FileUndoRecord` is redeemable once, and only on the operator that issued it.
     - Copies stage in an item-replacement folder on the desk's volume, report progress, and land by one
       exclusive rename. Every move is re-checked by identity afterwards and sent back if it was swapped.
+15. **Lighting interactions (M10).** These refine §1.4, §2.1, §2.2 E12–E14 and §4.11, and supersede Errata 8's
+    light shapes.
+    - **Light shapes.** The lamp's pool steps down 7 → 6 → 5 → 4 → 3 → 2 in dithered bands (`lampPoolFalloff`), still
+      only at ambient ≤ 5. The monitor's glow on the desk falls off 5 → 2 from under the screen's middle, within the
+      riser's width; it leaves as the CRT starts to collapse and returns with the bloom. The phone's glow falls off
+      5 → 2.
+    - **Screen light.** In a dark room (ambient below 3) the monitor's and phone's glows are a third tint,
+      `Tint.screen`: it dims like `cool`, but oak and walnut turn to cool greys and blues, never the felt mat's
+      `394a50`/`577277` (the desk under the glow is `819796` at levels 4–5, then `3c5e8b` and `253a5e` at the
+      fringe), so a glow never reads as a warm lamp. At dusk and dawn, a level or two over the ambient, the glows
+      stay `cool` and leave the desk its tan. Mask bytes carry the tint in bits 3–4 (0 cool, 1 warm,
+      2 screen) and the ramp texture is 46 × 24. Ambient light is only ever cool or warm.
+    - **Warm room light at night** (ambient warm 6) turns walls, wainscot and paper cream and tan; metal greys
+      (`a8b5b2` and darker) stay grey. The lamp's pool (warm 3–5) still warms every grey.
+    - **E12.** A click anywhere on the lamp (not only its base switch) toggles it. Lights ▸ Room Light and Desk Lamp
+      stay live in Lamp Only. Lamp Only is also emergent: Night with the room light off and the lamp on is Lamp Only,
+      and either switch turned from it gives Night; choosing another mode from Lamp Only turns the room light back on.
+    - **Darkness.** A token is dark where less than a third of its drawn rect is lit to level 3 (`DarkHit`). Hover and
+      selection follow the light under a resting pointer (a lamp switch, a flicker frame, a clock preview, the minute
+      tick). A dark token's hover is a faint outline (lit to level 3), never its name; clicks, drags, scrolls and
+      right-clicks do nothing, and `contextMenu(at:)` is empty there. The selection lets go of tokens drawn in the dark
+      (by their accessibility frames; not during a carry). Hover rings are lit to full light in the dark, so the lamp,
+      the wall switch and the clock can be found by hovering. VoiceOver still lists every token.
+    - **E13.** On release the preview first drops whole hours, so the minute hand springs back the short way (at most
+      half a turn over 0.5 s, overshooting a minute or two) and the light jumps most of the way at once. A preview
+      past midnight turns the calendar.
+    - **Reduce Motion** (§2.1): no shake; no flicker, jiggle or clock spring; the CRT's collapse and bloom become a
+      2-frame fade of the picture on the glass. `--reduce-motion` (§4.11) forces it on; otherwise the `reduceMotion`
+      setting decides (following the system by default).
+    - **Glyph fallback** (§1.4 text): Galmuri9, then the system font and its non-colour cascade without
+      anti-aliasing, then colour emoji drawn large, area-averaged into a 9-px square, snapped to Apollo lightness
+      first and given a mid-grey rim where their own edge is dark; a variation selector no font maps is dropped for
+      its base character (text presentation, U+FE0E, always draws the base glyph); a hollow box last. The emoji
+      golden holds only against the Apple Color Emoji version it was recorded with.
 
 ---
 
@@ -947,6 +981,7 @@ DeskScene (size = art × U, anchor .zero, ignoresSiblingOrder = false; explicit 
 | `--demo <file.json>` | Run a demo script. Requires a non-real `--desktop-folder`; implies DryRun/FakeTrash |
 | `--snapshot-dir <dir>` · `--snapshot-scale N` · `--frames-dir <dir>` | PNG output (art-res plus nearest ×N); every rendered frame |
 | `--clock <HH:MM or ISO8601>` · `--seed N` · `--icons kind\|live` | Determinism |
+| `--lights auto\|day\|night\|lamp` · `--reduce-motion` | Lights mode (not saved); Reduce Motion forced on |
 | `--level icon+1\|icon+3\|normal` | Window level |
 | `--tunables <json>` | Hot-reloaded cloth and physics constants (`Tunables`; dev only) |
 | `--record-input <file.json>` | Record real pointer events as a replayable demo |

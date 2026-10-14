@@ -540,22 +540,27 @@ public enum PropArt {
     // MARK: Plant jiggle
 
     /// The plant poked (E14): frame 0…3 of a 4-frame jiggle. The blade tips sway right, left, right by 1 px (the
-    /// middle of the blades follows only to the right), then rest; the pot stays put.
+    /// middle of the blades follows only to the right), then rest; the pot stays put. Each frame has
+    /// `plantJigglePad` clear columns either side of the plant, so a swaying tip at its edge is not cut off: place
+    /// it that many px left of the plant.
     public static func plantJiggle(_ frame: Int) -> PixelBuffer {
         let still = plant().image
         let sway = [1, -1, 1, 0][min(max(frame, 0), 3)]
-        guard sway != 0 else { return still }
-        var out = PixelBuffer(width: still.width, height: still.height)
+        let pad = plantJigglePad
+        var out = PixelBuffer(width: still.width + 2 * pad, height: still.height)
         for y in 0..<still.height {
             let shift = y < 9 ? sway : (y < 16 && sway > 0 ? 1 : 0)
             for x in 0..<still.width {
                 let c = still.pixel(x, y)
                 guard c.a != 0 else { continue }
-                out.set(x + shift, y, c)
+                out.set(x + shift + pad, y, c)
             }
         }
         return out
     }
+
+    /// Clear columns either side of a `plantJiggle` frame.
+    public static let plantJigglePad = 1
 
     // MARK: Chair
 

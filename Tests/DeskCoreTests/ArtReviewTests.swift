@@ -99,7 +99,7 @@ struct ArtReviewTests {
         #expect(layout.coreOrigin.y >= layout.visible.minY)
     }
 
-    @Test("Glows keep the desk an oak: no desk pixel turns into the felt mat's greys")
+    @Test("Glows never turn the desk into the felt mat's greys")
     func glowsStayOak() {
         for mode in [LightsMode.lampOnly, .night] {
             let state = RoomState(time: WallTime(hour: 22, minute: 0), lightsMode: mode)

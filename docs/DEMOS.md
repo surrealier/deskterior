@@ -96,7 +96,7 @@ Every step is an object with one key.
 | `chair.blocksCabinet` | `true` while the model's chair overlaps the cabinet fronts by more than 16 px. |
 | `lights.mode` / `lights.room` / `lights.lamp` | The model's Lights: `auto`/`day`/`night`/`lamp`; `on`/`off` as the room shows them. |
 | `ambient` / `phase` / `clock` | The room's ambient level (0–7), phase (`dawn`/`day`/`dusk`/`night`) and the time the clock shows (`HH:MM`, a preview included). |
-| `glow.monitor` / `glow.phone` / `glow.lamp` | Whether the monitor's glow, the phone's glow and the lamp (a flicker frame included) light the room: `on`/`off`. |
+| `glow.monitor` / `glow.phone` / `glow.lamp` | Whether the monitor's glow, the phone's glow and the lamp's pool (a flicker frame included; only at ambient 5 or less) light the room: `on`/`off`. |
 | `lit:<target>` / `light:<target>` | Whether a 16-px token drawn at the target would be seen, hovered and picked (`true`/`false`, `DarkHit`); the light level there. |
 | `hover.part` | The part the pointer rests on (`token`, `token.dark` for a token in the dark, `lamp.switch`…) or `none`. |
 | `keyboard.key` / `plant.jiggle` | The keyboard key drawn pressed (`row,col`) or `none`; whether the plant jiggles. |

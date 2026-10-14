@@ -86,7 +86,7 @@ struct LightingInteractionTests {
         let screen = layout.rect(CoreLayout.screen)
         let phoneGlow = layout.point(ArtPoint(392, 170))
         let on = LightMask.room(layout, lights: RoomLightState(lampOn: false, roomLightOn: false), time: tod)
-        #expect(on.level(desk.x, desk.y) == 5 && on.tint(desk.x, desk.y) == .cool)
+        #expect(on.level(desk.x, desk.y) == 5 && on.tint(desk.x, desk.y) == .screen)
         #expect(on.level(screen.midX, screen.midY) == 7)
         #expect(on.level(phoneGlow.x, phoneGlow.y) >= 4)
         let collapsing = LightMask.room(layout, lights: RoomLightState(lampOn: false, roomLightOn: false, monitorGlows: false),
@@ -173,14 +173,24 @@ struct LightingInteractionTests {
         #expect(RoomState(time: WallTime(hour: 18, minute: 0)).sky == .dusk)
     }
 
-    @Test("Plant jiggle: frames 0–2 sway the blade tips, frame 3 is the plant at rest, the pot never moves")
+    @Test("Plant jiggle: frames 0–2 sway the blade tips, frame 3 is the plant at rest, the pot never moves, no tip is cut off")
     func plantJiggle() {
         let still = PropArt.plant().image
-        #expect(PropArt.plantJiggle(3) == still)
+        let pad = PropArt.plantJigglePad
+        var rest = PixelBuffer(width: still.width + 2 * pad, height: still.height)
+        rest.blit(still, at: ArtPoint(pad, 0))
+        #expect(PropArt.plantJiggle(3) == rest)
         for f in 0..<3 {
             let j = PropArt.plantJiggle(f)
-            #expect(j != still, "frame \(f)")
-            for y in 20..<still.height { for x in 0..<still.width { #expect(j.pixel(x, y) == still.pixel(x, y)) } }
+            #expect(j != rest, "frame \(f)")
+            #expect(j.size == rest.size)
+            for y in 20..<rest.height { for x in 0..<rest.width { #expect(j.pixel(x, y) == rest.pixel(x, y)) } }
+            // Every blade pixel lands somewhere (a 1-px sway at the sprite's edge used to fall off it).
+            for y in 0..<rest.height {
+                let row = (0..<still.width).filter { still.pixel($0, y).a != 0 }.count
+                let moved = (0..<j.width).filter { j.pixel($0, y).a != 0 }.count
+                #expect(moved == row, "frame \(f) row \(y): \(moved) of \(row) px")
+            }
         }
     }
 }

@@ -80,7 +80,7 @@ public final class DeskScene: SKScene {
     public private(set) var deskState: DeskState?
     /// Real icons by token, kept across content rebuilds.
     private var icons: [TokenKey: PixelBuffer] = [:]
-    private var pushedEmissive: [ArtRect] = []
+    private var pushedEmissive = LitOverlay()
 
     private let backdrop = SKSpriteNode()
     private(set) var calibration: CalibrationContent?
@@ -236,9 +236,11 @@ public final class DeskScene: SKScene {
         onAction?(.requestOpen([key]))
     }
 
-    /// The menu a right-click at `p` would show (demo scripts, the app's status item uses the desk menu).
+    /// The menu a right-click at `p` would show (demo scripts, the app's status item uses the desk menu); empty
+    /// over a token in the dark, where a right-click shows none.
     public func contextMenu(at p: ArtPoint) -> MenuSpec {
         let t = room?.target(at: p)
+        if t?.element is DarkTokenElement { return MenuSpec([]) }
         return t.flatMap { $0.element.menu($0.hit) } ?? MenuSpec.desk(deskState ?? DeskState(), menuContext)
     }
 
@@ -276,24 +278,24 @@ public final class DeskScene: SKScene {
     /// The light mask bytes and ambient the lit pass should use.
     public var lighting: (mask: [UInt8], ambient: AmbientLight) {
         guard let room else { return ([UInt8](repeating: 0, count: grid.artSize.area), .identity) }
-        let ui = room.emissiveRects
-        guard !ui.isEmpty else { return (room.lightMask.bytes, room.ambient) }
+        let overlay = room.litOverlay
+        guard !overlay.isEmpty else { return (room.lightMask.bytes, room.ambient) }
         var mask = room.lightMask
-        for r in ui { mask.addRect(r, level: 7, tint: .cool) }
+        overlay.apply(to: &mask)
         return (mask.bytes, room.ambient)
     }
 
     private func pushLighting() {
-        pushedEmissive = room?.emissiveRects ?? []
+        pushedEmissive = room?.litOverlay ?? LitOverlay()
         guard let presenter, presenter.artSize == grid.artSize else { return }
         let l = lighting
         try? presenter.setLightMask(l.mask)
         presenter.ambient = l.ambient
     }
 
-    /// Re-pushes the mask when the UI's lit rects moved (tooltip, toast).
+    /// Re-pushes the mask when the UI's lit rects moved (tooltip, toast, hover ring).
     private func syncLighting() {
-        if (room?.emissiveRects ?? []) != pushedEmissive { pushLighting() }
+        if (room?.litOverlay ?? LitOverlay()) != pushedEmissive { pushLighting() }
     }
 
     // MARK: Minute clock

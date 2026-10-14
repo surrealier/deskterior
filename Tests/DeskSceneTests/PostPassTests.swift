@@ -14,7 +14,7 @@ struct PostPassTests {
     /// All 46 Apollo colours in one row.
     static let paletteRow = PixelBuffer(width: Apollo.count, height: 1, pixels: Apollo.colors)
 
-    @Test("Level 7 is an exact identity for every palette colour, both tints")
+    @Test("Level 7 is an exact identity for every palette colour, every tint")
     func identity() throws {
         for tint in Tint.allCases {
             let out = try gpu.lit(Self.paletteRow, ambient: AmbientLight(level: 7, tint: tint))
@@ -61,6 +61,21 @@ struct PostPassTests {
             ramp.mapColor(c[16], level: 3, tint: .cool),
             ramp.mapColor(c[16], level: 3, tint: .cool),
         ])
+    }
+
+    @Test("A screen-light mask byte (bit 4) reads the screen column on the GPU too")
+    func screenTintMask() throws {
+        let c = Apollo.colors
+        let row = PixelBuffer(width: 3, height: 1, pixels: [c[16], c[16], c[16]])
+        let mask: [UInt8] = [5 | 16, 5 | 8, 5]
+        let out = try gpu.lit(row, ambient: AmbientLight(level: 1, tint: .cool), mask: mask)
+        let ramp = LightRamp.shared
+        #expect(out.pixels == [
+            ramp.mapColor(c[16], level: 5, tint: .screen),
+            ramp.mapColor(c[16], level: 5, tint: .warm),
+            ramp.mapColor(c[16], level: 5, tint: .cool),
+        ])
+        #expect(Set(out.pixels).count == 3)
     }
 
     /// A 4×3 image of distinct palette colours.
