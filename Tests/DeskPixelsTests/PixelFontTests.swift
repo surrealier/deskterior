@@ -115,7 +115,7 @@ struct PixelFontTests {
         let f = try font()
         #expect(f.source(of: "가") == .primary)
         #expect(f.source(of: "A") == .primary)
-        for c: Character in ["⌘", "✓"] {
+        for c: Character in ["⌥", "✓"] {
             #expect(f.source(of: c) == .systemFallback, "\(c)")
             let b = f.render(String(c), color: Self.ink)
             #expect(b.width == f.advance(of: c) && b.width > 0)

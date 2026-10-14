@@ -24,12 +24,15 @@ public struct WallDecor: Hashable, Sendable, CustomStringConvertible {
         /// Macramé hanging plant from the crown of a very tall wall.
         case hangingPlant
         // MARK: w6-polish
-        /// A long shelf high on a very tall wall: books, a globe, a cactus, a box and a trailing pothos.
+        /// A shelf high on a very tall wall, left of the middle: a succulent, books against a bookend, a globe, a
+        /// stack with a candle and a vase of dried stems.
         case upperShelf
-        /// A cluster of framed prints above the upper shelf.
+        /// A cluster of framed prints right of the upper shelf, a little higher.
         case gallery
         /// The room light: a flush drum lamp in the middle of the ceiling (lit with the room light after dark).
         case ceilingLamp
+        /// A macramé wall hanging over the shelf and prints, where a wall is taller than `LayoutSolver.maxTallWall`.
+        case wallHanging
     }
 
     public var kind: Kind
@@ -164,35 +167,49 @@ public enum LayoutSolver {
     public static let maxCord = 72
 
     // MARK: w6-polish
-    /// The tallest wall a very tall canvas (a portrait display) shows above the core, the least ceiling it keeps
-    /// above that, and how far up the ceiling (screen rows) the hanging pieces hang from: 48 px out from the wall.
+    /// The tallest wall a very tall canvas (a portrait display) shows above the core while the ceiling over it is
+    /// under `maxCeiling`, the least ceiling it keeps above that, the most it shows (past it the wall grows instead:
+    /// an S = 1 portrait canvas), and how far up the ceiling (screen rows) the hanging pieces hang from: 48 px out from
+    /// the wall.
     public static let maxTallWall = 420
     public static let minCeiling = 160
+    public static let maxCeiling = 240
     public static let ceilingDrop = 24
 
     /// The wall shown above the core under the crown when more than `maxWallAbove` of it would show: on very tall
-    /// canvases up to `maxTallWall`, while at least `minCeiling` rows of ceiling stay above it.
+    /// canvases up to `maxTallWall`, while at least `minCeiling` rows of ceiling stay above it, and taller still where
+    /// the ceiling would pass `maxCeiling` rows.
     public static func wallHeight(_ wallAbove: Int) -> Int {
         guard wallAbove > maxWallAbove else { return wallAbove }
-        return max(maxWallAbove, min(maxTallWall, wallAbove - minCeiling))
+        return max(maxWallAbove, min(maxTallWall, wallAbove - minCeiling), wallAbove - maxCeiling)
     }
 
-    /// The upper shelf and the prints over it, in the free band of a very tall wall (`bandTop..<bandBottom`, below the
-    /// hanging pieces and above the painting): the shelf at the band's foot across the core, the prints centred over
-    /// the monitor between the hanging pieces; each only where it fits and is clear.
-    static func tallWallDecor(c: ArtPoint, bandTop: Int, bandBottom: Int, clear: (ArtRect) -> Bool) -> [WallDecor] {
+    /// The upper shelf, the prints and (on a wall taller than `maxTallWall`) a wall hanging, on a very tall wall below
+    /// `wallTop`: the shelf left of the middle, `paintingClearance` over the painting (`paintingTop`), the prints right
+    /// of it and a little higher, the hanging centred in the wall left above them; each only where it fits clear of
+    /// `hung` (the pendant and the hanging plant) and of `clear`'s widgets (Errata 26).
+    static func tallWallDecor(c: ArtPoint, wallTop: Int, paintingTop: Int, hung: [ArtRect],
+                              clear: (ArtRect) -> Bool) -> [WallDecor] {
         var out: [WallDecor] = []
-        let shelf = ArtRect(c.x + 40, bandBottom - 44, 440, 44)
-        guard shelf.minY >= bandTop else { return out }
-        if clear(shelf) { out.append(WallDecor(.upperShelf, shelf)) }
-        let room = shelf.minY - 18 - bandTop
-        if room >= 70 {
-            let h = min(96, room), w = 180
-            let r = ArtRect(c.x + 264 - w / 2, bandTop + (room - h) / 2, w, h)
-            if clear(r) { out.append(WallDecor(.gallery, r)) }
+        func free(_ r: ArtRect) -> Bool { clear(r) && !hung.contains { $0.insetBy(-4, -4).intersects(r) } }
+        let shelf = ArtRect(c.x + 48, paintingTop - paintingClearance - 44, 180, 44)
+        guard shelf.minY >= wallTop + 8 else { return out }
+        if free(shelf) { out.append(WallDecor(.upperShelf, shelf)) }
+        let bottom = shelf.minY + 18, h = min(96, bottom - wallTop - 10)
+        let prints = ArtRect(c.x + 280, bottom - h, 168, h)
+        if h >= 70, free(prints) { out.append(WallDecor(.gallery, prints)) }
+        // The hanging: centred in the wall left between the hanging pieces and the prints, where that is tall.
+        let above = hung.map(\.maxY).reduce(wallTop, max), room = prints.minY - above
+        if room >= 200 {
+            let hh = min(240, room - 80), hw = hh * 9 / 20
+            let hanging = ArtRect(c.x + 264 - hw / 2, above + (room - hh) / 2, hw, hh)
+            if free(hanging) { out.append(WallDecor(.wallHanging, hanging)) }
         }
         return out
     }
+
+    /// Rows kept clear between the upper shelf's brackets and the painting under it.
+    public static let paintingClearance = 32
 
     /// Decor for a grid with the core at `c`, back to front. Pure and deterministic.
     static func decor(for grid: PixelGrid, origin c: ArtPoint, avoid: [ArtRect]) -> [WallDecor] {
@@ -234,10 +251,18 @@ public enum LayoutSolver {
 
         // A painting centred over the monitor: large on a tall wall, a small print where a medium wall leaves a
         // band between the lights and the monitor.
-        if wallAbove >= 110 {
+        if wallAbove >= 110, !rail {
             let w = 112, h = 64
             let r = ArtRect(c.x + 264 - w / 2, lightsTop - 10 - h, w, h)
             if r.minY >= hangTop, clear(r) { out.append(WallDecor(.painting, r)) }
+        } else if wallAbove >= 110, monitorTop - lightsBottom >= 64 {
+            // MARK: w6-polish
+            // A railed wall has its lights at the top: the painting hangs between them and the monitor, as large as
+            // the band allows (Errata 26).
+            let gap = monitorTop - lightsBottom
+            let h = min(64, (gap - 24) / 2 * 2), w = h * 7 / 4
+            let r = ArtRect(c.x + 264 - w / 2, lightsBottom + (gap - h) / 2 - 2, w, h)
+            if clear(r) { out.append(WallDecor(.painting, r)) }
         } else if monitorTop - lightsBottom >= 40 {
             let gap = monitorTop - lightsBottom
             let h = min(30, gap - 12), w = h * 8 / 5
@@ -250,16 +275,24 @@ public enum LayoutSolver {
         // of prints above it (Errata 26).
         if let crownY {
             let hang = crownY - ceilingDrop
+            var hung: [ArtRect] = []
             let pendantH = min(maxCord + 12, c.y - 96 - hangTop)
             let pendant = ArtRect(c.x + 92, hang, 24, pendantH + ceilingDrop + 6)
-            if pendantH >= 40, clear(pendant) { out.append(WallDecor(.pendant, pendant)) }
+            if pendantH >= 40, clear(pendant) {
+                out.append(WallDecor(.pendant, pendant))
+                hung.append(pendant)
+            }
             let plantH = min(maxCord + 28, c.y - 46 - hangTop)
-            let hanging = ArtRect(c.x + 438, hang, 32, plantH + ceilingDrop + 6)
-            if plantH >= 60, clear(hanging) { out.append(WallDecor(.hangingPlant, hanging)) }
-            let lamp = ArtRect(canvas.w / 2 - 20, crownY / 2 - 5, 40, 10)
-            if lamp.minY >= top + 4, clear(lamp) { out.append(WallDecor(.ceilingLamp, lamp)) }
-            out.append(contentsOf: tallWallDecor(c: c, bandTop: max(hangTop, pendant.maxY, hanging.maxY) + 10,
-                                                 bandBottom: lightsTop - 84, clear: clear))
+            let hanging = ArtRect(c.x + 466, hang, 32, plantH + ceilingDrop + 6)
+            if plantH >= 60, clear(hanging) {
+                out.append(WallDecor(.hangingPlant, hanging))
+                hung.append(hanging)
+            }
+            let lamp = ArtRect(canvas.w / 2 - 28, (top + crownY) / 2 - 8, 56, 16)
+            if lamp.minY >= top + 4, lamp.maxY <= crownY - 4, clear(lamp) { out.append(WallDecor(.ceilingLamp, lamp)) }
+            let paintingTop = out.first { $0.kind == .painting }?.rect.minY ?? lightsTop - 84
+            out.append(contentsOf: tallWallDecor(c: c, wallTop: hangTop, paintingTop: paintingTop, hung: hung,
+                                                 clear: clear))
         }
 
         // Right wall: the shelf hangs over the phone and hub; it widens into a wide right margin.

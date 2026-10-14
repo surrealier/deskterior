@@ -101,10 +101,76 @@ extension PolishCoreTests {
             guard abs(degrees) <= 30 || abs(abs(degrees) - 180) <= 30 else { continue }
             let shown = Set(t.source.filter { $0 >= 0 })
             #expect(Double(shown.count) >= 0.85 * Double(face.count), "\(degrees)°: \(shown.count) of \(face.count)")
+            // Every key keeps its face (its cap rows; where two rows' stairs miss, the row above keeps its side over
+            // the first of them).
             for key in PropArt.keyboardKeys {
-                let cap = (key.rect.minX..<key.rect.maxX).map { Int32((key.rect.minY) * w + $0) }
-                #expect(cap.contains { shown.contains($0) }, "\(degrees)°: key \(key.row),\(key.col) is gone")
+                let face = (key.rect.minY..<(key.rect.minY + 2)).flatMap { y in
+                    (key.rect.minX..<key.rect.maxX).map { Int32(y * w + $0) }
+                }
+                #expect(face.contains { shown.contains($0) }, "\(degrees)°: key \(key.row),\(key.col) is gone")
             }
+        }
+    }
+
+    /// The image pixels showing upright pixel `s` (`y · width + x`).
+    static func shows(_ t: TurnedKeyboard, _ rows: Range<Int>, _ cols: Range<Int>) -> [ArtPoint] {
+        let w = upright.width
+        return t.source.indices.compactMap { i in
+            let s = Int(t.source[i])
+            guard s >= 0, rows.contains(s / w), cols.contains(s % w) else { return nil }
+            return ArtPoint(i % t.image.width, i / t.image.width)
+        }
+    }
+
+    @Test("At the turns a mat takes, keys sit level as a whole: no key splits across a stair, Esc and Enter stay solid")
+    func turnedKeysAreLevel() {
+        for degrees in Array(5...30) + Array(-30 ... -5) {
+            let t = TurnedKeyboard(Self.upright, degrees: degrees)
+            let slope = abs(tan(Double(degrees) * .pi / 180) / 2)
+            for key in PropArt.keyboardKeys {
+                // A key the slope raises by under a pixel along it: each of its rows in one image row (column by
+                // column its lowest showing; a row left open above it between two rows' stairs repeats its cap).
+                guard Double(key.rect.w) * slope < 1 else { continue }
+                for y in key.rect.minY..<key.rect.maxY {
+                    let pts = Self.shows(t, y..<(y + 1), key.rect.minX..<key.rect.maxX)
+                    let lowest = Dictionary(grouping: pts, by: \.x).mapValues { $0.map(\.y).max()! }
+                    let ys = Set(lowest.values)
+                    #expect(ys.count <= 1, "\(degrees)°: key \(key.row),\(key.col) row \(y) on rows \(ys.sorted())")
+                }
+            }
+            // Every key is a solid block, level or sloping: column by column its cap, face and side rows lie one under
+            // the other, its shade only under it (no lit or shaded pixel off its body).
+            for key in PropArt.keyboardKeys {
+                var rowsAt: [Int: [Int: Int]] = [:]
+                for y in key.rect.minY..<key.rect.maxY {
+                    for p in Self.shows(t, y..<(y + 1), key.rect.minX..<key.rect.maxX) {
+                        rowsAt[p.x, default: [:]][y] = max(rowsAt[p.x]?[y] ?? .min, p.y)
+                    }
+                }
+                for (x, rows) in rowsAt {
+                    for (y, vy) in rows {
+                        guard let below = rows[y + 1] else { continue }
+                        #expect(below == vy + 1, "\(degrees)° key \(key.row),\(key.col) at x \(x)")
+                    }
+                }
+            }
+            // Esc, level at these turns: its two red rows over its dark red side, one 4×3 block.
+            let esc = PropArt.keyboardKeys.first { $0.row == 0 && $0.col == 0 }!.rect
+            let pts = Self.shows(t, esc.minY..<esc.maxY, esc.minX..<esc.maxX)
+            let xs = pts.map(\.x), ys = pts.map(\.y)
+            if Double(esc.w) * slope < 1 {
+                #expect(xs.max()! - xs.min()! < esc.w && ys.max()! - ys.min()! < esc.h, "\(degrees)°: Esc \(pts)")
+            }
+            // No stray pixel: every opaque pixel touches another on two sides at least.
+            let img = t.image
+            var spurs: [ArtPoint] = []
+            for y in 0..<img.height {
+                for x in 0..<img.width where img[x, y].a != 0 {
+                    let n = [(1, 0), (-1, 0), (0, 1), (0, -1)].filter { img.pixel(x + $0.0, y + $0.1).a != 0 }.count
+                    if n <= 1 { spurs.append(ArtPoint(x, y)) }
+                }
+            }
+            #expect(spurs.isEmpty, "\(degrees)°: spurs at \(spurs)")
         }
     }
 
@@ -130,13 +196,15 @@ extension PolishCoreTests {
         }
     }
 
-    /// Review sheet (only with `DESKTERIOR_REVIEW_DIR`): the keyboard turned −45…45° and past a quarter turn, on felt.
+    /// Review sheets (only with `DESKTERIOR_REVIEW_DIR`): the keyboard at the turns a mat takes and past them, on felt,
+    /// ×3 and ×8.
     @Test("Review: the turned keyboard", .enabled(if: !(ProcessInfo.processInfo.environment["DESKTERIOR_REVIEW_DIR"] ?? "").isEmpty))
     func reviewTurnedKeyboard() throws {
-        let angles = [0, 2, 5, 8, 10, 14, 15, 20, 25, 30, 35, 45, -5, -10, -14, -15, -20, -30, -45, 60, 90, 120, 160, 180]
+        let angles = [0, 4, 5, 6, 7, 8, 9, 10, 12, 14, 15, 16, 18, 20, 22, 25, 28, 30,
+                      -5, -6, -7, -8, -10, -12, -15, -18, -20, -25, -30, 45, 90, 180]
         let cols = 6, cell = ArtSize(140, 64)
         let rows = (angles.count + cols - 1) / cols
-        var sheet = PixelCanvas(width: cols * cell.w, height: rows * cell.h, fill: .neutral3)
+        var sheet = PixelCanvas(width: cols * cell.w, height: rows * cell.h, fill: .blue1)
         for (k, d) in angles.enumerated() {
             let t = TurnedKeyboard(Self.upright, degrees: d)
             let o = ArtPoint((k % cols) * cell.w + 22, (k / cols) * cell.h + 25)
@@ -146,7 +214,11 @@ extension PolishCoreTests {
         }
         let dir = ProcessInfo.processInfo.environment["DESKTERIOR_REVIEW_DIR"]!
         try FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
-        try PNGCodec.encode(sheet.buffer.scaledNearest(4)).write(to: URL(fileURLWithPath: dir + "/turned-keyboard.png"))
+        try PNGCodec.encode(sheet.buffer.scaledNearest(3)).write(to: URL(fileURLWithPath: dir + "/turned-keyboard.png"))
+        try PNGCodec.encode(sheet.buffer.cropped(to: ArtRect(0, 0, 3 * cell.w, rows * cell.h)).scaledNearest(8))
+            .write(to: URL(fileURLWithPath: dir + "/turned-keyboard-zoom-a.png"))
+        let right = sheet.buffer.cropped(to: ArtRect(3 * cell.w, 0, 3 * cell.w, rows * cell.h))
+        try PNGCodec.encode(right.scaledNearest(8)).write(to: URL(fileURLWithPath: dir + "/turned-keyboard-zoom-b.png"))
     }
 }
 
@@ -199,7 +271,7 @@ extension PolishCoreTests {
 // MARK: Tall walls
 
 extension PolishCoreTests {
-    @Test("A portrait wall: less ceiling, an upper shelf and prints between the hanging pieces, the room light above")
+    @Test("A portrait wall: less ceiling, a short shelf left of the middle, prints right of it, the room light above")
     func tallWallDecor() throws {
         let layout = LayoutSolver.solve(display: pixelGridDesignTable[8].display())
         let crown = try #require(layout.decor(.crown).first).rect
@@ -210,11 +282,19 @@ extension PolishCoreTests {
         let gallery = try #require(layout.decor(.gallery).first).rect
         let lamp = try #require(layout.decor(.ceilingLamp).first).rect
         let painting = try #require(layout.decor(.painting).first).rect
-        #expect(lamp.maxY < crown.y && lamp.midX == layout.canvas.w / 2)
-        #expect(crown.maxY < gallery.minY && gallery.maxY < shelf.minY && shelf.maxY < painting.minY)
+        #expect(lamp.maxY < crown.y && lamp.midX == layout.canvas.w / 2 && lamp.size == ArtSize(56, 16))
+        // Errata 26: a grouped shelf, not a rail across the wall; the prints beside it and higher; clear of the
+        // painting by 32 rows; neither stacked over the monitor's middle.
+        #expect(shelf.w <= 200 && shelf.maxX < layout.x(264) && gallery.minX > shelf.maxX + 16)
+        #expect(gallery.minY < shelf.minY && gallery.maxY < shelf.maxY)
+        #expect(painting.minY - shelf.maxY >= LayoutSolver.paintingClearance)
+        #expect(crown.maxY < gallery.minY && crown.maxY < shelf.minY)
         for hung in layout.decor(.pendant) + layout.decor(.hangingPlant) {
             #expect(!hung.rect.intersects(gallery) && !hung.rect.intersects(shelf), "\(hung)")
         }
+        // The hanging plant is off the shelf's column.
+        let plant = try #require(layout.decor(.hangingPlant).first).rect
+        #expect(plant.minX > shelf.maxX)
         // Clear of every interactive rect.
         for d in [shelf, gallery, lamp] {
             for name in Anchors.interactive { #expect(!(layout.anchors[name]?.intersects(d) ?? false), "\(name)") }

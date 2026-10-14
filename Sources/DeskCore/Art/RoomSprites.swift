@@ -283,6 +283,15 @@ public enum RoomArt {
                 drop(d.rect, dx: 2, dy: 2)
             case .rail:
                 drop(d.rect, dx: 0, dy: 1)
+            // MARK: w6-polish
+            // The tall wall's pieces cast the same shadows as the lower wall's (Errata 26).
+            case .upperShelf:
+                drop(DecorArt.upperShelfBoard(in: d.rect.size).offsetBy(d.rect.x, d.rect.y), dx: 2, dy: 3)
+            case .gallery:
+                for f in DecorArt.galleryFrames(in: d.rect.size) { drop(f.offsetBy(d.rect.x, d.rect.y), dx: 2, dy: 2) }
+            case .wallHanging:
+                ArtKit.castShadow(of: DecorArt.wallHanging(d.rect.size).image, at: d.rect.origin,
+                                  offset: ArtPoint(2, 2), ink: wallShade, into: &c) { $0 == wall }
             default:
                 break
             }
@@ -610,7 +619,7 @@ public enum RoomArt {
             gap *= 1.33
             y -= gap
         }
-        DecorArt.drawBeams(&c, band: band)
+        DecorArt.drawBeams(&c) { y in min(Int(Double(size.h - 1 - y) / Double(step) + 0.125), inks.count - 1) }
         return SpriteAsset("decor.ceiling", c, anchor: .zero)
     }
 
@@ -920,6 +929,7 @@ public enum DecorArt {
         case .upperShelf: upperShelf(d.rect.size)
         case .gallery: gallery(d.rect.size)
         case .ceilingLamp: ceilingLamp(d.rect.size, lit: lit)
+        case .wallHanging: wallHanging(d.rect.size)
         }
     }
 
@@ -975,12 +985,17 @@ public enum DecorArt {
         }
         c.blit(ArtKit.outline(foliage.buffer, .green0).cropped(to: ArtRect(1, 1, size.w, size.h)), at: .zero)
         c.blit(foliage.buffer, at: .zero)
+        // MARK: w6-polish
+        // An opaque terracotta pot (a white one read as see-through against the wall; Errata 26), cradled by the cords.
         let pot = ArtRect(cx - 6, potTop, 12, 9)
-        c.roundedRectFill(pot, radius: 2, .neutral6)
-        c.fill(pot.insetBy(1, 0), .neutral9)
-        c.vline(x: pot.maxX - 2, y: pot.y + 1, length: pot.h - 2, .neutral8)
-        c.hline(x: pot.x + 1, y: pot.y + 3, length: pot.w - 2, .oak4)
-        c.hline(x: pot.x, y: pot.y, length: pot.w, .neutral8)
+        c.roundedRectFill(pot, radius: 2, .red1)
+        c.fill(pot.insetBy(1, 1), .red3)
+        c.hline(x: pot.x, y: pot.y, length: pot.w, .red4)
+        c.hline(x: pot.x + 1, y: pot.y + 1, length: pot.w - 2, .red2)
+        c.vline(x: pot.x + 2, y: pot.y + 2, length: pot.h - 4, .red4)
+        c.vline(x: pot.maxX - 3, y: pot.y + 2, length: pot.h - 3, .red2)
+        for dx in [-4, 4] { c.vline(x: cx + dx, y: pot.y + 1, length: pot.h - 2, .oak4) }
+        c.hline(x: pot.x + 1, y: pot.maxY - 3, length: pot.w - 2, .oak4)
         return SpriteAsset("decor.hangingPlant", c, anchor: .zero)
     }
 

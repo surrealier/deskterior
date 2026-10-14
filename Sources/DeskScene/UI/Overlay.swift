@@ -39,7 +39,8 @@ enum ScreenCard {
         let lineH = head.height
         let contentW = max(firstW, second.width, sub.width)
         let contentH = lineH * 2 + 2 + sub.height + 6
-        let panel = ArtRect((c.width - contentW) / 2 - 8, (c.height - contentH) / 2 - 6, contentW + 16, contentH + 12)
+        let panel = clearOfMoon(ArtRect((c.width - contentW) / 2 - 8, (c.height - contentH) / 2 - 6, contentW + 16,
+                                        contentH + 12), on: wallpaper)
         drawPanel(&c, panel)
         var y = panel.y + 6
         var x = (c.width - firstW) / 2
@@ -69,7 +70,7 @@ enum ScreenCard {
     /// NO SIGNAL: the folder could not be read. Open Settings, or pick the folder (which grants access).
     static func noAccess(_ font: PixelFont, _ language: Language? = nil) -> Rendered {
         var c = PixelCanvas(MonitorArt.noSignalScreen(logo: ArtPoint(-100, -100), input: ""))
-        let logo = MonitorArt.noSignalLogo().image
+        let logo = noSignalBadge(font, language)
         let l1 = PixelText.line(L10n.tr("Can't read the Desktop folder.", language), .neutral8, font: font)
         let l2 = PixelText.line(L10n.tr("Allow access, or choose it:", language), .neutral6, font: font)
         let settings = button(L10n.tr("Open Settings", language), primary: false, font: font)
@@ -102,7 +103,8 @@ enum ScreenCard {
         let rowW = show.width + 6 + keep.width
         let contentW = max(title.width, l1.width, l2.width, rowW)
         let contentH = title.height + 3 + l1.height + 1 + l2.height + 5 + show.height
-        let panel = ArtRect((c.width - contentW) / 2 - 7, (c.height - contentH) / 2 - 5, contentW + 14, contentH + 10)
+        let panel = clearOfMoon(ArtRect((c.width - contentW) / 2 - 7, (c.height - contentH) / 2 - 5, contentW + 14,
+                                        contentH + 10), on: wallpaper)
         drawPanel(&c, panel)
         var y = panel.y + 5
         c.blit(title, at: ArtPoint((c.width - title.width) / 2, y))
@@ -119,6 +121,36 @@ enum ScreenCard {
     }
 
     // MARK: Pieces
+
+    // MARK: w6-polish
+    /// `panel` moved so its top edge never cuts through the night wallpaper's moon, which left a sliver of it over the
+    /// card like a stray mark (Errata 26): down past it when the card still fits on the glass, else up over it. Other
+    /// wallpapers keep the panel where it is.
+    static func clearOfMoon(_ panel: ArtRect, on wallpaper: PixelBuffer) -> ArtRect {
+        let screen = wallpaper.size, moon = MonitorArt.nightMoon(in: screen)
+        guard wallpaper == MonitorArt.deskOSWallpaper(sky: .night, size: screen),
+              panel.minX < moon.maxX, panel.maxX > moon.minX, panel.minY > moon.minY, panel.minY < moon.maxY
+        else { return panel }
+        let down = moon.maxY + 1 - panel.minY
+        if panel.maxY + down <= screen.h - 3 { return panel.offsetBy(0, down) }
+        return panel.offsetBy(0, moon.minY - 1 - panel.minY)
+    }
+
+    /// The NO SIGNAL badge over the card's text: the monitor's own logo in English; in another language the same
+    /// purple badge round the translated words (Errata 26).
+    static func noSignalBadge(_ font: PixelFont, _ language: Language? = nil) -> PixelBuffer {
+        let text = L10n.tr("NO SIGNAL", language)
+        guard text != "NO SIGNAL" else { return MonitorArt.noSignalLogo().image }
+        let words = PixelText.line(text, .neutral9, font: font)
+        let ink = words.opaqueBounds()
+        let w = words.width + 8, h = ink.h + 6
+        var c = PixelCanvas(width: w, height: h)
+        c.roundedRectFill(c.bounds, radius: 2, .purple3)
+        c.roundedRectFill(c.bounds.insetBy(1, 1), radius: 1, .purple1)
+        c.hline(x: 2, y: 1, length: w - 4, .purple2)
+        c.blit(words, at: ArtPoint(4, 3 - ink.minY))
+        return c.buffer
+    }
 
     /// Buttons drawn as the card's default (blue) button.
     static let primaryButtons: Set<String> = ["card.show", "card.chooseFolder"]

@@ -347,14 +347,17 @@ public enum InteriorRaster {
 
     // MARK: Drawer sprites
 
-    /// A riser drawer front at opening `p` with its contents (an overfull drawer shows paper poking out).
+    /// A riser drawer front at opening `p` with its contents (an overfull drawer shows paper poking out until it is
+    /// open).
     public static func riserDrawer(
         _ id: ContainerID, p: Int, items: [Item], offsets: [Int] = [], revealed: Bool? = nil, marks: Marks = .none
     ) -> SpriteAsset {
         precondition(isRiser(id), "\(id) is not a riser drawer")
         let contents = items.isEmpty
             ? nil : drawerContents(id, items: items, offsets: offsets, opening: p, revealed: revealed, marks: marks)
-        return StorageArt.riserDrawer(p: p, jammed: items.count > id.spec.capacity, contents: contents)
+        // Paper pokes over the front only while the contents do not show (an open drawer shows what is in it).
+        let shows = revealed ?? (Float(p) >= Visibility.drawerOpen)
+        return StorageArt.riserDrawer(p: p, jammed: items.count > id.spec.capacity && !shows, contents: contents)
     }
 
     /// Cabinet drawers top → bottom.
@@ -362,7 +365,7 @@ public enum InteriorRaster {
 
     /// The pedestal cabinet (geometry of `StorageArt.cabinet`) with each drawer pulled out by `p[i]` and showing
     /// `items[i]` (jostled by `offsets[i]`, icons per `revealed[i]`), its pull shifted `pullDX[i]` px (the wiggle when
-    /// a member's file goes away); overfull drawers show paper poking out.
+    /// a member's file goes away); overfull drawers show paper poking out until they are open.
     public static func cabinet(
         p: [Int], items: [[Item]], offsets: [[Int]] = [], revealed: [Bool?] = [], marks: [Marks] = [],
         pullDX: [Int] = []
@@ -393,7 +396,10 @@ public enum InteriorRaster {
                 // The shadow under the drawer's back edge, as `StorageArt.drawInterior` draws it.
                 c.hline(x: f0.x + 4, y: f0.y + 1, length: buf.width, .neutral4)
             }
-            if jammed[i] { StorageArt.drawPaperPoking(&c, frontTop: f0.y + open, width: f0.w) }
+            // Paper pokes over an overfull drawer's front only while its contents do not show: open, the front row
+            // of folders stands there.
+            let shows = (i < revealed.count ? revealed[i] : nil) ?? (Float(open) >= Visibility.drawerOpen)
+            if jammed[i], !shows { StorageArt.drawPaperPoking(&c, frontTop: f0.y + open, width: f0.w) }
         }
         // The desk's shadow over the top drawer's first rows (the top face above is already shaded).
         for y in top..<(top + 2) {

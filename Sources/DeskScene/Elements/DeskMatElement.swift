@@ -116,6 +116,9 @@ final class DeskMatElement: DeskElement, Knockable {
     private var turnedKeyboards: [Int: (art: TurnedKeyboard, shadow: [ArtPoint])] = [:]
     /// Tells the keyboard element how it is drawn now (its keys answer where they are drawn).
     var onKeyboardTurn: ((TurnedKeyboard) -> Void)?
+    /// The cloth and cards that stand in front of the keyboard, drawn over it (Errata 26), in a layer of its own.
+    let keyboardCover = SKSpriteNode()
+    private let coverLayer = SKNode()
     /// A turn the keyboard follows only once the cloth's turn has moved this far from it (degrees), so a carry's
     /// wobble never flickers it; at rest it takes its pose's own turn.
     static let turnHysteresis: Float = 0.75
@@ -193,6 +196,9 @@ final class DeskMatElement: DeskElement, Knockable {
         handles.zPosition = CGFloat(RoomLayer.ui.rawValue * 1000 + 5)
         handles.isHidden = true
         root.addChild(handles)
+        keyboardCover.isHidden = true
+        coverLayer.addChild(keyboardCover)
+        root.addChild(coverLayer)
         cloth = ClothSim(params: params)
         cloth.setKeyboard(MatState().keyboardFootprint)
         cloth.forceSleep()
@@ -868,6 +874,26 @@ final class DeskMatElement: DeskElement, Knockable {
         var image = raster.image
         shadeUnderKeyboard(&image)
         surface.texture = TextureFactory.dynamicTexture(image)
+        coverKeyboard()
+    }
+
+    // MARK: w6-polish
+    /// Draws over the keyboard what of the cloth and the revealed cards stands higher than its keys there (nearer
+    /// along the view ray): the keyboard is drawn over the desk surface, so without this a tongue Peek Under turns up
+    /// in front of it, or a card standing before it, would show behind it.
+    private func coverKeyboard() {
+        let core = context.layout.coreOrigin, image = turnedKeyboard(keyboardShown).art.image
+        guard !surface.isHidden, let r = keyboardRect,
+              let cover = raster.cover(image, at: ArtPoint(r.x - core.x, r.y - core.y),
+                                       height: DeskSurfaceRaster.keyboardTop)
+        else {
+            keyboardCover.isHidden = true
+            return
+        }
+        keyboardCover.texture = TextureFactory.dynamicTexture(cover)
+        context.space.place(keyboardCover, at: r)
+        keyboardCover.zPosition = context.placementZ("keyboard") + 0.75
+        keyboardCover.isHidden = false
     }
 
     /// The keyboard's contact shadow on the felt: one ramp step darker, a row under its front and a column on its right.

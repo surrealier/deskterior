@@ -40,8 +40,9 @@ public enum ArtCatalog {
             DecorArt.hangingPlant(ArtSize(32, 90)), RoomArt.ceiling(ArtSize(64, 48)), RoomArt.rail(width: 64),
             DecorArt.painting(ArtSize(48, 30)).renamed("decor.painting.small"),
             // MARK: w6-polish
-            DecorArt.upperShelf(ArtSize(440, 44)), DecorArt.gallery(ArtSize(180, 96)),
-            DecorArt.ceilingLamp(ArtSize(40, 10), lit: false), DecorArt.ceilingLamp(ArtSize(40, 10), lit: true),
+            DecorArt.upperShelf(ArtSize(180, 44)), DecorArt.gallery(ArtSize(168, 96)),
+            DecorArt.ceilingLamp(ArtSize(56, 16), lit: false), DecorArt.ceilingLamp(ArtSize(56, 16), lit: true),
+            DecorArt.wallHanging(ArtSize(90, 200)),
             RoomArt.ceiling(ArtSize(160, 96)).renamed("decor.ceiling.beams"),
         ])
     }

@@ -448,20 +448,35 @@
       owner's manual checklist (§8.3) are in SPIKES.md, "Pre-release audit (wave 6)".
 26. **Visual and UX polish before v0.1.0 (wave 6).** These refine Errata 7, 15, 17, 18, 20 and 23.
     - **Keyboard on a turned mat.** The keyboard turns with the particles it weighs down (`ClothSim.keyboardAngle`, the
-      frame they fit), so a relaunch from the saved particles draws the same turn. `TurnedKeyboard` maps the upright
-      sprite's top face through the 2:1 view of the turn, (x, y) → (x cos θ + 2y sin θ, −x sin θ / 2 + y cos θ),
-      sampling each view pixel back onto the face (nearest neighbour: at the turns a mat takes no key, gap or row is
-      skipped, and rows and gaps stay regular stairs), drops spur pixels off the outline, and extrudes the sides two
-      rows down (front greys, darker ends, the LED). It follows whole degrees with 0.75° of hysteresis, and turns under
-      5° draw square (a slope that shallow reads as a break; a carry's sway stays within it). Its keys answer where
-      they are drawn. The desk plane's keyboard body and the tuck clearance stay axis-aligned.
+      frame they fit), so a relaunch from the saved particles draws the same turn. Up to ±30° (`bandedWithin`)
+      `TurnedKeyboard` rebuilds it from four bands, one per key row (the back edge with the first, the front with the
+      last): each band slides sideways as the turn shears it, (x, y) → (x cos θ + 2y sin θ, −x sin θ / 2 + y cos θ),
+      keeping its pieces (margins, keys and 1-px gaps; keys squeezed by cos θ, never a gap); a piece the slope raises
+      by under a pixel sits level as a whole, so stairs fall between keys and Esc and Enter stay solid blocks, and a
+      wider one steps column by column, all its rows together, never within two columns of its ends. Where two bands'
+      stairs miss by a row the row above keeps its side and a row left open fills from below, so the lines between
+      rows stay one pixel. The end a turn brings forward shows its side two rows deep. Further round (never on this
+      desk) the face is sampled back pixel by pixel. It follows whole degrees with 0.75° of hysteresis; turns under 5°
+      draw square (a carry's sway stays within it). Its keys answer where they are drawn. The desk plane's keyboard
+      body and the tuck clearance stay axis-aligned.
+    - **The keyboard's cover.** The keyboard is drawn over the desk surface, so whatever of the cloth or a revealed card
+      stands higher than its keys (`DeskSurfaceRaster.keyboardTop`, 3 px; height is nearness along the view ray) is
+      drawn again over it (`DeskSurfaceRaster.cover`, the mat element's `keyboardCover`): Peek Under's tongue turned up
+      before or over the keyboard and the card it reveals show in front of it, and so does a tall bump just before it.
     - **Tall canvases.** A wall taller than `maxWallAbove` rises up to `LayoutSolver.maxTallWall` (420) while at least
-      `minCeiling` (160) rows of ceiling stay, so a portrait display shows more wall and less ceiling. Its free band
-      holds an upper shelf (books, a globe, a cactus, a stack with a mug, a box, a pothos) above the painting and a
-      cluster of four prints over it; the pendant and the hanging plant hang from the ceiling 48 px out from the wall
-      (`ceilingDrop`; cords now pass the crown); the ceiling carries four oak beams, shaded with its own bands, and the
-      room light, a linen drum (`.ceilingLamp`) whose glass glows with the room light after dark (not in Lamp Only).
-      Landscape and medium walls are unchanged.
+      `minCeiling` (160) rows of ceiling stay, and further where the ceiling would pass `maxCeiling` (240 rows: an S = 1
+      portrait canvas such as 900×1440). Its decor: a short shelf (180 px: a succulent, books against a bookend, a
+      globe, a stack with a candle, a vase of dried stems) left of the middle, `paintingClearance` (32) over the
+      painting; a cluster of four prints right of it and a little higher; on a wall past `maxTallWall` a macramé wall
+      hanging centred in the wall left above them. The pendant and the hanging plant (an opaque terracotta pot, off the shelf's
+      column) hang from the ceiling 48 px out from the wall (`ceilingDrop`). The shelf's board and every print cast the
+      lower wall's shadows. The ceiling carries four oak beams a step darker than each of its bands, skipping `oak3`,
+      which the room light's warmth lifts to a bright orange, so a beam stays darker than its ceiling by day and after
+      dark; and the room light, a 56×16 linen drum (`.ceilingLamp`) whose glass glows with the room light after dark
+      (not in Lamp Only). A medium wall with a picture rail (110–230 px over the core, e.g. 4:3 at 1×) hangs the
+      painting between the lights and the monitor. Other landscape walls are unchanged.
+    - **Wall decor is part of the backdrop.** Every `decor.*` placement belongs to the room element: no hover ring and
+      nothing to do over it, and the bare wall (its menu) answers there.
     - **Peek Under lays the cloth back where it lay.** A peek records every particle (`peekRest`, z over its floor) and
       its closing pass eases the whole cloth back there, all particles held together for 8 frames, instead of laying only
       the edge band flat: the tongue's pull reached past the band and left a ridge across the mat and a lifted hem
@@ -473,17 +488,24 @@
       jiggle frame by frame.
     - **File drawer.** Up to 14 folders fan as before; more stand in rows of five, one per tab slot, the rows spread
       over the drawer's depth, so every folder keeps a pick strip at least 2 rows deep up to 25 folders (1 at the hard
-      cap of 26, six rows in eight).
+      cap of 26, six rows in eight). An overfull drawer pokes paper over its front only while its contents do not show
+      (shut or ajar); pulled open, its front row of folders is drawn whole.
     - **Korean fit.** Measured with Galmuri9: every toast and progress line fits the toast band, the wall between the
       clock and the calendar centred on the monitor (`ToastView.band`, 232 px; inside the 512-px visible band of the
       smallest canvas), in Korean (widest 219 px) and English; every monitor card and its buttons fit the glass. No Korean
       string needed shortening. Two English toasts were shortened to fit: "Nothing to undo: those items are gone." and
-      "Can't drop the Desktop or a parent folder." (Errata 20's "Nothing to undo there").
+      "Can't drop the Desktop or a parent folder." (Errata 20's "Nothing to undo there"). Galmuri9 lacks ⌘, and the
+      system font's is a blot at 10 px, so `PixelFont` draws a designed 7×7 ⌘ on the cap line (the copy line's "⌘Z").
+      The NO SIGNAL card's badge is in the card's language ("신호 없음"; the bouncing logo of an empty input stays the
+      monitor's own). A card's panel never cuts through the night wallpaper's moon (`MonitorArt.nightMoon`): it moves
+      down past it, or up over it where it would not fit.
     - **Status item.** An 18-pt template glyph (`StatusGlyphArt`: a monitor with desktop icons on a desk), drawn pixel for
-      pixel at 1× and 2×, black and alpha; `deskterior-assets status-glyph --out <dir>` renders it on light and dark
-      menu bars.
+      pixel at 1× and 2×, black and alpha, inside a 16-pt box with a 1-row desk top at 1×; `deskterior-assets
+      status-glyph --out <dir>` renders it on light and dark menu bars.
     - **App icon.** The wall is the lamp-lit night blue a step lighter, the monitor's bezel grey and the lamp's shade a
       brighter red, so at 16–32 px the body's top edge holds against a dark Dock and the monitor stands off the wall.
+      Every shape of the 32-px artwork starts and ends on an even pixel, so the 16-px image macOS derives from the 64-px
+      slot (a 4:1 average) is the hand-drawn 16-px art but for its rim.
 
 ---
 

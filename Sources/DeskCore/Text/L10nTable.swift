@@ -78,6 +78,8 @@ public enum L10nKey: String, CaseIterable, Sendable {
     // MARK: harden: locked drops, moves that came in as copies, leftovers of an interrupted copy (Errata 25)
     case toastFileLocked, toastCopiedInstead, toastLeftoverCopies, leftoversTitle, leftoversOne, leftoversMany
     case leftoversExplain, leftoversTrashed, toastSomeLocked, toastSomeCopiedInstead, toastCopiedNoUndo, leftoversNone
+    // MARK: w6-polish
+    case cardNoSignal
 
     public var en: String { Self.table[self]?.en ?? rawValue }
     public var ko: String { Self.table[self]?.ko ?? rawValue }
@@ -395,5 +397,8 @@ public enum L10nKey: String, CaseIterable, Sendable {
         .toastSomeCopiedInstead: p("Some came in as copies; the rest stayed.", "일부는 복사해 왔고 나머지는 그대로 뒀어요."),
         .toastCopiedNoUndo: p("Copied in, but it can't be undone.", "복사해 왔지만 실행 취소할 수 없어요."),
         .leftoversNone: p("No leftover copies now.", "지금은 남은 복사본이 없어요."),
+        // MARK: w6-polish
+        // The badge over the NO SIGNAL card's text (the bouncing logo of an empty input stays the monitor's own).
+        .cardNoSignal: p("NO SIGNAL", "신호 없음"),
     ]
 }

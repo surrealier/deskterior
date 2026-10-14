@@ -195,6 +195,7 @@ public final class PixelFont: @unchecked Sendable {
         if c.isNewline || c == "\t" { return glyph(" ") }
         // Text presentation ("☺︎", "✈︎") asks for the plain glyph of its base character.
         if let base = Self.textPresentationBase(c) { return glyph(base) }
+        if let g = designed(c) { return g }
         if let g = rasterize(c, font: primary, source: .primary) { return g }
         if let fallback {
             if let g = rasterize(c, font: fallback, source: .systemFallback) { return g }
@@ -324,6 +325,25 @@ public final class PixelFont: @unchecked Sendable {
             }
         }
         return Glyph(advance: pen, mask: mask, maskWidth: cellWidth, source: source)
+    }
+
+    // MARK: w6-polish
+    /// Glyphs drawn here for a 10-px font that lacks them, where the system font's would be a blot at this size:
+    /// rows from the cap line (9 rows over the baseline), `#` = ink. The ⌘ of "⌘Z" in the copy line (Errata 26).
+    static let designedGlyphs: [Character: [String]] = [
+        "⌘": [".......", ".#...#.", "#.#.#.#", ".#####.", "..#.#..", ".#####.", "#.#.#.#", ".#...#."],
+    ]
+
+    /// A designed glyph (`designedGlyphs`) for a 10-px font: its rows from the cap line, advance one past its ink.
+    private func designed(_ c: Character) -> Glyph? {
+        guard pixelSize == 10, let rows = Self.designedGlyphs[c], let w = rows.map(\.count).max() else { return nil }
+        let advance = w + 1, cellWidth = advance + 2 * Self.cellMargin
+        var mask = [Bool](repeating: false, count: cellWidth * lineHeight)
+        let top = baseline - 9
+        for (r, row) in rows.enumerated() where top + r >= 0 && top + r < lineHeight {
+            for (x, ch) in row.enumerated() where ch == "#" { mask[(top + r) * cellWidth + Self.cellMargin + x] = true }
+        }
+        return Glyph(advance: advance, mask: mask, maskWidth: cellWidth, source: .primary)
     }
 
     /// A hollow 7×9 box standing on the baseline, advance 8 (or proportionally smaller fonts).

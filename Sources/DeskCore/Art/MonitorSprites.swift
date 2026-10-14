@@ -160,9 +160,10 @@ public enum MonitorArt {
                 let x = ArtKit.noise(i, 1, seed: 91, size.w), y = ArtKit.noise(i, 2, seed: 91, size.h / 2)
                 c.plot(x, y, i % 3 == 0 ? .blue5 : .neutral8)
             }
-            c.ellipseFill(ArtRect(size.w - 46, 12, 14, 14), .walnut5)
-            c.ellipseFill(ArtRect(size.w - 45, 13, 8, 8), .neutral9)
-            c.ellipseFill(ArtRect(size.w - 41, 10, 13, 13), .blue0)
+            let moon = nightMoon(in: size)
+            c.ellipseFill(moon, .walnut5)
+            c.ellipseFill(ArtRect(moon.x + 1, moon.y + 1, 8, 8), .neutral9)
+            c.ellipseFill(ArtRect(moon.x + 5, moon.y - 2, 13, 13), .blue0)
         } else if sky != .day {
             c.ellipseFill(ArtRect(size.w / 2 - 9, size.h - 36, 18, 18), .walnut5)
             c.ellipseFill(ArtRect(size.w / 2 - 6, size.h - 33, 12, 12), .neutral9)
@@ -263,6 +264,10 @@ public enum MonitorArt {
         c.fill(ArtRect(x, y, 2, 2), .neutral9)
         return c.buffer
     }
+
+    // MARK: w6-polish
+    /// The crescent moon's disc in the night wallpaper (`deskOSWallpaper(sky: .night)`) of `size`.
+    public static func nightMoon(in size: ArtSize) -> ArtRect { ArtRect(size.w - 46, 12, 14, 14) }
 
     /// The bouncing NO SIGNAL logo.
     public static func noSignalLogo() -> SpriteAsset {

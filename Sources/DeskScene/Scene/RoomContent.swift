@@ -234,9 +234,11 @@ final class RoomContent: GestureTarget {
         case _ where RoomPlan.glowIDs.contains(placementID): "room"
         case "desk.front": "desk"
         case "room.switch": "room.switch"
+        // MARK: w6-polish
+        // Wall decor is part of the backdrop (Errata 26): no ring and nothing to do, so the bare wall answers there.
+        case _ where placementID.hasPrefix("decor."): "room"
         default:
-            if placementID.hasPrefix("decor.") { placementID }
-            else if let dot = placementID.firstIndex(of: ".") { String(placementID[..<dot]) }
+            if let dot = placementID.firstIndex(of: ".") { String(placementID[..<dot]) }
             else { placementID }
         }
     }

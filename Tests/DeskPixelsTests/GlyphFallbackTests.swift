@@ -49,8 +49,8 @@ struct GlyphFallbackTests {
         let nfd = "\u{1107}\u{1169}\u{1100}\u{1169}\u{1109}\u{1165} 😀"
         #expect(f.render(nfd, color: Self.ink) == f.render("보고서 😀", color: Self.ink))
         // Symbols the system font has still come from it, in the text colour.
-        #expect(f.source(of: "⌘") == .systemFallback)
-        #expect(Set(f.render("⌘", color: Self.ink).pixels.filter { $0.a != 0 }) == [Self.ink])
+        #expect(f.source(of: "⌥") == .systemFallback)
+        #expect(Set(f.render("⌥", color: Self.ink).pixels.filter { $0.a != 0 }) == [Self.ink])
     }
 
     @Test("A code point no font has still draws something (the system's last resort, or the box), in the text colour")
