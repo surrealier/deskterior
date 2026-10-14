@@ -83,6 +83,7 @@ public final class MonitorElement: DeskElement {
         if before == .off || before == .poweringOff, machine?.phase == .poweringOn {
             crtOn = MonitorArt.powerOnFrames(to: picture(withTokens: false))
         }
+        followReduceMotion()  // MARK: harden
         // Reduce Motion: no CRT collapse or bloom; the machine is off or on at once and the glass fades (M10).
         if context.reduceMotion, let phase = machine?.phase, phase == .poweringOff || phase == .poweringOn {
             let image = picture(withTokens: phase == .poweringOff)
@@ -196,7 +197,7 @@ public final class MonitorElement: DeskElement {
         if m.overlay == .av, m.showsPicture, m.logo.sparkle > 0 {
             let p = m.logo.position
             let frames = FXArt.sparkle().frames
-            let i = min(frames.count - 1, Int((BouncingLogo.sparkleDuration - m.logo.sparkle) * 12) % frames.count)
+            let i = min(frames.count - 1, m.logo.sparkleFrame ?? 0)
             sparkleNode.texture = TextureFactory.texture(frames[i])
             let corner = ArtPoint(glass.x + p.x + (p.x == 0 ? 0 : m.logo.size.w) - 3, glass.y + p.y + (p.y == 0 ? 0 : m.logo.size.h) - 3)
             space.place(sparkleNode, at: ArtRect(origin: corner, size: frames[i].size))
@@ -302,6 +303,7 @@ public final class MonitorElement: DeskElement {
 
     public func hover(_ hit: Hit?) -> Bool {
         if hit?.part == "monitor.screen", machine?.overlay == .av {
+            followReduceMotion()  // MARK: harden
             let wasMoving = machine?.logo.isMoving ?? false
             machine?.wakeLogo()
             return !wasMoving && (machine?.logo.isMoving ?? false)
@@ -460,13 +462,20 @@ public final class MonitorElement: DeskElement {
     }
 
     // MARK: harden
-    /// While the AV logo is all the monitor animates: the rate its picture changes at (`MonitorMachine`), else nil.
+    /// With Reduce Motion the AV logo holds still where it is (no bounce, no sparkle); without, it bounces when woken.
+    private func followReduceMotion() {
+        if machine?.logoStill != context.reduceMotion { machine?.holdLogoStill(context.reduceMotion) }
+    }
+
+    /// While the AV logo is all the monitor animates: the time until its picture next changes (`MonitorMachine`), else
+    /// nil.
     var slowFrameInterval: Double? {
         guard scrollAccum == .zero, !scrollLocked, dotBlink == nil, fade == nil else { return nil }
-        return machine?.logoFrameInterval
+        return machine?.logoFrameInterval()
     }
 
     public func step(_ dt: Double) {
+        followReduceMotion()  // MARK: harden: Reduce Motion turned on while the logo bounces stops it where it is.
         if scrollAccum != .zero || scrollLocked {
             scrollIdle += dt
             if scrollIdle > 0.25 {

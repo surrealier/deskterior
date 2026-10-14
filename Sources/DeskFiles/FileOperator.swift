@@ -43,6 +43,10 @@ public enum FileRefusal: Error, Sendable, Equatable, CustomStringConvertible {
     /// A drop-in move of a Finder-locked item (or one in a locked folder): it is not copied instead, so a move never
     /// leaves a silent duplicate (Errata 25); ⌥ copies it on purpose.
     case locked
+    /// A drop-in copy landed, but the item now at its name is not provably the one staged (another item was swapped
+    /// in at once, or the volume numbers items by where they are: an empty file on FAT, some network shares). It is
+    /// left there, untouched, and has no undo step.
+    case landedUnverified
     /// Any other failure: an errno, or a Cocoa error code.
     case failed(Int)
 
@@ -65,6 +69,7 @@ public enum FileRefusal: Error, Sendable, Equatable, CustomStringConvertible {
         case .noFreeName: "no-free-name"
         case .notPermitted: "not-permitted"
         case .locked: "locked"
+        case .landedUnverified: "landed-unverified"
         case let .failed(code): "failed(\(code))"
         }
     }
@@ -213,7 +218,8 @@ public actor FileOperator {
     /// Undo records issued and not replayed yet, oldest first.
     private var openRecords: [FileUndoRecord] = []
     static let maxOpenRecords = 256
-    /// Staging folders of copies in flight: the only folders this operator ever removes.
+    /// Staging folders of this operator's copies in flight: the only folders it ever removes. They are also listed
+    /// process-wide (`PartialCopies.inFlight`), so no operator trashes, and no look reports, another's live copy.
     private var stagings: Set<String> = []
 
     /// Test seams for races.
@@ -294,8 +300,9 @@ public actor FileOperator {
     private func trashOne(_ url: URL, expecting key: TokenKey) async -> (FileOutcome, FileUndoRecord.Step?) {
         if let r = trashRefusal() { return (.refused(url, r), nil) }
         guard let item = deskChild(url) else { return (.refused(url, .outsideRoot), nil) }
-        // MARK: harden: a copy in flight stages here; only a leftover from an earlier run may go (`PartialCopies`).
-        if stagings.contains(item.path) { return (.refused(url, .failed(Int(EBUSY))), nil) }
+        // MARK: harden: a copy in flight stages here (this operator's or another's, after a folder switch); only a
+        // leftover from an earlier run may go (`PartialCopies`).
+        if PartialCopies.inFlight.contains(item) { return (.refused(url, .failed(Int(EBUSY))), nil) }
         if let r = check(item, is: key) { return (.refused(url, r), nil) }
         switch await trashChecked(item, is: key) {
         case let .success(trashed):
@@ -432,14 +439,13 @@ public actor FileOperator {
         // A Finder-locked item cannot be renamed: the copy is unlocked for the rename and locked again in place.
         let locks = Self.lockFlags(staged)
         if locks != 0 { Self.changeFlags(staged, adding: 0, removing: locks) }
-        let size = Self.fileSize(staged)
         switch FileMoves.renameToFreeName(
             staged, in: root, name: name, splitsExtension: splitsExtension, before: hooks.beforeRename
         ) {
         case let .success(placed):
             // MARK: harden: success only for the copy we wrote; whatever else is there now is left alone.
             hooks.afterPlace?(placed.url)
-            if let r = landed(placed.url, is: key, size: size) { return (.refused(url, r), nil, [sourceInode]) }
+            if let r = landed(placed.url, is: key) { return (.refused(url, r), nil, [sourceInode]) }
             if locks != 0 { Self.changeFlags(placed.url, adding: locks, removing: 0) }
             let outcome: FileOutcome = placed.renamed ? .renamed(url, to: placed.url, op: .copy) : .copied(url, to: placed.url)
             return (outcome, .trashCopy(placed.url, key: key), [sourceInode, key.inode])
@@ -458,6 +464,7 @@ public actor FileOperator {
         ) {
             if Self.fileID(dir, follow: true)?.dev == desk.dev, !DesktopLocator.isInsideDesktop(dir, desktop: root) {
                 stagings.insert(dir.path)
+                PartialCopies.inFlight.insert(dir)
                 return dir
             }
             _ = rmdir(dir.path) // Ours and still empty.
@@ -465,6 +472,7 @@ public actor FileOperator {
         let dir = root.appendingPathComponent(FileMoves.partialPrefix + UUID().uuidString, isDirectory: true)
         guard mkdir(dir.path, 0o700) == 0 else { throw FileRefusal.from(errno: errno) }
         stagings.insert(dir.path)
+        PartialCopies.inFlight.insert(dir)
         return dir
     }
 
@@ -473,6 +481,7 @@ public actor FileOperator {
     /// followed.
     private func removeStaging(_ dir: URL) {
         guard stagings.remove(dir.path) != nil else { return }
+        defer { PartialCopies.inFlight.remove(dir) }
         if (try? FileManager.default.removeItem(at: dir)) != nil { return }
         Self.unlockTree(dir.path)
         try? FileManager.default.removeItem(at: dir)
@@ -518,25 +527,13 @@ public actor FileOperator {
         return lstat(folder.path, &st) == 0 && st.st_flags & (UInt32(UF_IMMUTABLE) | UInt32(SF_IMMUTABLE)) != 0
     }
 
-    /// A regular file's size (nil for anything else: a folder or package is checked by identity alone).
-    static func fileSize(_ url: URL) -> Int64? {
-        var st = stat()
-        guard lstat(url.path, &st) == 0, st.st_mode & S_IFMT == S_IFREG else { return nil }
-        return Int64(st.st_size)
-    }
-
-    /// After a copy's final rename: the item now at `placed` is the copy staged (its volume and inode, and for a
-    /// file its size). Anything else (swapped in right after the rename) is not ours: it is left where it is, and
-    /// the copy is not reported as landed.
-    private func landed(_ placed: URL, is key: TokenKey, size: Int64?) -> FileRefusal? {
-        switch identity(of: placed) {
-        case let .success(found) where found == key:
-            return size == nil || Self.fileSize(placed) == size ? nil : .identityChanged
-        case .success:
-            return .identityChanged
-        case let .failure(r):
-            return r
-        }
+    /// After a copy's final rename: the item now at `placed` is the copy staged (its volume and inode), so it is
+    /// ours, however it changed since (a sync client writing to it at once): its locks go back on and its undo step
+    /// stands. Anything else (another item swapped in at once, or a volume that renumbers items on a rename) is not
+    /// provably ours: it is left there, untouched, with no undo step (`landedUnverified`).
+    private func landed(_ placed: URL, is key: TokenKey) -> FileRefusal? {
+        if case let .success(found) = identity(of: placed), found == key { return nil }
+        return .landedUnverified
     }
 
     /// Copies on a GCD thread, so the actor serves other requests meanwhile (DESIGN §3.6). Cancelling the calling

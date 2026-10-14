@@ -126,7 +126,7 @@ final class WastebasketElement: DeskElement, Knockable {
             if machine.isTipped {
                 run(machine.standUp())
             } else {
-                run(machine.knock())
+                jiggle()
             }
             return .handled
         case let .dragBegan(from, at, _):
@@ -171,13 +171,14 @@ final class WastebasketElement: DeskElement, Knockable {
         return events.contains(.swish)
     }
 
-    /// A refused drop: the heap jiggles and the basket shakes.
+    /// A refused drop: the heap jiggles and the basket shakes (neither with Reduce Motion).
     func bonked() {
         shake()
-        run(machine.knock())
+        jiggle()
     }
 
-    /// A ball touched a rim at core point `p` (its centre): the basket jiggles 1 px and the rim sparks.
+    /// A ball touched a rim at core point `p` (its centre): the basket jiggles 1 px (not with Reduce Motion) and the
+    /// rim sparks.
     func rimHit(at p: SIMD2<Float>) {
         shake()
         let rim = p.x < Float(CoreLayout.wastebasketMouth.midX) ? CoreLayout.wastebasketMouth.minX + 1
@@ -186,8 +187,16 @@ final class WastebasketElement: DeskElement, Knockable {
         redraw()
     }
 
+    // MARK: harden: Reduce Motion (Errata 15: no shake, no jiggle) holds the basket still.
     private func shake() {
+        guard !context.reduceMotion else { return }
         shakeFrames = 6
+    }
+
+    /// The heap jiggles (a click, a refused drop), unless Reduce Motion is on.
+    private func jiggle() {
+        if context.reduceMotion { return redraw() }
+        run(machine.knock())
     }
 
     func knock(_ plan: DeskKnock.Plan) {

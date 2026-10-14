@@ -106,9 +106,15 @@ struct LaunchOptionsTests {
             scratch = try temp.dir("scratch")
         }
 
+        /// What the launch guard decides, as `MirrorController.configurationOrExit` runs it.
+        func launch(_ args: [String], env: [String: String] = [:]) throws -> Result<MirrorController.Configuration, SafetyGuard.Refusal> {
+            MirrorController.launch(options: try LaunchOptions.parse(args), environment: env,
+                                    bundleID: AppIdentity.fallbackBundleID, realDesktop: desktop, home: home)
+        }
+
         func refusal(_ args: [String], env: [String: String] = [:]) throws -> SafetyGuard.Refusal? {
-            MirrorController.launchRefusal(options: try LaunchOptions.parse(args), environment: env,
-                                           realDesktop: desktop, home: home)
+            if case let .failure(r) = try launch(args, env: env) { return r }
+            return nil
         }
     }
 
@@ -128,10 +134,18 @@ struct LaunchOptionsTests {
         #expect(symlink(w.desktop.path, link.path) == 0)
         #expect(try w.refusal(mode + state + ["--desktop-folder", link.path])?.reason == .realDesktop)
         #expect(try w.refusal(mode + state + ["--desktop-folder", inside.path + "/.."])?.reason == .realDesktop)
-        #expect(try w.refusal(mode + state + ["--desktop-folder", w.desktop.path])?.exitCode == 64)
+        let refused = try #require(try w.refusal(mode + state + ["--desktop-folder", w.desktop.path]))
+        #expect(refused.exitCode == 64)
+        let message = MirrorController.launchMessage(refused)
+        #expect(message.hasPrefix("Deskterior: refusing to use the real desktop folder in this mode: ") && message.hasSuffix("\n"))
         #expect(SafetyGuard.refusalExitCode == 64)
         // A scratch folder is fine; our own folders may not sit in the desktop or the mirrored folder.
         #expect(try w.refusal(mode + state + ["--desktop-folder", w.scratch.path]) == nil)
+        if case let .success(c) = try w.launch(mode + state + ["--desktop-folder", w.scratch.path]) {
+            #expect(DesktopLocator.canonicalPath(c.folder) == DesktopLocator.canonicalPath(w.scratch) && c.connectImmediately)
+        } else {
+            Issue.record("a scratch folder starts")
+        }
         #expect(try w.refusal(mode + ["--desktop-folder", w.scratch.path, "--state-dir", w.desktop.path + "/state"])?
             .reason == .insideRealDesktop)
         #expect(try w.refusal(mode + ["--desktop-folder", w.scratch.path, "--state-dir", w.scratch.path + "/state"])?

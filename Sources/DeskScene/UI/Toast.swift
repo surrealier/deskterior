@@ -38,6 +38,9 @@ extension ToastKey {
         case .fileLocked: "It's locked, so it stayed. ⌥ copies it."
         case .copiedInstead: "Copied in; the original stayed put."
         case .leftoverCopies: "An interrupted copy left files. See Settings."
+        case .someLocked: "Some were locked, so they stayed."
+        case .someCopiedInstead: "Some came in as copies; the rest stayed."
+        case .copiedNoUndo: "Copied in, but it can't be undone."
         }
     }
 

@@ -64,20 +64,34 @@ public nonisolated struct FrameClock: Hashable, Sendable {
         lastActivity = max(lastActivity, time)
     }
 
-    /// The number of fixed steps to run for a tick at `now` (0…`maxStepsPerTick`, or `maxSteps` for a slow tick);
-    /// advances `simTime`.
-    public mutating func advance(to now: Double, maxSteps: Int? = nil) -> Int {
-        let cap = max(1, maxSteps ?? maxStepsPerTick)
+    /// The number of fixed steps to run for a tick at `now` (0…`maxStepsPerTick`); advances `simTime`.
+    public mutating func advance(to now: Double) -> Int {
         let dt: Double
         if let last = lastTimestamp { dt = max(0, now - last) } else { dt = Self.step }
         lastTimestamp = now
         // Never bank more than the steps one tick may take: a stall drops time instead of queueing it.
-        accumulator = min(accumulator + dt, Double(cap) * Self.step)
+        accumulator = min(accumulator + dt, Double(maxStepsPerTick) * Self.step)
         // A little slack so 60 Hz timestamp jitter does not alternate 0 and 2 steps.
-        let n = min(cap, Int((accumulator + Self.step * 0.05) / Self.step))
+        let n = min(maxStepsPerTick, Int((accumulator + Self.step * 0.05) / Self.step))
         accumulator -= Double(n) * Self.step
         stepCount += n
         return n
+    }
+
+    // MARK: harden
+    /// A slow tick at `now` takes exactly `steps` fixed steps, however late its timer fired (a late timer only slows
+    /// the slow animation a little, never doubles or skips a frame); the accumulator starts over.
+    public mutating func advance(to now: Double, steps: Int) -> Int {
+        let n = max(1, steps)
+        lastTimestamp = now
+        accumulator = 0
+        stepCount += n
+        return n
+    }
+
+    /// The fixed steps that cover `seconds` (at least one): a slow animation's next change falls on the last of them.
+    public static func steps(covering seconds: Double) -> Int {
+        max(1, Int((seconds / step - 1e-6).rounded(.up)))
     }
 
     /// Ends a tick: counts rest frames and checks the hard-sleep timer.
@@ -103,8 +117,10 @@ public protocol FrameLoopHost: AnyObject {
     /// Hard sleep: settle everything now.
     func frameLoopForceRest()
     // MARK: harden
-    /// Non-nil while the only thing moving steps at a low rate of its own (the AV logo at 8 fps): the loop then ticks
-    /// at that interval on a timer instead of at 60 Hz, so an idle desk showing AV costs next to nothing.
+    /// Non-nil while the only thing moving changes its picture at a low rate of its own (the AV logo at 8 fps): the
+    /// time until it next changes, a whole number of fixed steps. The loop then ticks on a timer just then, taking
+    /// exactly those steps, instead of at 60 Hz, so an idle desk showing AV costs next to nothing and shows every
+    /// change once.
     var frameLoopSlowFrameInterval: Double? { get }
 }
 
@@ -117,8 +133,8 @@ extension FrameLoopHost {
 /// element animating, no carry), or 3 s after the later of the last input and the end of the last scripted
 /// animation (hard sleep: the host settles everything), or while any `PauseReason` holds. Hover and tooltips
 /// render single frames (`renderOnce`) and never start the link. While only a slow animation runs (the AV logo,
-/// `frameLoopSlowFrameInterval`), the link rests and a timer ticks at that animation's own rate, stepping the fixed
-/// steps that fell due (Errata 25); input that starts anything faster brings the link back.
+/// `frameLoopSlowFrameInterval`), the link rests and a timer ticks at each of that animation's own frames, stepping
+/// exactly the fixed steps up to it (Errata 25); input that starts anything faster brings the link back.
 public final class FrameLoop {
     public weak var host: (any FrameLoopHost)?
     public private(set) var clock = FrameClock()
@@ -205,22 +221,23 @@ public final class FrameLoop {
             link.isPaused = true
             return
         }
-        switch frame(at: link.timestamp, host: host, maxSteps: nil) {
+        let now = link.timestamp
+        switch frame(at: now, host: host, steps: nil) {
         case .run:
-            // MARK: harden: only a slow animation left: rest the link and tick at its own rate.
+            // MARK: harden: only a slow animation left: rest the link and tick at its own frames.
             if let interval = host.frameLoopSlowFrameInterval {
                 link.isPaused = true
-                scheduleSlowTick(after: interval)
+                scheduleSlowTick(steps: FrameClock.steps(covering: interval), from: now)
             }
         case .rest, .hardSleep:
             link.isPaused = true
         }
     }
 
-    /// One frame at `now`: the fixed steps that fell due, a render, and the verdict (a hard sleep settles the host and
-    /// renders its rest).
-    private func frame(at now: Double, host: any FrameLoopHost, maxSteps: Int?) -> FrameClock.Verdict {
-        let steps = clock.advance(to: now, maxSteps: maxSteps)
+    /// One frame at `now`: the fixed steps that fell due (or exactly `steps`, a slow tick's), a render, and the verdict
+    /// (a hard sleep settles the host and renders its rest).
+    private func frame(at now: Double, host: any FrameLoopHost, steps exact: Int?) -> FrameClock.Verdict {
+        let steps = exact.map { clock.advance(to: now, steps: $0) } ?? clock.advance(to: now)
         for _ in 0..<steps { host.frameLoopStep(FrameClock.step) }
         host.frameLoopRender()
         if host.frameLoopScriptedAnimating { clock.noteActivity(at: now) }
@@ -234,10 +251,11 @@ public final class FrameLoop {
 
     // MARK: harden: slow ticks
 
-    /// Ticks once more after `interval` on a timer (the link rests meanwhile).
-    private func scheduleSlowTick(after interval: Double) {
+    /// Ticks once more `steps` fixed steps after `start` (a tick's time) on a timer; the link rests meanwhile.
+    private func scheduleSlowTick(steps: Int, from start: Double) {
         slowTimer?.invalidate()
-        let timer = Timer(timeInterval: max(FrameClock.step, interval), repeats: false) { [weak self] _ in
+        let due = start + Double(steps) * FrameClock.step
+        let timer = Timer(timeInterval: max(0.001, due - CACurrentMediaTime()), repeats: false) { [weak self] _ in
             MainActor.assumeIsolated { self?.slowTick(at: CACurrentMediaTime()) }
         }
         timer.tolerance = 0.005
@@ -245,17 +263,18 @@ public final class FrameLoop {
         slowTimer = timer
     }
 
-    /// One slow tick at `now`: the steps that fell due since the last tick (at most a slow frame's worth), a render;
-    /// then another slow tick, the link again when something faster started, or rest once nothing moves.
+    /// One slow tick at `now`: exactly the steps up to the slow animation's next change (so each tick shows one, however
+    /// late the timer), a render; then the next slow tick, the link again when something faster started, or rest
+    /// once nothing moves.
     func slowTick(at now: Double) {
         cancelSlowTicks()
         guard pauseReasons.isEmpty, let host, link?.isPaused != false else { return }
         slowTicks += 1
-        let interval = host.frameLoopSlowFrameInterval ?? FrameClock.step
-        let verdict = frame(at: now, host: host, maxSteps: Int((interval / FrameClock.step).rounded(.up)) + 1)
+        let steps = FrameClock.steps(covering: host.frameLoopSlowFrameInterval ?? FrameClock.step)
+        let verdict = frame(at: now, host: host, steps: steps)
         guard verdict != .hardSleep, host.frameLoopNeedsFrames else { return }
         if let next = host.frameLoopSlowFrameInterval {
-            scheduleSlowTick(after: next)
+            scheduleSlowTick(steps: FrameClock.steps(covering: next), from: now)
         } else {
             link?.isPaused = false
         }

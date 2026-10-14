@@ -91,7 +91,12 @@ public final class SceneHost: FrameLoopHost {
 
     /// After a model change: run the loop if something now animates, else render one frame.
     public func modelChanged() {
-        if scene.needsFrames { loop.wake() } else { loop.renderOnce() }
+        if scene.needsFrames {
+            loop.wake()
+            if loop.isTickingSlowly { loop.renderOnce() }  // MARK: harden: shown now, not at the next slow tick
+        } else {
+            loop.renderOnce()
+        }
     }
 
     /// A one-shot timer for the router's next deadline (the tooltip), in event time (seconds since boot).
@@ -121,6 +126,7 @@ public final class SceneHost: FrameLoopHost {
     }
 
     public func frameLoopRender() {
+        renders += 1  // MARK: harden
         guard let layer else { return }
         presenter.present(to: layer, params: UpscaleParams(grid: grid, shake: shake + scene.shake))
     }
@@ -131,6 +137,8 @@ public final class SceneHost: FrameLoopHost {
 
     // MARK: harden
     public var frameLoopSlowFrameInterval: Double? { scene.slowFrameInterval }
+    /// Frames rendered, or asked for while headless (tests).
+    private(set) var renders = 0
 
     public func frameLoopForceRest() {
         scene.forceRest()

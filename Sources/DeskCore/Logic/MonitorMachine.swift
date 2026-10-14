@@ -73,6 +73,28 @@ public struct BouncingLogo: Sendable, Equatable {
         }
     }
 
+    // MARK: harden
+    /// The corner sparkle's frame (0, 1, 2, 0 …, every 1/12 s from the hit), nil when none shows.
+    public var sparkleFrame: Int? {
+        sparkle > 0 ? Int((Self.sparkleDuration - sparkle) * 12) % 3 : nil
+    }
+
+    /// How many `dt` steps from now its picture next changes: its next move, its sparkle's next frame or the
+    /// sparkle's end, nil when neither runs. Counted with `step`'s own arithmetic, so a tick of exactly that many
+    /// steps shows exactly one change (Errata 25).
+    public func stepsToNextChange(dt: Double) -> Int? {
+        guard dt > 0, isMoving || sparkle > 0 else { return nil }
+        var probe = self
+        let start = (probe.position, probe.sparkleFrame)
+        for n in 1...Int((MonitorMachine.avFrameTime / dt).rounded(.up)) + 1 {
+            probe.step(dt)
+            if probe.position != start.0 || probe.sparkleFrame != start.1 || !(probe.isMoving || probe.sparkle > 0) {
+                return n
+            }
+        }
+        return nil
+    }
+
     private mutating func move() {
         let maxX = max(0, bounds.w - size.w), maxY = max(0, bounds.h - size.h)
         var p = position + velocity
@@ -143,6 +165,9 @@ public struct MonitorMachine: Sendable, Equatable {
     private var ledBlinkTime: Double?
     private var page: Int
     private var av: Bool
+    // MARK: harden
+    /// Reduce Motion: the AV logo holds still where it is (no bounce, no sparkle).
+    public private(set) var logoStill = false
 
     /// At rest in `s` (no animation for the state the desk starts in).
     public init(_ s: DeskState, logoSize: ArtSize = MonitorArt.noSignalLogo().size, screen: ArtSize = CoreLayout.screen.size) {
@@ -178,7 +203,7 @@ public struct MonitorMachine: Sendable, Equatable {
             osdText = Self.osdText(s)
             osdLeft = Self.osdDuration
         }
-        if newOverlay == .av, overlay != .av || inputChanged || phase == .poweringOn {
+        if newOverlay == .av, overlay != .av || inputChanged || phase == .poweringOn, !logoStill {
             logo.wake(for: Self.avBounceLimit)
         }
         if s.monitor.pendingNew > pendingNew, !powered { ledBlinkTime = 0 }
@@ -191,8 +216,15 @@ public struct MonitorMachine: Sendable, Equatable {
 
     /// Hovering the AV screen restarts the logo's bounce.
     public mutating func wakeLogo() {
-        guard overlay == .av, phase == .on else { return }
+        guard overlay == .av, phase == .on, !logoStill else { return }
         logo.wake(for: Self.avBounceLimit)
+    }
+
+    // MARK: harden
+    /// Reduce Motion on: the AV logo stops where it is and stays still (Errata 25); off: it bounces when next woken.
+    public mutating func holdLogoStill(_ still: Bool) {
+        logoStill = still
+        if still { logo.freeze() }
     }
 
     public mutating func step(_ dt: Double) {
@@ -241,17 +273,16 @@ public struct MonitorMachine: Sendable, Equatable {
     }
 
     // MARK: harden
-    /// While the AV logo is all that animates here: how often its picture changes (its 8 fps step, or the corner
-    /// sparkle's 12 fps), so the frame loop can tick at that rate instead of 60 Hz (Errata 25); else nil.
-    public var logoFrameInterval: Double? {
-        guard needsFrames, phase == .on, overlay == .av, staticLeft == 0, osdLeft == 0, ledBlinkTime == nil else {
+    /// While the AV logo is all that animates here: the time until its picture next changes (its next 8 fps move,
+    /// or the corner sparkle's next 12 fps frame), a whole number of fixed `step`s, so the frame loop can tick just
+    /// then instead of at 60 Hz and show every change once (Errata 25); else nil.
+    public func logoFrameInterval(step: Double = 1.0 / 60) -> Double? {
+        guard needsFrames, phase == .on, overlay == .av, staticLeft == 0, osdLeft == 0, ledBlinkTime == nil,
+              let n = logo.stepsToNextChange(dt: step) else {
             return nil
         }
-        return logo.sparkle > 0 ? Self.sparkleFrameTime : Self.avFrameTime
+        return Double(n) * step
     }
-
-    /// The corner sparkle's frame time.
-    public static let sparkleFrameTime = 1.0 / 12
 
     // MARK: What to draw
 

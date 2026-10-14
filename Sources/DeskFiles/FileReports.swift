@@ -60,6 +60,7 @@ extension FileProblem {
         case .missing: self = .gone
         case .notPermitted: self = .notPermitted
         case .locked: self = .locked
+        case .landedUnverified: self = .landedUnverified
         case .notInTrash: self = .notInTrash
         case .noFreeName: self = .noFreeName
         case .containsDesktop: self = .holdsDesk

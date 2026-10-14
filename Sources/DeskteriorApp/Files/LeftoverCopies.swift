@@ -17,8 +17,12 @@ final class LeftoverCopies {
     var onChange: (([PartialCopies.Leftover]) -> Void)?
     private var toasted = false
     private var looking = false
+    /// A look was asked for while one ran (after a trash): it runs once that one is in.
+    private var lookAgain = false
     /// Looks finished so far (tests).
     private(set) var looks = 0
+    /// Lists the leftovers in a folder; runs off the main thread (tests stand in to see where it runs).
+    var find: @Sendable (URL) -> [PartialCopies.Leftover] = PartialCopies.find(in:)
 
     init(folder: URL, host: SceneHost) {
         self.folder = folder
@@ -26,19 +30,29 @@ final class LeftoverCopies {
     }
 
     /// Lists the folder's top level for leftovers, off the main thread (a slow or network volume never stalls the
-    /// desk), then logs them and, the first time any are found, raises the toast.
+    /// desk), then logs them and, the first time any are found, raises the toast. One look runs at a time; one asked
+    /// for meanwhile follows it, so a look after a trash never ends on a list read before it.
     func look() {
-        guard !looking else { return }
+        guard !looking else {
+            lookAgain = true
+            return
+        }
         looking = true
-        let folder = folder
-        DispatchQueue.global(qos: .utility).async { [weak self] in
-            let list = PartialCopies.find(in: folder)
+        let folder = folder, find = find
+        // At the mirror's QoS: a main-queue block sent from a utility thread was seen waiting minutes behind a busy
+        // main thread (the whole test suite).
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let list = find(folder)
             DispatchQueue.main.async {
                 MainActor.assumeIsolated {
                     guard let self else { return }
                     self.looking = false
                     self.looks += 1
                     self.adopt(list)
+                    if self.lookAgain {
+                        self.lookAgain = false
+                        self.look()
+                    }
                 }
             }
         }
@@ -64,5 +78,14 @@ final class LeftoverCopies {
         let urls = found.flatMap { $0.contents.isEmpty ? [$0.url] : $0.contents }
         guard !urls.isEmpty else { return }
         NSWorkspace.shared.activateFileViewerSelecting(urls)
+    }
+}
+
+extension SettingsModel {
+    /// Settings ▸ Leftover copies follows `leftovers`, a session's (after a folder switch: the new folder's, none
+    /// until its look is in), and drops the note the last Move to Trash left.
+    func follow(_ leftovers: LeftoverCopies) {
+        self.leftovers = leftovers.found.count
+        leftoverNote = nil
     }
 }

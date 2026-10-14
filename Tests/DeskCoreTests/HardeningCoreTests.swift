@@ -90,9 +90,15 @@ struct HardeningCoreTests {
     @Test("A locked drop has its own problem and toast; the new toasts speak Korean too")
     func lockedAndToasts() {
         #expect(FileReport(kind: .importItems, count: 1, problems: [.locked]).toast == .fileLocked)
-        #expect(FileReport(kind: .importItems, count: 2, problems: [.locked]).toast == .someNotDone)
+        #expect(FileReport(kind: .importItems, count: 2, problems: [.locked]).toast == .someLocked)
+        #expect(FileReport(kind: .importItems, count: 1, problems: [.landedUnverified]).toast == .copiedNoUndo)
+        #expect(FileReport(kind: .importItems, count: 3, problems: [.gone, .landedUnverified]).toast == .copiedNoUndo)
+        let both = FileReport(kind: .importItems, count: 2, problems: [.notPermitted], done: .copiedInstead)
+        #expect(both.toast == .someCopiedInstead, "a move that came in as a copy is never left unsaid")
         let english = ["It's locked, so it stayed. ⌥ copies it.", "Copied in; the original stayed put.",
-                       "An interrupted copy left files. See Settings."]
+                       "An interrupted copy left files. See Settings.", "Some were locked, so they stayed.",
+                       "Some came in as copies; the rest stayed.", "Copied in, but it can't be undone.",
+                       "No leftover copies now."]
         for e in english {
             #expect(L10n.knows(e), "\(e)")
             #expect(L10n.tr(e, .ko) != e)

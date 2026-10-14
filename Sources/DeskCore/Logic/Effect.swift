@@ -110,4 +110,7 @@ public enum ToastKey: String, Sendable, CaseIterable {
     /// A locked item dropped to move stayed where it was; a move macOS refused came in as a copy; leftovers of an
     /// interrupted copy are in the desk folder (Settings shows them) (Errata 25).
     case fileLocked, copiedInstead, leftoverCopies
+    /// Only some items went: the rest were locked; some came in as copies (a move macOS refused) and the rest stayed;
+    /// a copy landed but the item at its name is not provably the one written, so it has no undo step.
+    case someLocked, someCopiedInstead, copiedNoUndo
 }

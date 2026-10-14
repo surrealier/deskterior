@@ -5,7 +5,31 @@ import DeskScene
 import Foundation
 import Metal
 import Testing
+@testable import DeskFiles
 @testable import DeskteriorApp
+
+/// A monotonic clock a test holds still: an intent minted right after `hold()` stays fresh however long the whole
+/// suite keeps the operator's call waiting, so a stale intent is a failure, never an excuse.
+nonisolated final class HeldUptime: @unchecked Sendable {
+    private let lock = NSLock()
+    private var instant = ContinuousClock.now
+
+    /// Stops the clock just ahead of now (an intent minted within the next second or so is fresh by it).
+    func hold() { lock.withLock { instant = .now + .milliseconds(500) } }
+
+    var now: ContinuousClock.Instant { lock.withLock { instant } }
+}
+
+/// File actions on the test's own clock, confined to `desk`, `state` and a FakeTrash there (test mode).
+@MainActor
+func heldFileActions(desk: URL, state: URL, uptime: HeldUptime) throws -> FileActions {
+    let scope = FileActionScope(mode: .test, folder: desk, stateDirectory: state)
+    let log = try OperationLog(directory: state, desktop: desk, mirrored: desk)
+    let trash = try FakeTrasher(folder: state.appendingPathComponent("FakeTrash"), desktop: desk, mirrored: desk)
+    let op = FileOperator(root: desk, trasher: trash, log: log, sandboxRoots: scope.sandboxRoots,
+                          uptime: { uptime.now })
+    return FileActions(fileOperator: op, scope: scope)
+}
 
 /// A scene host, a store and an effect runner with a file operator confined to a scratch desk, its state folder and
 /// a FakeTrash there (test mode: never the real Trash), as a session builds them.
@@ -19,6 +43,7 @@ final class AppRig {
     let effects: EffectRunner
     let files: FileActions
     let dropIn: DropInController
+    let uptime = HeldUptime()
 
     init() throws {
         temp = try AppTemp()
@@ -30,8 +55,7 @@ final class AppRig {
         host.scene.setContent(.room)
         store = Store()
         effects = EffectRunner(host: host, folder: desk, dryRun: true)
-        files = try FileActions(folder: desk, stateDirectory: state,
-                                scope: FileActionScope(mode: .test, folder: desk, stateDirectory: state))
+        files = try heldFileActions(desk: desk, state: state, uptime: uptime)
         effects.files = files
         dropIn = DropInController(host: host, store: store, effects: effects)
         host.scene.apply(store.state)
@@ -113,18 +137,138 @@ struct AppFilesTests {
         rig.effects.withOrigin(.inventory) { rig.effects.trashLeftovers(items) { results.append($0) } }
         #expect(results.count == 2 && results.allSatisfy { $0 == nil }, "no gesture, or the wrong one: nothing runs")
         #expect(FileManager.default.fileExists(atPath: leftover.path))
+        rig.uptime.hold()
         rig.effects.withOrigin(.menuItem) { rig.effects.trashLeftovers(items) { results.append($0) } }
         #expect(await eventually { results.count == 3 })
         let result = try #require(results.last ?? nil, "the button's gesture reached the operator")
-        if result.refusals == [.staleIntent] {
-            // The whole test suite can hold every thread of the concurrency pool past an intent's 10 s; then nothing
-            // changed (the trash itself is covered on a test clock in `HardeningFileTests.trashLeftover`).
-            #expect(FileManager.default.fileExists(atPath: leftover.path))
-        } else {
-            #expect(result.refusals.isEmpty)
-            #expect(!FileManager.default.fileExists(atPath: leftover.path))
-            #expect(rig.names(rig.fakeTrash) == [leftover.lastPathComponent])
-            #expect(PartialCopies.find(in: rig.desk).isEmpty)
+        #expect(result.refusals.isEmpty, "a fresh intent on the held clock: the trash ran")
+        #expect(!FileManager.default.fileExists(atPath: leftover.path))
+        #expect(rig.names(rig.fakeTrash) == [leftover.lastPathComponent])
+        #expect(PartialCopies.find(in: rig.desk).isEmpty)
+    }
+
+    @Test("A look lists the folder off the main thread; one asked for while it runs follows it, never dropped")
+    func lookOffMain() async throws {
+        let rig = try AppRig()
+        let leftover = try rig.temp.dir("Desk/.deskterior-partial-\(UUID().uuidString)")
+        let watch = LeftoverCopies(folder: rig.desk, host: rig.host)
+        let threads = ThreadLog()
+        watch.find = { folder in
+            threads.note(Thread.isMainThread)
+            return PartialCopies.find(in: folder)
         }
+        watch.look()
+        watch.look()  // while the first runs
+        #expect(await eventually { watch.looks == 2 })
+        #expect(threads.onMain == [false, false], "both listings ran off the main thread")
+        #expect(watch.found.map(\.url.lastPathComponent) == [leftover.lastPathComponent])
+        #expect(rig.host.scene.toastShown == .leftoverCopies)
+    }
+}
+
+/// Where a stand-in finder ran.
+nonisolated final class ThreadLog: @unchecked Sendable {
+    private let lock = NSLock()
+    private var log: [Bool] = []
+    func note(_ main: Bool) { lock.withLock { log.append(main) } }
+    var onMain: [Bool] { lock.withLock { log } }
+}
+
+/// A session over a scratch desk as desk mode starts one on a first run: not connected, so nothing reads the folder
+/// before ⏻ (`connect`). Development stand-ins only: a temporary state folder, kind icons, no volumes.
+@MainActor
+final class SessionRig {
+    let temp: AppTemp
+    let desk: URL
+    let state: URL
+    let session: DeskSession
+
+    init(connected: Bool = false) throws {
+        temp = try AppTemp()
+        desk = try temp.dir("Desk")
+        state = try temp.dir("State")
+        let home = try temp.dir("home")
+        let desktop = try temp.dir("home/Desk")
+        let options = try LaunchOptions.parse(["--windowed", "--desktop-folder", desk.path, "--state-dir", state.path,
+                                               "--icons", "kind"])
+        var configuration = try MirrorController.launch(options: options, environment: [:],
+                                                        bundleID: AppIdentity.fallbackBundleID,
+                                                        realDesktop: desktop, home: home).get()
+        configuration.connectImmediately = connected
+        configuration.finderHidesItems = false
+        configuration.watchesVolumes = false
+        let device = try #require(MTLCreateSystemDefaultDevice())
+        let host = try SceneHost(grid: PixelGrid(display: DisplayGeometry(widthPt: 1470, heightPt: 956, backingScale: 2,
+                                                                          topInsetPt: 33)), device: device)
+        AppDelegate.configure(host, options)
+        session = DeskSession(host: host, options: options, configuration: configuration, dryRun: true)
+    }
+
+    var fakeTrash: URL { state.appendingPathComponent("FakeTrash") }
+
+    func names(_ dir: URL) -> [String] {
+        ((try? FileManager.default.contentsOfDirectory(atPath: dir.path)) ?? []).sorted()
+    }
+}
+
+@Suite("Leftover copies in a session", .enabled(if: MTLCreateSystemDefaultDevice() != nil))
+@MainActor
+struct LeftoverSessionTests {
+    @Test("The session looks for leftovers only once the mirror has read the folder: never before ⏻")
+    func afterFirstSnapshot() async throws {
+        let rig = try SessionRig()
+        let leftover = try rig.temp.dir("Desk/.deskterior-partial-\(UUID().uuidString)")
+        let session = rig.session
+        defer { session.stop() }
+        session.start()
+        #expect(session.store.state.access == .notConnected)
+        try await Task.sleep(for: .milliseconds(300))
+        #expect(session.mirror.snapshotCount == 0 && session.leftovers.looks == 0, "nothing read before ⏻")
+        session.mirror.connect()  // what ⏻ (and the privacy prompt) leads to
+        #expect(await eventually { session.leftovers.looks == 1 })
+        #expect(session.mirror.snapshotCount >= 1)
+        #expect(session.leftovers.found.map(\.url.lastPathComponent) == [leftover.lastPathComponent])
+        #expect(FileManager.default.fileExists(atPath: leftover.path), "a look never changes anything")
+    }
+
+    @Test("Settings' Move to Trash: the button's gesture, the line it shows, and a fresh look; with none left, says so")
+    func settingsButton() async throws {
+        let rig = try SessionRig(connected: true)
+        let leftover = try rig.temp.dir("Desk/.deskterior-partial-\(UUID().uuidString)")
+        try rig.temp.file("Desk/\(leftover.lastPathComponent)/half.mov")
+        let session = rig.session
+        defer { session.stop() }
+        let uptime = HeldUptime()
+        session.effects.files = try heldFileActions(desk: rig.desk, state: rig.state, uptime: uptime)
+        session.start()
+        #expect(await eventually { session.leftovers.found.count == 1 })
+        let model = SettingsModel(settings: DeskSettings(), lights: .auto, folderPath: rig.desk.path, folderLocked: true,
+                                  displays: [])
+        model.follow(session.leftovers)
+        session.leftovers.onChange = { model.leftovers = $0.count }
+        #expect(model.leftovers == 1)
+        var notes: [String] = []
+        uptime.hold()
+        session.trashLeftovers { notes.append($0) }
+        #expect(await eventually { notes.count == 1 })
+        #expect(notes == [tr(.leftoversTrashed)])
+        #expect(!FileManager.default.fileExists(atPath: leftover.path))
+        #expect(rig.names(rig.fakeTrash) == [leftover.lastPathComponent])
+        #expect(await eventually { session.leftovers.found.isEmpty && model.leftovers == 0 }, "a fresh look follows")
+        session.trashLeftovers { notes.append($0) }
+        #expect(notes.last == tr(.leftoversNone), "nothing to do is said, not silent")
+    }
+
+    @Test("After a folder switch Settings follows the new folder's leftovers, with no old note")
+    func followsNewSession() throws {
+        let old = try SessionRig()
+        let new = try SessionRig()
+        let model = SettingsModel(settings: DeskSettings(), lights: .auto, folderPath: old.desk.path, folderLocked: false,
+                                  displays: [])
+        model.follow(old.session.leftovers)
+        model.leftovers = 2
+        model.leftoverNote = "Moved to the Trash."
+        model.follow(new.session.leftovers)
+        #expect(model.leftovers == 0 && model.leftoverNote == nil)
     }
 }

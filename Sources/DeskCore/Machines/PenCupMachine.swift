@@ -157,6 +157,12 @@ public struct PenCupMachine: Sendable, Equatable {
         return [.bonk, .wobble]
     }
 
+    // MARK: harden
+    /// Ends a wobble at once, upright (Reduce Motion).
+    public mutating func stillWobble() {
+        if case .wobble = phase { phase = .upright }
+    }
+
     /// A desk knock: wobbles an upright cup. Never tips it.
     public mutating func knock(strength: Float = 1) -> [Event] {
         guard isUpright else { return [] }

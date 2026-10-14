@@ -21,6 +21,14 @@ private func lockFlag(_ url: URL) -> Bool {
     return lstat(url.path, &st) == 0 && st.st_flags & UInt32(UF_IMMUTABLE) != 0
 }
 
+/// The staging folder a copy in flight made in `desk` (`PartialCopies.find` leaves running copies out).
+private func stagingFolder(in desk: URL, _ rig: FileRig) -> PartialCopies.Leftover? {
+    rig.names(desk).filter(PartialCopies.isLeftoverName).first.map {
+        let url = rig.at(desk, $0)
+        return PartialCopies.Leftover(url: url, key: rig.key(url), contents: [])
+    }
+}
+
 /// Pre-release hardening of the file actions (wave 6, Errata 25): a locked item is never duplicated by a move, a move
 /// macOS refused that came in as a copy says so, a copy is reported only once the item at its destination is the copy
 /// it wrote, and leftovers of an interrupted copy are found, never touched, and trashed only on request.
@@ -72,9 +80,37 @@ struct HardeningFileTests {
         #expect(FileReport(import: result, undo: nil, requested: .copy).toast == nil, "an asked-for copy is no news")
     }
 
+    @Test("A move that came in as a copy is still reported when another item of the same drop is refused")
+    func copiedInsteadBesideRefusal() async throws {
+        let rig = try FileRig()
+        let folder = try rig.temp.mkdir("Elsewhere/ReadOnly")
+        let a = try rig.file(folder, "a.txt", "keep")
+        let b = try rig.file(rig.elsewhere, "b.txt", "locked")
+        defer { release(rig.temp.root) }
+        #expect(chmod(folder.path, 0o555) == 0)
+        #expect(lchflags(b.path, UInt32(UF_IMMUTABLE)) == 0)
+        let result = await rig.op.importItems([a, b], op: .move, rig.intent(.drop))
+        #expect(result.outcomes == [.copied(a, to: rig.at(rig.desk, "a.txt")), .refused(b, .locked)])
+        #expect(rig.exists(a), "the original of the copy stayed put")
+        let report = FileReport(import: result, undo: nil, requested: .move)
+        #expect(report.done == .copiedInstead && report.toast == .someCopiedInstead, "never \"some stayed\" alone")
+    }
+
+    @Test("Locked items beside items that moved say why they stayed")
+    func someLocked() async throws {
+        let rig = try FileRig()
+        let a = try rig.file(rig.elsewhere, "a.txt", "moves")
+        let b = try rig.file(rig.elsewhere, "b.txt", "locked")
+        defer { release(rig.temp.root) }
+        #expect(lchflags(b.path, UInt32(UF_IMMUTABLE)) == 0)
+        let result = await rig.op.importItems([a, b], op: .move, rig.intent(.drop))
+        #expect(result.outcomes == [.moved(a, to: rig.at(rig.desk, "a.txt")), .refused(b, .locked)])
+        #expect(FileReport(import: result, undo: nil, requested: .move).toast == .someLocked)
+    }
+
     // MARK: A copy's landing
 
-    @Test("An item swapped in right after a copy's final rename is left alone, and the copy is not reported as landed")
+    @Test("An item swapped in right after a copy's final rename is left alone, and the copy has no undo step")
     func swappedAfterPlace() async throws {
         let rig = try FileRig()
         let source = try rig.file(rig.elsewhere, "a.txt", "ours")
@@ -84,26 +120,34 @@ struct HardeningFileTests {
             try? Data("theirs".utf8).write(to: placed)
         }))
         let result = await rig.op.importItems([source], op: .copy, rig.intent(.drop))
-        #expect(result.outcomes == [.refused(source, .identityChanged)])
-        #expect(result.undo == nil, "nothing to take back: what is there is not ours")
+        #expect(result.outcomes == [.refused(source, .landedUnverified)])
+        #expect(result.undo == nil, "nothing to take back: what is there is not provably ours")
         #expect(rig.text(rig.at(rig.desk, "a.txt")) == "theirs", "never moved or removed")
         #expect(rig.text(source) == "ours")
+        let report = FileReport(import: result, undo: nil, requested: .copy)
+        #expect(report.toast == .copiedNoUndo, "a copy was made: never \"nothing was done\"")
     }
 
-    @Test("A copy whose file changed size after it landed is not reported as landed; the file is left as it is")
-    func resizedAfterPlace() async throws {
+    @Test("A locked copy written to the moment it lands is still ours: locked again, with its undo step")
+    func changedAfterPlace() async throws {
         let rig = try FileRig()
-        let source = try rig.file(rig.elsewhere, "log.txt", "12345")
+        let source = try rig.file(rig.elsewhere, "deed.txt", "12345")
+        defer { release(rig.temp.root) }
+        #expect(lchflags(source.path, UInt32(UF_IMMUTABLE)) == 0)
         await rig.op.setHooks(.init(afterPlace: { placed in
+            // A sync client or an indexer writes to it the instant it lands (before its lock is back).
             if let h = try? FileHandle(forWritingTo: placed) {
                 h.seekToEndOfFile()
-                h.write(Data("678".utf8))
+                h.write(Data("6".utf8))
                 try? h.close()
             }
         }))
         let result = await rig.op.importItems([source], op: .copy, rig.intent(.drop))
-        #expect(result.outcomes == [.refused(source, .identityChanged)])
-        #expect(rig.text(rig.at(rig.desk, "log.txt")) == "12345678")
+        let placed = rig.at(rig.desk, "deed.txt")
+        #expect(result.outcomes == [.copied(source, to: placed)])
+        #expect(lockFlag(placed), "the lock went back on")
+        #expect(rig.text(placed) == "123456" && rig.text(source) == "12345")
+        #expect(result.undo?.steps == [.trashCopy(placed, key: rig.key(placed))], "undo can take this copy back")
     }
 
     @Test("A copy that lands intact is reported with an undo step, from either staging place", arguments: [false, true])
@@ -177,12 +221,40 @@ struct HardeningFileTests {
             })
         }
         #expect(await started.opened(within: 30))
-        let staging = try #require(PartialCopies.find(in: rig.desk).first, "the copy stages in the desk folder")
+        let staging = try #require(stagingFolder(in: rig.desk, rig), "the copy stages in the desk folder")
+        #expect(PartialCopies.find(in: rig.desk).isEmpty, "a running copy's folder is not a leftover")
         let refused = await rig.op.trash([staging.url], expecting: [staging.key], rig.intent())
         release.open()
         let dropped = await drop.value
         #expect(refused.refusals == [.failed(Int(EBUSY))])
         #expect(dropped.outcomes == [.copied(big, to: rig.at(rig.desk, "big.bin"))])
         #expect(rig.names(rig.desk) == ["big.bin"] && rig.trashNames.isEmpty)
+    }
+
+    @Test("After a folder switch (a new operator on the same desk) the old operator's running copy is still not a leftover")
+    func inFlightStagingAcrossOperators() async throws {
+        let rig = try FileRig()
+        let big = try rig.file(rig.elsewhere, "big.bin", "data")
+        await rig.op.setHooks(.init(stageInDesk: true))
+        let started = Latch(), release = Latch()
+        let drop = Task {
+            await rig.op.importItems([big], op: .copy, rig.intent(.drop), progress: { _ in
+                started.open()
+                _ = release.wait(seconds: 30)
+            })
+        }
+        #expect(await started.opened(within: 30))
+        let staging = try #require(stagingFolder(in: rig.desk, rig))
+        #expect(PartialCopies.find(in: rig.desk).isEmpty, "the new session's look finds nothing to report")
+        let other = rig.makeOperator()
+        let refused = await other.trash([staging.url], expecting: [staging.key], rig.intent())
+        release.open()
+        let dropped = await drop.value
+        #expect(refused.refusals == [.failed(Int(EBUSY))])
+        #expect(dropped.outcomes == [.copied(big, to: rig.at(rig.desk, "big.bin"))])
+        #expect(rig.names(rig.desk) == ["big.bin"] && rig.trashNames.isEmpty)
+        let leftover = try rig.temp.mkdir("Desk/\(staging.url.lastPathComponent)")
+        #expect(PartialCopies.find(in: rig.desk).map(\.url.lastPathComponent) == [leftover.lastPathComponent],
+                "once the copy is over, a folder by that name is a leftover again")
     }
 }

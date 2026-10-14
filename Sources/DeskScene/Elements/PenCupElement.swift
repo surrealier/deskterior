@@ -157,9 +157,8 @@ final class PenCupElement: DeskElement, Knockable {
             if machine.isLying {
                 standUp()
             } else {
-                _ = machine.knock(strength: 0.5)
+                run(machine.knock(strength: 0.5))
             }
-            redraw()
             return .handled
         case let .dragBegan(from, at, _):
             guard machine.isUpright else { return .pass }
@@ -241,6 +240,8 @@ final class PenCupElement: DeskElement, Knockable {
     }
 
     private func run(_ events: [PenCupMachine.Event]) {
+        // MARK: harden: Reduce Motion (Errata 15) holds the cup still: a click, a bonk or a set-down never wobbles it.
+        if context.reduceMotion { machine.stillWobble() }
         for e in events {
             switch e {
             case let .spill(right):

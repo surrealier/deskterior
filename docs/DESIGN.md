@@ -397,42 +397,55 @@
       (`FileRefusal.locked`; toast "It's locked, so it stayed. ⌥ copies it."): it is never copied instead, so a move
       never leaves a silent duplicate. A copy asked for (⌥, another volume) still lands a locked copy. A move macOS
       refuses for another reason (a protected or read-only source folder, S12) still comes in as a copy, and says so
-      ("Copied in; the original stayed put.", `FileReport(import:requested:)`).
+      ("Copied in; the original stayed put.", `FileReport(import:requested:)`), also beside refusals in the same drop
+      ("Some came in as copies; the rest stayed."). Locked items beside items that went: "Some were locked, so they
+      stayed."
     - **A copy's landing.** After the final `RENAME_EXCL` rename, the item at the destination must be the staged copy
-      (volume, inode, and for a file its size). Anything else is left where it is, untouched, and the copy is refused
-      (`identityChanged`, no undo step).
+      (volume and inode). Then it is ours however it changed since (a sync client writing to it at once): its locks
+      go back on and its undo step stands. Anything else (another item swapped in at once, or a volume that renumbers
+      an item when it is renamed) is left where it is, untouched, with no undo step (`landedUnverified`; toast "Copied
+      in, but it can't be undone.").
     - **Leftover copies.** A `.deskterior-partial-<uuid>` staging folder (the in-desk fallback) cut short by a quit or a
       crash is never touched automatically. After the mirror's first snapshot (never before ⏻), the mirrored folder's top
       level is listed off the main thread (`PartialCopies.find`, read-only); leftovers are logged, toasted once per session
       ("An interrupted copy left files. See Settings.") and listed in Settings ▸ Leftover copies with Show in Finder and
       Move to Trash. Only that button removes them: the session names the gesture (`withOrigin(.menuItem)` in
       AppDelegate.swift), `EffectRunner.trashLeftovers` mints the intent, and `FileOperator.trash` re-checks each
-      folder's identity and refuses the staging folder of a copy still running (EBUSY). Not journaled; the Trash's Put
-      Back returns them.
+      folder's identity and refuses the staging folder of a copy still running (EBUSY). Running copies are listed
+      process-wide (`PartialCopies.inFlight`), so after a folder switch (a new session and operator) neither the look
+      nor the trash takes the old session's live copy for a leftover. Not journaled; the Trash's Put Back returns them.
+      Settings follows the session in use (a folder switch resets the count and the note), and a Move to Trash with
+      nothing left says "No leftover copies now." A look asked for while one runs follows it.
     - **State file.** `DeskDocument.decode` brings values no desk could have saved back into range (`sanitized`): the
       mat's frame and grid (reset, with its particles), piles, the cup and the brush off the plane, the chair past its
       travel, drawers past theirs, counters (swishes, `pendingNew`) capped at 1,000,000, screen pages past 9,999 and
       floor spots outside the room (the token goes to the first free cell). A saved mat grid can no longer overflow
       `Int`.
     - **The AV logo's rate.** While the NO SIGNAL logo is the only thing moving, the frame loop rests its display link
-      and ticks on a timer at the logo's own rate (8 fps; 12 while its corner sparkle plays), stepping the fixed
-      1/60 s steps that fell due (`FrameLoopHost.frameLoopSlowFrameInterval`). A wake that starts nothing faster keeps
-      the slow pace; anything faster brings the link back; a hover change renders at once. Low Power still caps at
-      30 Hz.
+      and ticks on a timer at each change of the logo's picture (its 8 fps moves, 7 or 8 fixed steps apart; its corner
+      sparkle's 12 fps frames), taking exactly the fixed 1/60 s steps up to that change
+      (`FrameLoopHost.frameLoopSlowFrameInterval`, `BouncingLogo.stepsToNextChange`), so a late timer never shows two
+      moves at once or none. A wake that starts nothing faster keeps the slow pace; anything faster brings the link
+      back; a hover change, a key and a model change render at once. Low Power still caps at 30 Hz. The logo still
+      costs more than §5's 0.3 % for its 10 s (SPIKES.md); it is accepted, as it is bounded.
     - **Reduce Motion.** Tosses (flings, push-offs, spills, the basket's balls) are never drawn: each lands on the next
       step where its path ends, with a puff and no slide after. A knock keeps only the drawers it shuts
       (`DeskKnock.Plan.stilled`: no hops, wobbles, jiggles or ripple). A carry that springs back is home at once. The
-      CRT fade, the flat mat and the instant Clear the Desk stay as Errata 15 and 17 say.
+      wastebasket never shakes or jiggles (a bonk, a rim hit, a click), the pen cup never wobbles (a click, a bonk, a
+      set-down), and the AV logo holds still where it is (no bounce, no sparkle; `MonitorMachine.holdLogoStill`), so
+      AV costs nothing. The CRT fade, the flat mat and the instant Clear the Desk stay as Errata 15 and 17 say.
     - **INPUT spring-loading.** A carry resting 0.6 s on INPUT turns to the next HDMI page, wrapping to HDMI 1 and never
       to AV (from AV: HDMI 1), and keeps paging every 0.6 s while it rests there (`MonitorMachine.springInputPage`).
     - **App tests.** `DeskteriorAppTests` tests the executable target through `@testable import DeskteriorApp` (it works
-      with the CLT and `scripts/swift-test.sh`): launch options, the exit-64 refusal as a decision
-      (`MirrorController.launchRefusal`, with a stand-in desktop and home), Empty Wastebasket's sheet, drop and drag
-      rules, the settings domain (`SettingsStore.persists`), window levels, the single-instance decision
-      (`AppIdentity.isDuplicate`) and the leftovers path on a FakeTrash.
+      with the CLT and `scripts/swift-test.sh`): launch options, the exit-64 refusal (`MirrorController.launch`, the
+      decision `configurationOrExit` runs before its `exit`, with a stand-in desktop and home), Empty Wastebasket's
+      sheet, drop and drag rules, the settings domain (`SettingsStore.persists`), window levels, the single-instance
+      decision (`AppIdentity.isDuplicate`), and the leftovers path: a session's look only after the mirror's first
+      snapshot, off the main thread, and Settings' Move to Trash on a FakeTrash, with file actions on a held test
+      clock (`FileActions(fileOperator:scope:)`), so a stale intent fails the test.
     - **Measuring.** `--burst-av` (`measure-idle.sh --av`) ends the idle burst on the AV input; `make idle` runs
-      `measure-idle.sh`. The desk-mode audit and the owner's manual checklist (§8.3) are in SPIKES.md, "Pre-release
-      audit (wave 6)".
+      `measure-idle.sh`. The desk-mode audit, the known limitations (exFAT, path-numbered network shares) and the
+      owner's manual checklist (§8.3) are in SPIKES.md, "Pre-release audit (wave 6)".
 
 ---
 

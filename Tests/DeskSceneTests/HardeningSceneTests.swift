@@ -9,7 +9,7 @@ import Testing
 /// A frame-loop host that steps a counter and says how slowly it may tick.
 final class SlowLoopHost: FrameLoopHost {
     var needsFrames = true
-    var slowInterval: Double? = 0.125
+    var slowInterval: Double? = 8.0 / 60
     var steps = 0
     var renders = 0
     func frameLoopStep(_ dt: Double) { steps += 1 }
@@ -29,24 +29,27 @@ struct HardeningSceneTests {
 
     // MARK: The AV logo's own rate
 
-    @Test("A slow tick steps the fixed steps that fell due (capped at a slow frame's worth) and renders once")
+    @Test("A slow tick takes exactly the steps up to the next change, however late its timer, and renders once")
     func slowTickSteps() {
         let loop = FrameLoop()
         let host = SlowLoopHost()
         loop.host = host
         defer { loop.invalidate() }
         loop.slowTick(at: 10)
-        #expect(host.steps == 1 && host.renders == 1, "the first tick of a run takes one step")
-        loop.slowTick(at: 10 + 0.125)
-        #expect(host.steps == 1 + 7 && host.renders == 2, "7.5 steps fell due: 7 now, the half banked")
+        #expect(host.steps == 8 && host.renders == 1, "the host's next change is 8 steps away")
+        loop.slowTick(at: 10 + 0.137)
+        #expect(host.steps == 16 && host.renders == 2, "12 ms late: still 8 steps, never 9")
+        host.slowInterval = 7.0 / 60
         loop.slowTick(at: 10 + 0.25)
-        #expect(host.steps == 1 + 15 && loop.isTickingSlowly)
+        #expect(host.steps == 23 && loop.isTickingSlowly)
         loop.slowTick(at: 100)
-        #expect(host.steps == 1 + 15 + 9, "a long stall is never queued: at most a slow frame and one more")
+        #expect(host.steps == 30, "a long stall is never queued: one change's worth")
         host.needsFrames = false
         loop.slowTick(at: 100.125)
         #expect(!loop.isTickingSlowly, "nothing moves: no next tick")
         #expect(loop.slowTicks == 5)
+        #expect(FrameClock.steps(covering: 0.125) == 8 && FrameClock.steps(covering: 7.0 / 60) == 7)
+        #expect(FrameClock.steps(covering: 0) == 1)
     }
 
     @Test("While ticking slowly, a wake keeps the slow pace; once something faster runs, the link takes over")
@@ -88,17 +91,18 @@ struct HardeningSceneTests {
         let store = SceneStore(s)
         let scene = store.scene
         let p = Pointer(scene: scene)
+        let logoFrame = { (scene.slowFrameInterval ?? 0) > 0 && (scene.slowFrameInterval ?? 1) <= 8.0 / 60 + 1e-9 }
         #expect(scene.needsFrames)
-        #expect(scene.slowFrameInterval == MonitorMachine.avFrameTime, "a desk that starts on AV bounces its logo")
+        #expect(scene.slowFrameInterval == 8.0 / 60, "a desk that starts on AV bounces its logo: its first move")
         store.dispatch(.cycleInput)  // HDMI 1: static and the OSD need every frame.
         store.dispatch(.selectAV)
         #expect(scene.needsFrames && scene.slowFrameInterval == nil)
         p.frames(70)  // the OSD's second is over; the logo bounces on
-        #expect(scene.needsFrames && scene.slowFrameInterval == MonitorMachine.avFrameTime)
+        #expect(scene.needsFrames && logoFrame())
         scene.toast(.containerFull)
         #expect(scene.slowFrameInterval == nil, "a toast slides at 60 Hz")
         p.frames(Int((ToastView.hold + 2 * ToastView.slide) * 60) + 2)
-        #expect(scene.slowFrameInterval == MonitorMachine.avFrameTime)
+        #expect(logoFrame())
         p.frames(Int(MonitorMachine.avBounceLimit * 60))
         #expect(!scene.needsFrames && scene.slowFrameInterval == nil, "after 10 s it holds still: rest")
     }
@@ -108,19 +112,19 @@ struct HardeningSceneTests {
         var s = F.state()
         s.monitor.av = true
         var m = MonitorMachine(s)
-        #expect(m.logoFrameInterval == MonitorMachine.avFrameTime)
+        #expect(m.logoFrameInterval() == 8.0 / 60, "7.5 steps to the first move: on the 8th")
         s.monitor.av = false
         m.sync(s)
         s.monitor.av = true
         m.sync(s)
-        #expect(m.logoFrameInterval == nil, "static and the OSD")
+        #expect(m.logoFrameInterval() == nil, "static and the OSD")
         for _ in 0..<70 { m.step(1.0 / 60) }
-        #expect(m.logoFrameInterval == MonitorMachine.avFrameTime)
+        #expect(m.logoFrameInterval() != nil)
         m.settle()
-        #expect(m.logoFrameInterval == nil)
+        #expect(m.logoFrameInterval() == nil)
         s.monitor.power = .off
         m.sync(s)
-        #expect(m.logoFrameInterval == nil)
+        #expect(m.logoFrameInterval() == nil)
     }
 
     // MARK: Reduce Motion

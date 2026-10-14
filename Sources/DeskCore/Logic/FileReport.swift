@@ -36,6 +36,9 @@ public enum FileProblem: String, Sendable, Equatable, CaseIterable {
     // MARK: harden
     /// A move of a Finder-locked item (or one in a locked folder): it stayed, and was not copied instead.
     case locked
+    /// A copy landed, but the item now at its name is not provably the one written: it stays there, untouched,
+    /// with no undo step.
+    case landedUnverified
 }
 
 /// What one file effect did, item by item, in model terms (DESIGN §3.5–§3.6). The app's `FileActions` builds it
@@ -137,9 +140,13 @@ public struct FileReport: Sendable, Equatable {
 
     /// The toast: what did not happen, if anything did not (the first problem's; with others through, "some
     /// stayed" and why), else `done`. A refused undo of a trash points at Finder's Put Back (SPIKES S11); one of a
-    /// drop-in says it could not go back.
+    /// drop-in says it could not go back. A move that came in as a copy is never left unsaid (Errata 25): with
+    /// refusals beside it, the toast says both; a copy that landed without an undo step says so first.
     public var toast: ToastKey? {
         guard let first = problems.first else { return done }
+        // MARK: harden
+        if problems.contains(.landedUnverified) { return .copiedNoUndo }
+        if done == .copiedInstead { return .someCopiedInstead }
         switch kind {
         case .eject:
             return first == .notPermitted ? .fileNotPermitted : .ejectFailed
@@ -155,6 +162,7 @@ public struct FileReport: Sendable, Equatable {
             case .changed: return .someChanged
             case .gone: return .someGone
             case .notPermitted: return .someNotPermitted
+            case .locked: return .someLocked  // MARK: harden
             default: return .someNotDone
             }
         }
@@ -163,6 +171,7 @@ public struct FileReport: Sendable, Equatable {
         case .gone: return .fileGone
         case .notPermitted: return .fileNotPermitted
         case .locked: return .fileLocked
+        case .landedUnverified: return .copiedNoUndo
         case .notInTrash: return .usePutBack
         case .noFreeName: return .nameTaken
         case .holdsDesk: return .dropHoldsDesk

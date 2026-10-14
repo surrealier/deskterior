@@ -6,8 +6,13 @@ import Foundation
 /// folder in the desk folder, and removes it itself only while that copy runs. A folder left over from an earlier run
 /// is never touched automatically: `find` lists them (the desk folder's top level only; it reads, never writes), the
 /// app logs them and says so once, Settings offers Show in Finder, and only an explicit Move to Trash there takes
-/// them away (`FileOperator.trash`, with a menu intent, into the Trash).
+/// them away (`FileOperator.trash`, with a menu intent, into the Trash). A folder of a copy still running anywhere in
+/// this process (`inFlight`) is never a leftover.
 public enum PartialCopies {
+    /// The staging folders of copies running in this process, whichever operator runs them: a folder switch makes a
+    /// new `FileOperator`, and neither its trash nor a look may take the old one's live copy for a leftover.
+    static let inFlight = InFlightStagings()
+
     /// One leftover staging folder.
     public struct Leftover: Sendable, Equatable {
         public var url: URL
@@ -29,19 +34,60 @@ public enum PartialCopies {
         return UUID(uuidString: String(name.dropFirst(FileMoves.partialPrefix.count))) != nil
     }
 
-    /// The leftover staging folders directly inside `root` (real folders, not symlinks), by name. Read-only; nothing
-    /// below the top level is listed except each leftover's own items.
+    /// The leftover staging folders directly inside `root` (real folders, not symlinks, and no running copy's), by
+    /// name. Read-only; nothing below the top level is listed except each leftover's own items.
     public static func find(in root: URL) -> [Leftover] {
         let folder = URL(fileURLWithPath: DesktopLocator.canonicalPath(root), isDirectory: true)
         let names = (try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? []
         return names.filter(isLeftoverName).sorted().compactMap { name in
             let url = folder.appendingPathComponent(name, isDirectory: false)
             var st = stat()
-            guard lstat(url.path, &st) == 0, st.st_mode & S_IFMT == S_IFDIR, let key = FileReport.identity(of: url) else {
+            guard lstat(url.path, &st) == 0, st.st_mode & S_IFMT == S_IFDIR, !inFlight.contains(url),
+                  let key = FileReport.identity(of: url) else {
                 return nil
             }
             let inside = ((try? FileManager.default.contentsOfDirectory(atPath: url.path)) ?? []).sorted()
             return Leftover(url: url, key: key, contents: inside.map { url.appendingPathComponent($0, isDirectory: false) })
         }
+    }
+}
+
+// MARK: harden
+
+/// The staging folders of the copies running in this process, by the path their operator made each one at and the
+/// folder's device and inode (so any spelling of the path matches). Thread-safe: operators and looks run on any
+/// thread.
+final class InFlightStagings: @unchecked Sendable {
+    private struct ID: Hashable {
+        var dev: dev_t
+        var ino: ino_t
+    }
+
+    private let lock = NSLock()
+    private var folders: [String: ID] = [:]
+
+    /// A staging folder `FileOperator` just made (it exists now).
+    func insert(_ dir: URL) {
+        guard let id = Self.id(of: dir) else { return }
+        lock.withLock { folders[dir.path] = id }
+    }
+
+    /// The copy staged in `dir` is over (its folder is gone or going).
+    func remove(_ dir: URL) {
+        _ = lock.withLock { folders.removeValue(forKey: dir.path) }
+    }
+
+    /// The folder at `url` (not followed if a symlink) is a running copy's staging folder.
+    func contains(_ url: URL) -> Bool {
+        guard let id = Self.id(of: url) else { return false }
+        return lock.withLock { folders.values.contains(id) }
+    }
+
+    /// Copies running now (tests).
+    var count: Int { lock.withLock { folders.count } }
+
+    private static func id(of url: URL) -> ID? {
+        var st = stat()
+        return lstat(url.path, &st) == 0 ? ID(dev: st.st_dev, ino: st.st_ino) : nil
     }
 }

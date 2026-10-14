@@ -428,14 +428,19 @@ final class DeskSession {
     // MARK: harden
 
     /// Settings ▸ Leftover copies ▸ Move to Trash: the button is the gesture (a menu intent). `done` gets the line
-    /// Settings shows afterwards.
+    /// Settings shows afterwards (also when there was nothing left to trash, or nothing could run), and the folder is
+    /// looked at again.
     func trashLeftovers(_ done: @escaping (String) -> Void) {
         let items = leftovers.found
+        guard !items.isEmpty else {
+            done(tr(.leftoversNone))
+            return leftovers.look()
+        }
         effects.withOrigin(.menuItem) {
             effects.trashLeftovers(items) { [weak self] result in
-                guard let self, let result else { return }
-                let report = FileReport(trash: result, keys: items.map(\.key), undo: nil)
-                done(report.toast?.text ?? tr(.leftoversTrashed))
+                guard let self else { return }
+                let report = result.map { FileReport(trash: $0, keys: items.map(\.key), undo: nil) }
+                done(report.map { $0.toast?.text ?? tr(.leftoversTrashed) } ?? ToastKey.fileFailed.text)
                 leftovers.look()
             }
         }

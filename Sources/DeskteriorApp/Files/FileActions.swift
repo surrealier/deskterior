@@ -43,6 +43,14 @@ final class FileActions {
         fileOperator = try FileOperator(root: folder, trash: scope.trash, log: log, sandboxRoots: scope.sandboxRoots)
     }
 
+    // MARK: harden
+    /// Actions on an operator made elsewhere (tests: one on a test clock, so an intent never goes stale while the
+    /// whole suite holds every thread).
+    init(fileOperator: FileOperator, scope: FileActionScope) {
+        self.scope = scope
+        self.fileOperator = fileOperator
+    }
+
     // MARK: Calls
 
     /// Runs one operator call ⌘Z can take back (a trash, Empty Wastebasket, a drop-in with `op`): the journal takes

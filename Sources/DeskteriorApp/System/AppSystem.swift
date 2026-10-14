@@ -118,14 +118,16 @@ final class AppSystem {
 
     /// A new session (another mirrored folder) took over the same scene.
     func adopt(_ new: DeskSession) {
+        session.leftovers.onChange = nil  // MARK: harden: the old folder's look no longer speaks for Settings.
         session = new
         accessibility?.invalidate()
         attachSession()
     }
 
     private func attachSession() {
-        // MARK: harden: Settings follows the leftovers the session finds.
+        // MARK: harden: Settings follows the leftovers the session finds (none yet for a new folder, and no old note).
         session.leftovers.onChange = { [weak self] list in self?.settingsModel?.leftovers = list.count }
+        settingsModel?.follow(session.leftovers)
         guard let view = displays.view else { return }
         accessibility = DeskAccessibility(view: view, store: session.store)
         session.store.observe { [weak self] new, old in

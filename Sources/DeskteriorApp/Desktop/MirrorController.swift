@@ -207,28 +207,37 @@ final class MirrorController {
 
     // MARK: harden
 
-    /// The launch guard as a decision (DESIGN §3.7 item 7): the refusal that makes the app exit with code 64 before
-    /// any window, mirror or file operator exists, or nil when `options` may start.
-    static func launchRefusal(
-        options: LaunchOptions, environment: [String: String], settings: DeskSettings = DeskSettings(),
-        realDesktop: URL, home: URL
-    ) -> SafetyGuard.Refusal? {
+    /// The launch guard (DESIGN §3.7 item 7), exactly as `configurationOrExit` runs it: the configuration for
+    /// `options`, or the refusal that makes the app print `launchMessage` and exit with its code (64) before any
+    /// window, mirror or file operator exists. Tests pass a stand-in desktop and home.
+    static func launch(
+        options: LaunchOptions, environment: [String: String] = ProcessInfo.processInfo.environment,
+        bundleID: String = AppIdentity.bundleID, settings: DeskSettings = DeskSettings(),
+        realDesktop: URL = DesktopLocator.defaultDesktopURL(),
+        home: URL = FileManager.default.homeDirectoryForCurrentUser
+    ) -> Result<Configuration, SafetyGuard.Refusal> {
         do throws(SafetyGuard.Refusal) {
-            _ = try configuration(options: options, environment: environment, bundleID: AppIdentity.fallbackBundleID,
-                                  settings: settings, realDesktop: realDesktop, home: home)
-            return nil
+            return .success(try configuration(options: options, environment: environment, bundleID: bundleID,
+                                              settings: settings, realDesktop: realDesktop, home: home))
         } catch {
-            return error
+            return .failure(error)
         }
     }
 
-    /// `configuration(options:)`, or prints the refusal and exits with code 64 (DESIGN §3.7 item 7).
+    /// The line a refused launch prints on stderr.
+    static func launchMessage(_ refusal: SafetyGuard.Refusal) -> String {
+        "Deskterior: \(refusal)\n"
+    }
+
+    /// `launch(options:)`'s configuration, or prints the refusal and exits with its code, 64 (DESIGN §3.7 item 7). Only
+    /// the exit itself is not run by the tests.
     static func configurationOrExit(options: LaunchOptions, settings: DeskSettings = DeskSettings()) -> Configuration {
-        do throws(SafetyGuard.Refusal) {
-            return try configuration(options: options, settings: settings)
-        } catch {
-            FileHandle.standardError.write(Data("Deskterior: \(error)\n".utf8))
-            exit(error.exitCode)
+        switch launch(options: options, settings: settings) {
+        case let .success(configuration):
+            return configuration
+        case let .failure(refusal):
+            FileHandle.standardError.write(Data(launchMessage(refusal).utf8))
+            exit(refusal.exitCode)
         }
     }
 }
