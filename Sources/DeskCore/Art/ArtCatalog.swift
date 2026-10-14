@@ -263,7 +263,7 @@ public enum RoomPlan {
 
         add("keyboard", .deskFront, PropArt.keyboard(), core: CoreLayout.keyboard.origin)
         add("brush", .deskFront, PropArt.brush(), core: CoreLayout.brush.origin)
-        add("pencup", .deskFront, PropArt.penCup(), core: CoreLayout.penCup.origin)
+        add("pencup", .deskFront, PropArt.penCupOnDesk(), core: CoreLayout.penCup.origin)
 
         add("desk.front", .apron, RoomArt.deskFront(), core: CoreLayout.apron.origin)
 

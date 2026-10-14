@@ -198,7 +198,8 @@ public enum PropArt {
         case lying(right: Bool)
     }
 
-    /// The pen cup (14×22 upright, 26×22 for tipping and lying poses), with `pens` (cap inks) sticking up.
+    /// The pen cup (14×22 upright, 28×22 tipping, 32×22 lying so its open mouth shows), with `pens` (cap inks)
+    /// sticking up; an empty cup holds nothing (only files are pens).
     public static func penCup(_ pose: PenCupPose = .upright, pens: [Ink] = []) -> SpriteAsset {
         let angle: Double
         var mirrored = false
@@ -210,7 +211,8 @@ public enum PropArt {
             mirrored = !right
         }
         let upright = angle == 0
-        let size = upright ? CoreLayout.penCup.size : ArtSize(28, 22)
+        let lying = angle == 90
+        let size = upright ? CoreLayout.penCup.size : ArtSize(lying ? 32 : 28, 22)
         var c = PixelCanvas(width: size.w, height: size.h)
         let R = 6.5, H = 13.0
         // Pivot: the bottom-right corner of the cup stays on the desk as it tips right.
@@ -220,17 +222,9 @@ public enum PropArt {
         let perp = SIMD2<Double>(cos(th), sin(th))
         let bottomCentre = pivot - perp * R
         let topCentre = bottomCentre + up * H
-        let rm = 2.0
+        // Lying, the mouth faces the side and opens wider, so it reads as a cup on its side, not a box.
+        let rm = lying ? 3.2 : 2.0
 
-        // Two pencils that always live in the cup lean left; pens for files stand in front of them.
-        for (dx, lean, ink) in [(-1.6, -2.2, Ink.walnut4), (0.9, -1.4, Ink.red3)] {
-            let start = topCentre + perp * dx + up * 0.5
-            let tip = start + up * 6 + perp * lean
-            let a = ArtPoint(Int(start.x.rounded(.down)), Int(start.y.rounded(.down)))
-            let b = ArtPoint(Int(tip.x.rounded(.down)), Int(tip.y.rounded(.down)))
-            c.line(from: a, to: b, ink)
-            c.plot(b, .oak5)
-        }
         // Pens behind the front wall.
         if !pens.isEmpty {
             for (i, ink) in pens.prefix(6).enumerated() {

@@ -26,8 +26,9 @@ public struct PenCupMachine: Sendable, Equatable {
         public var spillSpreadDegrees: Float = 30
         /// Pens slide like piles: linear damping (1/s), so they travel `speed / damping`.
         public var spillDamping: Float = DeskPlanePhysics.pileLinearDamping
-        /// Where pens leave a lying cup, from its position (plane px, along the tip direction).
-        public var mouthReach: Float = 15
+        /// Where pens leave a lying cup, from its position (plane px, along the tip direction): just past its mouth
+        /// (`lyingFootprint`), so a spilled pen never lands on the cup.
+        public var mouthReach: Float = 31
 
         public init() {}
 
@@ -177,6 +178,21 @@ public struct PenCupMachine: Sendable, Equatable {
                      min(max(pos.y, desk.d), desk.d + desk.depth - f.depth))
     }
 
+    /// The cup's footprint on the plane: standing (and while tipping), around its position; lying, beside it on
+    /// the side it fell, from its bottom to its mouth (`lyingFootprint`).
+    public var footprint: DeskPlaneRect {
+        if case let .lying(right) = phase { return Self.lyingFootprint(at: position, right: right) }
+        return DeskPlanePhysics.penCupFootprint(at: position)
+    }
+
+    /// Where the cup lies after tipping toward the right (`right`) or left from `pos`: it turns about its bottom
+    /// corner on that side, so its body spans 4…23 px out from where its centre stood (`PropArt.penCup` lying).
+    public static func lyingFootprint(at pos: SIMD2<Float>, right: Bool) -> DeskPlaneRect {
+        let up = DeskPlanePhysics.penCupFootprint(at: pos)
+        let near: Float = 4, far: Float = 23
+        return DeskPlaneRect(x: right ? pos.x + near : pos.x - far, d: up.d, width: far - near, depth: up.depth)
+    }
+
     static func isClear(_ pos: SIMD2<Float>) -> Bool {
         let f = DeskPlanePhysics.penCupFootprint(at: pos)
         return !DeskPlanePhysics.footprints.values.contains { $0.intersects(f) }
@@ -272,20 +288,29 @@ public struct PenCupMachine: Sendable, Equatable {
 
     // MARK: Spill
 
-    /// Where `count` pens go when the cup at `position` tips toward the right (`right`) or left: each gets a seeded
-    /// impulse of `spillSpeed` within ±`spillSpreadDegrees` of the tip direction and slides as a pile would
-    /// (stopping at the back wall's line and short of furniture); pens that cross the desk's front or side edge
-    /// fly off on a `Ballistics` arc. Deterministic for a seed.
+    /// Where `count` pens go when the cup at `position` tips toward the right (`right`) or left: each leaves the
+    /// mouth with a seeded impulse of `spillSpeed` within ±`spillSpreadDegrees` of `direction` (the flick that
+    /// tipped it, plane px/s; nil or zero: straight out of the mouth) and slides as a pile would (stopping at the
+    /// back wall's line and short of furniture and the cup); pens that cross the desk's front or side edge fly off
+    /// on a `Ballistics` arc. Deterministic for a seed.
     public static func spill(
-        count: Int, from position: SIMD2<Float>, right: Bool, seed: UInt64, params: Params = .standard,
-        ballistics: Ballistics.Params = .standard
+        count: Int, from position: SIMD2<Float>, right: Bool, seed: UInt64, direction: SIMD2<Float>? = nil,
+        params: Params = .standard, ballistics: Ballistics.Params = .standard
     ) -> [Spill] {
         guard count > 0, position.isFinite else { return [] }
         var rng = SplitMix64(seed: seed)
         let dir: Float = right ? 1 : -1
         let desk = DeskPlanePhysics.desk
         let half = DeskPlanePhysics.pileSize / 2
-        let own = DeskPlanePhysics.penCupFootprint(at: position)
+        let own = lyingFootprint(at: position, right: right)
+        // The aim: along the flick (its sideways part never against the side the cup fell to), else out of the mouth.
+        var aim = SIMD2<Float>(dir, 0)
+        if let f = direction, f.isFinite, (f * f).sum() > 1e-6 {
+            let g = SIMD2(f.x * dir < 0 ? 0 : f.x, f.y)
+            let len = (g * g).sum().squareRoot()
+            if len > 1e-3 { aim = g / len }
+        }
+        let base = Float(atan2(Double(aim.y), Double(aim.x)))
         let mouth = SIMD2(position.x + dir * params.mouthReach, position.y + 4)
         let backLimit = desk.d + desk.depth - half.y
         var out: [Spill] = []
@@ -293,7 +318,7 @@ public struct PenCupMachine: Sendable, Equatable {
             let spread = (2 * rng.nextFloat01() - 1) * params.spillSpreadDegrees * .pi / 180
             let speed = params.spillSpeed.lowerBound
                 + (params.spillSpeed.upperBound - params.spillSpeed.lowerBound) * rng.nextFloat01()
-            var u = SIMD2(dir * Float(cos(Double(spread))), Float(sin(Double(spread))))
+            var u = SIMD2(Float(cos(Double(base + spread))), Float(sin(Double(base + spread))))
             let velocity = u * speed
             var reach = speed / max(params.spillDamping, 0.01)
             func blocked(_ q: SIMD2<Float>, moved: Float) -> Bool {

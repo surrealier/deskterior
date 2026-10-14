@@ -32,7 +32,7 @@ struct BallisticsTests {
         #expect(a.screenPath() == b.screenPath())
         let plain = Self.fling(SIMD2(150, 236), SIMD2(-260, -300))
         #expect(plain == Self.fling(SIMD2(150, 236), SIMD2(-260, -300)))
-        let varied = (0..<8).map { Self.fling(SIMD2(150, 236), SIMD2(-260, -300), seed: $0).end }
+        let varied = (0..<8).map { Self.fling(SIMD2(150, 236), SIMD2(-260, -300), seed: $0).segments[0].velocity }
         #expect(Set(varied.map { "\($0)" }).count > 1)
     }
 
@@ -89,8 +89,8 @@ struct BallisticsTests {
             return
         }
         #expect(p.x > 250 && p.y >= 0 && p.y <= 128)
-        // The touchdown velocity hands over to the pile's body.
-        #expect(t.landingVelocity.x == 200 && t.landingVelocity.y == 120 && t.landingVelocity.z < 0)
+        // The touchdown velocity hands over to the pile's body: `slideCarry` of the hand's.
+        #expect(t.landingVelocity.x == 200 * 0.3 && abs(t.landingVelocity.y - 120 * 0.3) < 1e-4 && t.landingVelocity.z < 0)
         #expect(t.velocity(at: 0) == t.segments[0].velocity && t.velocity(at: t.duration) == .zero)
         let lob = Ballistics.toss(from: SIMD3(200, 100, 10), velocity: SIMD3(0, 400, 200))
         guard case let .desk(q) = lob.landing else {
@@ -120,18 +120,24 @@ struct BallisticsTests {
 
     @Test("Releases map to desk space by band; non-finite input is safe")
     func releases() {
+        // Over the desk top, slow or fast: on the plane, keeping `slideCarry` (0.3) of the hand's velocity.
         let desk = Ballistics.release(at: SIMD2(200, 200), velocity: SIMD2(10, -20))
-        #expect(desk.position == SIMD3(200, 60, 2) && desk.velocity == SIMD3(10, 40, 0))
+        #expect(desk.position == SIMD3(200, 60, 2) && desk.velocity == SIMD3(10, 40, 0) * 0.3)
+        let flick = Ballistics.release(at: SIMD2(200, 200), velocity: SIMD2(-200, -180))
+        #expect(flick.position == SIMD3(200, 60, 2) && flick.velocity == SIMD3(-200, 360, 0) * 0.3)
+        // Over the wall, slow or fast: against the back wall, dropping onto the desk's back.
         let wall = Ballistics.release(at: SIMD2(200, 100), velocity: SIMD2(0, -50))
-        #expect(wall.position.y == 128 && wall.position.z == 68 && wall.velocity.z == 50)
+        #expect(wall.position == SIMD3(200, 128, 68) && wall.velocity == SIMD3(0, 0, 50) * 0.3)
+        let wallFlick = Ballistics.release(at: SIMD2(200, 100), velocity: SIMD2(0, 900))
+        #expect(wallFlick.position == SIMD3(200, 128, 68) && wallFlick.velocity == SIMD3(0, 0, -900) * 0.3)
+        // Below the front edge, or flicked down just above it: the front plane, moving as the hand did on screen.
         let below = Ballistics.release(at: SIMD2(64, 250), velocity: .zero)
         #expect(below.position == SIMD3(64, -2, -17))
-        // Fast releases above the front edge start in the front plane and move as the hand did on screen.
-        let flick = Ballistics.release(at: SIMD2(200, 200), velocity: SIMD2(-200, -180))
-        #expect(flick.position == SIMD3(200, -2, 33) && flick.velocity == SIMD3(-200, 0, 180))
-        let wallFlick = Ballistics.release(at: SIMD2(200, 100), velocity: SIMD2(0, -300))
-        #expect(wallFlick.position == SIMD3(200, -2, 133) && wallFlick.velocity == SIMD3(0, 0, 300))
-        #expect(Self.params.projection.project(flick.position) == SIMD2(200, 200))
+        let lip = Ballistics.release(at: SIMD2(200, 228), velocity: SIMD2(-100, 400))
+        #expect(lip.position == SIMD3(200, -2, 5) && lip.velocity == SIMD3(-100, 0, -400))
+        #expect(Self.params.projection.project(lip.position) == SIMD2(200, 228))
+        let slowLip = Ballistics.release(at: SIMD2(200, 228), velocity: SIMD2(0, 200))
+        #expect(slowLip.position.y >= 0, "slow at the lip: on the desk")
         let nan = Ballistics.toss(from: SIMD3(.nan, 0, 0), velocity: SIMD3(.infinity, 0, 0))
         #expect(nan.duration.isFinite && nan.end.x.isFinite)
     }
@@ -189,28 +195,65 @@ struct BallisticsTests {
         }
     }
 
-    @Test("Flicks from the bare wall and from over the desk can reach the basket; slow ones still land on the desk")
+    @Test("Releases over the wall or the desk land on the desk however fast; from below the front edge, or flicked down over it, they reach the basket")
     func flicksReachBasket() {
-        var wallIn = 0, deskIn = 0, slowOnDesk = 0, slow = 0
+        var below = 0, lip = 0
         for vx in stride(from: -1200, through: 0, by: 100) {
             for vy in stride(from: -600, through: 900, by: 100) {
-                for y: Float in [100, 140, 160] where Self.fling(SIMD2(120, y), SIMD2(Float(vx), Float(vy))).isIn {
-                    wallIn += 1
-                }
-                for y: Float in [180, 200, 220, 230] {
-                    let v = SIMD2(Float(vx), Float(vy))
-                    let t = Self.fling(SIMD2(120, y), v)
-                    if t.isIn { deskIn += 1 }
-                    // Slow and away from the front edge (a slow push over the edge rightly falls off).
-                    if (v * v).sum() <= Self.params.frontFlingSpeed * Self.params.frontFlingSpeed, vy <= 0 {
-                        slow += 1
-                        if case .desk = t.landing { slowOnDesk += 1 }
+                let v = SIMD2(Float(vx), Float(vy))
+                for y: Float in [100, 140, 160, 180, 200, 220] {
+                    // It starts on (or over) the desk, never in front of it: only sliding or flying off an edge
+                    // takes it away.
+                    #expect(Self.fling(SIMD2(120, y), v).segments[0].start.y >= 0, "y \(y) v \(v)")
+                    // Mid-desk at a brisk hand speed it stays.
+                    let mid = SIMD2(Float(vx), Float(vy)) / 2
+                    let t = Self.fling(SIMD2(250, y), mid)
+                    guard case .desk = t.landing else {
+                        Issue.record("released at 250,\(y) with \(mid): \(t.landing)")
+                        continue
                     }
+                }
+                if Self.fling(SIMD2(120, 229), v).isIn { lip += 1 }
+                for y: Float in [236, 250] where Self.fling(SIMD2(120, y), v).isIn { below += 1 }
+            }
+        }
+        #expect(below > 0 && lip > 0, "below \(below), lip \(lip)")
+    }
+
+    @Test("Off the desk's front it falls in the front plane: never below the floor line on screen")
+    func frontPlaneFall() {
+        for x in stride(from: Float(100), through: 380, by: 20) {
+            for vd in stride(from: Float(-600), through: -20, by: 60) {
+                let t = Ballistics.pushOff(at: SIMD2(x, 0), velocity: SIMD2(30, vd))
+                for i in 0...Int(t.duration * 240) {
+                    let q = t.position(at: Float(i) / 240)
+                    #expect(q.y >= Self.params.frontPlaneD - 1e-3, "x\(x) vd\(vd): d \(q.y)")
+                    #expect(t.projection.project(q).y <= Float(CoreLayout.floorY) + 1.01, "x\(x) vd\(vd): \(q)")
                 }
             }
         }
-        #expect(wallIn > 0 && deskIn > 0, "wall \(wallIn), desk \(deskIn)")
-        #expect(slow > 0 && slowOnDesk == slow)
+    }
+
+    @Test("A landing in front of furniture bounces clear of it, higher the farther it goes")
+    func floorBounce() {
+        let near = Ballistics.pushOff(at: SIMD2(395, 0), velocity: SIMD2(0, -80))
+        let far = Ballistics.pushOff(at: SIMD2(430, 0), velocity: SIMD2(0, -80))
+        func apex(_ t: Ballistics.Toss) -> Float {
+            let hop = t.segments.last!
+            return hop.velocity.z * hop.velocity.z / (2 * t.gravity)
+        }
+        #expect(near.landing == .floor(x: 384) && far.landing == .floor(x: 384))
+        #expect(apex(near) >= Self.params.minHopHeight - 0.01 && apex(far) > apex(near) && apex(far) >= 0.35 * 46 - 0.1)
+    }
+
+    @Test("Rim contacts are timed on the toss (the basket jiggles there)")
+    func rimContacts() {
+        let p = Self.params
+        let t = Ballistics.toss(from: SIMD3(p.basketX + 15, p.basketD, p.rimZ + 20), velocity: .zero)
+        #expect(t.rimHits >= 1 && t.rimContacts.count == t.rimHits)
+        #expect(t.rimContacts.allSatisfy { $0 > 0 && $0 < t.duration })
+        let swish = Self.fling(SIMD2(64, 250))
+        #expect(swish.rimContacts.isEmpty)
     }
 
     @Test("Floor landings end at a free spot: in front of the cabinet or the basket the token hops clear")

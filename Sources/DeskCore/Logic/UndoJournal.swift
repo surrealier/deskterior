@@ -51,7 +51,8 @@ public struct UndoJournal: Sendable, Equatable {
     /// The label of an action that is journaled, or nil.
     public static func label(for action: DeskAction) -> String? {
         switch action {
-        case let .move(keys, _), let .dropOnDesk(keys, _, _): keys.count > 1 ? "Move \(keys.count) Items" : "Move"
+        case let .move(keys, _), let .dropOnDesk(keys, _, _), let .dropOnFloor(keys, _):
+            keys.count > 1 ? "Move \(keys.count) Items" : "Move"
         case .takeAllOut: "Take All Out"
         case .takeEverythingOut: "Take Everything Out"
         case .cleanUp: "Clean Up"

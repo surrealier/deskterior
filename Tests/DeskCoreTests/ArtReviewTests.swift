@@ -140,8 +140,11 @@ struct ArtReviewTests {
         let sOn = RoomArt.roomSwitch(on: true).image, sOff = RoomArt.roomSwitch(on: false).image
         #expect(sOn.pixels.indices.filter { sOn.pixels[$0] != sOff.pixels[$0] }.count >= 6)
         #expect(sOn.pixel(0, 5) == Ink.neutral5.color && sOn.pixel(4, 5) != RoomArt.wall.color)
+        // The cup reads by its dipped glaze; an empty cup holds no pencils (only files are pens), and it stands on
+        // the desk over a contact shadow.
         let cup = inks(PropArt.penCup().image)
-        #expect(cup.isSuperset(of: [.walnut4, .red3, .oak5]))
+        #expect(cup.isSuperset(of: [.blue3, .neutral8, .neutral9]) && cup.isDisjoint(with: [.walnut4, .red3, .oak5]))
+        #expect(inks(PropArt.penCupOnDesk().image).contains(.oak3))
         let clock = inks(RoomArt.clock(hour: 3, minute: 47).image)
         #expect(clock.contains(.neutral0) && clock.contains(.neutral3))
         #expect(inks(PropArt.wastebasketBack().image).isSuperset(of: [.neutral2, .neutral4]))

@@ -76,7 +76,13 @@
       into the chair (`.hitChair` → `RollerSim.pushedByDrawer()`).
     - A peek expires 0.35 s after the last scroll. Cabinet drawers are interlocked: one open at a time.
     - Floor x is the token's **centre** (`FloorLine`). The floor keeps clear of the basket and cabinet footprints.
-    - A release above the desk's front edge faster than 250 px/s is a front-plane arc.
+    - A release over the desk top, or the wall above it, lands on the desk however fast (over the wall it drops
+      down the back wall), keeping 0.3 of the hand's velocity for its slide; a hard flick slides off an edge and
+      falls from there. Only a release below the desk's front edge, or within 6 px above it moving down faster than
+      250 px/s, is a front-plane arc; whatever leaves the desk forward falls in that plane. (Revised after the M7
+      review: the earlier "faster than 250 px/s above the front edge" sent ordinary drops to the floor.)
+    - Tokens landing together on the floor stand as one floor stack (count tag); the floor also keeps clear of the
+      desk's legs, and new landings of the chair's base.
     - The basket tips only on a sustained sideways rim drag: 3 samples in a row, |vx| > 300 px/s and > 3|vy|,
       covering more than 6 px. Its heap uses `InteriorRaster.basketSlots` (24 slots; the heap rises above the
       rim from the 11th).

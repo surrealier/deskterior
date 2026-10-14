@@ -2,10 +2,11 @@ import DeskCore
 import SpriteKit
 
 /// Loose piles on the desk top (DESIGN §2.2 E11): each pile stands where its body is (`PhysicsHub`), as up to three
-/// 16×16 icons with a count tag over a contact shadow (`PileArt.stack`), its base on the projected desk point
-/// (`DeskProjection`), snapped to whole px with 0.75-px hysteresis. Piles nearer the front draw over the ones
-/// behind them and over the desk-front props behind them. It also answers drops on the bare desk top (not over the
-/// back-strip furniture, whose own elements answer there) and runs the hub's per-frame work.
+/// 16×16 icons over a contact shadow (`PileArt.stack`), its base on the projected desk point (`DeskProjection`),
+/// snapped to whole px with 0.75-px hysteresis. Piles nearer the front draw over the ones behind them and over the
+/// desk-front props behind them. Count tags draw in a pass of their own above every pile, nearest pile first; a tag
+/// that would cover one already placed moves up a step, or hides. It also answers drops on the bare desk top (not
+/// over the back-strip furniture, whose own elements answer there) and runs the hub's per-frame work.
 ///
 /// Gestures: a press selects the pile's tokens (⌘ adds or removes them), a double-click opens them, a drag carries
 /// them (`CarrySession`: back to the screen, into a container, or flung), right-click is the token menu. A knock
@@ -24,6 +25,9 @@ final class DeskPilesElement: DeskElement, Knockable {
         var base: ArtPoint
         var node: SKSpriteNode
         var d: Float
+        /// The count tag's node (piles of two or more) and where it is drawn.
+        var tagNode: SKSpriteNode?
+        var tagAt: ArtPoint?
     }
 
     private var shown: [PileID: Shown] = [:]
@@ -38,6 +42,8 @@ final class DeskPilesElement: DeskElement, Knockable {
 
     /// Hysteresis of the drawn position (art px).
     static let hysteresis: Float = 0.75
+    /// Count tags draw above every pile (and the cup), still within the desk-front band.
+    static let tagZ = CGFloat(RoomLayer.deskFront.rawValue * 1000 + 720)
 
     init(hub: PhysicsHub) {
         self.hub = hub
@@ -90,12 +96,22 @@ final class DeskPilesElement: DeskElement, Knockable {
             let selected = keys.allSatisfy(selection.contains)
             var entry = shown[id]
             if entry == nil || rebuild || entry!.keys != keys || entry!.lift != lift || entry!.selected != selected {
-                let stack = Self.stack(keys, lift: lift, selected: selected, context: context)
+                let stack = Self.stack(keys, lift: lift, selected: selected, drawsTag: false, context: context)
                 let node = entry?.node ?? SKSpriteNode()
                 if node.parent == nil { root.addChild(node) }
                 node.texture = TextureFactory.texture(stack.image)
+                var tagNode = entry?.tagNode
+                if let tag = stack.tag {
+                    if tagNode == nil { tagNode = SKSpriteNode() }
+                    if tagNode!.parent == nil { root.addChild(tagNode!) }
+                    tagNode!.texture = TextureFactory.texture(tag)
+                    tagNode!.zPosition = Self.tagZ
+                } else {
+                    tagNode?.removeFromParent()
+                    tagNode = nil
+                }
                 entry = Shown(keys: keys, lift: lift, selected: selected, stack: stack, base: entry?.base ?? .zero,
-                              node: node, d: p.y)
+                              node: node, d: p.y, tagNode: tagNode, tagAt: nil)
                 entry!.base = ArtPoint(Int.min, Int.min)
             }
             let base = snap(id, hub.canvas(plane: p))
@@ -111,8 +127,34 @@ final class DeskPilesElement: DeskElement, Knockable {
         }
         for (id, e) in shown where !keep.contains(id) {
             e.node.removeFromParent()
+            e.tagNode?.removeFromParent()
             shown[id] = nil
             snapped[id] = nil
+        }
+        placeTags()
+    }
+
+    /// Lays the count tags out nearest pile first: each at its stack's corner, else one step up, else hidden, so
+    /// tags never sit on each other.
+    private func placeTags() {
+        var taken: [ArtRect] = []
+        for (id, e) in frontToBack {
+            guard let node = e.tagNode, let tag = e.stack.tag else { continue }
+            let origin = ArtPoint(e.base.x - e.stack.base.x + e.stack.tagOrigin.x,
+                                  e.base.y - e.stack.base.y + e.stack.tagOrigin.y)
+            let spot = [origin, ArtPoint(origin.x, origin.y - tag.height - 1)]
+                .map { ArtRect(origin: $0, size: tag.size) }
+                .first { r in !taken.contains { $0.intersects(r) } }
+            if let spot {
+                taken.append(spot)
+                node.isHidden = false
+                if e.tagAt != spot.origin {
+                    context.space.place(node, at: spot)
+                    shown[id]?.tagAt = spot.origin
+                }
+            } else {
+                node.isHidden = true
+            }
         }
     }
 
@@ -122,11 +164,13 @@ final class DeskPilesElement: DeskElement, Knockable {
         CGFloat(RoomLayer.deskFront.rawValue * 1000 + 500) + CGFloat(min(max(128 - d, 0), 200))
     }
 
-    static func stack(_ keys: [TokenKey], lift: Int, selected: Bool = false, context: SceneContext) -> PileArt.Stack {
+    static func stack(_ keys: [TokenKey], lift: Int, selected: Bool = false, drawsTag: Bool = true,
+                      context: SceneContext) -> PileArt.Stack {
         let icons = keys.prefix(PileArt.maxIcons).compactMap { k in
             context.state?.tokens.meta(of: k).map { TokenArt.icon(k, $0, context) }
         }
-        return PileArt.stack(Array(icons), count: keys.count, shadow: .oak3, lift: lift, selected: selected)
+        return PileArt.stack(Array(icons), count: keys.count, shadow: .oak3, lift: lift, selected: selected,
+                             drawsTag: drawsTag)
     }
 
     /// `p` (canvas) as whole px, moving only once it is more than `hysteresis` away from where it is drawn.
@@ -243,6 +287,8 @@ final class DeskPilesElement: DeskElement, Knockable {
             hub.bodies.thaw(near: hub.world.position(of: id) ?? .zero)
             let session = CarrySession(keys: e.keys, origins: origins, grab: from, context: context)
             session.moved(to: at, mods: [])
+            // In hand it has no body (DESIGN §2.1), so nothing can shove it while it is away.
+            hub.syncBodies()
             refresh()
             return .drag(session)
         case .scroll, .cancelPress:

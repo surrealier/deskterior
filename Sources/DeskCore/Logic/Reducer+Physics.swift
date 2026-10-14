@@ -1,10 +1,12 @@
-/// The desk-plane actions (DESIGN §2.1 DropResolver, §2.2 E7, E8, E11; M7): drops on the bare desk, and the pen
-/// cup's and the wastebasket's Tip Over / Stand Up, which the scene plays and then commits.
+/// The desk-plane actions (DESIGN §2.1 DropResolver, §2.2 E7, E8, E11; M7): drops on the bare desk and the floor,
+/// and the pen cup's and the wastebasket's Tip Over / Stand Up, which the scene plays and then commits.
 extension Reducer {
     static func reducePhysics(_ s: inout DeskState, _ a: DeskAction, _ env: ReduceEnv) -> [Effect] {
         switch a {
         case let .dropOnDesk(keys, pile, at):
             return dropOnDesk(&s, keys.map(s.currentKey), pile: pile, at: at, grid: env.grid)
+        case let .dropOnFloor(keys, x):
+            return dropOnFloor(&s, keys.map(s.currentKey), x: x, grid: env.grid)
         case let .tipOver(id) where id == .penCup || id == .wastebasket:
             return [.play(.tipOver, .container(id)), .wakeLoop]
         case let .standUp(id) where id == .penCup || id == .wastebasket:
@@ -34,6 +36,19 @@ extension Reducer {
         s.monitor.page = min(s.monitor.page, s.pageCount(grid: grid) - 1)
         let after = movers.map { s.tokens.location(of: $0)! }
         return after == before && s.piles[pile] == oldPos ? [] : [.persist, .wakeLoop]
+    }
+
+    /// Stands `keys` together on the floor at core x `x` (clamped to `FloorLine.centres`), as one floor stack.
+    static func dropOnFloor(_ s: inout DeskState, _ keys: [TokenKey], x: Int, grid: ScreenGrid) -> [Effect] {
+        var seen = Set<TokenKey>()
+        let movers = keys.filter { s.tokens.contains($0) && seen.insert($0).inserted }
+        guard !movers.isEmpty else { return [] }
+        let spot = min(max(x, FloorLine.centres.lowerBound), FloorLine.centres.upperBound)
+        let before = movers.map { s.tokens.location(of: $0)! }
+        for k in movers { s.tokens.move(k, to: .floor(x: spot), grid: grid) }
+        Placement.pruneEmptyPiles(&s)
+        s.monitor.page = min(s.monitor.page, s.pageCount(grid: grid) - 1)
+        return movers.map { s.tokens.location(of: $0)! } == before ? [] : [.persist, .wakeLoop]
     }
 
     /// Floor centres for `count` tokens set down at core x `x` (`FloorLine`): a row 18 px apart from the free spot

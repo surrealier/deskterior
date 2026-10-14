@@ -54,6 +54,11 @@ public enum Reducer {
             for m in report.moves {
                 let key = s.currentKey(for: m.key)
                 guard s.tokens.contains(key) else { continue }
+                // M7: the scene chose the floor spot (stacks share one); it is not spread again.
+                if case let .floor(x) = m.to {
+                    changed = !dropOnFloor(&s, [key], x: x, grid: env.grid).isEmpty || changed
+                    continue
+                }
                 changed = !move(&s, [key], to: m.to, grid: env.grid).isEmpty || changed
             }
             changed = setPiles(&s, report.piles) || changed
@@ -205,7 +210,7 @@ public enum Reducer {
         case .openContainer, .closeContainer, .phoneFace:
             return reduceContainer(&s, a)
         // MARK: physics
-        case .dropOnDesk, .tipOver, .standUp:
+        case .dropOnDesk, .dropOnFloor, .tipOver, .standUp:
             return reducePhysics(&s, a, env)
         }
     }

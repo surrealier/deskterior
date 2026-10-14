@@ -33,18 +33,26 @@ struct PileBodiesUnitTests {
         #expect(bodies.isMoving && !bodies.freezer.isFrozen("P9") && bodies.world.isDynamic("P9"))
     }
 
-    @Test("After a step: a centre past an open edge leaves on an arc; NaN snaps; resting piles report once")
+    @Test("After a step: a centre past an open edge moving out leaves on an arc; shoved over, it goes back; NaN snaps; resting piles report once")
     func afterStep() {
         let bodies = PileBodies(world: DeskPlaneWorld())
         bodies.add("P1", at: [200, 40])
         bodies.add("P2", at: [300, 40])
         bodies.add("P3", at: [150, 90])
+        bodies.add("P4", at: [400, 40])
         bodies.world.piles["P2"]?.position = DeskPlaneWorld.scenePoint([300, -1])
+        bodies.world.setVelocity("P2", [0, -100])
         bodies.world.piles["P3"]?.position = CGPoint(x: CGFloat.nan, y: CGFloat.nan)
+        // Pressed over the edge without the speed to leave (piles pushed apart): back on the desk.
+        bodies.world.piles["P4"]?.position = DeskPlaneWorld.scenePoint([400, -1])
+        bodies.world.setVelocity("P4", [0, -PileBodies.pushOffSpeed / 2])
         let r = bodies.afterStep(1.0 / 60, obstacles: [])
         #expect(r.pushedOff.map(\.pile) == ["P2"] && bodies.launched == ["P2"] && bodies.world.piles["P2"] == nil)
-        #expect(r.snapped.map(\.pile) == ["P3"] && r.snapped.first?.reason == .notFinite)
+        #expect(r.snapped.map(\.pile).sorted() == ["P3", "P4"])
+        #expect(r.snapped.first { $0.pile == "P3" }?.reason == .notFinite)
         #expect(r.settled["P3"].map { $0.isFinite } == true, "snapped to a valid spot and committed")
+        let p4 = r.settled["P4"]
+        #expect(p4.map { $0.y >= 5 && abs($0.x - 400) < 1 } == true, "\(String(describing: p4))")
         // P1 never moved: nothing to commit, and it no longer counts as moving.
         #expect(r.settled["P1"] == nil && !bodies.isMoving)
         let again = bodies.afterStep(1.0 / 60, obstacles: [])

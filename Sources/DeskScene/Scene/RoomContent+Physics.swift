@@ -14,6 +14,7 @@ extension RoomContent {
         hub.knockables = { [unowned self] in extras.compactMap { $0 as? any Knockable } }
         hub.apron.wobbleNodes = { [unowned self] prop in wobbleNodes(prop) }
         hub.hidePlacements = { [unowned self] in hidePhysicsPlacements() }
+        hub.chairLeft = { [unowned self] in Float(state.chairX) }
         install([hub.cup, hub.piles], inSlotOf: "pencup")
         install([hub.basket, hub.floor], inSlotOf: "wastebasket")
         install([hub.apron], inSlotOf: "desk")

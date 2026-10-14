@@ -8,13 +8,17 @@ import SpriteKit
 ///
 /// - **releases** (`release`, called by `CarrySession` before its own drop): a release over the bare desk, one faster
 ///   than 250 px/s (`Ballistics.Params.frontFlingSpeed`) over no affordance, or one below the desk's front edge
-///   leaves the hand on a `Ballistics` arc from the stack's base: a slow one drops onto the desk and slides on with the
-///   hand's speed (`vd = −2·vy`), a fast one flies in the plane just in front of the desk to the floor or the basket. A
-///   gentle drop at the basket's mouth hops in. Affordances (screen, containers, bonks) keep the carry's own drop;
-/// - **landings**: on the desk a pile (joining one within 10 px, else a new body at the nearest free spot, the hand's
-///   velocity handed over), on the floor a token at `FloorLine` x, in the basket a ball (SWISH! for a clean pass; a
-///   full basket bonks it out beside itself). Carries commit with journaled actions (`dropOnDesk`, `move`); motion
-///   the scene started on its own (push-offs, spills) commits with `settle`;
+///   leaves the hand on a `Ballistics` arc from the stack's base (`Ballistics.release`): over the desk (or the wall
+///   above it) it lands on the desk and slides on with part of the hand's speed, so a hard flick slides off the edge;
+///   below the front edge (or flicked down over it) it flies in the plane just in front of the desk to the floor or
+///   the basket. A gentle drop at the basket's mouth hops in. Affordances (screen, containers, bonks) keep the carry's
+///   own drop; a bonk on the pen cup pops below the monitor's chin;
+/// - **landings**: on the desk a pile (joining one within `joinRadius`, else a new body at the nearest free spot, the
+///   hand's velocity handed over, the token led by the hand on top), on the floor a stack at `FloorLine` x, in the
+///   basket a ball (SWISH! for a clean pass; a full basket bonks it out beside itself). A flight lands only the tokens
+///   still where they took off from (an undo, Take Everything Out or a Finder change in the meantime wins). Carries
+///   commit with journaled actions (`dropOnDesk`, `dropOnFloor`, `move`); motion the scene started on its own
+///   (push-offs, spills) commits with `settle`;
 /// - **after each physics step** (`didSimulate`): rest commits (`pilesSettled`), push-offs, watchdog snaps;
 /// - the **knock** (`knock`), and **hard sleep** (`settle`): flights land, bodies freeze, positions commit.
 final class PhysicsHub {
@@ -33,6 +37,8 @@ final class PhysicsHub {
     var knockables: () -> [any Knockable] = { [] }
     /// Hides the room's static cup and basket sprites (after every rebuild of the room).
     var hidePlacements: () -> Void = {}
+    /// Core x of the chair's left edge as the room draws it (new floor landings keep clear of its base).
+    var chairLeft: () -> Float = { Float(CoreLayout.chair.x) }
     private var knocker = DeskKnock()
     /// Desk knocks so far (the cooldown drops double-clicks that come too soon).
     private(set) var knocks = 0
@@ -41,9 +47,14 @@ final class PhysicsHub {
     private var carryFlights: [ObjectIdentifier: (carry: CarrySession, flight: TossAnimator.Flight)] = [:]
     /// Spilled pens still to leave the lying cup, and the seconds until the next one.
     private var pendingPens: (spills: [PenCupMachine.Spill], keys: [TokenKey], wait: Double)?
+    /// The hidden keys the bodies were last synced with (a carry taken from a pile leaves it without a body).
+    private var syncedHidden: Set<TokenKey> = []
+    /// A carry's tokens while its landing commits (still in the hand's set until the carry finishes).
+    private var landing: Set<TokenKey> = []
 
-    /// Within this distance (plane px) a landing joins a pile instead of starting one.
-    static let joinRadius: Float = 10
+    /// Within this distance (plane px) a landing joins a pile instead of starting one: about a pile's width, so two
+    /// stacks never stand half over each other.
+    static let joinRadius: Float = 15
     /// Seconds between pens leaving the cup, and between balls leaving the basket.
     static let penInterval = 0.08
     static let ballInterval = 0.05
@@ -53,6 +64,7 @@ final class PhysicsHub {
         self.context = context
         bodies = PileBodies(world: world)
         tosses = TossAnimator(context: context, z: CGFloat(RoomLayer.underDesk.rawValue * 1000 + 900))
+        tosses.onRim = { [unowned self] p in basket.rimHit(at: p) }
     }
 
     var state: DeskState? { context.state }
@@ -90,11 +102,12 @@ final class PhysicsHub {
     }
 
     /// Ballistics for the room as it stands: a tipped basket frees its spot and blocks where it lies (and catches
-    /// nothing).
+    /// nothing); floor stacks and the chair's base are stepped over.
     var ballistics: Ballistics.Params {
         var p = Ballistics.Params.standard
         guard let s = state else { return p }
-        p.floorAvoid = FloorLine.furniture(basket: s.wastebasket) + FloorLine.spans(floorCentres(s))
+        p.floorAvoid = FloorLine.furniture(basket: s.wastebasket) + [FloorLine.chair(at: chairLeft())]
+            + FloorLine.spans(floorCentres(s))
         if !basket.isUpright { p.basketX = -1000 }
         return p
     }
@@ -113,9 +126,9 @@ final class PhysicsHub {
         return SplitMix64.mix((state.map { UInt64($0.tokens.count) } ?? 0) &* 0x9E37_79B9 ^ seedCounter)
     }
 
-    /// Tokens hidden from the desk, floor and containers: in hand or in the air.
+    /// Tokens hidden from the desk, floor and containers: in hand or in the air (not the ones landing right now).
     var hiddenKeys: Set<TokenKey> {
-        (context.screen?.carried ?? []).union(tosses.flyingKeys)
+        (context.screen?.carried ?? []).union(tosses.flyingKeys).subtracting(landing)
     }
 
     // MARK: Model
@@ -123,34 +136,81 @@ final class PhysicsHub {
     /// Follows the model (the piles element calls this first on every apply).
     func apply(_ s: DeskState) {
         world.attach(to: world.root.scene)
-        var shown: [PileID: SIMD2<Float>] = [:]
-        for (id, p) in s.piles where !s.tokens.members(of: id).isEmpty { shown[id] = p }
-        bodies.sync(shown)
         world.setFurniture("keyboard", DeskPlaneWorld.keyboardFootprint(s.mat.keyboard))
+        syncBodies(s)
+    }
+
+    /// Bodies for the piles holding tokens on show: a pile whose tokens are all in hand or in the air has none
+    /// (DESIGN §2.1: a carry has no body), and gets it back where the model holds it when they come home.
+    func syncBodies(_ s: DeskState? = nil) {
+        guard let s = s ?? state else { return }
+        let hidden = hiddenKeys
+        let inAir = tosses.flyingKeys
+        syncedHidden = hidden
+        var shown: [PileID: SIMD2<Float>] = [:]
+        var flying = Set<PileID>()
+        for (id, p) in s.piles {
+            let members = s.tokens.members(of: id)
+            if members.contains(where: inAir.contains) { flying.insert(id) }
+            if members.contains(where: { !hidden.contains($0) }) { shown[id] = p }
+        }
+        bodies.sync(shown, obstacles: obstacles, flying: flying)
+    }
+
+    /// Where each of `keys` is now (a flight lands only the tokens still there when it comes down).
+    func whereNow(_ keys: [TokenKey]) -> [TokenKey: Location] {
+        guard let s = state else { return [:] }
+        var out: [TokenKey: Location] = [:]
+        for k in keys { out[k] = s.tokens.location(of: s.currentKey(for: k)) }
+        return out
+    }
+
+    /// `keys` (by their current names) that still exist and, with `origins`, are still in the same place (the same
+    /// pile, container, screen cell or floor spot) as when their flight took off.
+    func unmoved(_ keys: [TokenKey], since origins: [TokenKey: Location]?) -> [TokenKey] {
+        guard let s = state else { return [] }
+        return keys.compactMap { k in
+            let now = s.currentKey(for: k)
+            guard let loc = s.tokens.location(of: now) else { return nil }
+            if let origins, let was = origins[k], !Self.samePlace(loc, was) { return nil }
+            return now
+        }
+    }
+
+    /// The same pile or container (whatever the order), else the same location.
+    static func samePlace(_ a: Location, _ b: Location) -> Bool {
+        if let p = a.pile { return p == b.pile }
+        if let c = a.container { return c == b.container }
+        return a == b
     }
 
     // MARK: Releases
 
-    /// A carry let go at canvas `p` with `velocity` (canvas px/s): true when the hub flies it (the carry then waits
-    /// in `.flying` for `landed()`). Bonks on the cup or the basket make them wobble; the carry still bonks.
+    /// A carry let go at canvas `p` with `velocity` (canvas px/s): true when the hub takes it (it flies, and the
+    /// carry waits in `.flying` for `landed()`; or it bonked on the pen cup). Bonks make the cup or the basket wobble.
     func release(_ carry: CarrySession, at p: SIMD2<Float>, velocity: SIMD2<Float>) -> Bool {
         guard let s = state else { return false }
         let r = carry.verdict
-        if case .bonk? = r?.verdict {
-            if r?.element == cup.id { cup.bonked() }
+        if case let .bonk(reason)? = r?.verdict {
+            if r?.element == cup.id {
+                bonkOnCup(reason)
+                carry.cancelled()
+                return true
+            }
             if r?.element == basket.id { basket.bonked() }
             return false
         }
         let keys = carry.keys.map(s.currentKey).filter(s.tokens.contains)
         guard !keys.isEmpty else { return false }
+        let origins = whereNow(keys)
         let base = carry.basePoint(at: p)
         if let r, r.element == basket.id, case .accept = r.verdict {
             // A gentle drop at the mouth: it hops in.
             let to = SIMD2(TossAnimator.mouth.x, TossAnimator.mouth.y + 3)
             let from = core(base)
             let path = TossAnimator.Path.hop(from: from, to: to, height: 6, duration: 0.18)
-            fly(carry, keys: keys, path: path, crumples: true) { [unowned self] _ in
-                landInBasket(keys, toss: nil, from: to, journaled: true)
+            fly(carry, keys: keys, path: path, crumples: true, squash: 0) { [unowned self] _ in
+                landInBasket(keys, toss: nil, from: to, journaled: true, origins: origins)
             }
             return true
         }
@@ -167,24 +227,51 @@ final class PhysicsHub {
             release.position.z = Float(CarrySession.lift)
         }
         let toss = Ballistics.toss(from: release.position, velocity: release.velocity, seed: nextSeed(), params: params)
-        fly(carry, keys: keys, path: .toss(toss), crumples: toss.isIn || toss.rimHits > 0) { [unowned self] _ in
-            land(keys, toss: toss, journaled: true)
+        fly(carry, keys: keys, path: .toss(toss), crumples: toss.isIn || toss.rimHits > 0,
+            squash: Self.squashAmount(toss)) { [unowned self] _ in
+            land(keys, toss: toss, journaled: true, origins: origins)
         }
         return true
     }
 
-    private func fly(_ carry: CarrySession, keys: [TokenKey], path: TossAnimator.Path, crumples: Bool,
+    /// A drop the pen cup refuses: BONK (below the monitor's chin, so it stays readable), a shake, the toast, and
+    /// the cup wobbles; the carry springs back.
+    private func bonkOnCup(_ reason: ToastKey?) {
+        let r = cup.bounds
+        let chin = context.layout.rect(CoreLayout.chin).maxY
+        let text = FXArt.pop(.bonk).image.height
+        context.fx.pop(.bonk, at: ArtPoint(r.midX, max(r.minY, chin + text + 8)))
+        context.shake(frames: 2)
+        if let reason { context.toast(reason) }
+        context.bonks += 1
+        cup.bonked()
+    }
+
+    /// How hard a toss lands (`PileArt.squash` amount): none for a set-down (or into the basket), a little for a
+    /// short drop, fully for a fall or a throw.
+    static func squashAmount(_ toss: Ballistics.Toss) -> Int {
+        toss.isIn ? 0 : squashAmount(impact: abs(toss.velocity(at: max(0, toss.duration - 1e-3)).z))
+    }
+
+    static func squashAmount(impact: Float) -> Int {
+        impact < 120 ? 0 : (impact < 300 ? 1 : 2)
+    }
+
+    private func fly(_ carry: CarrySession, keys: [TokenKey], path: TossAnimator.Path, crumples: Bool, squash: Int,
                      land: @escaping (TossAnimator.Flight) -> Void) {
         carry.handOff()
         let stack = flightImage(keys)
         let id = ObjectIdentifier(carry)
         let flight = tosses.launch(keys, path: path, image: stack.image, base: stack.base, crumples: crumples,
-                                   squashes: true) { [unowned self] f in
+                                   squash: squash) { [unowned self] f in
             carryFlights[id] = nil
+            landing = Set(f.keys)
             land(f)
+            landing = []
             carry.landed()
         }
         carryFlights[id] = (carry, flight)
+        syncBodies()
     }
 
     /// A carry cut short in the air (hard sleep, teardown): it lands now.
@@ -193,9 +280,9 @@ final class PhysicsHub {
         tosses.land(f)
     }
 
-    /// The stack image a flight shows (no shadow while airborne).
+    /// The stack image a flight shows (no shadow while airborne). `keys` are front first: a carry's lead, a pile's top.
     func flightImage(_ keys: [TokenKey]) -> PileArt.Stack {
-        let icons = keys.reversed().prefix(PileArt.maxIcons).compactMap { k in
+        let icons = keys.prefix(PileArt.maxIcons).compactMap { k in
             state?.tokens.meta(of: k).map { TokenArt.icon(k, $0, context) }
         }
         return PileArt.stack(Array(icons), count: keys.count, shadow: nil)
@@ -203,12 +290,13 @@ final class PhysicsHub {
 
     // MARK: Landings
 
-    /// Where a toss of `keys` ended: commit it (journaled for a carry, `settle` for motion the scene started).
-    func land(_ keys: [TokenKey], toss: Ballistics.Toss, journaled: Bool) {
+    /// Where a toss of `keys` (front first) ended: commit it (journaled for a carry, `settle` for motion the scene
+    /// started), for the tokens still where they were at `origins`.
+    func land(_ keys: [TokenKey], toss: Ballistics.Toss, journaled: Bool, origins: [TokenKey: Location]? = nil) {
         switch toss.landing {
         case let .desk(point):
             let v = toss.landingVelocity
-            landOnDesk(keys, at: point, velocity: SIMD2(v.x, v.y), journaled: journaled)
+            landOnDesk(keys, at: point, velocity: SIMD2(v.x, v.y), journaled: journaled, origins: origins)
         case let .floor(x):
             let end = toss.projection.project(toss.end)
             if toss.end.y > 1 {
@@ -216,36 +304,36 @@ final class PhysicsHub {
                 let to = SIMD2(x, Float(CoreLayout.floorY))
                 let stack = flightImage(keys)
                 tosses.launch(keys, path: .hop(from: end, to: to, height: 4, duration: 0.14), image: stack.image,
-                              base: stack.base) { [unowned self] _ in
-                    landOnFloor(keys, x: Int(x.rounded()), journaled: journaled)
+                              base: stack.base, squash: 0) { [unowned self] _ in
+                    landOnFloor(keys, x: Int(x.rounded()), journaled: journaled, origins: origins)
                 }
             } else {
-                landOnFloor(keys, x: Int(x.rounded()), journaled: journaled)
+                landOnFloor(keys, x: Int(x.rounded()), journaled: journaled, origins: origins)
             }
         case .basket:
-            landInBasket(keys, toss: toss, from: toss.projection.project(toss.end), journaled: journaled)
+            landInBasket(keys, toss: toss, from: toss.projection.project(toss.end), journaled: journaled,
+                         origins: origins)
         }
     }
 
-    func landOnFloor(_ keys: [TokenKey], x: Int, journaled: Bool) {
-        guard let s = state else { return }
-        let live = keys.map(s.currentKey).filter(s.tokens.contains)
+    /// On the floor at `x`: the tokens stand there together as one floor stack.
+    func landOnFloor(_ keys: [TokenKey], x: Int, journaled: Bool, origins: [TokenKey: Location]? = nil) {
+        let live = unmoved(keys, since: origins)
         guard !live.isEmpty else { return }
         context.fx.puff(at: context.layout.point(ArtPoint(x, CoreLayout.floorY)))
         if journaled {
-            dispatch(.move(live, to: .floor(x: x)))
+            dispatch(.dropOnFloor(live, x: x))
         } else {
-            let others = floorCentres(s).filter { c in !live.contains { s.tokens.location(of: $0) == .floor(x: c) } }
-            let spots = Reducer.floorSpots(near: x, count: live.count, basket: s.wastebasket, occupied: others)
-            dispatch(.settle(SettleReport(moves: zip(live, spots).map { .init(key: $0, to: .floor(x: $1)) })))
+            dispatch(.settle(SettleReport(moves: live.map { .init(key: $0, to: .floor(x: x)) })))
         }
     }
 
     /// Into the basket: SWISH! for a clean toss; a basket that cannot take them all bonks them out onto the floor
     /// beside it.
-    func landInBasket(_ keys: [TokenKey], toss: Ballistics.Toss?, from: SIMD2<Float>, journaled: Bool) {
+    func landInBasket(_ keys: [TokenKey], toss: Ballistics.Toss?, from: SIMD2<Float>, journaled: Bool,
+                      origins: [TokenKey: Location]? = nil) {
         guard let s = state else { return }
-        let live = keys.map(s.currentKey).filter(s.tokens.contains)
+        let live = unmoved(keys, since: origins)
         guard !live.isEmpty else { return }
         let inside = s.tokens.members(of: .wastebasket).filter { !live.contains($0) }.count
         let mouth = context.layout.point(ArtPoint(Int(TossAnimator.mouth.x), Int(TossAnimator.mouth.y) - 4))
@@ -256,10 +344,11 @@ final class PhysicsHub {
             basket.bonked()
             let spot = FloorLine.freeSpot(near: Float(CoreLayout.wastebasket.maxX + 14), avoiding: ballistics.floorAvoid)
             let stack = flightImage(live)
+            let back = whereNow(live)
             tosses.launch(live, path: .hop(from: from, to: SIMD2(Float(spot), Float(CoreLayout.floorY)), height: 14,
                                           duration: 0.3),
-                          image: stack.image, base: stack.base) { [unowned self] _ in
-                landOnFloor(live, x: spot, journaled: journaled)
+                          image: stack.image, base: stack.base, squash: 1) { [unowned self] _ in
+                landOnFloor(live, x: spot, journaled: journaled, origins: back)
             }
             return
         }
@@ -277,10 +366,11 @@ final class PhysicsHub {
     }
 
     /// On the desk: joins a pile within `joinRadius` (one the movers do not wholly make up), else starts a pile at
-    /// the nearest free spot with `velocity` (plane px/s).
-    func landOnDesk(_ keys: [TokenKey], at point: SIMD2<Float>, velocity: SIMD2<Float>, journaled: Bool) {
+    /// the nearest free spot with `velocity` (plane px/s). `keys` are front first: the first ends on top.
+    func landOnDesk(_ keys: [TokenKey], at point: SIMD2<Float>, velocity: SIMD2<Float>, journaled: Bool,
+                    origins: [TokenKey: Location]? = nil) {
         guard let s = state else { return }
-        let live = keys.map(s.currentKey).filter(s.tokens.contains)
+        let live = unmoved(keys, since: origins)
         guard !live.isEmpty else { return }
         let movers = Set(live)
         var others: [PileID: SIMD2<Float>] = [:]
@@ -305,7 +395,9 @@ final class PhysicsHub {
         if state?.piles[id] == nil { apply(state ?? s) }
     }
 
-    private func commitDesk(_ keys: [TokenKey], pile: PileID, at: SIMD2<Float>, journaled: Bool) {
+    /// Puts `keys` (front first) on `pile`, the first on top.
+    private func commitDesk(_ front: [TokenKey], pile: PileID, at: SIMD2<Float>, journaled: Bool) {
+        let keys = Array(front.reversed())
         if journaled {
             dispatch(.dropOnDesk(keys, pile: pile, at: at))
         } else {
@@ -320,14 +412,16 @@ final class PhysicsHub {
     // MARK: Frames
 
     var needsFrames: Bool {
-        tosses.needsFrames || bodies.isMoving || pendingPens != nil
+        tosses.needsFrames || bodies.isMoving || pendingPens != nil || hiddenKeys != syncedHidden
     }
 
-    /// One fixed step before the physics (the piles element runs it): flights, spilling pens.
+    /// One fixed step before the physics (the piles element runs it): flights, spilling pens, and bodies for piles
+    /// whose tokens left the hand or came back to it.
     func step(_ dt: Double) {
         world.attach(to: world.root.scene)
         tosses.step(dt)
         stepPens(dt)
+        if hiddenKeys != syncedHidden { syncBodies() }
     }
 
     /// After SpriteKit stepped the world (DESIGN §4.6 step 5): the cup's prop, rest commits, push-offs, the watchdog.
@@ -343,13 +437,19 @@ final class PhysicsHub {
             dispatch(.pilesSettled(report.settled))
         }
         for (id, at, v) in report.pushedOff {
-            let keys = s.tokens.members(of: id).filter { !hiddenKeys.contains($0) }
-            guard !keys.isEmpty else { continue }
+            // Top first, as the pile shows them.
+            let keys = Array(s.tokens.members(of: id).filter { !hiddenKeys.contains($0) }.reversed())
+            guard !keys.isEmpty else {
+                // Nothing on show to fly (all in hand): the pile goes back on the desk.
+                bodies.unlaunch(id, near: at, committedAt: s.piles[id], obstacles: obstacles)
+                continue
+            }
             let toss = Ballistics.pushOff(at: at, velocity: v, params: ballistics)
             let stack = flightImage(keys)
+            let origins = whereNow(keys)
             tosses.launch(keys, path: .toss(toss), image: stack.image, base: stack.base,
-                          crumples: toss.isIn || toss.rimHits > 0) { [unowned self] _ in
-                land(keys, toss: toss, journaled: false)
+                          crumples: toss.isIn || toss.rimHits > 0, squash: Self.squashAmount(toss)) { [unowned self] _ in
+                land(keys, toss: toss, journaled: false, origins: origins)
             }
         }
         if !report.toMonitor.isEmpty {
@@ -371,12 +471,12 @@ final class PhysicsHub {
 
     /// The lying cup spills its pens: each leaves the mouth `penInterval` after the last with a seeded impulse
     /// (`PenCupMachine.spill`) and slides as a pile; past an edge it flies off.
-    func spillPens(right: Bool, from position: SIMD2<Float>) {
+    func spillPens(right: Bool, from position: SIMD2<Float>, direction: SIMD2<Float>? = nil) {
         guard let s = state else { return }
         let keys = s.tokens.members(of: .penCup).filter { !hiddenKeys.contains($0) }
         guard !keys.isEmpty else { return }
         let spills = PenCupMachine.spill(count: keys.count, from: position, right: right, seed: nextSeed(),
-                                         ballistics: ballistics)
+                                         direction: direction, ballistics: ballistics)
         // The top pen (last in) leaves first.
         pendingPens = (Array(spills.reversed()), keys, 0)
         stepPens(0)
@@ -403,7 +503,9 @@ final class PhysicsHub {
         let keys = s.tokens.members(of: .wastebasket).filter { !hiddenKeys.contains($0) }
         guard !keys.isEmpty else { return }
         let spots = WastebasketMachine.spillSpots(count: keys.count, right: right,
-                                                  avoiding: FloorLine.spans(floorCentres(s)))
+                                                  avoiding: [FloorLine.chair(at: chairLeft())]
+                                                      + FloorLine.spans(floorCentres(s)))
+        let origins = whereNow(keys)
         let lying = WastebasketMachine.tippedRect(right: right)
         let mouth = SIMD2(Float(right ? lying.maxX - 3 : lying.minX + 3), Float(lying.midY + 4))
         for (i, (key, spot)) in zip(keys, spots).enumerated().reversed() {
@@ -413,9 +515,9 @@ final class PhysicsHub {
             let duration = 0.18 + abs(to.x - mouth.x) / 500
             let icon = flightImage([key])
             tosses.launch([key], path: .hop(from: mouth, to: to, height: 8 + Float(rank % 3) * 3, duration: duration),
-                          image: icon.image, base: icon.base, crumples: false, delay: Float(rank) * Float(Self.ballInterval),
-                          look: .ball) { [unowned self] _ in
-                landOnFloor([key], x: spot, journaled: false)
+                          image: icon.image, base: icon.base, crumples: false, squash: 1,
+                          delay: Float(rank) * Float(Self.ballInterval), look: .ball) { [unowned self] _ in
+                landOnFloor([key], x: spot, journaled: false, origins: origins)
             }
         }
     }

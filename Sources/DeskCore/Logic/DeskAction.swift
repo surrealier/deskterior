@@ -76,6 +76,9 @@ public enum DeskAction: Sendable {
     /// Tokens set down on the bare desk (a drop, a fling's landing) join `pile` at desk-plane point `at`: a new pile
     /// is made there, and a pile the drop takes whole moves there; an existing pile keeps its place. Journaled.
     case dropOnDesk([TokenKey], pile: PileID, at: SIMD2<Float>)
+    /// Tokens landing together on the floor at core x `x` (a fling's landing): they stand there as one floor stack.
+    /// Journaled.
+    case dropOnFloor([TokenKey], x: Int)
     /// The pen cup's or the wastebasket's Tip Over / Stand Up menu item: the scene plays it and commits the result
     /// (`cupState`/`basketState`, then `settle`).
     case tipOver(ContainerID)

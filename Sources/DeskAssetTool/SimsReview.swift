@@ -279,10 +279,11 @@ enum SimsReview {
         let fling = Ballistics.toss(from: fp, velocity: fv)
         plot(&img, fling, .purple5)
         labels.append("fling \(landingText(fling.landing))")
-        // Flicks toward the basket (front plane) from the bare wall and from over the desk: the first one in at
-        // up to a carry's top speed (1200 px/s); and a slow release over the desk, which drops onto it.
+        // Flicks toward the basket (front plane) from below the desk's front edge and flicked down just above it:
+        // the first one in at up to a carry's top speed (1200 px/s); and a slow release over the desk, which drops
+        // onto it (any release over the desk or the wall lands on the desk).
         var flicks = room([])
-        for (at, ink) in [(SIMD2<Float>(140, 150), Ink.green5), (SIMD2<Float>(180, 210), Ink.walnut3)] {
+        for (at, ink) in [(SIMD2<Float>(140, 240), Ink.green5), (SIMD2<Float>(180, 229), Ink.walnut3)] {
             var shot: Ballistics.Toss?
             // Down-left throws first, then lobs.
             search: for vy in Array(stride(from: 0, through: 600, by: 50)) + Array(stride(from: -50, through: -600, by: -50)) {

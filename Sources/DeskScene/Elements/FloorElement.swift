@@ -2,35 +2,38 @@ import DeskCore
 import SpriteKit
 
 /// Tokens on the floor (DESIGN §2.2 E11): 16×16 icons standing on the front floor line, centred on their stored x
-/// (`Location.floor(x:)`, `FloorLine`), no physics. They draw in front of the under-desk furniture they never stand
-/// in front of, behind the chair. Hover rings and tooltips like the screen's tokens; a press selects (⌘ toggles), a
-/// double-click opens, a drag carries them back up (`CarrySession`), right-click is the token menu. A knock hops
-/// them 1 px.
+/// (`Location.floor(x:)`, `FloorLine`), no physics. Tokens sharing an x (a stack that landed together, balls that did
+/// not fit side by side) stand as one floor stack, drawn like a desk pile (`PileArt.stack`: up to three icons and a
+/// count tag over the icon's cast shadow). They draw in front of the under-desk furniture they never stand in front
+/// of, behind the chair. Hover rings and tooltips like the screen's tokens; a press selects the stack (⌘ toggles), a
+/// double-click opens it, a drag carries it back up (`CarrySession`), right-click is the token menu. A knock hops them
+/// 1 px.
 final class FloorElement: DeskElement, Knockable {
     let id = "floor"
     let root = SKNode()
     unowned let hub: PhysicsHub
 
     private struct Shown {
-        var image: PixelBuffer
-        var icon: PixelBuffer
+        /// Front first.
+        var keys: [TokenKey]
+        var stack: PileArt.Stack
+        /// Canvas top-left of the stack's image.
         var origin: ArtPoint
         var lift: Int
         var selected: Bool
         var node: SKSpriteNode
     }
 
-    /// The drawn image: 18×20, the icon's bottom row on the floor line (image row 18) over a 2-row shadow.
-    static let imageSize = ArtSize(18, 20)
-
-    private var shown: [TokenKey: Shown] = [:]
-    /// Floor tokens in draw order (later on top).
-    private var order: [TokenKey] = []
+    /// Floor stacks by centre x.
+    private var shown: [Int: Shown] = [:]
     private var hops: (plan: DeskKnock.Plan, frame: Int)?
     private var hidden: Set<TokenKey> = []
     private var iconRevision = 0
     private var drawnRevision = 0
     private var selectionRevision = -1
+
+    /// Shadow ink on the boards and the rug (one step darker than the boards).
+    static let shadowInk = Ink.oak1
 
     init(hub: PhysicsHub) {
         self.hub = hub
@@ -54,10 +57,14 @@ final class FloorElement: DeskElement, Knockable {
     /// The floor's z: over the cabinet and the basket, under the chair and the fx.
     static let z = CGFloat(RoomLayer.underDesk.rawValue * 1000 + 600)
 
-    /// The token's icon rect (canvas px) on the floor at core x `x` (its centre), standing on the floor line.
-    func iconRect(x: Int, lift: Int = 0) -> ArtRect {
-        let layout = context.layout
-        return ArtRect(layout.x(x) - FloorLine.tokenWidth / 2, layout.floorY - 16 - lift, 16, 16)
+    /// The floor's tokens on show, by centre x, front first (the last by key order in front).
+    private func stacks(_ s: DeskState) -> [Int: [TokenKey]] {
+        var out: [Int: [TokenKey]] = [:]
+        for key in s.tokens.keys(where: { if case .floor = $0 { true } else { false } }) where !hidden.contains(key) {
+            guard case let .floor(x)? = s.tokens.location(of: key) else { continue }
+            out[x, default: []].insert(key, at: 0)
+        }
+        return out
     }
 
     func refresh(force: Bool = false) {
@@ -66,106 +73,130 @@ final class FloorElement: DeskElement, Knockable {
         let rebuild = force || drawnRevision != iconRevision
         drawnRevision = iconRevision
         selectionRevision = context.selection.revision
-        let tokens = s.tokens.keys { if case .floor = $0 { true } else { false } }.filter { !hidden.contains($0) }
-        var keep = Set<TokenKey>()
-        for (i, key) in tokens.enumerated() {
-            guard case let .floor(x)? = s.tokens.location(of: key), let meta = s.tokens.meta(of: key) else { continue }
-            keep.insert(key)
-            let lift = hops.map { $0.plan.floorHops[key]?.offset(atFrame: $0.frame) ?? 0 } ?? 0
-            let rect = iconRect(x: x)
-            var e = shown[key]
-            let selected = context.selection.contains(key)
-            if e == nil || rebuild || e!.lift != lift || e!.selected != selected {
-                let icon = TokenArt.icon(key, meta, context)
-                var c = PixelCanvas(width: Self.imageSize.w, height: Self.imageSize.h)
-                // A contact shadow on the boards (one step darker), then the icon, hopping `lift` px off it.
-                c.hline(x: 2, y: 18, length: 14, .oak1)
-                c.hline(x: 4, y: 19, length: 10, .oak1)
-                if selected {
-                    c.roundedRectFill(ArtRect(0, 2 - lift, 18, 18), radius: 3, .blue0)
-                    c.roundedRectFill(ArtRect(1, 3 - lift, 16, 16), radius: 2, Role.selection)
-                }
-                c.blit(icon, at: ArtPoint(1, 3 - lift))
+        let all = stacks(s)
+        let layout = context.layout
+        for (x, keys) in all {
+            let lift = hops.map { h in keys.lazy.compactMap { h.plan.floorHops[$0] }.first?.offset(atFrame: h.frame) ?? 0 } ?? 0
+            let selected = keys.allSatisfy(context.selection.contains)
+            var e = shown[x]
+            if e == nil || rebuild || e!.keys != keys || e!.lift != lift || e!.selected != selected {
+                let icons = keys.prefix(PileArt.maxIcons).compactMap { k in s.tokens.meta(of: k).map { TokenArt.icon(k, $0, context) } }
+                let stack = PileArt.stack(icons, count: keys.count, shadow: Self.shadowInk, lift: lift, selected: selected)
                 let node = e?.node ?? SKSpriteNode()
                 if node.parent == nil { root.addChild(node) }
-                node.texture = TextureFactory.texture(c.buffer)
-                e = Shown(image: c.buffer, icon: icon, origin: ArtPoint(Int.min, 0), lift: lift, selected: selected, node: node)
+                node.texture = TextureFactory.texture(stack.image)
+                e = Shown(keys: keys, stack: stack, origin: ArtPoint(Int.min, 0), lift: lift, selected: selected, node: node)
             }
-            let origin = ArtPoint(rect.x - 1, rect.y - 3)
+            let origin = ArtPoint(layout.x(x) - e!.stack.base.x, layout.floorY - e!.stack.base.y)
             if e!.origin != origin {
                 e!.origin = origin
-                context.space.place(e!.node, at: ArtRect(origin: origin, size: e!.image.size))
+                context.space.place(e!.node, at: ArtRect(origin: origin, size: e!.stack.image.size))
             }
-            e!.node.zPosition = Self.z + CGFloat(i) * 0.01
-            shown[key] = e
+            // Left to right, a stack on the right over its left neighbour's shadow.
+            e!.node.zPosition = Self.z + CGFloat(x) * 0.001
+            shown[x] = e
         }
-        for (key, e) in shown where !keep.contains(key) {
+        for (x, e) in shown where all[x] == nil {
             e.node.removeFromParent()
-            shown[key] = nil
+            shown[x] = nil
         }
-        order = tokens.filter(keep.contains)
     }
 
     // MARK: Hits
 
-    func token(at p: ArtPoint) -> TokenKey? {
-        for key in order.reversed() {
-            guard let r = iconRect(of: key), let e = shown[key] else { continue }
-            if e.icon.pixel(p.x - r.x, p.y - r.y).a != 0 { return key }
+    /// The floor stack under canvas pixel `p` (the rightmost on top).
+    private func stackX(at p: ArtPoint) -> Int? {
+        for x in shown.keys.sorted(by: >) {
+            let e = shown[x]!
+            if e.stack.hitMask.pixel(p.x - e.origin.x, p.y - e.origin.y).a != 0 { return x }
         }
         return nil
     }
 
-    func iconRect(of key: TokenKey) -> ArtRect? {
-        guard let e = shown[key] else { return nil }
-        return ArtRect(e.origin.x + 1, e.origin.y + 3 - e.lift, 16, 16)
+    /// The token at `p`: its stack's front token.
+    func token(at p: ArtPoint) -> TokenKey? {
+        stackX(at: p).flatMap { shown[$0]?.keys.first }
     }
 
+    /// The canvas rect of a token's icon (the front icon's for tokens deeper than three).
+    func iconRect(of key: TokenKey) -> ArtRect? {
+        for e in shown.values {
+            guard let i = e.keys.firstIndex(of: key) else { continue }
+            let o = e.stack.iconOrigins[min(i, e.stack.iconOrigins.count - 1)]
+            return ArtRect(e.origin.x + o.x, e.origin.y + o.y, 16, 16)
+        }
+        return nil
+    }
+
+    /// The canvas rect of the stack holding `key`.
+    private func stackRect(_ e: Shown) -> ArtRect { ArtRect(origin: e.origin, size: e.stack.image.size) }
+
     func hitTest(_ p: ArtPoint) -> Hit? {
-        guard let key = token(at: p), let r = iconRect(of: key) else { return nil }
-        return Hit(element: id, part: "token", rect: r, token: key)
+        guard let x = stackX(at: p), let e = shown[x], let key = e.keys.first else { return nil }
+        return Hit(element: id, part: "floor.\(x)", rect: iconRect(of: key) ?? stackRect(e), token: key)
+    }
+
+    private func stack(_ hit: Hit) -> Shown? {
+        guard let part = hit.part, part.hasPrefix("floor."), let x = Int(part.dropFirst(6)) else { return nil }
+        return shown[x]
     }
 
     func hoverStyle(_ hit: Hit) -> HoverStyle {
-        guard let key = hit.token, let meta = hub.state?.tokens.meta(of: key) else { return .standard }
-        return .image(TokenArt.hoverRing(TokenArt.icon(key, meta, context)), at: ArtPoint(hit.rect.x - 2, hit.rect.y - 2))
+        guard let e = stack(hit) else { return .standard }
+        return .image(TokenArt.hoverRing(e.stack.hitMask), at: ArtPoint(e.origin.x - 2, e.origin.y - 2))
     }
 
     func tooltip(_ hit: Hit) -> TooltipSpec? {
-        guard let key = hit.token, let meta = hub.state?.tokens.meta(of: key) else { return nil }
-        var spec = TooltipSpec(title: meta.displayName, detail: TokenArt.detail(meta), anchor: hit.rect)
+        guard let e = stack(hit), let s = hub.state else { return nil }
+        let metas = e.keys.compactMap { s.tokens.meta(of: $0) }
+        guard let top = metas.first else { return nil }
+        var spec: TooltipSpec
+        if metas.count == 1 {
+            spec = TooltipSpec(title: top.displayName, detail: TokenArt.detail(top), anchor: hit.rect)
+        } else {
+            let names = metas.prefix(3).map(\.displayName).joined(separator: ", ")
+            spec = TooltipSpec(title: "\(metas.count) items", detail: metas.count > 3 ? names + "…" : names,
+                               anchor: stackRect(e))
+        }
         spec.prefersAbove = true
         return spec
     }
 
     func handle(_ gesture: Gesture, _ hit: Hit) -> GestureResponse {
-        guard let key = hit.token, let s = hub.state, s.tokens.contains(key) else { return .pass }
+        guard let e = stack(hit), let s = hub.state, e.keys.allSatisfy(s.tokens.contains) else { return .pass }
         let selection = context.selection
+        let keys = Set(e.keys)
         switch gesture {
         case let .press(_, mods):
             if mods.contains(.command) || mods.contains(.shift) {
-                selection.click(key, mods: mods)
-            } else if !selection.contains(key) {
-                selection.select(key)
+                if keys.isSubset(of: selection.keys), mods.contains(.command) {
+                    selection.set(selection.keys.subtracting(keys))
+                } else {
+                    selection.set(selection.keys.union(keys), primary: e.keys.first)
+                }
+            } else if !keys.isSubset(of: selection.keys) {
+                selection.set(keys, primary: e.keys.first)
             }
             context.screen?.refreshIfSelectionChanged()
             return .handled
         case let .click(_, mods, count):
             if count == 2 {
-                let keys = selection.contains(key) ? selection.sorted.filter(shownTokens.contains) : [key]
-                context.dispatch(.requestOpen(keys))
+                let open = keys.isSubset(of: selection.keys) ? selection.sorted.filter(shownTokens.contains) : e.keys
+                context.dispatch(.requestOpen(open))
             } else if count == 1, mods.isEmpty {
-                selection.select(key)
+                selection.set(keys, primary: e.keys.first)
                 context.screen?.refreshIfSelectionChanged()
             }
             return .handled
         case let .dragBegan(from, at, _):
-            if !selection.contains(key) { selection.select(key) }
+            if !keys.isSubset(of: selection.keys) { selection.set(keys, primary: e.keys.first) }
             context.screen?.refreshIfSelectionChanged()
-            var keys = [key] + selection.sorted.filter { $0 != key && shown[$0] != nil }
-            keys = keys.filter { iconRect(of: $0) != nil }
-            let origins = keys.compactMap { iconRect(of: $0)?.origin }
-            let session = CarrySession(keys: keys, origins: origins, grab: from, context: context)
+            // This stack (front first), then the other floor tokens selected with it.
+            let others = selection.sorted.filter { !keys.contains($0) && shownTokens.contains($0) }
+            let carried = e.keys + others
+            let origins = carried.compactMap { iconRect(of: $0)?.origin }
+            guard origins.count == carried.count else { return .pass }
+            let session = CarrySession(keys: carried, origins: origins, grab: from, context: context)
             session.moved(to: at, mods: [])
             refresh()
             return .drag(session)
@@ -175,20 +206,27 @@ final class FloorElement: DeskElement, Knockable {
     }
 
     func menu(_ hit: Hit) -> MenuSpec? {
-        guard let key = hit.token, let s = hub.state else { return nil }
+        guard let e = stack(hit), let s = hub.state else { return nil }
         let selection = context.selection
-        if !selection.contains(key) { selection.select(key) }
+        if !Set(e.keys).isSubset(of: selection.keys) { selection.set(Set(e.keys), primary: e.keys.first) }
         context.screen?.refreshIfSelectionChanged()
         return MenuSpec.token(selection.sorted.filter { s.tokens.contains($0) }, s)
     }
 
-    var shownTokens: Set<TokenKey> { Set(shown.keys) }
+    var shownTokens: Set<TokenKey> { Set(shown.values.flatMap(\.keys)) }
 
     func accessibilityItems() -> [AXItem] {
         guard let s = hub.state else { return [] }
-        return order.compactMap { key in
-            guard let r = iconRect(of: key), let meta = s.tokens.meta(of: key) else { return nil }
-            return AXItem(id: "floor.\(key.inode)", label: meta.displayName, role: .token, frame: r, token: key)
+        return shown.keys.sorted().compactMap { x in
+            let e = shown[x]!
+            let names = e.keys.compactMap { s.tokens.meta(of: $0)?.displayName }
+            guard let first = e.keys.first else { return nil }
+            if e.keys.count == 1 {
+                return AXItem(id: "floor.\(first.inode)", label: names.first ?? "", role: .token,
+                              frame: iconRect(of: first) ?? stackRect(e), token: first)
+            }
+            return AXItem(id: "floor.\(x)", label: "Floor: " + names.joined(separator: ", "), role: .group,
+                          frame: stackRect(e), token: first)
         }
     }
 

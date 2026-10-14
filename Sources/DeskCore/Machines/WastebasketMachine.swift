@@ -18,9 +18,10 @@ public struct WastebasketMachine: Sendable, Equatable {
         public var frameDuration: Float = 1.0 / 12
         /// A gentle drop this close to the mouth goes in.
         public var gentleDropRadius = 12
-        /// Floor token pitch for spilled balls (core px); squeezed down to `minSpillPitch` when the floor is short.
+        /// Floor token pitch for spilled balls (core px); squeezed down to `minSpillPitch` (side by side, never
+        /// overlapping) when the floor is short.
         public var spillPitch = 18
-        public var minSpillPitch = 4
+        public var minSpillPitch = FloorLine.tokenWidth
         public var jiggleDuration: Float = 0.25
 
         public init() {}
@@ -260,7 +261,8 @@ public struct WastebasketMachine: Sendable, Equatable {
             spots = own + other
             if spots.count == count { break }
         }
-        // A floor too short even at the closest pitch: the rest stack on the last spot.
+        // A floor too short even at the closest pitch: the rest stack on the last spot (drawn as a floor stack with
+        // its count).
         while spots.count < count { spots.append(spots.last ?? FloorLine.freeSpot(near: Float(rightStart))) }
         return spots.reversed()
     }

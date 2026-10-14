@@ -124,6 +124,7 @@ public final class DeskScene: SKScene {
     public func hitTest(_ p: ArtPoint) -> Hit? { room?.hitTest(p) }
 
     private func buildContent() {
+        room?.forceRest()  // M7: what is in the air lands (and commits) before the room is rebuilt.
         calibration?.root.removeFromParent()
         room?.root.removeFromParent()
         calibration = nil

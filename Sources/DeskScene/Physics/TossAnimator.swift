@@ -4,10 +4,12 @@ import SpriteKit
 /// Things in the air (DESIGN §2.2 E8, E11; §2.1 juice): flung carries, piles pushed off the desk, pens and balls
 /// spilling, drops into the basket. Each flight follows an analytic path (a `Ballistics.Toss` in desk space, or a
 /// hop in core px), drawn on the fx band above the under-desk furniture and below the chair, its sprite's bottom
-/// centre on the path. A ball inside the wastebasket is clipped at the front rim, so it drops in behind it; a
-/// token headed for the basket crumples into a paper ball as it nears the mouth. On touchdown it squashes for three
-/// frames (none in the basket), then `onLand` commits where it ended. `landAll` (hard sleep) lands everything at
-/// once. Deterministic: time comes only from `step`.
+/// centre on the path, over a shadow on the desk (or its front lip while it flies just in front of it) or the floor.
+/// A ball inside the wastebasket is clipped at the front rim, so it drops in behind it; a token headed for the
+/// basket crumples into a paper ball (over two frames) as it nears the mouth and stays one until it lands, where a
+/// miss uncrumples. Each rim contact calls `onRim`. On touchdown it squashes for three frames, as hard as it landed
+/// (none in the basket), then `onLand` commits where it ended. `landAll` (hard sleep) lands everything at once.
+/// Deterministic: time comes only from `step`.
 final class TossAnimator {
     enum Path {
         case toss(Ballistics.Toss)
@@ -33,8 +35,8 @@ final class TossAnimator {
         let base: ArtPoint
         let look: Look
         let ball: PixelBuffer
-        /// Squash on touchdown.
-        let squashes: Bool
+        /// Squash on touchdown: `PileArt.squash` amount (0: none).
+        let squashAmount: Int
         let onLand: (Flight) -> Void
         let node = SKSpriteNode()
         /// Its shadow on the desk or the floor below it.
@@ -47,10 +49,19 @@ final class TossAnimator {
         var squashFrame: Int?
         var shown: (key: Int, origin: ArtPoint)?
         var landed = false
-        lazy var squash: [PixelBuffer] = PileArt.squash(image)
+        /// Steps since it started crumpling (nil: not yet); a crumpled token stays a ball until it lands.
+        var crumpleAge: Int?
+        /// Rim contacts already played.
+        var rimsPlayed = 0
+        lazy var squash: [PixelBuffer] = PileArt.squash(image, amount: squashAmount)
+        /// Halfway to a ball: the image squeezed by whole rows and columns, outline kept.
+        lazy var halfBall: PixelBuffer = PileArt.reshaped(
+            image, to: ArtSize(max(1, image.width * 3 / 5), max(1, image.height * 3 / 5)))
+
+        var squashes: Bool { squashAmount > 0 }
 
         init(keys: [TokenKey], path: Path, image: PixelBuffer, base: ArtPoint, look: Look, ball: PixelBuffer,
-             squashes: Bool, delay: Float, onLand: @escaping (Flight) -> Void) {
+             squash: Int, delay: Float, onLand: @escaping (Flight) -> Void) {
             self.keys = keys
             self.delay = delay
             self.path = path
@@ -58,7 +69,7 @@ final class TossAnimator {
             self.base = base
             self.look = look
             self.ball = ball
-            self.squashes = squashes
+            self.squashAmount = squash
             self.onLand = onLand
         }
 
@@ -79,12 +90,16 @@ final class TossAnimator {
     static let squashHold = 2
     /// A crumpling token turns into a ball this close (canvas px) to the basket's mouth.
     static let crumpleDistance: Float = 26
+    /// Steps a crumpling token shows its half-crumpled frame.
+    static let crumpleHold = 2
 
     let root = SKNode()
     /// Shadows draw in the desk's and the floor's own bands (not on the flight's).
     let shadows = SKNode()
     private(set) var flights: [Flight] = []
     private unowned let context: SceneContext
+    /// A toss touched a rim top at this core point (the ball's centre).
+    var onRim: (SIMD2<Float>) -> Void = { _ in }
     /// Desk shadows one oak step down; floor ones in the darkest walnut so they read on the boards and the rug.
     private lazy var shadowImages: [PixelBuffer] = [Self.shadowImage(.oak2, wide: true), Self.shadowImage(.oak2, wide: false),
                                                      Self.shadowImage(.walnut0, wide: true),
@@ -97,15 +112,15 @@ final class TossAnimator {
 
     var needsFrames: Bool { !flights.isEmpty }
 
-    /// Tokens in the air now.
-    var flyingKeys: Set<TokenKey> { Set(flights.flatMap(\.keys)) }
+    /// Tokens in the air now (not those whose flight has come down and is committing).
+    var flyingKeys: Set<TokenKey> { Set(flights.filter { !$0.landed }.flatMap(\.keys)) }
 
     @discardableResult
     func launch(_ keys: [TokenKey], path: Path, image: PixelBuffer, base: ArtPoint, crumples: Bool = false,
-                squashes: Bool = true, delay: Float = 0, look: Look? = nil, onLand: @escaping (Flight) -> Void) -> Flight {
+                squash: Int = 2, delay: Float = 0, look: Look? = nil, onLand: @escaping (Flight) -> Void) -> Flight {
         let seed = keys.first.map(InteriorRaster.seed) ?? 0
         let f = Flight(keys: keys, path: path, image: image, base: base, look: look ?? (crumples ? .crumpling : .token),
-                       ball: PropArt.paperBall(Int(seed % 3)).image, squashes: squashes, delay: delay, onLand: onLand)
+                       ball: PropArt.paperBall(Int(seed % 3)).image, squash: squash, delay: delay, onLand: onLand)
         f.node.anchorPoint = .zero
         root.addChild(f.node)
         f.shadow.anchorPoint = .zero
@@ -127,6 +142,8 @@ final class TossAnimator {
                 f.squashFrame = s + 1
             } else {
                 f.t += Float(dt)
+                if let age = f.crumpleAge { f.crumpleAge = age + 1 }
+                playRims(f)
                 if f.t >= f.duration { f.squashFrame = f.squashes ? 0 : 3 * Self.squashHold }
             }
             if let s = f.squashFrame, s >= 3 * Self.squashHold {
@@ -150,6 +167,16 @@ final class TossAnimator {
         let all = flights
         flights.removeAll()
         for f in all { finish(f) }
+    }
+
+    /// Rim contacts the flight has reached by now.
+    private func playRims(_ f: Flight) {
+        guard let toss = f.toss else { return }
+        while f.rimsPlayed < toss.rimContacts.count, toss.rimContacts[f.rimsPlayed] <= f.t {
+            let p = toss.position(at: toss.rimContacts[f.rimsPlayed])
+            f.rimsPlayed += 1
+            onRim(toss.projection.project(p) - SIMD2(0, Ballistics.Params.standard.radius))
+        }
     }
 
     private func finish(_ f: Flight) {
@@ -197,21 +224,30 @@ final class TossAnimator {
             return
         }
         var (core, desk) = Self.point(f.path, at: min(f.t, f.duration))
-        if f.squashFrame != nil, let toss = f.toss, case .floor = toss.landing, toss.end.y <= 1 {
-            // In front of the desk, it comes to rest on the floor line.
-            core.y = Float(CoreLayout.floorY)
+        if let toss = f.toss, case .floor = toss.landing, toss.end.y <= 1 {
+            // In front of the desk, it falls to the floor line and no further.
+            core.y = f.squashFrame != nil ? Float(CoreLayout.floorY) : min(core.y, Float(CoreLayout.floorY))
         }
         var image = f.image
         var base = f.base
+        var key = 0
         let nearMouth = simd_length(core - Self.mouth) <= Self.crumpleDistance
         let inside = desk.map { Self.insideBasket($0, f.toss) } ?? (f.look == .crumpling && nearMouth && core.y > Self.mouth.y)
-        if f.squashFrame == nil, f.look == .ball || (f.look == .crumpling && (nearMouth || inside)) {
-            image = f.ball
-            base = ArtPoint(f.ball.width / 2, f.ball.height)
+        if f.look == .crumpling, f.crumpleAge == nil, nearMouth || inside { f.crumpleAge = 0 }
+        if f.squashFrame == nil, f.look == .ball || f.crumpleAge != nil {
+            if let age = f.crumpleAge, age < Self.crumpleHold {
+                image = f.halfBall
+                base = ArtPoint(image.width / 2, image.height - max(0, f.image.height - f.base.y) * 3 / 5)
+                key = 2
+            } else {
+                image = f.ball
+                base = ArtPoint(f.ball.width / 2, f.ball.height)
+                key = 1
+            }
         }
         var origin = layout.point(ArtPoint(Int(core.x.rounded()) - base.x, Int(core.y.rounded()) - base.y))
-        var key = image == f.image ? 0 : 1
         if let s = f.squashFrame, f.squashes {
+            // Touchdown: the squash (a crumpled miss uncrumples into it).
             image = f.squash[min(2, s / Self.squashHold)]
             origin = origin - ArtPoint(2, 2)
             key = 10 + min(2, s / Self.squashHold)
@@ -239,15 +275,16 @@ final class TossAnimator {
         }
     }
 
-    /// The shadow straight below the flight: on the desk top while over it, else on the floor (at the floor line
-    /// in front of the desk); smaller the higher it flies. Hops along the floor keep theirs on the floor line.
+    /// The shadow straight below the flight: on the desk top while over it (on its front lip while it flies just in
+    /// front of the desk above the top, so it reads as in front of the desk, not over it), else on the floor (at the
+    /// floor line in front of the desk); smaller the higher it flies. Hops along the floor keep theirs on the line.
     private func placeShadow(_ f: Flight, core: SIMD2<Float>, desk: SIMD3<Float>?, hidden: Bool) {
         var ground: (point: SIMD2<Float>, onDesk: Bool, height: Float)?
         if let p = desk, let toss = f.toss {
             let b = Ballistics.Params.standard
-            let overDesk = b.deskX.contains(p.x) && p.y >= 0 && p.y <= b.backD && p.z >= -0.5
+            let overDesk = b.deskX.contains(p.x) && p.y >= b.frontPlaneD - 0.5 && p.y <= b.backD && p.z >= -0.5
             let z: Float = overDesk ? 0 : b.floorZ
-            var q = toss.projection.project(SIMD3(p.x, p.y, z))
+            var q = toss.projection.project(SIMD3(p.x, overDesk ? max(p.y, 0) : p.y, z))
             if !overDesk { q.y = min(q.y, Float(CoreLayout.floorY + 1)) }
             ground = (q, overDesk, p.z - z)
         } else if case let .hop(from, to, _, _) = f.path, abs(from.y - to.y) < 1, from.y >= Float(CoreLayout.floorY - 2) {

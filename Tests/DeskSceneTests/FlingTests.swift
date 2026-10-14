@@ -41,16 +41,20 @@ struct FlingTests {
         #expect(p3 != p1 && stage.state.tokens.piles.count == 2)
     }
 
-    @Test("A release over the desk faster than 250 px/s flies in front of the desk to the floor")
-    func fastReleaseFliesToFloor() throws {
+    @Test("A release over the desk lands on the desk however fast; one below its front edge flies to the floor")
+    func fastReleaseLandsOnDesk() throws {
         let stage = try PhysicsStage(F.state(), physics: false)
         let from = try #require(stage.tokenPoint(F.key(1)))
-        stage.drag(from, stage.point(core: 300, 214), steps: 4)
-        #expect(stage.scene.isDragging == false && stage.hub.tosses.flights.count == 1, "in the air")
-        #expect(stage.scene.screen?.carried == [F.key(1)], "still off the screen while it flies")
+        stage.drag(from, stage.point(core: 300, 200), steps: 4)
         stage.settle()
-        guard case let .floor(x)? = stage.location(F.key(1)) else {
-            Issue.record("expected the floor, got \(String(describing: stage.location(F.key(1))))")
+        #expect(stage.location(F.key(1))?.pile != nil, "\(String(describing: stage.location(F.key(1))))")
+        let other = try #require(stage.tokenPoint(F.key(2)))
+        stage.drag(other, stage.point(core: 300, 262), steps: 4)
+        #expect(stage.scene.isDragging == false && stage.hub.tosses.flights.count == 1, "in the air")
+        #expect(stage.scene.screen?.carried == [F.key(2)], "still off the screen while it flies")
+        stage.settle()
+        guard case let .floor(x)? = stage.location(F.key(2)) else {
+            Issue.record("expected the floor, got \(String(describing: stage.location(F.key(2))))")
             return
         }
         #expect(FloorLine.isFree(x))
@@ -75,7 +79,7 @@ struct FlingTests {
     func flightShadowAndHardSleep() throws {
         let stage = try PhysicsStage(F.state(), physics: false)
         let from = try #require(stage.tokenPoint(F.key(1)))
-        stage.drag(from, stage.point(core: 200, 150), steps: 3)
+        stage.drag(from, stage.point(core: 200, 262), steps: 12, pause: 6)
         let flight = try #require(stage.hub.tosses.flights.first)
         stage.frames(3)
         #expect(!flight.node.isHidden && !flight.shadow.isHidden, "a shadow below the token")
@@ -111,16 +115,17 @@ struct FlingPhysicsTests {
         stage.settle()
         let first = try #require(stage.location(F.key(1))?.pile)
         let start = try #require(stage.state.piles[first])
-        // Picked up and let go moving right at 150 px/s (× 0.8): it slides on about v/4 px.
+        // Picked up and let go moving right at 600 px/s (× 0.8): it keeps 0.3 of that and slides on about v/4 px.
         let grip = try #require(stage.tokenPoint(F.key(1)))
         stage.actions.removeAll()
-        stage.drag(grip, grip + SIMD2(40, 0), steps: 16)
+        stage.drag(grip, grip + SIMD2(40, 0), steps: 4)
         stage.settle()
         let pile = try #require(stage.location(F.key(1))?.pile)
         let pos = try #require(stage.state.piles[pile])
         let body = try #require(stage.scene.pilePositions[pile])
         #expect(pos == body, "the resting position is committed")
-        #expect(pos.x > start.x + 55 && pos.x < start.x + 85 && abs(pos.y - start.y) < 2, "slid on: \(start) → \(pos)")
+        #expect(pos.x > start.x + 40 + 20 && pos.x < start.x + 40 + 50 && abs(pos.y - start.y) < 2,
+                "slid on: \(start) → \(pos)")
         #expect(stage.state.piles.count == 1 && !stage.scene.needsFrames)
         let settles = stage.actions.filter { if case .pilesSettled = $0 { true } else { false } }
         #expect(settles.count == 1, "\(settles)")

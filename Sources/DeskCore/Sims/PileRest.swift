@@ -198,18 +198,25 @@ public struct PileWatchdog: Sendable, Equatable {
         _ pile: PileID, position: SIMD2<Float>, isAwake: Bool, dt: Float,
         others: [SIMD2<Float>] = [], obstacles: [DeskPlaneRect] = []
     ) -> Verdict {
-        let reason: Reason
-        if !position.isFinite {
-            reason = .notFinite
-        } else if !isOnDesk(position) {
-            reason = .outOfBounds
-        } else {
-            lastGood[pile] = position
-            let t = isAwake ? (awake[pile] ?? 0) + dt : 0
-            awake[pile] = t
-            guard t > params.awakeLimit else { return .ok }
-            reason = .awakeTooLong
-        }
+        guard let reason = problem(pile, position: position, isAwake: isAwake, dt: dt) else { return .ok }
+        return resolve(pile, position: position, reason: reason, others: others, obstacles: obstacles)
+    }
+
+    /// The cheap half of `check`, run for every pile every step: advances the awake timer and says what is wrong
+    /// (nil when nothing is), so the caller gathers the other piles only for a pile that must move.
+    public mutating func problem(_ pile: PileID, position: SIMD2<Float>, isAwake: Bool, dt: Float) -> Reason? {
+        if !position.isFinite { return .notFinite }
+        if !isOnDesk(position) { return .outOfBounds }
+        lastGood[pile] = position
+        let t = isAwake ? (awake[pile] ?? 0) + dt : 0
+        awake[pile] = t
+        return t > params.awakeLimit ? .awakeTooLong : nil
+    }
+
+    /// The other half of `check`: where a pile with `reason` goes.
+    public mutating func resolve(
+        _ pile: PileID, position: SIMD2<Float>, reason: Reason, others: [SIMD2<Float>], obstacles: [DeskPlaneRect] = []
+    ) -> Verdict {
         awake[pile] = 0
         let from = position.isFinite ? position : (lastGood[pile] ?? params.fallback)
         guard let spot = nearestValidSpot(to: from, others: others, obstacles: obstacles) else {
@@ -217,6 +224,18 @@ public struct PileWatchdog: Sendable, Equatable {
         }
         lastGood[pile] = spot
         return .snap(to: spot, reason: reason)
+    }
+
+    /// Whether a pile centred at `p` would sit inside furniture, `obstacles` or another pile's body (bodies are
+    /// `pileSize` less `inset` on each axis, so piles resting against each other do not count), or off the desk.
+    public func isCrowded(_ p: SIMD2<Float>, others: [SIMD2<Float>], obstacles: [DeskPlaneRect] = [],
+                          inset: Float = DeskPlanePhysics.pileInset) -> Bool {
+        guard isOnDesk(p) else { return true }
+        let size = params.pileSize - inset
+        let body = DeskPlaneRect.centred(at: p, size: size)
+        if DeskPlanePhysics.footprints.values.contains(where: { $0.intersects(body) }) { return true }
+        if obstacles.contains(where: { $0.intersects(body) }) { return true }
+        return others.contains { q in q.isFinite && abs(q.x - p.x) < size.x && abs(q.y - p.y) < size.y }
     }
 
     /// Forgets piles that are gone.

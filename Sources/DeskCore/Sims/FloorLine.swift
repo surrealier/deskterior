@@ -1,16 +1,24 @@
 /// The floor line (DESIGN §2.2 E8, E11): floor tokens stand on it, stored as the core x of their **centre**
 /// (`Location.floor(x:)`, `Ballistics.Landing.floor(x:)`, `WastebasketMachine.spillSpots`), and never in front of
-/// the furniture standing there too (the wastebasket and the cabinet), so a miss always ends as a visible, safe
-/// token.
+/// the furniture standing there too (the wastebasket, the cabinet and the desk's legs; landings also keep clear of
+/// where the chair stands), so a miss always ends as a visible, safe token.
 public enum FloorLine {
     /// A floor token's width (core px).
     public static let tokenWidth = 16
     /// Centres that keep a token inside the core.
     public static let centres: ClosedRange<Int> = (tokenWidth / 2)...(CoreLayout.size.w - tokenWidth / 2)
-    /// Core x spans of the furniture standing on the floor: the upright wastebasket and the cabinet.
+    /// Core x spans of the furniture standing on the floor: the upright wastebasket, the cabinet and the desk's legs.
     public static let furniture: [Range<Int>] = [
         CoreLayout.wastebasket.minX..<CoreLayout.wastebasket.maxX, CoreLayout.cabinet.minX..<CoreLayout.cabinet.maxX,
+        CoreLayout.legLeft.minX..<CoreLayout.legLeft.maxX, CoreLayout.legRight.minX..<CoreLayout.legRight.maxX,
     ]
+
+    /// The span of the chair's base with its left edge at core x `left` (`ChairState.x`): new landings keep clear of
+    /// it, so nothing lands hidden behind the wheels (the chair may still roll in front of floor tokens later).
+    public static func chair(at left: Float) -> Range<Int> {
+        let x = left.isFinite ? Int(left.rounded()) : CoreLayout.chair.x
+        return x..<(x + CoreLayout.chair.w)
+    }
 
     /// The floor furniture for a basket in `basket`'s state: tipped, it lies beside its upright spot
     /// (`WastebasketMachine.tippedRect`), and that spot stays clear too, so standing it back up covers nothing.

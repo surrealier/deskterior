@@ -300,8 +300,8 @@ final class DeskSession {
         return true
     }
 
-    /// Brings the scene to rest (a drawer or the chair mid-motion commits where it is, a carry springs back), saves
-    /// and stops watching.
+    /// Brings the scene to rest (a carry springs back; a drawer or the chair mid-motion commits where it is; whatever
+    /// is in the air lands) so its end is saved, then saves and stops watching.
     func stop() {
         host.cancelInput()
         host.scene.forceRest()

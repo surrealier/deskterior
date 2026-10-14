@@ -23,6 +23,9 @@ jobs:
         run: swift build
       - name: Test
         run: scripts/swift-test.sh
+        env:
+          # The desk-plane physics tests need a Metal device (SpriteKit steps Box2D); fail rather than skip them.
+          DESKTERIOR_REQUIRE_METAL: "1"
       - name: File-safety lint
         run: scripts/check-file-safety.sh
       - name: Build app bundle (arm64, ad-hoc)

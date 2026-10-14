@@ -35,7 +35,7 @@
                   "undo": "Move" } },
     { "snapshot": "02-piles-on-desk" },
 
-    { "drag": { "from": "pencup.body", "to": "core:400,218", "duration": 0.8, "hold": true } },
+    { "drag": { "from": "pencup.body", "to": "core:360,218", "duration": 0.8, "hold": true } },
     { "wait": 0.1 },
     { "release": true },
     { "waitIdle": 3 },
@@ -43,7 +43,7 @@
     { "snapshot": "03-cup-carried" },
 
     { "comment": "A flick faster than 400 px/s with three pens or more tips it over that way." },
-    { "drag": { "from": "pencup.body", "to": "core:445,218", "duration": 0.05 } },
+    { "drag": { "from": "pencup.body", "to": "core:405,218", "duration": 0.05 } },
     { "wait": 0.12 },
     { "snapshot": "04-tipping" },
     { "wait": 0.25 },
@@ -60,7 +60,7 @@
     { "snapshot": "08-stood-up" },
 
     { "comment": "A desk knock (double-click the apron, left of the chair): piles and floor tokens hop, the cup and monitor wobble; nothing moves house." },
-    { "expect": { "piles": 5, "floor": 2, "knocks": 0 } },
+    { "expect": { "piles": 7, "floor": 0, "knocks": 0 } },
     { "click": { "at": "core:150,238", "count": 2 } },
     { "wait": 0.1 },
     { "snapshot": "08b-knock" },
@@ -68,7 +68,7 @@
     { "click": { "at": "core:150,238", "count": 2 } },
     { "expect": { "knocks": 1 } },
     { "waitIdle": 2 },
-    { "expect": { "piles": 5, "floor": 2, "penCup": "upright" } },
+    { "expect": { "piles": 7, "floor": 0, "penCup": "upright" } },
 
     { "drag": { "from": "token:todo.txt", "to": "pencup.mouth", "duration": 0.5 } },
     { "waitIdle": 2 },

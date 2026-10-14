@@ -8,7 +8,7 @@
 #     Deskterior --headless --demo FILE --desktop-folder FIXTURE --state-dir STATE --seed 1
 #                --snapshot-dir OUT/NAME --snapshot-scale N
 #   OUT defaults to .build/demo-out. Env: SWIFT_SCRATCH_PATH (build folder, e.g. .build-w4-core), SWIFT_JOBS
-#   (default 3), DESKTERIOR_BIN (a built Deskterior; skips the build).
+#   (default 3), DESKTERIOR_BIN (a built Deskterior; skips the build), DESKTERIOR_RESOURCES (default Resources/).
 #
 # The real desktop is never used: fixture and state folders come from mktemp, make-fixture-desktop.sh refuses
 # targets inside the real desktop, this script refuses an --out folder inside (or containing) it before touching
@@ -57,6 +57,8 @@ fi
 APP="${DESKTERIOR_BIN:-$BIN_DIR/Deskterior}"
 [ -x "$APP" ] || { echo "run-demo: no Deskterior binary at $APP" >&2; exit 2; }
 if [ -x "$BIN_DIR/deskterior-assets" ]; then export DESKTERIOR_ASSETS="$BIN_DIR/deskterior-assets"; fi
+# A release binary finds no fonts by itself (no source paths): the repo's Resources.
+export DESKTERIOR_RESOURCES="${DESKTERIOR_RESOURCES:-$ROOT/Resources}"
 
 # A single path component: not empty, not . or .., no slash, no control characters.
 plain() {
@@ -92,18 +94,19 @@ run_one() {
   esac
   [ -f "$script" ] || { echo "run-demo: no demo $script" >&2; return 2; }
   local tmp out
-  tmp="$(mktemp -d "${TMPDIR:-/tmp}/deskterior-demo.XXXXXX")"
+  tmp="$(mktemp -d "${TMPDIR:-/tmp}/deskterior-demo.XXXXXX")" || tmp=""
+  [ -n "$tmp" ] && [ -d "$tmp" ] || { echo "run-demo: mktemp failed" >&2; return 2; }
   DESK="$tmp/desk"
   local state="$tmp/state"
   out="$OUT_ROOT/$name"
-  mkdir -p "$state" "$out"
+  mkdir -p "$state" "$out" || return 2
   rm -f "$out"/*.png
   if [ "$COUNT" -gt 0 ]; then
-    "$ROOT/scripts/make-fixture-desktop.sh" --count "$COUNT" "$DESK" >&2
+    "$ROOT/scripts/make-fixture-desktop.sh" --count "$COUNT" "$DESK" >&2 || return 2
   else
-    "$ROOT/scripts/make-fixture-desktop.sh" "$DESK" >&2
+    "$ROOT/scripts/make-fixture-desktop.sh" "$DESK" >&2 || return 2
   fi
-  mkfifo "$tmp/to-app" "$tmp/from-app"
+  mkfifo "$tmp/to-app" "$tmp/from-app" || return 2
   echo "run-demo: $name (fixture $DESK)" >&2
   DESKTERIOR_DEMO_FS=stdio "$APP" --headless --demo "$script" --desktop-folder "$DESK" --state-dir "$state" \
     --seed 1 --snapshot-dir "$out" --snapshot-scale "$SCALE" <"$tmp/to-app" >"$tmp/from-app" &
@@ -122,10 +125,10 @@ EOF
     esac
   done
   exec 3>&- 4<&-
+  # The caller turns errexit back on once it has the code (a failing demo must not stop the others).
   set +e
   wait "$pid"
   code=$?
-  set -e
   rm -rf "$tmp"
   echo "run-demo: $name exit $code; snapshots in $out" >&2
   return "$code"

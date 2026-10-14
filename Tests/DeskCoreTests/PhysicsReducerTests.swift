@@ -75,8 +75,8 @@ struct PhysicsReducerTests {
         #expect(s.tokens.location(of: F.key(4)) == .floor(x: 40))
         #expect(Reducer.floorSpots(near: 64, count: 1, basket: BasketState(state: "tippedRight")) == [40])
         #expect(Reducer.floorSpots(near: 105, count: 1, basket: BasketState(state: "tippedRight")) == [128])
-        // At the core's right end the row turns back and steps over the cabinet.
-        #expect(Reducer.floorSpots(near: 500, count: 3) == [500, 482, 384])
+        // At the core's right end (past the desk's leg) the row turns back and steps over the leg and the cabinet.
+        #expect(Reducer.floorSpots(near: 500, count: 3) == [502, 384, 366])
     }
 
     @Test("Fresh pile ids never collide with live piles, tombstones or each other")
@@ -135,6 +135,29 @@ struct PileArtTests {
             sheet.blit(s.image, at: ArtPoint(i * 24, 30 - s.image.height))
         }
         #expect(Golden.match(sheet.buffer, "pile-stacks"))
+    }
+
+    @Test("The squash keeps the 1-px outline on every side and scales with the impact")
+    func squashOutline() {
+        let icon = KindIcons.icon(.doc).image
+        func edges(_ b: PixelBuffer) -> [Set<RGBA8>] {
+            let r = b.opaqueBounds()
+            let row = { (y: Int) in Set((r.minX..<r.maxX).map { b.pixel($0, y) }.filter { $0.a != 0 }) }
+            let col = { (x: Int) in Set((r.minY..<r.maxY).map { b.pixel(x, $0) }.filter { $0.a != 0 }) }
+            return [row(r.minY), row(r.maxY - 1), col(r.minX), col(r.maxX - 1)]
+        }
+        let want = edges(icon), box = icon.opaqueBounds()
+        for amount in [1, 2] {
+            let frames = PileArt.squash(icon, amount: amount)
+            #expect(frames[0].opaqueBounds().size == ArtSize(box.w + amount + 1, box.h - 2 * amount))
+            #expect(frames[1].opaqueBounds().size == ArtSize(box.w - amount, box.h + amount))
+            for f in frames.prefix(2) { #expect(edges(f) == want, "amount \(amount)") }
+        }
+        let none = PileArt.squash(icon, amount: 0)
+        #expect(none[0] == none[2] && none[1] == none[2])
+        // Reshaping never invents a colour: every pixel comes from the image.
+        let wide = PileArt.reshaped(icon, to: ArtSize(21, 11))
+        #expect(Set(wide.pixels).isSubset(of: Set(icon.pixels)))
     }
 
     @Test("The landing squash keeps the image's bottom centre and ends at rest")

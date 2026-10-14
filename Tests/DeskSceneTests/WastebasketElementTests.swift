@@ -58,7 +58,7 @@ struct WastebasketElementTests {
         #expect(!stage.hub.basket.machine.isUpright)
         stage.settle()
         #expect(stage.state.wastebasket.state == WastebasketMachine.tippedRightName)
-        let spots = WastebasketMachine.spillSpots(count: 5, right: true)
+        let spots = WastebasketMachine.spillSpots(count: 5, right: true, avoiding: [FloorLine.chair(at: Float(CoreLayout.chair.x))])
         for k in UInt64(1)...5 {
             #expect(stage.location(F.key(k)) == .floor(x: spots[Int(k) - 1]), "ball \(k)")
         }

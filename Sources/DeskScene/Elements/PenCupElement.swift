@@ -8,18 +8,23 @@ import SpriteKit
 /// - Dragging the cup carries it as the desk plane's prop (velocity-driven, it shoves piles aside and stops at
 ///   furniture), leaning against the hand's acceleration; it stays on the desk. A flick faster than 400 px/s with at
 ///   least three pens tips it that way, as does the menu's Tip Over; a knock only wobbles it.
-/// - Lying, it spills: each pen leaves the mouth in turn and slides as a pile (`PhysicsHub.spillPens`); a click or
-///   Stand Up rights it.
+/// - Lying, it spills: each pen leaves the mouth in turn and slides as a pile (`PhysicsHub.spillPens`), aimed along
+///   the flick that tipped it; the lying cup is furniture where it lies (`PenCupMachine.footprint`), so pens and piles
+///   never end on it. A click or Stand Up rights it.
 ///
-/// Resting states commit with `cupState`. It draws itself at its plane position (the room's static cup sprite is
-/// hidden), depth-sorted with the piles.
+/// Resting states commit with `cupState`. It draws itself at its plane position over a contact shadow (the room's
+/// static cup sprite is hidden), depth-sorted with the piles.
 final class PenCupElement: DeskElement, Knockable {
     let id = "pencup"
     let root = SKNode()
     unowned let hub: PhysicsHub
     private(set) var machine = PenCupMachine()
     private let node = SKSpriteNode()
+    /// The cup's sprite (hits) and the drawn image (the sprite over its shadow, same top-left).
+    private var sprite = PixelBuffer(width: 1, height: 1)
     private var image = PixelBuffer(width: 1, height: 1)
+    /// The flick that tipped it (plane px/s): the pens spill along it.
+    private var flick: SIMD2<Float>?
     /// Canvas top-left of the drawn image.
     private(set) var origin = ArtPoint.zero
     private var drawnKey: String?
@@ -62,7 +67,7 @@ final class PenCupElement: DeskElement, Knockable {
     func iconChanged() {}
 
     private func updateFootprint() {
-        hub.world.setFurniture("pencup", isCarried ? nil : DeskPlanePhysics.penCupFootprint(at: machine.position))
+        hub.world.setFurniture("pencup", isCarried ? nil : machine.footprint)
     }
 
     /// The pens in the cup on show (not one being pulled out).
@@ -81,9 +86,10 @@ final class PenCupElement: DeskElement, Knockable {
         let key = "\(pose)\(machine.mirrored)\(lean)\(items.map(\.seed))"
         if key != drawnKey {
             drawnKey = key
-            var sprite = InteriorRaster.penCup(pose, mirrored: machine.mirrored, items: items).image
-            if lean != 0, pose == .upright { sprite = Self.sheared(sprite, lean: lean) }
-            image = sprite
+            var cup = InteriorRaster.penCup(pose, mirrored: machine.mirrored, items: items).image
+            if lean != 0, pose == .upright { cup = Self.sheared(cup, lean: lean) }
+            sprite = cup
+            image = PileArt.castShadow(of: cup, ink: .oak3, rows: PropArt.penCupShadowRows)
             node.texture = TextureFactory.texture(image)
         }
         let p = position
@@ -92,10 +98,11 @@ final class PenCupElement: DeskElement, Knockable {
         let dx: Int
         switch pose {
         case .upright: dx = CoreLayout.penCup.w / 2
-        // Tipping turns about the bottom corner on that side, which stays where it stood.
-        default: dx = machine.mirrored || pose == .lying(right: false) ? 19 : 9
+        // Tipping turns about the bottom corner on that side (sprite x 9 drawn right, 9 from the far end mirrored),
+        // which stays where it stood.
+        default: dx = machine.mirrored || pose == .lying(right: false) ? sprite.width - 9 : 9
         }
-        origin = ArtPoint(bx - dx, by - image.height)
+        origin = ArtPoint(bx - dx, by - sprite.height)
         context.space.place(node, at: ArtRect(origin: origin, size: image.size))
         node.zPosition = DeskPilesElement.z(d: p.y)
     }
@@ -114,19 +121,19 @@ final class PenCupElement: DeskElement, Knockable {
 
     // MARK: Hits
 
-    var bounds: ArtRect { ArtRect(origin: origin, size: image.size) }
+    var bounds: ArtRect { ArtRect(origin: origin, size: sprite.size) }
 
     /// The upright cup's mouth and the pens standing in it (canvas px): the whole strip takes presses, gaps too.
-    var mouthRect: ArtRect { ArtRect(origin.x, origin.y, image.width, 8) }
+    var mouthRect: ArtRect { ArtRect(origin.x, origin.y, sprite.width, 8) }
 
     func hitTest(_ p: ArtPoint) -> Hit? {
         let mouth = machine.isUpright && !isCarried && mouthRect.contains(p)
-        guard mouth || image.pixel(p.x - origin.x, p.y - origin.y).a != 0 else { return nil }
+        guard mouth || sprite.pixel(p.x - origin.x, p.y - origin.y).a != 0 else { return nil }
         return Hit(element: id, part: mouth ? "pencup.mouth" : "pencup", rect: bounds)
     }
 
     func hoverStyle(_ hit: Hit) -> HoverStyle {
-        .image(image.outlined(RoomContent.hoverInk), at: ArtPoint(origin.x - 1, origin.y - 1))
+        .image(sprite.outlined(RoomContent.hoverInk), at: ArtPoint(origin.x - 1, origin.y - 1))
     }
 
     func tooltip(_ hit: Hit) -> TooltipSpec? {
@@ -181,7 +188,7 @@ final class PenCupElement: DeskElement, Knockable {
 
     /// Drops anywhere on the cup (or just above its pens) go in.
     func dropVerdict(_ tokens: [TokenKey], at p: ArtPoint) -> DropVerdict? {
-        guard !isCarried, ArtRect(origin.x - 2, origin.y - 4, image.width + 4, image.height + 4).contains(p),
+        guard !isCarried, ArtRect(origin.x - 2, origin.y - 4, sprite.width + 4, sprite.height + 4).contains(p),
               let s = hub.state else { return nil }
         let staying = s.tokens.members(of: .penCup).filter { !tokens.contains($0) }.count
         guard machine.isUpright else { return .bonk(nil) }
@@ -212,6 +219,7 @@ final class PenCupElement: DeskElement, Knockable {
     /// The menu's Tip Over: toward the side with more room.
     func tipOut() {
         guard machine.isUpright, !isCarried else { return }
+        flick = nil
         run(machine.tipOut(right: tipsRight))
     }
 
@@ -234,7 +242,8 @@ final class PenCupElement: DeskElement, Knockable {
         for e in events {
             switch e {
             case let .spill(right):
-                hub.spillPens(right: right, from: machine.position)
+                hub.spillPens(right: right, from: machine.position, direction: flick)
+                flick = nil
             case let .settled(state):
                 context.dispatch(.cupState(state))
             case .wobble, .bonk, .tipped, .righted:
@@ -262,6 +271,7 @@ final class PenCupElement: DeskElement, Knockable {
         hub.world.endProp()
         carry = nil
         let pens = hub.state?.tokens.count(in: .penCup) ?? 0
+        flick = velocity.isFinite ? velocity : nil
         run(machine.release(velocity: velocity, count: pens))
     }
 

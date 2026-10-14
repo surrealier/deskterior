@@ -5,11 +5,12 @@ import SpriteKit
 ///
 /// - What goes in shows as crumpled balls in the heap slots (`InteriorRaster.basketSlots`; above the rim from the
 ///   11th); the 25th bonks. A gentle drop at the mouth hops in; tosses come in by `Ballistics` (SWISH! for a clean
-///   pass, counted). Nothing ever leaves on its own.
-/// - A drag from the rim digs: the top ball comes out into the hand as its token. A sustained sideways rim drag
-///   (three samples in a row faster than 300 px/s, three times more across than up or down, over 6 px) tips the
-///   basket that way instead: the balls roll out onto the floor (`WastebasketMachine.spillSpots`) and uncrumple. A
-///   click (or Stand Up) rights it. A knock only jiggles the heap.
+///   pass, counted; a ball that touches a rim jiggles the basket 1 px with a spark). Nothing ever leaves on its own.
+/// - A drag from the rim that goes up out of the mouth (or 14 px any way but sideways) digs: the top ball comes out
+///   into the hand as its token. A sustained sideways rim drag (three samples in a row faster than 300 px/s, three
+///   times more across than up or down, over 6 px) tips the basket that way instead: the balls roll out onto the
+///   floor (`WastebasketMachine.spillSpots`) and uncrumple. A click (or Stand Up) rights it. A knock only jiggles the
+///   heap. Lying, it takes nothing: a drop on it bonks.
 /// - Empty Wastebasket… stays disabled until `FileOperator` lands (M11).
 ///
 /// Resting states commit with `basketState`. It draws itself (the room's static basket sprites are hidden).
@@ -22,6 +23,9 @@ final class WastebasketElement: DeskElement, Knockable {
     private var image = PixelBuffer(width: 1, height: 1)
     private(set) var origin = ArtPoint.zero
     private var drawnKey: String?
+    /// Frames left of a 1-px sideways shake (a rim hit, a refused drop), and the offset drawn.
+    private var shakeFrames = 0
+    private var shakeOffset = 0
     /// The rim drag in progress (a dig hands its carry over through it).
     private(set) weak var rimDrag: BasketRimDrag?
 
@@ -75,13 +79,18 @@ final class WastebasketElement: DeskElement, Knockable {
             key = "up\(lift)\(items.map(\.seed))"
             make = { InteriorRaster.wastebasket(items, lift: lift) }
         }
+        let shake = shakeFrames > 0 ? (shakeFrames % 4 < 2 ? 1 : -1) : 0
         if key != drawnKey {
             drawnKey = key
             let sprite = make()
             image = sprite.image
             node.texture = TextureFactory.texture(image)
             origin = ArtPoint(foot.x - sprite.anchor.x, foot.y - sprite.anchor.y)
-            context.space.place(node, at: ArtRect(origin: origin, size: image.size))
+            shakeOffset = Int.min
+        }
+        if shake != shakeOffset {
+            shakeOffset = shake
+            context.space.place(node, at: ArtRect(origin: ArtPoint(origin.x + shake, origin.y), size: image.size))
         }
         node.zPosition = context.placementZ("wastebasket.front")
     }
@@ -131,8 +140,10 @@ final class WastebasketElement: DeskElement, Knockable {
         }
     }
 
-    /// A gentle drop within 12 px of the mouth goes in (the hub hops it there); a full basket bonks.
+    /// A gentle drop within 12 px of the mouth goes in (the hub hops it there); a full basket bonks, and so does the
+    /// basket lying on its side.
     func dropVerdict(_ tokens: [TokenKey], at p: ArtPoint) -> DropVerdict? {
+        if machine.isTipped, image.pixel(p.x - origin.x, p.y - origin.y).a != 0 { return .bonk(nil) }
         guard machine.isUpright, let s = hub.state else { return nil }
         let core = ArtPoint(p.x - context.layout.coreOrigin.x, p.y - context.layout.coreOrigin.y)
         guard machine.isGentleDrop(at: core) else { return nil }
@@ -160,9 +171,23 @@ final class WastebasketElement: DeskElement, Knockable {
         return events.contains(.swish)
     }
 
-    /// A refused drop: the heap jiggles.
+    /// A refused drop: the heap jiggles and the basket shakes.
     func bonked() {
+        shake()
         run(machine.knock())
+    }
+
+    /// A ball touched a rim at core point `p` (its centre): the basket jiggles 1 px and the rim sparks.
+    func rimHit(at p: SIMD2<Float>) {
+        shake()
+        let rim = p.x < Float(CoreLayout.wastebasketMouth.midX) ? CoreLayout.wastebasketMouth.minX + 1
+            : CoreLayout.wastebasketMouth.maxX - 2
+        context.fx.sparkle(at: context.layout.point(ArtPoint(rim, CoreLayout.wastebasketMouth.minY - 2)))
+        redraw()
+    }
+
+    private func shake() {
+        shakeFrames = 6
     }
 
     func knock(_ plan: DeskKnock.Plan) {
@@ -222,14 +247,16 @@ final class WastebasketElement: DeskElement, Knockable {
 
     // MARK: Frames
 
-    var needsFrames: Bool { machine.needsFrames }
+    var needsFrames: Bool { machine.needsFrames || shakeFrames > 0 }
 
     func step(_ dt: Double) {
+        shakeFrames = max(0, shakeFrames - 1)
         let events = machine.step(Float(dt))
         if events.isEmpty { redraw() } else { run(events) }
     }
 
     func settle() {
+        shakeFrames = 0
         rimDrag?.finishNow()
         var guardSteps = 0
         while machine.needsFrames && guardSteps < 600 {
@@ -241,8 +268,9 @@ final class WastebasketElement: DeskElement, Knockable {
 }
 
 /// A drag that started on the upright basket (DESIGN §2.2 E8, Errata 13): each pointer sample feeds the basket's
-/// tip rule; a drag that goes up out of the mouth, or more than 8 px without a sideways streak, digs instead, and
-/// from then on carries the dug token (`CarrySession`).
+/// tip rule; a drag that goes up out of the mouth, or more than 14 px without going mostly sideways, digs instead
+/// (a sideways drag never digs, however it starts), and from then on carries the dug token (`CarrySession`). Speeds
+/// are measured between pointer samples; the first one, at the drag's start, only sets where they start from.
 final class BasketRimDrag: DragController {
     private unowned let basket: WastebasketElement
     private let start: SIMD2<Float>
@@ -252,9 +280,11 @@ final class BasketRimDrag: DragController {
     private var ended = false
     private(set) var carry: CarrySession?
 
-    /// Up this far out of the mouth, or this far in all, a drag digs.
+    /// Up this far out of the mouth, or this far in all (not mostly sideways), a drag digs.
     static let digLift: Float = 4
-    static let digDistance: Float = 8
+    static let digDistance: Float = 14
+    /// A drag this many times more across than up or down is sideways: it may tip the basket, never dig.
+    static let sidewaysAspect: Float = 2
 
     init(basket: WastebasketElement, from: SIMD2<Float>, t: Double) {
         self.basket = basket
@@ -269,20 +299,24 @@ final class BasketRimDrag: DragController {
         }
         guard !tipped, !ended else { return }
         let now = basket.hub.eventTime()
-        let dt = Float(max(now - last.t, 1.0 / 240))
+        let elapsed = now - last.t
         let delta = p - last.p
         last = (p, now)
-        guard delta != .zero else { return }
-        if basket.rimSample(delta: delta, dt: dt) {
-            tipped = true
-            return
+        // No time since the last sample (the drag's first move): nothing to measure a speed over.
+        if elapsed > 0, delta != .zero {
+            let dt = Float(max(elapsed, 1.0 / 240))
+            if basket.rimSample(delta: delta, dt: dt) {
+                tipped = true
+                return
+            }
+            let params = basket.machine.params
+            let v = delta / dt
+            let fast = abs(v.x) > params.tipSpeed && abs(v.x) > params.tipAspect * abs(v.y)
+            streak = fast ? streak + 1 : 0
         }
-        let params = basket.machine.params
-        let v = delta / dt
-        let sideways = abs(v.x) > params.tipSpeed && abs(v.x) > params.tipAspect * abs(v.y)
-        streak = sideways ? streak + 1 : 0
         let total = p - start
-        if streak == 0, total.y <= -Self.digLift || simd_length(total) > Self.digDistance {
+        let sideways = abs(total.x) > Self.sidewaysAspect * abs(total.y)
+        if streak == 0, !sideways, total.y <= -Self.digLift || simd_length(total) > Self.digDistance {
             carry = basket.dig(from: start, at: p)
         }
     }
