@@ -121,9 +121,9 @@ final class ChairElement: ContainerElement, DeskElement {
             case let .settled(x, facing):
                 context.dispatch(.chair(x, facing))
             case .blockedByDrawer:
-                // Thunk: the seat runs into an open cabinet drawer.
+                // Thunk: the seat runs into an open cabinet drawer (a puff of dust where they meet).
                 let seat = seatRect
-                context.fx.sparkle(at: ArtPoint(seat.maxX - 2, seat.midY))
+                context.fx.puff(at: ArtPoint(seat.maxX - 2, seat.maxY))
                 context.shake(frames: 1)
             case let .bump(speed, _) where speed > 200:
                 context.shake(frames: 1)

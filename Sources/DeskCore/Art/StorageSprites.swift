@@ -165,7 +165,9 @@ public enum StorageArt {
         return SpriteAsset(name, c, anchor: ArtPoint(r.w / 2, top + r.h), hitRects: hits)
     }
 
-    static func drawCabinetDrawer(_ c: inout PixelCanvas, front f0: ArtRect, open: Int, index: Int, jammed: Bool) {
+    static func drawCabinetDrawer(
+        _ c: inout PixelCanvas, front f0: ArtRect, open: Int, index: Int, jammed: Bool, pullDX: Int = 0
+    ) {
         if open > 0 {
             drawInterior(&c, ArtRect(f0.x + 2, f0.y, f0.w - 4, open), wood: false, contents: nil)
             if index == 2 {
@@ -189,7 +191,7 @@ public enum StorageArt {
         c.vline(x: f.maxX - 1, y: f.y, length: f.h, .neutral4)
         c.vline(x: f.maxX - 2, y: f.y + 1, length: f.h - 2, .neutral6)
         // Recessed pull: dark slot over a lit lip.
-        let hd = Anchors.cabinetHandle(of: f)
+        let hd = Anchors.cabinetHandle(of: f).offsetBy(pullDX, 0)
         c.fill(ArtRect(hd.x, hd.y, hd.w, 2), .neutral2)
         c.hline(x: hd.x + 1, y: hd.y, length: hd.w - 2, .neutral1)
         c.hline(x: hd.x, y: hd.y + 2, length: hd.w, .neutral9)

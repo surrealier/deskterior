@@ -13,18 +13,31 @@ extension RoomContent {
         let phone = PhoneStandElement(context: context)
         cabinet.chair = chair
         chair.cabinet = cabinet
-        let slots: [(ContainerElement, String)] = [
+        let slots: [(ContainerElement & DeskElement, String)] = [
             (riser, "riser"), (cabinet, "cabinet"), (chair, "chair"), (phone, "phone"),
         ]
         for (element, slot) in slots {
             element.placed = { [unowned self] in elements.first { $0.id == slot } }
             element.activeCarry = { [unowned self] in router.drag as? CarrySession }
-            element.refreshHover = { [unowned self] in _ = router.refreshHover() }
+            element.refreshHover = { [unowned self, unowned element] in
+                let before = hovered
+                _ = router.refreshHover()
+                // Still over the same part: its ring is redrawn from the new picture.
+                if hovered == before { restyleHover(element) }
+            }
         }
         install([riser], inSlotOf: "riser")
         install([cabinet], inSlotOf: "cabinet")
         install([chair], inSlotOf: "chair")
         install([phone], inSlotOf: "phone")
+    }
+
+    /// Redraws the hover ring of `element` after its picture changed under a resting pointer that still hovers it
+    /// (the phone turning or wobbling, the cabinet's outline as a drawer slides).
+    func restyleHover(_ element: any DeskElement) {
+        guard let hit = hovered, hit.element == element.id else { return }
+        _ = setHover(nil, element: nil)
+        _ = setHover(hit, element: element)
     }
 
     var riserElement: RiserElement? { extras.lazy.compactMap { $0 as? RiserElement }.first }

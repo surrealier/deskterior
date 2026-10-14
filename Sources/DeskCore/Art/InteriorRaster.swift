@@ -42,12 +42,17 @@ public enum InteriorRaster {
         public var shown: Set<Int>
         /// Drawn in front of the others like a selected item, without the backdrop (Show on Desk's blink).
         public var raised: Set<Int>
+        /// Drawn in front of everything, the selection included: the mini under the pointer, so its hover ring
+        /// outlines what shows. Drawing only: hit-testing keeps the plain order, so every mini keeps its strip.
+        public var hovered: Set<Int>
 
-        public init(hidden: Set<Int> = [], selected: Set<Int> = [], shown: Set<Int> = [], raised: Set<Int> = []) {
+        public init(hidden: Set<Int> = [], selected: Set<Int> = [], shown: Set<Int> = [], raised: Set<Int> = [],
+                    hovered: Set<Int> = []) {
             self.hidden = hidden
             self.selected = selected
             self.shown = shown
             self.raised = raised
+            self.hovered = hovered
         }
 
         public static let none = Marks()
@@ -92,8 +97,15 @@ public enum InteriorRaster {
         return max(2, h - 6)...(h - 1)
     }
 
+    /// Minis at least this far apart get a seeded 1-px sideways jitter …
+    static let jitterPitch: Float = 8
+    /// … and from this far apart some step back a row. Closer than that, a stepped-back mini could hide behind both
+    /// its neighbours: below these pitches a drawer is a plain fan, each mini drawn over the one before it, so every
+    /// mini keeps a strip at least `pitch` wide (3 px at the hard cap) that answers the pointer.
+    static let stepPitch: Float = 10
+
     /// Home positions (left x, base row) for `items`: minis fan across the drawer, front row with a little
-    /// seeded scatter; file folders hang front to back (the last one nearest the front).
+    /// seeded scatter while there is room for it; file folders hang front to back (the last one nearest the front).
     public static func homes(_ id: ContainerID, items: [Item]) -> [ArtPoint] {
         let size = contentSize(id), n = items.count
         guard n > 0 else { return [] }
@@ -110,8 +122,8 @@ public enum InteriorRaster {
         let used = Int((pitch * Float(n - 1)).rounded())
         let start = (span - used) / 2
         return items.enumerated().map { i, item in
-            let jx = n > 1 && pitch >= 6 ? Int(item.seed % 3) - 1 : 0
-            let jy = Int((item.seed >> 8) % 2)
+            let jx = n > 1 && pitch >= jitterPitch ? Int(item.seed % 3) - 1 : 0
+            let jy = n == 1 || pitch >= stepPitch ? Int((item.seed >> 8) % 2) : 0
             let x = min(max(start + Int((Float(i) * pitch).rounded()) + jx, 0), span)
             return ArtPoint(x, front - jy)
         }
@@ -144,10 +156,11 @@ public enum InteriorRaster {
             let y = base(homes[i].y, offsets, i, bounds)
             let origin = ArtPoint(homes[i].x, y - miniSize + 1)
             if open || marks.shown.contains(i) {
-                if open && marks.selected.contains(i) {
-                    drawSelection(&c, ArtRect(origin: origin, size: ArtSize(miniSize, miniSize)))
-                }
+                let r = ArtRect(origin: origin, size: ArtSize(miniSize, miniSize))
+                let selected = open && marks.selected.contains(i)
+                if selected { drawSelection(&c, r) }
                 c.blit(KindIcons.icon(iconKind(items[i].kind), size: miniSize).image, at: origin)
+                if selected { drawSelectionRing(&c, r) }
             } else {
                 drawPaper(&c, at: origin, seed: items[i].seed)
             }
@@ -160,13 +173,18 @@ public enum InteriorRaster {
         return min(max(y, Int(bounds.lowerBound)), Int(bounds.upperBound))
     }
 
-    /// The order items are drawn in, back to front: by base row, then index; selected (or raised) items come last
-    /// while open, on top of the others, so a picked mini in a crowded drawer shows whole.
+    /// The order items are drawn in, back to front: by base row, then index; while open, selected (or raised)
+    /// items come after the rest, on top of them, so a picked mini in a crowded drawer shows whole, and the hovered
+    /// one after those. Hit tests use the plain order (`marks: .none`).
     public static func drawOrder(_ count: Int, open: Bool, marks: Marks, base: (Int) -> Int) -> [Int] {
-        func front(_ i: Int) -> Bool { open && (marks.selected.contains(i) || marks.raised.contains(i)) }
+        func tier(_ i: Int) -> Int {
+            guard open else { return 0 }
+            if marks.hovered.contains(i) { return 2 }
+            return marks.selected.contains(i) || marks.raised.contains(i) ? 1 : 0
+        }
         return (0..<count).sorted { a, b in
-            let sa = front(a), sb = front(b)
-            if sa != sb { return sb }
+            let ta = tier(a), tb = tier(b)
+            if ta != tb { return ta < tb }
             let ya = base(a), yb = base(b)
             return ya != yb ? ya < yb : a < b
         }
@@ -201,11 +219,17 @@ public enum InteriorRaster {
     }
 
     /// The selection backdrop behind a mini at `r`: a `Role.selection` square in a dark rounded frame, as the
-    /// screen draws it, so a 1-px light ring shows round the icon.
+    /// screen draws it, so a 1-px light ring shows round the icon where neighbours leave room.
     static func drawSelection(_ c: inout PixelCanvas, _ r: ArtRect) {
         let frame = r.insetBy(-2, -2)
         c.roundedRectFill(frame, radius: 3, .blue0)
         c.roundedRectFill(frame.insetBy(1, 1), radius: 2, Role.selection)
+    }
+
+    /// The selection ring drawn over a mini's own edge pixels (after the icon), so a picked mini reads as picked
+    /// even where the drawer's back edge and front crop the backdrop.
+    static func drawSelectionRing(_ c: inout PixelCanvas, _ r: ArtRect) {
+        c.roundedRectStroke(r, radius: 1, selectionMark)
     }
 
     /// A sheet of paper standing where a mini would (peek: the contents stay anonymous).
@@ -254,24 +278,32 @@ public enum InteriorRaster {
         for y in [2, 3] { c.hline(x: 0, y: y, length: w, y == 2 ? .neutral7 : .neutral3) }
         let homes = homes(.cabinetFile, items: items)
         let bounds = baseBounds(.cabinetFile)
-        let order = drawOrder(items.count, open: open, marks: marks) { base(homes[$0].y, offsets, $0, bounds) }
-        for i in order where !marks.hidden.contains(i) {
-            let y = base(homes[i].y, offsets, i, bounds)
-            let shows = open || marks.shown.contains(i)
-            let ink = shows ? KindIcons.color(iconKind(items[i].kind)) : .neutral8
-            // The folder's top edge with its shadow, hooks over the rails.
-            c.hline(x: 1, y: y, length: w - 2, ink)
-            c.plot(0, y, .neutral2)
-            c.plot(w - 1, y, .neutral2)
-            if y + 1 < h { c.hline(x: 1, y: y + 1, length: w - 2, ink.darker(2)) }
-            // Tab.
-            let t = ArtRect(homes[i].x, y - folderTab.h, folderTab.w, folderTab.h)
-            if shows {
-                drawTab(&c, t, ink: ink, label: initials(items[i].name), selected: open && marks.selected.contains(i))
+        func y(_ i: Int) -> Int { base(homes[i].y, offsets, i, bounds) }
+        func shows(_ i: Int) -> Bool { open || marks.shown.contains(i) }
+        func ink(_ i: Int) -> Ink { shows(i) ? KindIcons.color(iconKind(items[i].kind)) : .neutral8 }
+        func tab(_ i: Int) {
+            let t = ArtRect(homes[i].x, y(i) - folderTab.h, folderTab.w, folderTab.h)
+            if shows(i) {
+                let selected = open && marks.selected.contains(i)
+                drawTab(&c, t, ink: ink(i), label: initials(items[i].name), selected: selected)
             } else {
                 c.fill(ArtRect(t.x, t.y + 2, t.w, t.h - 2), .neutral8)
                 c.hline(x: t.x, y: t.y + 2, length: t.w, .neutral9)
             }
+        }
+        for i in drawOrder(items.count, open: open, marks: .none, base: y) where !marks.hidden.contains(i) {
+            // The folder's top edge with its shadow, hooks over the rails, then its tab.
+            c.hline(x: 1, y: y(i), length: w - 2, ink(i))
+            c.plot(0, y(i), .neutral2)
+            c.plot(w - 1, y(i), .neutral2)
+            if y(i) + 1 < h { c.hline(x: 1, y: y(i) + 1, length: w - 2, ink(i).darker(2)) }
+            tab(i)
+        }
+        // Picked folders (selected, raised, hovered) lift their tabs over the folders in front; the folders stay put.
+        let lifted = open ? marks.selected.union(marks.raised).union(marks.hovered) : []
+        for i in drawOrder(items.count, open: open, marks: marks, base: y)
+        where lifted.contains(i) && !marks.hidden.contains(i) {
+            tab(i)
         }
     }
 
@@ -310,9 +342,11 @@ public enum InteriorRaster {
     public static let cabinetDrawers: [ContainerID] = [.cabinetTop, .cabinetMiddle, .cabinetFile]
 
     /// The pedestal cabinet (geometry of `StorageArt.cabinet`) with each drawer pulled out by `p[i]` and showing
-    /// `items[i]` (jostled by `offsets[i]`, icons per `revealed[i]`); overfull drawers show paper poking out.
+    /// `items[i]` (jostled by `offsets[i]`, icons per `revealed[i]`), its pull shifted `pullDX[i]` px (the wiggle when
+    /// a member's file goes away); overfull drawers show paper poking out.
     public static func cabinet(
-        p: [Int], items: [[Item]], offsets: [[Int]] = [], revealed: [Bool?] = [], marks: [Marks] = []
+        p: [Int], items: [[Item]], offsets: [[Int]] = [], revealed: [Bool?] = [], marks: [Marks] = [],
+        pullDX: [Int] = []
     ) -> SpriteAsset {
         let r = CoreLayout.cabinet, top = StorageArt.cabinetTopFace
         let opens = (0..<3).map { i in min(max(i < p.count ? p[i] : 0, 0), CoreLayout.cabinetTravels[i]) }
@@ -327,7 +361,8 @@ public enum InteriorRaster {
         for i in stride(from: 2, through: 0, by: -1) {
             let f0 = CoreLayout.cabinetFront(i).offsetBy(-r.x, -r.y + top)
             let open = opens[i]
-            StorageArt.drawCabinetDrawer(&c, front: f0, open: open, index: i, jammed: false)
+            StorageArt.drawCabinetDrawer(&c, front: f0, open: open, index: i, jammed: false,
+                                         pullDX: i < pullDX.count ? pullDX[i] : 0)
             let id = cabinetDrawers[i]
             if open >= 2, !content[i].isEmpty || id == .cabinetFile {
                 let buf = drawerContents(id, items: content[i], offsets: i < offsets.count ? offsets[i] : [],
@@ -355,9 +390,9 @@ public enum InteriorRaster {
 
     // MARK: Cubby
 
-    /// The riser cubby's contents (28×12, `CoreLayout.riserCubby`): icons standing in two rows as dim
+    /// The riser cubby's contents (28×12, `CoreLayout.riserCubby`): icons standing in two staggered rows as dim
     /// silhouettes (names show only on hover). `marks` leave items in hand out and put selected ones, undimmed, on
-    /// the selection backdrop and in front.
+    /// the selection backdrop and in front (the hovered one in front of those).
     public static func cubby(_ items: [Item], marks: Marks = .none) -> PixelBuffer {
         let size = CoreLayout.riserCubby.size
         var c = PixelCanvas(width: size.w, height: size.h)
@@ -369,31 +404,35 @@ public enum InteriorRaster {
             if marks.selected.contains(i) {
                 drawSelection(&c, rects[i])
                 c.blit(icon, at: rects[i].origin)
+                drawSelectionRing(&c, rects[i])
             } else {
-                c.blit(relit(icon, level: rects[i].maxY == size.h ? 2 : 1), at: rects[i].origin)
+                c.blit(relit(icon, level: cubbyIsBack(i, count: items.count) ? 1 : 2), at: rects[i].origin)
             }
         }
         return c.buffer
     }
 
-    /// Where the cubby draws each of `count` items (cubby px, 12×12; the back row ends 2 px higher, so it may poke
-    /// out of the slot's top).
+    /// How far the cubby's front row stands below the slot's lip (its feet hidden), so the back row's tops show
+    /// above it.
+    public static let cubbySink = 3
+
+    /// Whether item `i` of `count` stands in the cubby's back row: from three items on, every other one (the first,
+    /// third, …); one or two stand in front.
+    public static func cubbyIsBack(_ i: Int, count: Int) -> Bool { count >= 3 && i % 2 == 0 }
+
+    /// Where the cubby draws each of `count` items (cubby px, 12×12, before the slot clips them): one fan across
+    /// the slot, alternating back and front. The back row stands on the floor; the front row sinks `cubbySink` px
+    /// behind the lip, so each back item shows its top above the front row and each front item a strip before the
+    /// next, and every item keeps a part that answers the pointer.
     public static func cubbyRects(count: Int) -> [ArtRect] {
         let size = CoreLayout.riserCubby.size
-        var out = [ArtRect](repeating: .zero, count: count)
-        let rows: [Int] = [size.h - 3, size.h - 1]
-        for (layer, base) in rows.enumerated() {
-            let members = (0..<count).filter { count < 3 ? layer == 1 : $0 % 2 == layer }
-            let n = members.count
-            guard n > 0 else { continue }
-            let span = size.w - miniSize
-            let pitch = n > 1 ? min(Float(miniSize + 1), Float(span) / Float(n - 1)) : 0
-            let start = (span - Int((pitch * Float(n - 1)).rounded())) / 2 + (layer == 0 ? 1 : 0)
-            for (k, i) in members.enumerated() {
-                out[i] = ArtRect(start + Int((Float(k) * pitch).rounded()), base - miniSize + 1, miniSize, miniSize)
-            }
+        let span = size.w - miniSize
+        let pitch = count > 1 ? min(Float(miniSize + 1), Float(span) / Float(count - 1)) : 0
+        let start = (span - Int((pitch * Float(count - 1)).rounded())) / 2
+        return (0..<count).map { i in
+            let base = size.h - 1 + (count >= 3 && !cubbyIsBack(i, count: count) ? cubbySink : 0)
+            return ArtRect(start + Int((Float(i) * pitch).rounded()), base - miniSize + 1, miniSize, miniSize)
         }
-        return out
     }
 
     /// `b` relit at `level` (cool): the deep-night tint.
@@ -419,6 +458,18 @@ public enum InteriorRaster {
     public static func phoneMiniRect(_ i: Int) -> ArtRect {
         ArtRect(3 + (i % 2) * 5, 5 + (i / 2) * 5, 5, 5)
     }
+
+    /// The face-up phone's glass inside its bezel (phone px): marks on the screen stay on it.
+    public static let phoneGlass = ArtRect(3, 1, 10, 20)
+
+    /// The selection frame round phone mini `i` (phone px): a pixel out from the mini, kept on the glass.
+    public static func phoneSelectionRect(_ i: Int) -> ArtRect {
+        phoneMiniRect(i).insetBy(-1, -1).intersection(phoneGlass)
+    }
+
+    /// The ink of selection marks drawn over pictures (a mini's ring, the phone's frame): lighter than the
+    /// backdrop's `Role.selection`, so it reads on the blue glass and over icons.
+    public static let selectionMark = Role.selection.lighter(2)
 
     /// Pen cap inks by kind (`PropArt.penCup(_:pens:)`), at most six.
     public static func penInks(_ items: [Item]) -> [Ink] {

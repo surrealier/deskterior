@@ -287,14 +287,13 @@ final class DrawerUnit {
         return InteriorRaster.itemRects(id, items: items, offsets: jostle.pixelOffsets).map { $0.offsetBy(o.x, o.y) }
     }
 
-    /// The member drawn under `p` (not one in `hidden`), front-most first (`front`: selected or raised, drawn on
-    /// top), with its visible rect.
-    func mini(at p: ArtPoint, except hidden: Set<TokenKey>, front: Set<TokenKey>) -> (key: TokenKey, rect: ArtRect)? {
+    /// The member under `p` (not one in `hidden`), front-most first in the plain drawing order — the selected and
+    /// hovered minis drawn on top don't cover their neighbours here, so every mini keeps its strip — with its
+    /// visible rect.
+    func mini(at p: ArtPoint, except hidden: Set<TokenKey>) -> (key: TokenKey, rect: ArtRect)? {
         guard showsMinis, contentClip.contains(p) else { return nil }
         let rects = miniRects()
-        // The order `InteriorRaster` draws them in (selected or raised ones on top), reversed.
-        let marks = marks(hidden: [], selected: [], raised: front)
-        let order = InteriorRaster.drawOrder(items.count, open: true, marks: marks) { rects[$0].maxY }.reversed()
+        let order = InteriorRaster.drawOrder(items.count, open: true, marks: .none) { rects[$0].maxY }.reversed()
         for i in order where !hidden.contains(members[i]) {
             let r = rects[i].intersection(contentClip)
             if r.contains(p) { return (members[i], r) }
@@ -302,22 +301,28 @@ final class DrawerUnit {
         return nil
     }
 
-    /// How the interior draws `members`: in hand, selected (or raised: in front without the backdrop), sliding in.
-    func marks(hidden: Set<TokenKey>, selected: Set<TokenKey>, raised: Set<TokenKey>) -> InteriorRaster.Marks {
+    /// How the interior draws `members`: in hand, selected (or raised: in front without the backdrop), hovered (in
+    /// front of everything), sliding in.
+    func marks(
+        hidden: Set<TokenKey>, selected: Set<TokenKey>, raised: Set<TokenKey>, hovered: TokenKey? = nil
+    ) -> InteriorRaster.Marks {
         var m = InteriorRaster.Marks()
         for (i, k) in members.enumerated() {
             if hidden.contains(k) { m.hidden.insert(i) }
             if selected.contains(k) { m.selected.insert(i) }
             if raised.contains(k) { m.raised.insert(i) }
+            if k == hovered { m.hovered.insert(i) }
             if entering.contains(k) { m.shown.insert(i) }
         }
         return m
     }
 
     /// Everything the drawer's picture depends on now.
-    func look(hidden: Set<TokenKey>, selected: Set<TokenKey>, raised: Set<TokenKey>) -> DrawerLook {
+    func look(
+        hidden: Set<TokenKey>, selected: Set<TokenKey>, raised: Set<TokenKey>, hovered: TokenKey? = nil
+    ) -> DrawerLook {
         DrawerLook(p: pixel, revealed: sim.isRevealed, items: items, offsets: jostle.pixelOffsets,
-                   marks: marks(hidden: hidden, selected: selected, raised: raised), dx: wiggleDX)
+                   marks: marks(hidden: hidden, selected: selected, raised: raised, hovered: hovered), dx: wiggleDX)
     }
 
     /// Whether `tokens` dropped here fit (tokens already inside only reorder).

@@ -8,7 +8,7 @@ import SpriteKit
 ///
 /// The drawers are interlocked: opening one shuts the others. The chair blocks them: while it overlaps the fronts
 /// by more than 16 px a drawer opens only 3 px (`DrawerSim.cabinetOpenLimit`, re-read from the chair every
-/// frame) and running into it thunks — a sparkle, a 1-frame shake — and pushes the chair aside
+/// frame) and running into it thunks — a puff of dust, a 1-frame shake — and pushes the chair aside
 /// (`RollerSim.pushedByDrawer`), so the next pull works. An open drawer in turn stops the chair rolling in.
 final class CabinetElement: ContainerElement, DeskElement {
     let id = "cabinet"
@@ -104,7 +104,7 @@ final class CabinetElement: ContainerElement, DeskElement {
         // The top drawer is drawn last: it answers first.
         for u in units where u.area.contains(p) {
             let name = Self.anchorName(u.id)
-            if let m = u.mini(at: p, except: hidden, front: frontKeys) {
+            if let m = u.mini(at: p, except: hidden) {
                 return Hit(element: id, part: "token", rect: m.rect, token: m.key)
             }
             if u.handle.contains(p) { return Hit(element: id, part: name + ".handle", rect: u.handle) }
@@ -245,9 +245,9 @@ final class CabinetElement: ContainerElement, DeskElement {
                 context.shake(frames: 2)
                 onSlam?(u.id, speed)
             case .hitChair:
-                // Thunk: the front meets the chair's seat, which rolls aside.
+                // Thunk: the front meets the chair's seat (a puff of dust), which rolls aside.
                 let x = chair.map { $0.seatRect.maxX } ?? u.front.minX
-                context.fx.sparkle(at: ArtPoint(min(max(x, u.front.minX + 3), u.front.maxX - 3), u.front.maxY - 2))
+                context.fx.puff(at: ArtPoint(min(max(x, u.front.minX + 3), u.front.maxX - 3), u.front.maxY + 1))
                 context.shake(frames: 1)
                 chair?.pushedByDrawer()
             default:
@@ -273,12 +273,13 @@ final class CabinetElement: ContainerElement, DeskElement {
         guard state != nil else { return false }
         let hidden = carried
         let selected = drawnSelected
-        let now = units.map { $0.look(hidden: hidden, selected: selected, raised: raisedKeys) }
+        let now = units.map { $0.look(hidden: hidden, selected: selected, raised: raisedKeys, hovered: hoveredKey) }
         guard now != looks else { return false }
-        let moved = looks.map { old in zip(old, now).contains { $0.p != $1.p } } ?? false
+        let moved = looks.map { old in zip(old, now).contains { $0.p != $1.p || $0.dx != $1.dx } } ?? false
         looks = now
         image = InteriorRaster.cabinet(p: now.map(\.p), items: now.map(\.items), offsets: now.map(\.offsets),
-                                       revealed: now.map(\.revealed), marks: now.map(\.marks)).image
+                                       revealed: now.map(\.revealed), marks: now.map(\.marks),
+                                       pullDX: now.map(\.dx)).image
         node.texture = TextureFactory.texture(image)
         context.space.place(node, at: ArtRect(origin: spriteOrigin, size: image.size))
         node.zPosition = context.placementZ("cabinet")

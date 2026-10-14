@@ -75,7 +75,7 @@ final class RoomContent: GestureTarget {
     private(set) var routing: [any DeskElement] = []
     /// Stable draw order of every placement id (from the last full build).
     private var order: [String: Int] = [:]
-    private let hoverNode = SKSpriteNode()
+    let hoverNode = SKSpriteNode()
     /// Drags that ended but still animate home.
     private var settling: [any DragController] = []
     /// Interactive elements and the placed object whose hit-test slot they fill (front first).

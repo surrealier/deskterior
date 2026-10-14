@@ -102,7 +102,7 @@ final class RiserElement: ContainerElement, DeskElement {
         let hidden = carried
         for u in units where u.area.contains(p) {
             let name = Self.anchorNames[u.id]!
-            if let m = u.mini(at: p, except: hidden, front: frontKeys) {
+            if let m = u.mini(at: p, except: hidden) {
                 return Hit(element: id, part: "token", rect: m.rect, token: m.key)
             }
             if u.handle.contains(p) { return Hit(element: id, part: name + ".handle", rect: u.handle) }
@@ -111,9 +111,10 @@ final class RiserElement: ContainerElement, DeskElement {
         }
         if cubbyRect.contains(p) {
             let rects = cubbyRects()
-            // The order the cubby draws them in (selected on top), reversed.
-            let order = InteriorRaster.drawOrder(cubbyMembers.count, open: true, marks: cubbyMarks(hidden: [])) {
-                rects[$0].maxY
+            // The plain order the cubby draws them in, reversed (as in the drawers, the selected and hovered ones
+            // drawn on top don't cover their neighbours' strips).
+            let order = InteriorRaster.drawOrder(cubbyMembers.count, open: true, marks: .none) {
+                InteriorRaster.cubbyRects(count: cubbyMembers.count)[$0].maxY
             }.reversed()
             for i in order where !hidden.contains(cubbyMembers[i]) && rects[i].contains(p) {
                 return Hit(element: id, part: "token", rect: rects[i], token: cubbyMembers[i])
@@ -299,7 +300,7 @@ final class RiserElement: ContainerElement, DeskElement {
             bodyNode.isHidden = false
         }
         for (i, u) in units.enumerated() {
-            let look = u.look(hidden: hidden, selected: selected, raised: raisedKeys)
+            let look = u.look(hidden: hidden, selected: selected, raised: raisedKeys, hovered: hoveredKey)
             guard look != drawerLooks[i] else { continue }
             moved = moved || look.p != drawerLooks[i]?.p || look.dx != drawerLooks[i]?.dx
             drawerLooks[i] = look
@@ -314,19 +315,20 @@ final class RiserElement: ContainerElement, DeskElement {
         return moved
     }
 
-    /// How the cubby draws its members: in hand, selected.
+    /// How the cubby draws its members: in hand, selected, raised, hovered.
     func cubbyMarks(hidden: Set<TokenKey>, selected: Set<TokenKey>? = nil) -> InteriorRaster.Marks {
         let sel = selected ?? drawnSelected
         let raised = raisedKeys
         return InteriorRaster.Marks(hidden: Set(cubbyMembers.indices.filter { hidden.contains(cubbyMembers[$0]) }),
                                     selected: Set(cubbyMembers.indices.filter { sel.contains(cubbyMembers[$0]) }),
-                                    raised: Set(cubbyMembers.indices.filter { raised.contains(cubbyMembers[$0]) }))
+                                    raised: Set(cubbyMembers.indices.filter { raised.contains(cubbyMembers[$0]) }),
+                                    hovered: Set(cubbyMembers.indices.filter { cubbyMembers[$0] == hoveredKey }))
     }
 
     /// The drawer composite as drawn now (tests, goldens).
     func drawerImage(_ id: ContainerID) -> PixelBuffer? {
         guard let u = unit(id) else { return nil }
-        let marks = u.marks(hidden: carried, selected: drawnSelected, raised: raisedKeys)
+        let marks = u.marks(hidden: carried, selected: drawnSelected, raised: raisedKeys, hovered: hoveredKey)
         return InteriorRaster.riserDrawer(u.id, p: u.pixel, items: u.items, offsets: u.jostle.pixelOffsets,
                                           revealed: u.sim.isRevealed, marks: marks).image
     }

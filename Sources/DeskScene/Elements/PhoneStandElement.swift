@@ -203,8 +203,7 @@ final class PhoneStandElement: ContainerElement, DeskElement {
         }
         var c = PixelCanvas(PropArt.phoneStand(face: now.face, minis: minis).image)
         for i in now.selected where i < minis.count {
-            let r = InteriorRaster.phoneMiniRect(i).insetBy(-1, -1)
-            c.stroke(r, Role.selection)
+            c.stroke(InteriorRaster.phoneSelectionRect(i), InteriorRaster.selectionMark)
         }
         image = c.buffer
         node.texture = TextureFactory.texture(image)

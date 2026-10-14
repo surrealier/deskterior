@@ -51,7 +51,8 @@ struct MenuSpecTests {
         #expect(m.item("moveTo.cabinetFile")?.isEnabled == true)
         let hidden = MenuSpec.token([F.key(1)], s)
         #expect(hidden.item("moveTo.monitor")?.isEnabled == true)
-        #expect(hidden.item("moveTo.penCup")?.isEnabled == true, "reordering inside a full cup is fine")
+        #expect(hidden.item("moveTo.penCup")?.isEnabled == false && hidden.item("moveTo.penCup")?.isChecked == true,
+                "a pen already in the cup: ticked, nothing to move")
         #expect(MenuSpec.token([], s).item("open")?.isEnabled == false)
     }
 

@@ -81,6 +81,10 @@ final class CarrySession: DragController {
         context.screen?.dropTarget = nil
         let lead = topLeft(of: p)
         switch verdict?.verdict {
+        case let .accept(.container(id, _))?
+            where keys.allSatisfy({ context.state?.tokens.location(of: $0)?.container == id }):
+            // Back into the container they all came from: not a move (no reorder, nothing to undo).
+            springBack(from: lead)
         case let .accept(loc)?:
             // Landed: the model change the drop causes must not re-aim this carry.
             phase = .done

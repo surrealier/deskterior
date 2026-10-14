@@ -201,8 +201,11 @@ extension MenuSpec {
         for id in ContainerID.allCases {
             let staying = s.tokens.members(of: id).filter { !live.contains($0) }.count
             let fits = staying + live.count <= id.spec.hardCap
+            // Where they all are already: ticked, and off (it would only reorder them).
+            let here = any && live.allSatisfy { s.tokens.location(of: $0)?.container == id }
             moveTo.append(MenuItem("moveTo.\(id.rawValue)", containerTitle(id),
-                                   .moveTo(live, .container(id, order: s.tokens.count(in: id))), enabled: any && fits))
+                                   .moveTo(live, .container(id, order: s.tokens.count(in: id))),
+                                   enabled: any && fits && !here, checked: here))
         }
         let name = one ? s.tokens.meta(of: live[0])?.displayName : nil
         return MenuSpec([

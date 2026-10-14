@@ -19,6 +19,8 @@ class ContainerElement {
     /// Seconds Show on Desk's token has waited to come on show (the drawer opening, the chair rolling clear).
     private var pulseWait: Double = 0
     private var pressAdded = false
+    /// The mini under the pointer: drawn in front of its neighbours, so its hover ring outlines what shows.
+    private(set) var hoveredKey: TokenKey?
 
     static let pulseDuration = 2.0
     static let pulseMaxWait = 3.0
@@ -53,6 +55,15 @@ class ContainerElement {
     }
 
     // MARK: Minis
+
+    /// The pointer moved onto a hit of this element (nil: it left): a mini under it is drawn on top.
+    func hover(_ hit: Hit?) -> Bool {
+        let key = hit?.token
+        guard key != hoveredKey else { return false }
+        hoveredKey = key
+        selectionChanged()
+        return true
+    }
 
     /// A gesture on mini `key`: press selects (⌘ adds, ⇧ extends), a click narrows to it, a double-click opens
     /// the selection on show, a drag carries the selected minis `shown` here (lead first). `origin` is where a
@@ -123,11 +134,18 @@ class ContainerElement {
         return spec
     }
 
-    /// The screen's hover ring round `icon` drawn at `origin`, cropped to what can be seen (`clip` and 2 px round it).
+    /// The screen's hover ring round `icon` drawn at `origin`, cropped to what can be seen: where `clip` cuts the
+    /// icon (a drawer's back edge, the cubby's lip) the ring stops at the cut; elsewhere it shows whole round the
+    /// icon, up to 2 px outside `clip`.
     static func miniRing(_ icon: PixelBuffer, at origin: ArtPoint, clip: ArtRect) -> HoverStyle {
         let ring = TokenArt.hoverRing(icon)
         let r = ArtRect(origin.x - 2, origin.y - 2, ring.width, ring.height)
-        let shown = r.intersection(clip.insetBy(-2, -2))
+        let i = ArtRect(origin: origin, size: icon.size)
+        let x0 = i.minX < clip.minX ? clip.minX : clip.minX - 2
+        let y0 = i.minY < clip.minY ? clip.minY : clip.minY - 2
+        let x1 = i.maxX > clip.maxX ? clip.maxX : clip.maxX + 2
+        let y1 = i.maxY > clip.maxY ? clip.maxY : clip.maxY + 2
+        let shown = r.intersection(ArtRect(x0, y0, x1 - x0, y1 - y0))
         guard !shown.isEmpty else { return .none }
         return .image(ring.cropped(to: shown.offsetBy(-r.x, -r.y)), at: shown.origin)
     }
@@ -242,9 +260,6 @@ class ContainerElement {
     var raisedKeys: Set<TokenKey> {
         pulse.map { [$0.key] } ?? []
     }
-
-    /// Tokens drawn on top of the others (selected or raised), so hit tests find them first.
-    var frontKeys: Set<TokenKey> { drawnSelected.union(raisedKeys) }
 
     /// "Left Riser Drawer, 3 items" for VoiceOver.
     static func containerLabel(_ id: ContainerID, count: Int) -> String {

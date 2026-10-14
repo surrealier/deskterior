@@ -46,7 +46,8 @@ public struct DrawerSim: Sendable, Equatable {
         public var restFrames = 4
         /// A script is done within this distance of its target.
         public var arriveDistance: Float = 0.5
-        /// Chomp (a drop on a closed front): opens this far past the lower stop, waits, then closes.
+        /// Chomp (a drop on a closed front): opens this far past the lower stop, waits, then closes. Like a peek it
+        /// never gapes past `concealedLimit`, so an overfull drawer gapes less and nothing inside is revealed.
         public var chompOpen: Float = 6
         public var chompOpenTimeout: Float = 0.2
         public var chompHold: Float = 0.12
@@ -179,6 +180,16 @@ public struct DrawerSim: Sendable, Equatable {
         }
     }
 
+    /// Peeking or chomping: motions that show paper only, whatever the opening.
+    var isConcealedMotion: Bool {
+        if case .peek = mode { return true }
+        return isChomping
+    }
+
+    /// The widest a peek or a chomp opens: a pixel short of `Visibility.drawerOpen`, where contents would show
+    /// (DESIGN §2.1: a peek shows paper only).
+    public var concealedLimit: Float { min(Visibility.drawerOpen - 1, max(openLimit, closedLimit)) }
+
     /// The cabinet drawers are interlocked like a real filing cabinet's: opening one (drag, click, spring-loading,
     /// peek) closes the others, so a lower drawer's contents never hide behind the front above it. The drawers to
     /// `close()` when `id` starts opening.
@@ -260,7 +271,7 @@ public struct DrawerSim: Sendable, Equatable {
     public mutating func peek(_ amount: Float) {
         let peeking = if case .peek = mode { true } else { false }
         guard amount.isFinite, peeking || p <= closedLimit + params.peekMax + params.arriveDistance else { return }
-        setMode(.peek(target: closedLimit + min(max(amount, 0), params.peekMax), idle: 0))
+        setMode(.peek(target: min(closedLimit + min(max(amount, 0), params.peekMax), concealedLimit), idle: 0))
         wake()
     }
 
@@ -290,12 +301,18 @@ public struct DrawerSim: Sendable, Equatable {
         return true
     }
 
-    /// Membership changed. A drawer that became overfull is pushed out to its new gap.
+    /// Membership changed. A drawer that became overfull is pushed out to its new gap; one resting at its old gap
+    /// when items leave closes softly to the new one (an emptied jammed drawer shuts).
     public mutating func setCount(_ n: Int) {
         let n = max(0, n)
         guard n != count else { return }
+        let oldGap = closedLimit
         count = n
-        if p < closedLimit { wake() }
+        if p < closedLimit {
+            wake()
+        } else if closedLimit < oldGap, mode == .coast, abs(p - oldGap) <= params.arriveDistance {
+            close()
+        }
     }
 
     /// The upper stop moved (the chair rolled in front of or away from a cabinet drawer).
@@ -310,7 +327,8 @@ public struct DrawerSim: Sendable, Equatable {
     public mutating func forceRest() -> [Event] {
         guard !isAsleep else { return [] }
         let lower = closedLimit, upper = max(openLimit, lower)
-        if case .peek = mode { p = lower }
+        // A peek or a chomp is a gape that ends shut.
+        if isConcealedMotion { p = lower }
         if lower == 0, p < params.latchDistance { p = 0 }
         p = min(max(p.rounded(.down), lower), upper)
         v = 0
@@ -368,7 +386,7 @@ public struct DrawerSim: Sendable, Equatable {
         case .jamBounce:
             v = (v + params.jamStiffness * (lower - p) * dt) / (1 + params.jamDamping * dt)
         case let .chompOpen(elapsed):
-            let target = min(lower + params.chompOpen, upper)
+            let target = min(lower + params.chompOpen, concealedLimit)
             spring(toward: target, dt)
             if p >= target - params.arriveDistance || elapsed + dt >= params.chompOpenTimeout {
                 events.append(.chompSwallow)
@@ -377,7 +395,7 @@ public struct DrawerSim: Sendable, Equatable {
                 mode = .chompOpen(elapsed: elapsed + dt)
             }
         case let .chompHold(elapsed):
-            spring(toward: min(lower + params.chompOpen, upper), dt)
+            spring(toward: min(lower + params.chompOpen, concealedLimit), dt)
             mode = elapsed + dt >= params.chompHold ? .scriptClose : .chompHold(elapsed: elapsed + dt)
         case .coast:
             v /= 1 + params.coastFriction * dt
@@ -438,7 +456,7 @@ public struct DrawerSim: Sendable, Equatable {
         } else {
             restCount = 0
         }
-        if p >= Visibility.drawerOpen {
+        if p >= Visibility.drawerOpen, !isConcealedMotion {
             isRevealed = true
         } else if isAsleep || p <= lower {
             isRevealed = false
