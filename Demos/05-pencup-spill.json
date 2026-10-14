@@ -59,11 +59,14 @@
     { "expect": { "penCup": "upright" } },
     { "snapshot": "08-stood-up" },
 
-    { "comment": "A desk knock (double-click the apron): piles and floor tokens hop, the cup and monitor wobble; nothing moves house." },
-    { "expect": { "piles": 5, "floor": 2 } },
-    { "click": { "at": "apron", "count": 2 } },
-    { "wait": 0.05 },
+    { "comment": "A desk knock (double-click the apron, left of the chair): piles and floor tokens hop, the cup and monitor wobble; nothing moves house." },
+    { "expect": { "piles": 5, "floor": 2, "knocks": 0 } },
+    { "click": { "at": "core:150,238", "count": 2 } },
+    { "wait": 0.1 },
     { "snapshot": "08b-knock" },
+    { "expect": { "knocks": 1 } },
+    { "click": { "at": "core:150,238", "count": 2 } },
+    { "expect": { "knocks": 1 } },
     { "waitIdle": 2 },
     { "expect": { "piles": 5, "floor": 2, "penCup": "upright" } },
 

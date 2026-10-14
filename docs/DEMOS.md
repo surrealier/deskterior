@@ -102,7 +102,7 @@ Every step is an object with one key.
 | `hover.part` | The part the pointer rests on (`token`, `token.dark` for a token in the dark, `lamp.switch`…) or `none`. |
 | `keyboard.key` / `plant.jiggle` | The keyboard key drawn pressed (`row,col`) or `none`; whether the plant jiggles. |
 | `penCup` / `wastebasket` | The model's state: `upright`, `lyingLeft`/`lyingRight`; `upright`, `tippedLeft`/`tippedRight`. (`penCup.pose` / `wastebasket.pose`: the scene machine's phase.) |
-| `pens` / `balls` / `piles` / `floor` / `flying` / `swishes` | Counts: tokens in the cup, in the basket; desk piles holding tokens; floor tokens; tokens in the air; clean tosses into the basket. |
+| `pens` / `balls` / `piles` / `floor` / `flying` / `swishes` / `knocks` | Counts: tokens in the cup, in the basket; desk piles holding tokens; floor tokens; tokens in the air; clean tosses into the basket; desk knocks. |
 
 ## The demos
 

@@ -113,7 +113,7 @@ extension DeskScene {
 
     /// Demo expectations about the desk plane (`docs/DEMOS.md`): `penCup` / `wastebasket` (the model's state),
     /// `penCup.pose` / `wastebasket.pose` (the scene's), `swishes`, `piles` (piles holding tokens), `floor` and
-    /// `pens` / `balls` (token counts), `flying` (tokens in the air). Nil for other keys.
+    /// `pens` / `balls` (token counts), `flying` (tokens in the air), `knocks` (desk knocks so far). Nil for other keys.
     public func physicsExpectation(_ key: String) -> String? {
         guard let hub = room?.context.physics, let s = deskState else { return nil }
         switch key {
@@ -127,6 +127,7 @@ extension DeskScene {
         case "pens": return String(s.tokens.count(in: .penCup))
         case "balls": return String(s.tokens.count(in: .wastebasket))
         case "flying": return String(hub.tosses.flyingKeys.count)
+        case "knocks": return String(hub.knocks)
         default: return nil
         }
     }

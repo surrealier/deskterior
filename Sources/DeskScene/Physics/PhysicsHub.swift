@@ -34,6 +34,8 @@ final class PhysicsHub {
     /// Hides the room's static cup and basket sprites (after every rebuild of the room).
     var hidePlacements: () -> Void = {}
     private var knocker = DeskKnock()
+    /// Desk knocks so far (the cooldown drops double-clicks that come too soon).
+    private(set) var knocks = 0
     private var seedCounter: UInt64 = 0
     /// Carries in the air and their flights.
     private var carryFlights: [ObjectIdentifier: (carry: CarrySession, flight: TossAnimator.Flight)] = [:]
@@ -426,6 +428,7 @@ final class PhysicsHub {
         guard let s = state else { return }
         let origin = SIMD2(x, 0)
         guard let plan = knocker.knock(s, at: eventTime(), origin: origin, seed: nextSeed()) else { return }
+        knocks += 1
         bodies.thawAll(from: origin)
         let all = knockables()
         let claimed = all.reduce(into: Set<ContainerID>()) { $0.formUnion($1.knockedDrawers) }
