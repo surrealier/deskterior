@@ -1,6 +1,7 @@
 import AppKit
 import DeskCore
 import Observation
+import QuickLookUI
 import SwiftUI
 
 /// What the Settings window changes, implemented by `AppSystem` (each takes effect at once).
@@ -14,8 +15,8 @@ struct SettingsActions {
     var showAbout: () -> Void = {}
 }
 
-/// The Settings window's state: the settings, the model's lights, the mirrored folder, the displays and the login
-/// item's status line.
+/// The Settings window's state: the settings, the model's lights, the mirrored folder, the displays and the status
+/// lines of the hotkey and the login item.
 @Observable
 final class SettingsModel {
     var settings: DeskSettings
@@ -23,8 +24,13 @@ final class SettingsModel {
     var folderPath: String
     /// `--desktop-folder` chose the folder for this run.
     var folderLocked: Bool
+    /// `--pixel-size` chose the pixel size for this run.
+    var pixelSizeLocked = false
+    /// Running from a translocated copy: Launch at Login is unavailable (`loginStatus` says why).
+    var loginLocked = false
     var displays: [(uuid: String, name: String)]
     var loginStatus: String?
+    var hotkeyStatus: String?
     var folderNote: String?
     @ObservationIgnored var actions = SettingsActions()
 
@@ -42,9 +48,10 @@ final class SettingsModel {
     }
 }
 
-/// Settings (DESIGN §4.8; M12), a small SwiftUI form: lights, Reduce Motion, the desk mat, the mirrored folder, the
+/// Settings (DESIGN §4.8; M12), a small SwiftUI form: lights, Reduce Motion, the pixel size, the mirrored folder, the
 /// Peek hotkey and Launch at Login (both off until turned on here), pausing on battery, the desk display and the
-/// other displays' walls, the language, and About & Credits.
+/// other displays' walls, the language, and About & Credits. The desk mat's Cloth/Flat picker joins once the mat
+/// element reads `DeskSettings.matMode` (the mat's milestone; Errata 18).
 struct SettingsView: View {
     @Bindable var model: SettingsModel
 
@@ -63,10 +70,12 @@ struct SettingsView: View {
                     Text(tr(.reduceMotionOn)).tag(DeskSettings.ReduceMotion.on)
                     Text(tr(.reduceMotionOff)).tag(DeskSettings.ReduceMotion.off)
                 }
-                Picker(tr(.matMode), selection: model.binding(\.matMode)) {
-                    Text(tr(.matCloth)).tag(DeskSettings.MatMode.cloth)
-                    Text(tr(.matFlat)).tag(DeskSettings.MatMode.flat)
+                Picker(tr(.pixelSize), selection: model.binding(\.pixelSize)) {
+                    Text(tr(.pixelChunky)).tag(PixelSize.chunky)
+                    Text(tr(.pixelNormal)).tag(PixelSize.normal)
+                    Text(tr(.pixelFine)).tag(PixelSize.fine)
                 }
+                .disabled(model.pixelSizeLocked)
             }
             Section(tr(.mirroredFolder)) {
                 Text(model.folderPath).font(.callout.monospaced()).lineLimit(2).truncationMode(.middle)
@@ -86,9 +95,10 @@ struct SettingsView: View {
             Section(tr(.settingsSystem)) {
                 Toggle(tr(.peekHotkey), isOn: Binding(get: { model.settings.peekHotkeyEnabled },
                                                       set: { model.actions.setHotkey($0) }))
-                Text(tr(.peekHotkeyNote)).font(.caption).foregroundStyle(.secondary)
+                Text(model.hotkeyStatus ?? tr(.peekHotkeyNote)).font(.caption).foregroundStyle(.secondary)
                 Toggle(tr(.launchAtLogin), isOn: Binding(get: { model.settings.launchAtLogin },
                                                          set: { model.actions.setLaunchAtLogin($0) }))
+                    .disabled(model.loginLocked)
                 if let status = model.loginStatus {
                     Text(status).font(.caption).foregroundStyle(.secondary)
                 }
@@ -130,9 +140,24 @@ enum AppWindow {
         return w
     }
 
-    /// Brings `window` forward and activates the app (an accessory app's windows need it).
+    /// The level the app's own windows take: normal, or just above the desk while Peek Desk floats it (`PeekPolicy`).
+    private(set) static var level: NSWindow.Level = .normal
+
+    /// Brings `window` forward at `level` and activates the app (an accessory app's windows need it).
     static func present(_ window: NSWindow) {
+        window.level = level
         NSApp.activate()
         window.makeKeyAndOrderFront(nil)
+    }
+
+    /// Moves the app's titled windows (not the desk) and the Quick Look panel to `new`, and opens later ones there.
+    static func setLevel(_ new: NSWindow.Level) {
+        guard new != level else { return }
+        level = new
+        // Open and save panels keep their own (modal) level.
+        for w in NSApp.windows where w.styleMask.contains(.titled) && !(w is WindowedDeskWindow || w is NSSavePanel) {
+            w.level = new
+        }
+        if QLPreviewPanel.sharedPreviewPanelExists(), let panel = QLPreviewPanel.shared() { panel.level = new }
     }
 }

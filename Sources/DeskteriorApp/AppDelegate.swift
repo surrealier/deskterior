@@ -38,7 +38,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
         if options.safeMode || NSEvent.modifierFlags.contains(.option) {
-            let configuration = MirrorController.configurationOrExit(options: options)
+            let configuration = MirrorController.configurationOrExit(options: options, settings: settings.settings)
             let controller = SafeModeController(stateDirectory: configuration.stateDirectory, mirrored: configuration.folder) {
                 [weak self] in self?.launchDesk()
             }
@@ -56,7 +56,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Starts the desk: displays, the session, the status item, and the system integration.
     private func launchDesk() {
         guard let device = MTLCreateSystemDefaultDevice() else { Self.fail("no Metal device") }
-        let configuration = MirrorController.configurationOrExit(options: options)
+        let configuration = MirrorController.configurationOrExit(
+            options: options, settings: settingsStore?.settings ?? DeskSettings()
+        )
 
         let displays = DisplayManager(options: options, device: device)
         // M12: the desk display and walls follow the settings from the start.
@@ -75,6 +77,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         host.scene.onRenderRequest = { [weak host] in host?.loop.renderOnce() }
         let session = DeskSession(host: host, options: options, configuration: configuration, dryRun: false)
         session.isPaused = { [weak self] in self?.isUserPaused ?? false }
+        session.settings = settingsStore
         host.scene.onRequest = { [weak self] in self?.handle($0) }
         self.session = session
         // MARK: files
@@ -97,9 +100,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         integration.isUserPaused = { [weak self] in self?.isUserPaused ?? false }
         integration.setUserPaused = { [weak self] in self?.setUserPaused($0) }
         integration.switchFolder = { [weak self] in self?.switchFolder($0) ?? false }
+        integration.languageChanged = { [weak self] in self?.inventory?.languageChanged() }
         self.integration = integration
         integration.start()
-        WindowShots.schedule(options, windows: { [weak integration] in integration?.shownWindows ?? [] })
+        if options.mode != .desk, options.show.contains("inventory") { showInventory() }
+        WindowShots.schedule(options, windows: { [weak self, weak integration] in
+            (integration?.shownWindows ?? []) + (self?.inventory?.shownWindow.map { [("inventory", $0)] } ?? [])
+        })
         if let window = displays.window {
             // A gesture whose mouse-up goes to another window or app must not stay in hand.
             resignKeyObserver = NotificationCenter.default.addObserver(
@@ -109,7 +116,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
 
-        let mode = options.windowed.map { "windowed \($0)" } ?? "desk (level \(options.level.rawValue))"
+        let mode = options.windowed.map { "windowed \($0)" } ?? "desk (level \(displays.level.rawValue))"
         Log.info("Deskterior \(DeskCore.version), \(mode), bundle id \(AppIdentity.bundleID)")
         if options.printWindowID, let window = displays.window {
             print(window.windowNumber)
@@ -156,6 +163,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Runs a menu command: model commands go to the store (as picked from a menu, or `origin`), the rest are the
     /// app's.
     func perform(_ command: MenuCommand, from origin: ExplicitIntent.Origin = .menuItem) {
+        integration?.userInput()  // M12: a frozen (on-battery) desk shows what the command does.
         if session?.perform(command, from: origin) == true { return }
         switch command {
         case .inventory:
@@ -200,11 +208,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard let old = session else { return false }
         var o = options
         o.desktopFolder = path
-        guard var configuration = try? MirrorController.configuration(options: o, useSavedFolder: false) else { return false }
+        guard var configuration = try? MirrorController.configuration(
+            options: o, settings: settingsStore?.settings ?? DeskSettings(), useSavedFolder: false
+        ) else { return false }
         configuration.connectImmediately = true
         old.stop()
         let new = DeskSession(host: old.host, options: options, configuration: configuration, dryRun: false)
         new.isPaused = { [weak self] in self?.isUserPaused ?? false }
+        new.settings = settingsStore
         session = new
         inventory?.close()
         inventory = nil
@@ -291,6 +302,8 @@ final class DeskSession {
     var isPaused: () -> Bool = { false } {
         didSet { sync.isPaused = isPaused }
     }
+    /// M12: the launch's settings ("Show them on the desk anyway" is remembered there; nil in demos).
+    var settings: SettingsStore?
     private let lights: LightsMode
     private let dryRun: Bool
     // MARK: files
@@ -348,7 +361,6 @@ final class DeskSession {
             self?.store.dispatch(.accessGranted)
             self?.mirror.connect()
         }
-        let bundleID = AppIdentity.bundleID
         store.effects = { [weak self] in self?.effects.run($0) }
         // MARK: files
         files?.dispatch = { [weak self] in self?.store.dispatch($0) }
@@ -356,10 +368,11 @@ final class DeskSession {
             host?.scene.showProgress(line)
             host?.modelChanged()
         }
-        store.willDispatch = { action, state in
-            // "Show them on the desk anyway" is remembered (DESIGN §4.8 showDespiteFinderHidden).
+        store.willDispatch = { [weak self] action, state in
+            // "Show them on the desk anyway" is remembered (DESIGN §4.8 showDespiteFinderHidden), in the launch's
+            // settings: the app's in desk mode, memory in a development run.
             if case .requestConnect = action, state.access == .finderHidden, !dryRun {
-                UserDefaults(suiteName: bundleID)?.set(true, forKey: DeskSettings.Key.showDespiteFinderHidden.rawValue)
+                self?.settings?.update { $0.showDespiteFinderHidden = true }
             }
         }
         host.scene.onAction = { [weak self] action in

@@ -53,6 +53,16 @@ public enum L10nKey: String, CaseIterable, Sendable {
     // MARK: VoiceOver
     case axDesk, axWall, axWallHelp, axMoveToMonitor, axShowDeskMenu
 
+    // MARK: Find Item (its window, `InventoryQuery`'s location labels and the kind names)
+    case findItemTitle, searchAllItems, itemCount, columnLocation, takeOut, showOnDesk
+    case locMonitorPage, locRiserLeft, locRiserRight, locRiserCubby, locCabinetTop, locCabinetMiddle, locCabinetFile
+    case locPenCup, locUnderMat, locFloor, locInHand
+    case kindFolder, kindPackage, kindDocument, kindText, kindPDF, kindImage, kindMovie, kindAudio, kindArchive, kindApp
+    case kindCode, kindDiskImage, kindScreenshot
+
+    // MARK: Panels and status lines
+    case panelUseFolder, panelChooseDesktop, resetFailed, hotkeyTaken, loginTranslocated
+
     public var en: String { Self.table[self]?.en ?? rawValue }
     public var ko: String { Self.table[self]?.ko ?? rawValue }
 
@@ -124,8 +134,8 @@ public enum L10nKey: String, CaseIterable, Sendable {
         .sortDateAdded: p("Date Added", "추가된 날짜"),
         .closeDrawer: p("Close Drawer", "서랍 닫기"),
         .openDrawer: p("Open Drawer", "서랍 열기"),
-        .faceUp: p("Turn Face Up", "화면이 위로 뒤집기"),
-        .faceDown: p("Turn Face Down", "화면이 아래로 뒤집기"),
+        .faceUp: p("Turn Face Up", "화면이 위로 오게 뒤집기"),
+        .faceDown: p("Turn Face Down", "화면이 아래로 가게 뒤집기"),
         .listMore: p("%d More…", "%d개 더…"),
         .listContents: p("List Contents", "내용 보기"),
         .moveContentsTo: p("Move Contents to", "내용물 옮기기"),
@@ -209,10 +219,10 @@ public enum L10nKey: String, CaseIterable, Sendable {
         .aboutTitle: p("About Deskterior", "Deskterior에 관하여"),
         .version: p("Version %@", "버전 %@"),
         .aboutTagline: p("A pixel-art desk for your desktop.", "바탕화면을 위한 픽셀 아트 책상."),
-        .aboutInspired: p("Inspired by Terkel Gjervig's “Desktop Cleaning” prototype (desktop.cleaning).",
-                          "Terkel Gjervig의 “Desktop Cleaning” 프로토타입(desktop.cleaning)에서 영감을 받았어요."),
-        .aboutIndependent: p("Deskterior is an independent project: not affiliated with or endorsed by him, and it uses none of its code, name, art or branding.",
-                             "Deskterior는 독립 프로젝트예요. 원작자와 제휴하거나 보증받지 않았고, 원작의 코드·이름·그림·브랜딩을 전혀 쓰지 않아요."),
+        .aboutInspired: p("Deskterior is an independent project inspired by Terkel Gjervig's desktop-rug prototype “Desktop Cleaning” (desktop.cleaning).",
+                          "Deskterior는 Terkel Gjervig의 데스크톱 러그 프로토타입 “Desktop Cleaning”(desktop.cleaning)에서 영감을 받은 독립 프로젝트예요."),
+        .aboutIndependent: p("It is not affiliated with or endorsed by him or GitHub, and uses none of the prototype's code, name, art or branding.",
+                             "원작자나 GitHub와 제휴하거나 보증받지 않았고, 원작 프로토타입의 코드·이름·그림·브랜딩을 전혀 쓰지 않아요."),
         .aboutFont: p("Galmuri9 font by Lee Minseo, SIL Open Font License 1.1.", "갈무리9 글꼴: 이민서, SIL Open Font License 1.1."),
         .aboutPalette: p("Apollo palette by AdamCYounis.", "Apollo 팔레트: AdamCYounis."),
         .aboutLicense: p("Code under the MIT License. No network, no telemetry.", "코드는 MIT 라이선스. 네트워크도, 원격 수집도 없어요."),
@@ -259,5 +269,46 @@ public enum L10nKey: String, CaseIterable, Sendable {
         .axWallHelp: p("Drop files here to put them on the monitor.", "파일을 여기 놓으면 모니터에 올라가요."),
         .axMoveToMonitor: p("Move to Monitor", "모니터로 옮기기"),
         .axShowDeskMenu: p("Show Desk Menu", "책상 메뉴 보기"),
+
+        // Find Item
+        .findItemTitle: p("Find Item", "항목 찾기"),
+        .searchAllItems: p("Search all items", "모든 항목 검색"),
+        .itemCount: p("%d of %d", "%d개 / 전체 %d개"),
+        .columnLocation: p("Location", "위치"),
+        .takeOut: p("Take Out", "꺼내기"),
+        .showOnDesk: p("Show on Desk", "책상에서 보기"),
+        .locMonitorPage: p("Monitor · HDMI %d", "모니터 · HDMI %d"),
+        .locRiserLeft: p("Riser ▸ left drawer", "받침대 ▸ 왼쪽 서랍"),
+        .locRiserRight: p("Riser ▸ right drawer", "받침대 ▸ 오른쪽 서랍"),
+        .locRiserCubby: p("Riser ▸ cubby", "받침대 ▸ 칸"),
+        .locCabinetTop: p("Cabinet ▸ top", "서랍장 ▸ 위 칸"),
+        .locCabinetMiddle: p("Cabinet ▸ middle", "서랍장 ▸ 가운데 칸"),
+        .locCabinetFile: p("Cabinet ▸ file", "서랍장 ▸ 서류 칸"),
+        .locPenCup: p("Pen cup", "펜꽂이"),
+        .locUnderMat: p("Under mat", "매트 밑"),
+        .locFloor: p("Floor", "바닥"),
+        .locInHand: p("In hand", "들고 있음"),
+        .kindFolder: p("Folder", "폴더"),
+        .kindPackage: p("Package", "패키지"),
+        .kindDocument: p("Document", "문서"),
+        .kindText: p("Plain text", "일반 텍스트"),
+        .kindPDF: p("PDF document", "PDF 문서"),
+        .kindImage: p("Image", "이미지"),
+        .kindMovie: p("Movie", "동영상"),
+        .kindAudio: p("Audio", "오디오"),
+        .kindArchive: p("Archive", "압축 파일"),
+        .kindApp: p("Application", "응용 프로그램"),
+        .kindCode: p("Source code", "소스 코드"),
+        .kindDiskImage: p("Disk image", "디스크 이미지"),
+        .kindScreenshot: p("Screenshot", "스크린샷"),
+
+        // Panels and status lines
+        .panelUseFolder: p("Use Folder", "이 폴더 사용"),
+        .panelChooseDesktop: p("Choose your Desktop folder so Deskterior can show it.",
+                               "Deskterior가 보여 줄 수 있게 바탕화면 폴더를 선택하세요."),
+        .resetFailed: p("Could not reset the layout: %@", "배치를 초기화하지 못했어요: %@"),
+        .hotkeyTaken: p("Another app is using ⌃⌥⌘D, so the shortcut is off.", "다른 앱이 ⌃⌥⌘D를 쓰고 있어서 단축키를 껐어요."),
+        .loginTranslocated: p("Move Deskterior to the Applications folder to launch it at login.",
+                              "로그인 시 실행하려면 Deskterior를 응용 프로그램 폴더로 옮겨 주세요."),
     ]
 }

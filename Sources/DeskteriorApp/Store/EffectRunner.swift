@@ -114,8 +114,8 @@ final class EffectRunner {
         panel.canChooseFiles = false
         panel.allowsMultipleSelection = false
         panel.directoryURL = folder
-        panel.prompt = "Use Folder"
-        panel.message = "Choose your Desktop folder so Deskterior can show it."
+        panel.prompt = tr(.panelUseFolder)
+        panel.message = tr(.panelChooseDesktop)
         NSApp.activate()
         guard panel.runModal() == .OK, let picked = panel.url else { return }
         if DesktopLocator.canonicalPath(picked) == DesktopLocator.canonicalPath(folder) {
@@ -212,6 +212,7 @@ final class QuickLookSource: NSObject, QLPreviewPanelDataSource {
         self.urls = urls
         NSApp.activate()
         guard let panel = QLPreviewPanel.shared() else { return }
+        panel.level = AppWindow.level  // M12: above the desk while Peek Desk floats it.
         if panel.isVisible {
             panel.reloadData()
         } else {

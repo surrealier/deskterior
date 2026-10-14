@@ -40,7 +40,7 @@ public enum InventoryQuery {
         }
     }
 
-    /// The human label of a location (English; L10n maps it later).
+    /// The human label of a location (English; the Find Item window shows it through `L10n.tr`).
     public static func label(for location: Location, covered: Bool = false) -> String {
         switch location {
         case let .screen(page, _, _): "Monitor · HDMI \(page + 1)"

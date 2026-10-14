@@ -4,8 +4,9 @@ import DeskPixels
 import DeskScene
 
 /// Peek Desk (DESIGN §2.2 E16): the desk window floats above other apps' windows and the app activates, with a pixel
-/// "× Done" button at the top right of the visible desk. It ends on Esc, on ×, on the hotkey or the menu item again,
-/// or when another app activates. A paused desk resumes to be peeked at.
+/// "× Done" button at the top right of the visible desk. It ends on Esc (on the desk), on ×, on the hotkey or the menu
+/// item again, or when another app activates. A paused desk resumes to be peeked at. Meanwhile the app's own windows
+/// (Settings, About, Find Item, Quick Look) sit just above the floating desk (`PeekPolicy`, `AppWindow.setLevel`).
 final class PeekController {
     private weak var displays: DisplayManager?
     private(set) var isPeeking = false
@@ -30,13 +31,21 @@ final class PeekController {
         resumeIfPaused?()
         isPeeking = true
         displays.setPeeking(true)
+        if let desk = displays.window {
+            let level = PeekPolicy.appWindowLevel(peeking: true, deskLevel: desk.level.rawValue,
+                                                  normal: NSWindow.Level.normal.rawValue)
+            AppWindow.setLevel(NSWindow.Level(rawValue: level))
+        }
         let b = PeekDoneButton(grid: displays.host?.grid) { [weak self] in self?.end() }
         view.addSubview(b)
         b.place(in: view)
         button = b
-        // Esc ends it (and is not passed on: it would also clear the selection).
+        // Esc on the desk ends it (and is not passed on: it would also clear the selection); in the app's other
+        // windows it keeps its meaning (Find Item closes).
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            guard event.keyCode == 53, let self, self.isPeeking else { return event }
+            guard event.keyCode == 53, let self, self.isPeeking, event.window === self.displays?.window else {
+                return event
+            }
             self.end()
             return nil
         }
@@ -65,6 +74,7 @@ final class PeekController {
         if let activationToken { NSWorkspace.shared.notificationCenter.removeObserver(activationToken) }
         activationToken = nil
         displays?.setPeeking(false)
+        AppWindow.setLevel(.normal)
         onChange?(false)
         Log.info("peek: off")
     }

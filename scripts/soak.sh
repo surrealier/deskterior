@@ -9,7 +9,9 @@
 #   sampled with `ps` every --interval seconds (default 10). After --minutes (default 60) the app is stopped if it is
 #   still running. The growth is the median of the last three samples minus the median of the three samples after
 #   warm-up (the first fifth of the run, at least two samples); it fails (exit 1) above --limit (default 10 MB).
-#   A failing expectation inside the cycle is reported but only memory decides the result.
+#   A failing expectation inside the cycle is reported but only memory decides the result. A run that does not last
+#   the whole --minutes (the app exited: a script error or a crash) is not a soak and fails with exit 2.
+#   The soak is headless (the scene, the mirror, the store and the renderer, not the AppKit windows).
 #   Env: SWIFT_SCRATCH_PATH (build folder), SWIFT_JOBS, DESKTERIOR_BIN (a built Deskterior; no build).
 #
 # Safety: everything runs headless on a throwaway fixture; the real desktop and the real Trash are never touched
@@ -22,7 +24,7 @@ LIMIT=10
 INTERVAL=10
 RELEASE=()
 
-usage() { sed -n '2,20p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//' >&2; exit 2; }
+usage() { sed -n '2,18p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//' >&2; exit 2; }
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -41,9 +43,9 @@ trap 'rm -rf "$TMP"' EXIT
 SCRIPT="$TMP/soak.json"
 OUT="$TMP/out"
 
-# One cycle takes about 3 s of real time (the watcher's batching dominates); write more than the run can use (the app
-# is stopped at the time limit).
-CYCLES=$(( MINUTES * 60 / 2 + 4 ))
+# One cycle takes about 3 s of real time (the watcher's batching dominates); write more than the run can use (one a
+# second; the app is stopped at the time limit, and running out of cycles early counts as exiting early).
+CYCLES=$(( MINUTES * 60 + 4 ))
 {
   printf '{\n  "name": "soak",\n  "display": "1470x956@2",\n  "clock": "10:00",\n  "seed": 1,\n  "steps": [\n'
   printf '    { "waitIdle": 15 },\n'
@@ -121,6 +123,11 @@ wait "$RUNNER" 2>/dev/null || true
 FAILS="$(grep -c 'demo soak: FAIL' "$TMP/run.log" || true)"
 CYCLES_RUN="$(grep -c '^demo soak: # cycle' "$TMP/run.log" || true)"
 N=${#SAMPLES[@]}
+if [ "$STOPPED" -eq 0 ]; then
+  tail -n 20 "$TMP/run.log" >&2
+  echo "soak: the app exited after $(( $(date +%s) - START )) s of $(( MINUTES * 60 )) s ($CYCLES_RUN cycles): not a soak" >&2
+  exit 2
+fi
 if [ "$N" -lt 6 ]; then
   tail -n 20 "$TMP/run.log" >&2
   echo "soak: too few samples ($N); run longer or sample more often" >&2

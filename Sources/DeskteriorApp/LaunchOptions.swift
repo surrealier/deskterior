@@ -105,10 +105,13 @@ struct LaunchOptions: Equatable {
     var safeMode = false
     /// `--language system|en|ko`: the language outside desk mode (desk mode follows Settings).
     var language: LanguageSetting?
-    /// `--show settings,about,onboarding,translocation,peek`: windowed only, open these at launch.
+    /// `--show settings,about,onboarding,translocation,peek,inventory`: windowed only, open these at launch.
     var show: Set<String> = []
     /// `--window-shots DIR`: windowed only, write PNGs of the app's open windows (Settings, About…) here.
     var windowShots: String?
+    /// `--pixel-size` / `--level` were given: they win over Settings ▸ Pixel size and the `windowLevel` setting.
+    var pixelSizeGiven = false
+    var levelGiven = false
 
     var mode: Mode { headless || demo != nil ? .headless : (windowed != nil ? .windowed : .desk) }
     /// The scene's time source.
@@ -123,8 +126,8 @@ struct LaunchOptions: Equatable {
           --frames N                 headless: fixed frames to step (default 30)
           --snapshot-dir DIR         headless: write room-<display>-<HHMM>.png (and @<N>x) here
           --snapshot-scale N         headless: nearest-neighbour factor of the second PNG (default 3)
-          --level icon+1|icon+3|normal   desk window level (default icon+1)
-          --pixel-size chunky|normal|fine
+          --level icon+1|icon+3|normal   desk window level (default: the windowLevel setting, icon+1)
+          --pixel-size chunky|normal|fine   (default: Settings ▸ Pixel size, normal)
           --clock HH:MM|ISO8601      fixed room time (sky, light, clock face)
           --lights auto|day|night|lamp   lights mode (lamp = Lamp Only)
           --reduce-motion            no flickers, jiggles, spring-backs or CRT animation
@@ -139,7 +142,7 @@ struct LaunchOptions: Equatable {
           --burst                    windowed: a short scripted interaction burst, then idle (measure-idle.sh)
           --safe-mode                start with the Safe Mode window (also: hold ⌥ while Deskterior launches)
           --language system|en|ko    the language outside desk mode (desk mode follows Settings)
-          --show LIST                windowed: open settings,about,onboarding,translocation,peek at launch
+          --show LIST                windowed: open settings,about,onboarding,translocation,peek,inventory
           --window-shots DIR         windowed: write PNGs of the open app windows to DIR (with --show)
           --version, --help
         Every option can also be set as DESKTERIOR_<NAME> in the environment, e.g. DESKTERIOR_SNAPSHOT_DIR.
@@ -233,6 +236,7 @@ struct LaunchOptions: Equatable {
                 throw UsageError(description: "--level expects icon+1, icon+3 or normal")
             }
             o.level = level
+            o.levelGiven = true
         },
         Spec(names: ["--print-window-id"], arity: .switch) { o, _ in o.printWindowID = true },
         Spec(names: ["--exit-after"], arity: .value) { o, v in
@@ -246,6 +250,7 @@ struct LaunchOptions: Equatable {
                 throw UsageError(description: "--pixel-size expects chunky, normal or fine")
             }
             o.pixelSize = size
+            o.pixelSizeGiven = true
         },
         Spec(names: ["--clock"], arity: .value) { o, v in
             guard let v, let t = WallTime(parsing: v, date: SceneClock.live.now()) else {
@@ -282,7 +287,7 @@ struct LaunchOptions: Equatable {
             o.language = l
         },
         Spec(names: ["--show"], arity: .value) { o, v in
-            let known: Set<String> = ["settings", "about", "onboarding", "translocation", "peek"]
+            let known: Set<String> = ["settings", "about", "onboarding", "translocation", "peek", "inventory"]
             let names = Set((v ?? "").split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) })
             guard !names.isEmpty, names.isSubset(of: known) else {
                 throw UsageError(description: "--show expects a list of \(known.sorted().joined(separator: ", "))")

@@ -1,4 +1,4 @@
-/// User settings (DESIGN §4.8), stored in `UserDefaults` under the bundle-id suite by the app. This type only
+/// User settings (DESIGN §4.8), stored in `UserDefaults` by the app (its own domain; `suiteName`). This type only
 /// knows keys, defaults and value parsing; reading and writing go through closures so it stays pure.
 public struct DeskSettings: Sendable, Equatable {
     public enum Key: String, CaseIterable, Sendable {
@@ -133,6 +133,14 @@ public struct DeskSettings: Sendable, Equatable {
     /// The value `propertyList` writes for `key`.
     public func value(for key: Key) -> (any Sendable)? {
         propertyList.first { $0.key == key.rawValue }?.value ?? nil
+    }
+
+    /// The `UserDefaults` suite the app keeps these settings in, or nil for the app's own domain
+    /// (`UserDefaults.standard`). A bundled app (`bundleIdentifier` set) uses its own domain: macOS refuses a suite
+    /// named after the app's own bundle id (`UserDefaults(suiteName:)` returns nil and nothing would ever be saved).
+    /// An unbundled build (`swift run`) uses `fallback`'s suite, so it never shares the installed app's settings.
+    public static func suiteName(bundleIdentifier: String?, fallback: String) -> String? {
+        bundleIdentifier == nil ? fallback : nil
     }
 
     // MARK: Migrations (M12)

@@ -81,6 +81,9 @@ public final class DeskScene: SKScene {
     public var matFlat = false {
         didSet { room?.matElement?.flatSetting = matFlat }
     }
+    // MARK: system (M12)
+    /// Every toast shown, whoever raised it (the app, an effect or an element): VoiceOver says it aloud.
+    public var onToastShown: ((ToastKey) -> Void)?
     /// The committed model (nil: the bare room).
     public private(set) var deskState: DeskState?
     /// Real icons by token, kept across content rebuilds.
@@ -159,6 +162,11 @@ public final class DeskScene: SKScene {
         room.context.onAction = { [weak self] in self?.onAction?($0) }
         room.context.onRequest = { [weak self] in self?.onRequest?($0) }
         room.context.lightOverrides.onChange = { [weak self] in self?.refreshState() }
+        // M12: elements' toasts are heard too.
+        room.context.onToast = { [weak self, weak room] key in
+            room?.showToast(key)
+            self?.onToastShown?(key)
+        }
     }
 
     /// The room state for the clock, the lights setting and (when known) the model's lamps, phone and drawers;
@@ -207,6 +215,7 @@ public final class DeskScene: SKScene {
     public func toast(_ key: ToastKey) {
         room?.showToast(key)
         syncLighting()
+        onToastShown?(key)
     }
 
     /// The selection (nil while showing calibration).

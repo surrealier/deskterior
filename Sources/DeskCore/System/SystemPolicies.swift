@@ -86,13 +86,16 @@ public enum LoginItemOutcome: Equatable, Sendable {
 
 /// Launch at Login (DESIGN §4.8, §9): off by default; only the Settings toggle registers; status is read off the
 /// main thread (by the caller). After an update the item is registered again (ad-hoc signed builds otherwise keep a
-/// stale item), but only if the user had opted in. `settings.loginItemVersion` remembers which version registered it.
+/// stale item, which cannot be told apart from one the user removed), but only if the user had opted in.
+/// `settings.loginItemVersion` remembers which version registered it. A failed registration turns the setting off,
+/// so the toggle never claims an item that does not exist. Nothing registers from a translocated copy (it would
+/// record the temporary path).
 public enum LoginItemPolicy {
-    /// At launch: with the setting off, the service is never touched. With it on: register again when the version
-    /// changed; follow a removal made in System Settings (the setting turns off).
-    public static func launch(_ settings: inout DeskSettings, version: String, service: some LoginItemService)
-        -> LoginItemOutcome {
-        guard settings.launchAtLogin else { return .unchanged }
+    /// At launch: with the setting off, or from a translocated copy, the service is never touched. With it on:
+    /// register again when the version changed; follow a removal made in System Settings (the setting turns off).
+    public static func launch(_ settings: inout DeskSettings, version: String, service: some LoginItemService,
+                              translocated: Bool = false) -> LoginItemOutcome {
+        guard settings.launchAtLogin, !translocated else { return .unchanged }
         let status = service.status
         if settings.loginItemVersion == version {
             switch status {
@@ -125,16 +128,53 @@ public enum LoginItemPolicy {
         }
     }
 
+    /// Settings opened: the toggle follows the service's `status` (an item registered or removed outside the app, or
+    /// a setting that was lost). Returns whether `settings` changed.
+    public static func reconcile(_ settings: inout DeskSettings, status: LoginItemStatus, version: String) -> Bool {
+        let registered = status == .enabled || status == .requiresApproval
+        guard registered != settings.launchAtLogin else { return false }
+        settings.launchAtLogin = registered
+        settings.loginItemVersion = registered ? version : nil
+        return true
+    }
+
     private static func register(_ settings: inout DeskSettings, version: String, service: some LoginItemService)
         -> LoginItemOutcome {
         do {
             try service.register()
         } catch {
-            // Already registered is fine; anything else leaves the setting on but reports the failure.
-            if service.status != .enabled && service.status != .requiresApproval { return .failed }
+            // Already registered is fine; anything else turns the setting off and reports the failure.
+            if service.status != .enabled && service.status != .requiresApproval {
+                settings.launchAtLogin = false
+                settings.loginItemVersion = nil
+                return .failed
+            }
         }
         settings.loginItemVersion = version
         return service.status == .requiresApproval ? .needsApproval : .added
+    }
+}
+
+// MARK: - Peek Desk
+
+/// While Peek Desk floats the desk window above other apps' windows, the app's own windows (Settings, About, Find
+/// Item, Quick Look, the notes) sit one level above it, or they would open underneath the desk; otherwise, and when
+/// the desk is an ordinary window (`--windowed`), they stay at the normal level. Levels are `CGWindowLevel` numbers.
+public enum PeekPolicy {
+    public static func appWindowLevel(peeking: Bool, deskLevel: Int, normal: Int) -> Int {
+        peeking && deskLevel > normal ? deskLevel + 1 : normal
+    }
+}
+
+// MARK: - Drops from other apps
+
+extension ImportOp {
+    /// What a file drag from another app does when dropped (DESIGN §4.10: a wall, like the desk): a move, a copy
+    /// while ⌥ is held or when the source only offers copying, and nothing when the source offers neither.
+    public static func forDrop(copyHeld: Bool, canMove: Bool, canCopy: Bool) -> ImportOp? {
+        if copyHeld { return canCopy ? .copy : nil }
+        if canMove { return .move }
+        return canCopy ? .copy : nil
     }
 }
 

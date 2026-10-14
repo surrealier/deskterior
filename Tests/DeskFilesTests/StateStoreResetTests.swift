@@ -32,6 +32,33 @@ struct StateStoreResetTests {
         #expect(again != kept && FileManager.default.fileExists(atPath: kept.path))
     }
 
+    @Test("The backup is the saved file byte for byte (formatting and all), not the layout re-encoded")
+    func rawBackup() throws {
+        let d = try TempDesk()
+        let store = try StateStore(directory: d.url("state", isDirectory: true))
+        try store.save(StateStoreTests.state(step: 2))
+        // As another build (or a person with a text editor) might have left it.
+        let saved = try Data(contentsOf: store.fileURL)
+        let edited = Data("\n  ".utf8) + saved + Data("\n\n".utf8)
+        try edited.write(to: store.fileURL)
+        #expect(store.load().source == .primary)
+        let kept = try #require(try store.resetLayout())
+        #expect(try Data(contentsOf: kept) == edited)
+    }
+
+    @Test("With a corrupt desk.json the backup keeps the file the desk would have loaded")
+    func backupSource() throws {
+        let d = try TempDesk()
+        let store = try StateStore(directory: d.url("state", isDirectory: true))
+        try store.save(StateStoreTests.state(step: 3))
+        try store.save(StateStoreTests.state(step: 4))
+        let bak1 = try Data(contentsOf: store.backupURL(1))
+        try Data("{\"schema\": 1, \"tokens\": 7".utf8).write(to: store.fileURL)
+        #expect(store.load().source == .backup(1))
+        let kept = try #require(try store.resetLayout())
+        #expect(try Data(contentsOf: kept) == bak1)
+    }
+
     @Test("Nothing saved: nothing to reset")
     func nothing() throws {
         let d = try TempDesk()

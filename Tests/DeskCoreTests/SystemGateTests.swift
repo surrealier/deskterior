@@ -44,6 +44,25 @@ struct SystemGateTests {
         #expect(g.holds.isEmpty)
     }
 
+    @Test("A desk frozen on battery comes alive while the user uses it, then freezes again")
+    func batteryInput() {
+        var g = SystemGate(pauseOnBattery: true)
+        #expect(!g.freezesOnBattery, "on mains power nothing is frozen, so input starts no spell")
+        g.handle(.battery(onBattery: true))
+        #expect(g.freezesOnBattery && g.holds == [.onBattery])
+        g.handle(.interacting(true))
+        #expect(g.holds.isEmpty, "a click is never taken on a picture that does not change")
+        #expect(g.freezesOnBattery, "input keeps lifting the hold while it lasts")
+        g.handle(.interacting(false))
+        #expect(g.holds == [.onBattery])
+        // Other holds are not lifted by input.
+        g.handle(.interacting(true))
+        g.handle(.occlusion(visible: false))
+        #expect(g.holds == [.occluded])
+        g.handle(.peeking(true))
+        #expect(!g.freezesOnBattery)
+    }
+
     @Test("Low Power Mode or a serious thermal state caps the loop at 30 Hz")
     func cap() {
         var g = SystemGate()

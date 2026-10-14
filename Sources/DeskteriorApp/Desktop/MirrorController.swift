@@ -161,20 +161,19 @@ final class MirrorController {
     /// cannot disturb the real layout. State and cache folders inside the mirrored folder are refused (they would
     /// show up as tokens, and every save would rescan into another save).
     ///
-    /// Desk mode mirrors the folder chosen in Settings (`mirroredFolder`) when no `--desktop-folder` is given, unless
-    /// `useSavedFolder` is false (Settings is switching folders right now).
+    /// Desk mode mirrors the folder chosen in Settings (`settings.mirroredFolder`) when no `--desktop-folder` is given,
+    /// unless `useSavedFolder` is false (Settings is switching folders right now). `settings` are the launch's
+    /// (`SettingsStore`: the app's in desk mode, throwaway ones otherwise); nothing here reads `UserDefaults`.
     static func configuration(
         options: LaunchOptions, environment: [String: String] = ProcessInfo.processInfo.environment,
-        bundleID: String = AppIdentity.bundleID, useSavedFolder: Bool = true
+        bundleID: String = AppIdentity.bundleID, settings: DeskSettings = DeskSettings(), useSavedFolder: Bool = true
     ) throws(SafetyGuard.Refusal) -> Configuration {
         let mode: SafetyGuard.Mode = switch options.mode {
         case .desk: .desk
         case .windowed: .windowed
         case .headless: options.demo == nil ? .headless : .demo
         }
-        let defaults = UserDefaults(suiteName: bundleID)
-        let saved = useSavedFolder && mode == .desk
-            ? DeskSettings(reading: { defaults?.object(forKey: $0) }).mirroredFolder : nil
+        let saved = useSavedFolder && mode == .desk ? settings.mirroredFolder : nil
         let resolution = DesktopLocator.resolve(override: options.desktopFolder ?? saved, environment: environment)
         let folder = try SafetyGuard.mirrorFolder(resolution, mode: mode)
         let stateDir: URL
@@ -194,14 +193,14 @@ final class MirrorController {
         try SafetyGuard.checkOwnFolder(cacheDir, desktop: realDesktop, mirrored: folder)
         return Configuration(
             folder: folder, stateDirectory: stateDir, iconCacheDirectory: cacheDir, connectImmediately: mode != .desk,
-            settings: DeskSettings(reading: { defaults?.object(forKey: $0) })
+            settings: settings
         )
     }
 
     /// `configuration(options:)`, or prints the refusal and exits with code 64 (DESIGN §3.7 item 7).
-    static func configurationOrExit(options: LaunchOptions) -> Configuration {
+    static func configurationOrExit(options: LaunchOptions, settings: DeskSettings = DeskSettings()) -> Configuration {
         do throws(SafetyGuard.Refusal) {
-            return try configuration(options: options)
+            return try configuration(options: options, settings: settings)
         } catch {
             FileHandle.standardError.write(Data("Deskterior: \(error)\n".utf8))
             exit(error.exitCode)

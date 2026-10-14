@@ -34,6 +34,17 @@ final class AppSystem {
     var setUserPaused: (Bool) -> Void = { _ in }
     /// Mirrors another folder (desk mode; nil: the Desktop); false when it may not be mirrored.
     var switchFolder: (String?) -> Bool = { _ in false }
+    /// Settings ▸ Language changed (the Find Item window follows).
+    var languageChanged: () -> Void = {}
+    /// Ends the user's spell of using a desk frozen on battery (`userInput`).
+    private var inputSpell: Timer?
+    /// The last try to register ⌃⌥⌘D failed (another app holds it); Settings says so.
+    private var hotkeyTaken = false
+    /// How long after the last click, key or menu command a desk frozen on battery stays live.
+    static let inputSpellSeconds: TimeInterval = 30
+    /// Walls take file drags once dropped files are imported (`.importDropped` reaches `FileOperator`, M11); until
+    /// then they refuse the drag (DESIGN §4.10, Errata 18).
+    static let wallsImportFiles = false
 
     init(options: LaunchOptions, settings: SettingsStore, displays: DisplayManager, session: DeskSession) {
         self.options = options
@@ -56,6 +67,10 @@ final class AppSystem {
     func start() {
         let host = session.host
         observers.onCommand = { [weak self] in self?.run($0) }
+        // Every toast is pixels: VoiceOver hears them too, whoever raised them.
+        host.scene.onToastShown = { [weak self] in self?.accessibility?.announce($0) }
+        displays.view?.onInput = { [weak self] in self?.userInput() }
+        displays.wallsAcceptFiles = Self.wallsImportFiles
         if let window = displays.window { observers.watchOcclusion(of: window) }
         peek.onChange = { [weak self] on in self?.observers.send(.peeking(on)) }
         peek.resumeIfPaused = { [weak self] in
@@ -74,8 +89,10 @@ final class AppSystem {
         displays.onWallMenu = { [weak self] view, p in self?.wallMenu(view, at: p) }
         displays.settingsChanged()
         settings.observe { [weak self] new, old in self?.settingsChanged(new, old) }
-        hotKey.apply(enabled: settings.settings.peekHotkeyEnabled, with: hotKeyRegistrar)
-        loginItem.launchCheck(settings.settings) { [weak self] s, outcome in self?.loginOutcome(s, outcome) }
+        applyHotKey()
+        loginItem.launchCheck(settings.settings, translocated: isTranslocated) { [weak self] s, outcome in
+            self?.loginOutcome(s, outcome)
+        }
         if options.mode == .desk {
             let probe = WidgetProbe(host: host, displays: displays)
             widgets = probe
@@ -86,6 +103,8 @@ final class AppSystem {
     }
 
     func invalidate() {
+        inputSpell?.invalidate()
+        inputSpell = nil
         peek.end()
         hotKey.apply(enabled: false, with: hotKeyRegistrar)
         observers.invalidate()
@@ -104,12 +123,6 @@ final class AppSystem {
     private func attachSession() {
         guard let view = displays.view else { return }
         accessibility = DeskAccessibility(view: view, store: session.store)
-        // Toasts are pixels: VoiceOver hears them too (the effect still runs first).
-        let inner = session.store.effects
-        session.store.effects = { [weak self] effect in
-            inner?(effect)
-            if case let .toast(key) = effect { self?.accessibility?.announce(key) }
-        }
         session.store.observe { [weak self] new, old in
             guard new.lights != old.lights else { return }
             self?.settingsModel?.lights = new.lights.mode
@@ -127,6 +140,23 @@ final class AppSystem {
     func userPaused(_ paused: Bool) {
         if paused { peek.end() }
         observers.send(.userPaused(paused))
+    }
+
+    /// The user clicked, typed or picked a menu command. A desk frozen on battery comes alive first, so what they do
+    /// shows, and freezes again `inputSpellSeconds` after the last of it; otherwise nothing happens (no timer).
+    func userInput() {
+        guard observers.gate.freezesOnBattery else { return }
+        if !observers.gate.conditions.interacting { observers.send(.interacting(true)) }
+        inputSpell?.invalidate()
+        let t = Timer(timeInterval: Self.inputSpellSeconds, repeats: false) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.inputSpell = nil
+                self?.observers.send(.interacting(false))
+            }
+        }
+        t.tolerance = 2
+        RunLoop.main.add(t, forMode: .common)
+        inputSpell = t
     }
 
     private func run(_ command: SystemCommand) {
@@ -179,13 +209,26 @@ final class AppSystem {
                 useDesktop: { [weak self] in self?.useFolder(nil) },
                 showAbout: { [weak self] in self?.showAbout() }
             )
+            model.pixelSizeLocked = options.pixelSizeGiven
+            model.loginLocked = isTranslocated
+            model.hotkeyStatus = hotkeyTaken ? tr(.hotkeyTaken) : nil
             settingsModel = model
             settingsWindow = AppWindow.make(title: tr(.settingsTitle), view: SettingsView(model: model))
         }
         settingsModel?.displays = DisplayManager.displayNames()
+        // The toggle shows what is registered (an item added or removed outside the app, or a lost setting).
         loginItem.readStatus { [weak self] status in
-            guard let self, self.settings.settings.launchAtLogin else { return }
-            self.settingsModel?.loginStatus = status == .requiresApproval ? tr(.loginNeedsApproval) : nil
+            guard let self else { return }
+            var s = self.settings.settings
+            if LoginItemPolicy.reconcile(&s, status: status, version: self.loginItem.version) {
+                Log.info("login item: the setting follows the status (\(status))")
+                self.settings.update {
+                    $0.launchAtLogin = s.launchAtLogin
+                    $0.loginItemVersion = s.loginItemVersion
+                }
+            }
+            self.settingsModel?.loginStatus = self.isTranslocated ? tr(.loginTranslocated)
+                : (status == .requiresApproval ? tr(.loginNeedsApproval) : nil)
         }
         if let settingsWindow { AppWindow.present(settingsWindow) }
     }
@@ -199,13 +242,13 @@ final class AppSystem {
         if new.language != old.language {
             L10n.apply(new.language)
             settingsWindow?.title = tr(.settingsTitle)
+            settingsModel?.hotkeyStatus = hotkeyTaken ? tr(.hotkeyTaken) : nil
             session.host.scene.apply(session.store.state)
             session.host.modelChanged()
+            languageChanged()
         }
-        if new.peekHotkeyEnabled != old.peekHotkeyEnabled {
-            let on = hotKey.apply(enabled: new.peekHotkeyEnabled, with: hotKeyRegistrar)
-            Log.info("hotkey ⌃⌥⌘D: \(on ? "registered" : "off")")
-        }
+        if new.peekHotkeyEnabled != old.peekHotkeyEnabled { applyHotKey() }
+        if new.pixelSize != old.pixelSize { displays.settingsChanged() }
         if new.pauseOnBattery != old.pauseOnBattery { observers.setPauseOnBattery(new.pauseOnBattery) }
         if new.reduceMotion != old.reduceMotion { reduceMotion.refresh() }
         if new.deskDisplayUUID != old.deskDisplayUUID || new.coverOtherDisplays != old.coverOtherDisplays {
@@ -213,7 +256,35 @@ final class AppSystem {
         }
     }
 
+    /// Registers or drops ⌃⌥⌘D to match the setting. When another app holds the combination the setting turns off
+    /// and Settings says why, so the toggle never shows a shortcut that does nothing.
+    private func applyHotKey() {
+        let wanted = settings.settings.peekHotkeyEnabled, was = hotKey.registered
+        let on = hotKey.apply(enabled: wanted, with: hotKeyRegistrar)
+        if on != was || wanted {
+            Log.info("hotkey ⌃⌥⌘D: \(on ? "registered" : (wanted ? "taken by another app" : "off"))")
+        }
+        if wanted, !on {
+            hotkeyTaken = true
+            settingsModel?.hotkeyStatus = tr(.hotkeyTaken)
+            settings.update { $0.peekHotkeyEnabled = false }
+        } else if on {
+            hotkeyTaken = false
+            settingsModel?.hotkeyStatus = nil
+        }
+    }
+
+    /// Running from a translocated copy (a login item would record its temporary path).
+    private var isTranslocated: Bool {
+        guard options.mode == .desk else { return options.show.contains("translocation") }
+        return Translocation.isTranslocated(bundlePath: Bundle.main.bundlePath)
+    }
+
     private func setLaunchAtLogin(_ on: Bool) {
+        guard !isTranslocated || !on else {
+            settingsModel?.loginStatus = tr(.loginTranslocated)
+            return
+        }
         settings.update { $0.launchAtLogin = on }
         loginItem.set(on, settings.settings) { [weak self] s, outcome in self?.loginOutcome(s, outcome) }
     }

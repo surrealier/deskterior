@@ -45,10 +45,14 @@ final class InventoryWindowController: NSObject, NSWindowDelegate {
                 contentRect: NSRect(x: 0, y: 0, width: 720, height: 440),
                 styleMask: [.titled, .closable, .resizable, .miniaturizable], backing: .buffered, defer: false
             )
-            w.title = "Find Item"
             w.isReleasedWhenClosed = false
             w.contentMinSize = NSSize(width: 520, height: 280)
-            w.contentViewController = NSHostingController(rootView: InventoryView(model: model))
+            // M12: the hosting controller only sets the minimum, so the window opens at its own size (it used to
+            // shrink to the minimum, cutting off the buttons, in Korean even more).
+            let hosting = NSHostingController(rootView: InventoryView(model: model))
+            hosting.sizingOptions = [.minSize]
+            w.contentViewController = hosting
+            w.setContentSize(NSSize(width: 720, height: 440))
             w.center()
             w.delegate = self
             window = w
@@ -57,12 +61,22 @@ final class InventoryWindowController: NSObject, NSWindowDelegate {
             observer = store.observe { [weak self] new, _ in self?.model.state = new }
         }
         model.state = store.state
-        NSApp.activate()
-        window?.makeKeyAndOrderFront(nil)
+        languageChanged()
+        // M12: AppWindow.present also keeps it above the desk while Peek Desk floats it.
+        if let window { AppWindow.present(window) }
         model.focusSearch += 1
     }
 
     // MARK: system (M12)
+    /// The window while it is on screen (development screenshots, `--show inventory`).
+    var shownWindow: NSWindow? { window?.isVisible == true ? window : nil }
+
+    /// Shows the window's text in the current language (Settings ▸ Language changed).
+    func languageChanged() {
+        window?.title = tr(.findItemTitle)
+        model.language = L10n.language
+    }
+
     /// Closes the window for good (its store is going away: another folder is mirrored).
     func close() {
         window?.close()
@@ -108,6 +122,8 @@ final class InventoryModel {
     var sortOrder = [KeyPathComparator(\InventoryItem.name, comparator: .localizedStandard)]
     /// Bumped to put the cursor in the search field.
     var focusSearch = 0
+    /// The language the window speaks (M12; the view re-renders when it changes).
+    var language = L10n.language
     let perform: (MenuCommand) -> Void
     var onShowOnDesk: (() -> Void)?
     var onClose: (() -> Void)?
@@ -151,9 +167,9 @@ final class InventoryModel {
         perform(.moveTo(keys, ScreenGrid.standard.firstFree(state.tokens.occupiedCells).location))
     }
 
-    /// "PDF document", "Folder"… as the desk's tooltips say it.
+    /// "PDF document", "Folder"… as the desk's tooltips say it, in the window's language.
     func kindName(_ item: InventoryItem) -> String {
-        TokenArt.kindName(item.kind, package: state.tokens.meta(of: item.key)?.isPackage ?? false)
+        L10n.tr(TokenArt.kindName(item.kind, package: state.tokens.meta(of: item.key)?.isPackage ?? false))
     }
 }
 
@@ -168,18 +184,19 @@ struct InventoryView: View {
     @FocusState private var searchFocused: Bool
 
     var body: some View {
+        let _ = model.language
         VStack(spacing: 0) {
             HStack {
-                TextField("Search all items", text: $model.search)
+                TextField(tr(.searchAllItems), text: $model.search)
                     .textFieldStyle(.roundedBorder)
                     .focused($searchFocused)
-                Text("\(model.items.count) of \(model.state.tokens.count)")
+                Text(L10n.format(.itemCount, [model.items.count, model.state.tokens.count]))
                     .foregroundStyle(.secondary)
                     .monospacedDigit()
             }
             .padding(10)
             Table(model.items, selection: $model.selection, sortOrder: $model.sortOrder) {
-                TableColumn("Name", value: \.name, comparator: .localizedStandard) { item in
+                TableColumn(tr(.sortName), value: \.name, comparator: .localizedStandard) { item in
                     HStack(spacing: 6) {
                         Image(nsImage: KindIconImages.image(item.kind))
                             .interpolation(.none)
@@ -188,23 +205,25 @@ struct InventoryView: View {
                     }
                 }
                 .width(min: 180, ideal: 260)
-                TableColumn("Location", value: \.label) { item in
-                    Text(item.label).foregroundStyle(item.isHidden ? .secondary : .primary)
+                TableColumn(tr(.columnLocation), value: \.label) { item in
+                    Text(L10n.tr(item.label)).foregroundStyle(item.isHidden ? .secondary : .primary)
                 }
                 .width(min: 120, ideal: 160)
-                TableColumn("Kind", value: \.kindSortKey) { item in Text(model.kindName(item)) }
+                TableColumn(tr(.sortKind), value: \.kindSortKey) { item in Text(model.kindName(item)) }
                     .width(min: 60, ideal: 100)
-                TableColumn("Date Added", value: \.addedSortKey) { item in
-                    Text(item.added.map { $0.formatted(date: .abbreviated, time: .omitted) } ?? "—")
+                TableColumn(tr(.sortDateAdded), value: \.addedSortKey) { item in
+                    // In the window's language (the Mac's own date order when it speaks the same one).
+                    let style = Date.FormatStyle(date: .abbreviated, time: .omitted, locale: L10n.locale)
+                    Text(item.added.map { $0.formatted(style) } ?? "—")
                 }
                 .width(min: 80, ideal: 110)
             }
             .contextMenu(forSelectionType: TokenKey.self) { keys in
-                Button("Open") { model.run(.open(Array(keys))) }
-                Button("Quick Look") { model.run(.quickLook(Array(keys))) }
-                Button("Show in Finder") { model.run(.reveal(Array(keys))) }
+                Button(tr(.open)) { model.run(.open(Array(keys))) }
+                Button(tr(.quickLook)) { model.run(.quickLook(Array(keys))) }
+                Button(tr(.showInFinder)) { model.run(.reveal(Array(keys))) }
                 if keys.count == 1, let key = keys.first {
-                    Button("Show on Desk") { model.showOnDesk(key) }
+                    Button(tr(.showOnDesk)) { model.showOnDesk(key) }
                 }
                 // MARK: files
                 Divider()
@@ -215,23 +234,23 @@ struct InventoryView: View {
             }
             Divider()
             HStack {
-                Button("Open") { model.run(.open(model.selectedKeys)) }
+                Button(tr(.open)) { model.run(.open(model.selectedKeys)) }
                     .keyboardShortcut("o")
                     .disabled(model.selectedKeys.isEmpty)
-                Button("Quick Look") { model.run(.quickLook(model.selectedKeys)) }
+                Button(tr(.quickLook)) { model.run(.quickLook(model.selectedKeys)) }
                     .keyboardShortcut("y")
                     .disabled(model.selectedKeys.isEmpty)
-                Button("Show in Finder") { model.run(.reveal(model.selectedKeys)) }
+                Button(tr(.showInFinder)) { model.run(.reveal(model.selectedKeys)) }
                     .keyboardShortcut("r")
                     .disabled(model.selectedKeys.isEmpty)
-                Button("Take Out") { model.takeOut() }
+                Button(tr(.takeOut)) { model.takeOut() }
                     .disabled(model.takeOutKeys.isEmpty)
                 // MARK: files (no key equivalent: nothing destructive has one)
                 Button("Move to Trash") { model.trash(model.selectedKeys) }
                     .disabled(model.selectedKeys.isEmpty || model.moveToTrash == nil)
                 Spacer()
-                Button("Take Everything Out") { model.run(.takeEverythingOut) }
-                Button("Show on Desk") { if let key = model.single { model.showOnDesk(key) } }
+                Button(tr(.takeEverythingOut)) { model.run(.takeEverythingOut) }
+                Button(tr(.showOnDesk)) { if let key = model.single { model.showOnDesk(key) } }
                     .keyboardShortcut(.defaultAction)
                     .disabled(model.single == nil)
             }

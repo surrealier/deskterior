@@ -15,6 +15,8 @@ public struct SystemConditions: Equatable, Sendable {
     public var thermal = ThermalLevel.nominal
     /// Peek Desk is up: the user is looking at the desk on purpose.
     public var peeking = false
+    /// The user is using the desk (a click, a key or a menu command, until a while after the last one).
+    public var interacting = false
 
     public init() {}
 }
@@ -44,6 +46,8 @@ public enum SystemEvent: Equatable, Sendable {
     case battery(onBattery: Bool)
     case userPaused(Bool)
     case peeking(Bool)
+    /// The user started using the desk, or stopped a while ago.
+    case interacting(Bool)
 }
 
 /// One-shot work an event asks for besides the holds.
@@ -59,9 +63,10 @@ public enum SystemCommand: Equatable, Sendable {
 }
 
 /// The frame-loop gating policy (DESIGN §5 pause sources): occlusion, display sleep, screen lock, fast user
-/// switching and Pause Desk hold the loop; with the `pauseOnBattery` setting, so does running on battery (except
-/// while peeking). Low Power Mode or a thermal state of serious or worse caps the loop at 30 Hz. Clearing the last
-/// hold resumes the loop (`FrameLoop` restarts its fixed-step clock, so a long pause never becomes one huge step).
+/// switching and Pause Desk hold the loop; with the `pauseOnBattery` setting, so does running on battery (a frozen
+/// frame), except while peeking or while the user is using the desk, so a click is never taken on a picture that does
+/// not change. Low Power Mode or a thermal state of serious or worse caps the loop at 30 Hz. Clearing the last hold
+/// resumes the loop (`FrameLoop` restarts its fixed-step clock, so a long pause never becomes one huge step).
 public struct SystemGate: Equatable, Sendable {
     public private(set) var conditions: SystemConditions
     public var pauseOnBattery: Bool
@@ -80,7 +85,7 @@ public struct SystemGate: Equatable, Sendable {
         if c.sessionInactive { out.insert(.sessionInactive) }
         if c.locked { out.insert(.locked) }
         if c.userPaused { out.insert(.userPaused) }
-        if pauseOnBattery, c.onBattery, !c.peeking { out.insert(.onBattery) }
+        if pauseOnBattery, c.onBattery, !c.peeking, !c.interacting { out.insert(.onBattery) }
         return out
     }
 
@@ -91,6 +96,9 @@ public struct SystemGate: Equatable, Sendable {
 
     /// True when the loop runs capped (`FrameLoop.lowPower`).
     public var capped: Bool { maxFrameRate < 60 }
+
+    /// True while running on battery freezes the desk unless the user is using it (input should lift the hold).
+    public var freezesOnBattery: Bool { pauseOnBattery && conditions.onBattery && !conditions.peeking }
 
     /// Applies an event; returns the one-shot commands it asks for.
     @discardableResult
@@ -131,6 +139,8 @@ public struct SystemGate: Equatable, Sendable {
             return paused ? [.forceRest, .flush] : []
         case let .peeking(on):
             conditions.peeking = on
+        case let .interacting(on):
+            conditions.interacting = on
         }
         return []
     }

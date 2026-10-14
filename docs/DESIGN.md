@@ -309,6 +309,33 @@
       before the desk starts; Reset Layout keeps the saved layout as `desk.reset-<date>.json` and saves a fresh desk that
       keeps only the mirrored folder and the lights.
     - **Widgets** are probed at launch, on display changes, on wake and when another app activates (never on a timer).
+18. **System integration review (M12).** These refine Errata 17.
+    - **Settings domain.** Inside the .app, settings live in the app's own defaults domain (`UserDefaults.standard`):
+      macOS refuses a suite named after the app's own bundle id. Unbundled builds use the `io.github.deskterior.dev`
+      suite. Every setting goes through `SettingsStore`, `mirroredFolder` and `showDespiteFinderHidden` included;
+      `MirrorController.configuration` takes the launch's settings and reads no defaults itself.
+    - **Peek Desk** lifts the app's own windows (Settings, About, Find Item, Quick Look, notes) one level above the
+      floating desk while it lasts (`PeekPolicy`); Esc ends a peek only when pressed on the desk.
+    - **Pause on battery** is a frozen frame until the user clicks, types or picks a menu command: the hold lifts at
+      once and returns 30 s after the last input (`SystemGate.interacting`), so nothing changes unseen.
+    - **Pixel size** is a setting (Settings ▸ Pixel size, applied at once); `--pixel-size` wins for a run. The hidden
+      `windowLevel` setting picks icon+1 or icon+3 when the windows are made; `--level` wins. The desk mat's
+      Cloth/Flat picker is not shown until the mat element reads `DeskSettings.matMode` (`ClothParams.flatMode`); the
+      mat's milestone adds it back.
+    - **Walls** refuse file drags until dropped files are imported (`AppSystem.wallsImportFiles`, turned on with
+      M11's import); then a drop follows `ImportOp.forDrop` (the source's allowed operations; ⌥ copies).
+    - **Login item.** A failed registration turns the setting off; opening Settings makes the toggle follow
+      `SMAppService`'s status (`LoginItemPolicy.reconcile`); a translocated copy never registers (the toggle is
+      disabled, with a note). After an update the item is still registered again while opted in (§9: a stale ad-hoc
+      item cannot be told apart from one the user removed). When another app holds ⌃⌥⌘D the hotkey setting turns
+      off and Settings says so.
+    - **Strings.** Find Item (title, columns, buttons, location labels, kind names, and its dates through
+      `Language.dateLocale`), the Choose Folder panel and Safe Mode's error are translated; `system` speaks the first
+      preferred language the app knows. Every toast, whoever raises it, is announced to VoiceOver
+      (`DeskScene.onToastShown`).
+    - **Safe Mode** keeps the saved file byte for byte as the reset backup.
+    - **Measurements.** Demo 11 holds the §5 budgets (first frame with 500 files ≤ 1 s, frame ≤ 4 ms, ≤ 150 MB);
+      `soak.sh` fails a run that ends before its minutes are up. The soak stays headless.
 
 ---
 

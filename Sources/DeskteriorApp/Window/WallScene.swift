@@ -5,8 +5,8 @@ import DeskPixels
 /// A display that does not hold the desk, covered by a static wall (DESIGN §4.10 `WallScene`): a `DeskWindow` at the
 /// desk's level whose layer shows `WallArt` rendered once on the CPU at art resolution and magnified by the layer
 /// with nearest filtering at the display's integer scale. It is re-rendered only when its size or the light changes
-/// (`WallArt.signature`), so it costs nothing while idle. Files dropped on it go to the monitor; a right-click opens
-/// the desk menu.
+/// (`WallArt.signature`), so it costs nothing while idle. Files dropped on it go to the monitor (once dropped files
+/// are imported: `acceptsFiles`); a right-click opens the desk menu.
 final class WallController {
     let displayID: UInt32
     let window: DeskWindow
@@ -54,8 +54,11 @@ final class WallController {
 /// The wall's content: one layer with the art-resolution image, magnified ×S (nearest) and cropped like the desk's
 /// canvas (`PixelGrid`), a drop target for files and a source of the desk menu.
 final class WallView: NSView {
-    /// Files dropped here (copy when ⌥ was held).
+    /// Files dropped here (copy when ⌥ was held or the source only copies).
     var onDrop: (([URL], _ copy: Bool) -> Void)?
+    /// File drags are taken at all. Off until dropped files are imported (M11): until then a drag over the wall is
+    /// refused rather than shown as accepted and then answered with "Not available yet".
+    var acceptsFiles = false
     /// A right-click (or VoiceOver's Show Desk Menu) at a view point.
     var onMenu: ((NSPoint) -> Void)?
     private var image: CGImage?
@@ -122,14 +125,26 @@ final class WallView: NSView {
 
     override func performDragOperation(_ sender: any NSDraggingInfo) -> Bool {
         let urls = Self.fileURLs(sender.draggingPasteboard)
-        guard !urls.isEmpty else { return false }
-        onDrop?(urls, NSEvent.modifierFlags.contains(.option))
+        guard !urls.isEmpty, let op = importOp(sender), let onDrop else { return false }
+        onDrop(urls, op == .copy)
         return true
     }
 
     private func operation(_ sender: any NSDraggingInfo) -> NSDragOperation {
-        guard !Self.fileURLs(sender.draggingPasteboard).isEmpty, onDrop != nil else { return [] }
-        return NSEvent.modifierFlags.contains(.option) ? .copy : .move
+        guard !Self.fileURLs(sender.draggingPasteboard).isEmpty else { return [] }
+        switch importOp(sender) {
+        case .move: return .move
+        case .copy: return .copy
+        case nil: return []
+        }
+    }
+
+    /// What dropping now would do: the source's allowed operations and ⌥ (`ImportOp.forDrop`), nil when refused.
+    private func importOp(_ sender: any NSDraggingInfo) -> ImportOp? {
+        guard acceptsFiles, onDrop != nil else { return nil }
+        let mask = sender.draggingSourceOperationMask
+        return ImportOp.forDrop(copyHeld: NSEvent.modifierFlags.contains(.option), canMove: mask.contains(.move),
+                                canCopy: mask.contains(.copy))
     }
 
     static func fileURLs(_ pasteboard: NSPasteboard) -> [URL] {
@@ -142,7 +157,7 @@ final class WallView: NSView {
     override func isAccessibilityElement() -> Bool { true }
     override func accessibilityRole() -> NSAccessibility.Role? { .group }
     override func accessibilityLabel() -> String? { tr(.axWall) }
-    override func accessibilityHelp() -> String? { tr(.axWallHelp) }
+    override func accessibilityHelp() -> String? { acceptsFiles ? tr(.axWallHelp) : nil }
 
     override func accessibilityCustomActions() -> [NSAccessibilityCustomAction]? {
         [NSAccessibilityCustomAction(name: tr(.axShowDeskMenu)) { [weak self] in

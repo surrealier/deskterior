@@ -17,6 +17,10 @@ final class DeskView: NSView {
     var emulatedScale: Double?
     /// Called when the drawable size or scale changes.
     var onGeometryChange: (() -> Void)?
+    // MARK: system (M12)
+    /// Called before a click, drag, scroll, key or VoiceOver press reaches the scene (not on hover), so a desk
+    /// frozen on battery wakes first (`SystemGate.interacting`).
+    var onInput: (() -> Void)?
 
     private var trackingArea: NSTrackingArea?
     private var reportedSize = CGSize.zero
@@ -128,6 +132,7 @@ final class DeskView: NSView {
 
     override func keyDown(with event: NSEvent) {
         if let command = Self.command(for: event) {
+            onInput?()
             host?.handleKey(command)
         } else {
             super.keyDown(with: event)
@@ -137,6 +142,7 @@ final class DeskView: NSView {
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
         guard event.type == .keyDown, event.modifierFlags.contains(.command), let command = Self.command(for: event)
         else { return super.performKeyEquivalent(with: event) }
+        onInput?()
         host?.handleKey(command)
         return true
     }
@@ -147,10 +153,10 @@ final class DeskView: NSView {
     }
 
     // The hidden main menu's Edit items (Errata 1) route here too.
-    @objc func undo(_ sender: Any?) { host?.handleKey(.undo) }
-    @objc func redo(_ sender: Any?) { host?.handleKey(.redo) }
-    @objc func copy(_ sender: Any?) { host?.handleKey(.copy) }
-    @objc override func selectAll(_ sender: Any?) { host?.handleKey(.selectAll) }
+    @objc func undo(_ sender: Any?) { onInput?(); host?.handleKey(.undo) }
+    @objc func redo(_ sender: Any?) { onInput?(); host?.handleKey(.redo) }
+    @objc func copy(_ sender: Any?) { onInput?(); host?.handleKey(.copy) }
+    @objc override func selectAll(_ sender: Any?) { onInput?(); host?.handleKey(.selectAll) }
 
     // MARK: Menus
 
@@ -204,6 +210,7 @@ final class DeskView: NSView {
 
     private func accessibilityPress(_ item: AXItem) {
         guard let host else { return }
+        onInput?()
         host.scene.accessibilityPress(item, time: ProcessInfo.processInfo.systemUptime)
         host.modelChanged()
     }
@@ -266,6 +273,7 @@ final class DeskView: NSView {
     @discardableResult
     private func send(_ kind: InputEvent.Kind, _ event: NSEvent, scroll: SIMD2<Float> = .zero) -> InputEvent? {
         guard let host else { return nil }
+        if kind != .move { onInput?() }
         let isKey = kind == .key
         // Key and modifier events carry no pointer location of their own.
         let fromStream = isKey || event.type == .flagsChanged

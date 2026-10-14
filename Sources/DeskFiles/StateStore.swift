@@ -167,12 +167,17 @@ public struct StateStore: Sendable {
 
     // MARK: system (M12)
 
-    /// Safe Mode's Reset Layout: keeps the saved layout (the one a load finds, `desk.json` or a backup) as
-    /// `desk.reset-<UTC date>.json`, then saves a fresh desk that keeps only the mirrored folder and the lights, so every
-    /// file returns to the monitor at the next scan. Only our own state files are written; nothing is deleted. Returns
-    /// the kept copy, or nil when there was no saved layout.
+    /// Safe Mode's Reset Layout: keeps the saved layout (the file a load finds, `desk.json` or a backup) byte for byte
+    /// as `desk.reset-<UTC date>.json`, then saves a fresh desk that keeps only the mirrored folder and the lights, so
+    /// every file returns to the monitor at the next scan. Only our own state files are written; nothing is deleted.
+    /// Returns the kept copy, or nil when there was no saved layout.
     public func resetLayout(now: Date = Date()) throws -> URL? {
-        guard let document = load(now: now).document else { return nil }
+        let loaded = load(now: now)
+        guard let document = loaded.document else { return nil }
+        let source: URL = switch loaded.source {
+        case let .backup(n): backupURL(n)
+        case .primary, .fresh: fileURL
+        }
         let c = Calendar(identifier: .gregorian).dateComponents(in: TimeZone(identifier: "UTC")!, from: now)
         let stamp = String(
             format: "%04d%02d%02d-%02d%02d%02d", c.year ?? 0, c.month ?? 0, c.day ?? 0, c.hour ?? 0, c.minute ?? 0,
@@ -184,7 +189,8 @@ public struct StateStore: Sendable {
             kept = directory.appendingPathComponent("desk.reset-\(stamp)-\(n).json", isDirectory: false)
             n += 1
         }
-        try write(document.encoded(), to: kept)
+        // The file as it is (unknown fields, formatting and all), not the document as this build would write it.
+        try write(Data(contentsOf: source), to: kept)
         let old = document.makeState()
         var fresh = DeskState()
         fresh.root = old.root

@@ -42,8 +42,11 @@ final class SystemObservers {
         applyGate()
     }
 
-    /// Follows the occlusion state of the desk window (again after the desk moves to another display).
+    /// Follows the occlusion state of the desk window (again after the desk moves to another display), starting from
+    /// its state now: a desk that starts out covered (under a full-screen app) is held at once, not at the next change.
     func watchOcclusion(of window: NSWindow) {
+        // A window just ordered in reads as covered until the window server says otherwise (the change is posted).
+        send(.occlusion(visible: window.occlusionState.contains(.visible)))
         if let occlusionToken { NotificationCenter.default.removeObserver(occlusionToken) }
         occlusionToken = NotificationCenter.default.addObserver(
             forName: NSWindow.didChangeOcclusionStateNotification, object: window, queue: .main

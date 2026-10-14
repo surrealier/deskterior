@@ -5,10 +5,10 @@
   "seed": 1,
   "fixtureCount": 500,
   "steps": [
-    { "comment": "500 files: twelve HDMI pages of 45, the last one partly filled; frame cost and memory with all of them on the desk." },
+    { "comment": "500 files: twelve HDMI pages of 45, the last one partly filled; the first frame that shows them, frame cost and memory with all of them on the desk (DESIGN §5)." },
     { "waitIdle": 40 },
     { "expect": { "access": "connected", "tokens": 500, "pages": 12, "monitor.input": "HDMI 1", "screen.tokens": 45 } },
-    { "expect": { "budget.frameMs": 8, "budget.peakRssMB": 150 } },
+    { "expect": { "budget.firstFrameMs": 1000, "budget.frameMs": 4, "budget.peakRssMB": 150 } },
     { "snapshot": "01-hdmi1" },
 
     { "comment": "Paging: HDMI 2, the last page (5 files), and HDMI 7 from the monitor's Input menu." },
@@ -48,6 +48,6 @@
     { "waitIdle": 6 },
     { "expect": { "tokens": 501, "pages": 12, "screen.tokens": 45 } },
     { "snapshot": "07-clean-up-kind" },
-    { "expect": { "budget.frameMs": 8, "budget.peakRssMB": 150 } }
+    { "expect": { "budget.frameMs": 4, "budget.peakRssMB": 150 } }
   ]
 }

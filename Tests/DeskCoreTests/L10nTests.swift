@@ -52,10 +52,14 @@ struct L10nTests {
         #expect(L10n.format(.listMore, [7], .en) == "7 More…")
     }
 
-    @Test("The language setting follows the system's first preferred language")
+    @Test("The language setting follows the first of the system's preferred languages that the app speaks")
     func resolve() {
         #expect(LanguageSetting.system.resolved(preferred: ["ko-KR", "en-US"]) == .ko)
         #expect(LanguageSetting.system.resolved(preferred: ["en-US", "ko-KR"]) == .en)
+        #expect(LanguageSetting.system.resolved(preferred: ["ja-JP", "ko-KR", "en-US"]) == .ko)
+        #expect(LanguageSetting.system.resolved(preferred: ["ja", "zh-Hans", "en-GB", "ko"]) == .en)
+        #expect(LanguageSetting.system.resolved(preferred: ["ja", "fr"]) == .en)
+        #expect(LanguageSetting.system.resolved(preferred: ["kok-IN", "ko"]) == .ko, "Konkani is not Korean")
         #expect(LanguageSetting.system.resolved(preferred: []) == .en)
         #expect(LanguageSetting.en.resolved(preferred: ["ko"]) == .en)
         #expect(LanguageSetting.ko.resolved(preferred: ["en"]) == .ko)
@@ -97,6 +101,54 @@ struct L10nTests {
         for t in UndoJournal.l10nCoverageLabels { titles.insert("Undo \(t)") }
         let missing = titles.filter { !L10n.knows($0) }.sorted()
         #expect(missing.isEmpty, "untranslated menu titles: \(missing)")
+    }
+
+    @Test("Dates follow the app's language: the Mac's own locale when it speaks it, else the language alone")
+    func dateLocale() {
+        let korean = Locale(identifier: "ko_KR"), british = Locale(identifier: "en_GB")
+        #expect(Language.ko.dateLocale(current: korean) == korean)
+        #expect(Language.en.dateLocale(current: korean).identifier == "en")
+        #expect(Language.en.dateLocale(current: british) == british, "an English Mac keeps its region's date order")
+        #expect(Language.ko.dateLocale(current: british).identifier == "ko")
+        let day = Date(timeIntervalSince1970: 1_792_000_000)  // 2026-10-14 UTC
+        var utc = Calendar(identifier: .gregorian)
+        utc.timeZone = TimeZone(identifier: "UTC")!
+        let style = Date.FormatStyle(date: .abbreviated, time: .omitted, locale: Language.en.dateLocale(current: korean),
+                                     calendar: utc, timeZone: utc.timeZone)
+        #expect(!day.formatted(style).contains("년"), "\(day.formatted(style))")
+    }
+
+    @Test("Find Item's location labels and kind names are in the table")
+    func inventoryCovered() {
+        var labels: [String] = [
+            InventoryQuery.label(for: .screen(page: 0, col: 0, row: 0)),
+            InventoryQuery.label(for: .screen(page: 11, col: 2, row: 3)),
+            InventoryQuery.label(for: .desk(pile: PileID("p1"), order: 0)),
+            InventoryQuery.label(for: .desk(pile: PileID("p1"), order: 0), covered: true),
+            InventoryQuery.label(for: .floor(x: 3)), InventoryQuery.label(for: .carried),
+        ]
+        labels += ContainerID.allCases.map { InventoryQuery.label(for: $0) }
+        // TokenArt.kindName (DeskScene), which the window shows in its Kind column.
+        let kinds = [
+            "Folder", "Package", "Document", "Plain text", "PDF document", "Image", "Movie", "Audio", "Archive",
+            "Application", "Source code", "Disk image", "Screenshot",
+        ]
+        for e in labels + kinds {
+            #expect(L10n.knows(e), "\(e)")
+            #expect(L10n.tr(e, .ko) != e, "\(e) is not translated")
+        }
+        #expect(L10n.tr("Monitor · HDMI 12", .ko) == "모니터 · HDMI 12")
+        #expect(L10n.tr("Desk", .ko) == "책상" && L10n.tr("Under mat", .ko) == "매트 밑")
+        #expect(L10n.format(.itemCount, [3, 500], .en) == "3 of 500")
+    }
+
+    @Test("The credits say what §6 says: independent, inspired by the prototype, not affiliated with him or GitHub")
+    func credits() {
+        let en = L10nKey.aboutInspired.en + " " + L10nKey.aboutIndependent.en
+        #expect(en.hasPrefix("Deskterior is an independent project inspired by Terkel Gjervig's"))
+        #expect(en.contains("not affiliated with or endorsed by him or GitHub"))
+        #expect(en.contains("uses none of the prototype's code, name, art or branding"))
+        #expect(L10nKey.aboutIndependent.ko.contains("GitHub"))
     }
 
     @Test("Toasts and monitor cards are in the table")

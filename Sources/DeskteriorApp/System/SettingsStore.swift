@@ -1,9 +1,10 @@
 import AppKit
 import DeskCore
 
-/// Where the user's settings live (DESIGN §4.8): the bundle-id `UserDefaults` suite in desk mode, and memory in every
-/// other mode, so a `--windowed`, headless or demo run never reads or changes the real app's settings. Older values are
-/// migrated once when the store opens (`DeskSettings.migrations`). Observers hear every change.
+/// Where the user's settings live (DESIGN §4.8): the app's defaults (`AppIdentity.defaults`) in desk mode, and memory
+/// in every other mode, so a `--windowed`, headless or demo run never reads or changes the real app's settings. Older
+/// values are migrated once when the store opens (`DeskSettings.migrations`). Observers hear every change. Every
+/// setting the app keeps goes through here (the mirrored folder and "show them anyway" included).
 final class SettingsStore {
     private let defaults: UserDefaults?
     private var memory: [String: Any]
@@ -29,9 +30,9 @@ final class SettingsStore {
         settings = DeskSettings(reading: { snapshot[$0] })
     }
 
-    /// The store for a launch: desk mode keeps settings in the app's suite; everything else in memory.
+    /// The store for a launch: desk mode keeps settings in the app's defaults; everything else in memory.
     static func forLaunch(_ options: LaunchOptions) -> SettingsStore {
-        if options.mode == .desk, let d = UserDefaults(suiteName: AppIdentity.bundleID) { return SettingsStore(defaults: d) }
+        if options.mode == .desk { return SettingsStore(defaults: AppIdentity.defaults) }
         // Development runs speak English unless --language says otherwise, so their screenshots stay stable.
         return SettingsStore(memory: [DeskSettings.Key.language.rawValue: (options.language ?? .en).rawValue])
     }

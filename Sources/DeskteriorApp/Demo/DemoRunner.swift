@@ -38,6 +38,11 @@ final class DemoRunner {
     private var pendingSheetName: String?
     /// The identity each token had when the script first named it (`key:<name>` expectations).
     private var firstKeys: [String: TokenKey] = [:]
+    // MARK: system (M12)
+    /// Real milliseconds from the session's start to the first rendered frame that shows the folder's files
+    /// (`budget.firstFrameMs`; DESIGN §5: ≤ 1 s with 500 files).
+    private var firstFilesFrameMs: Double?
+    private var firstFilesObserver: Int?
 
     /// After an `fs` step, the watcher batch (0.25 s latency + 0.25 s debounce) is waited for this long.
     static let quietPeriod = 1.0
@@ -144,7 +149,9 @@ final class DemoRunner {
     }
 
     func run() async -> Int32 {
+        let t0 = DispatchTime.now().uptimeNanoseconds
         session.start()
+        watchFirstFiles(since: t0)
         defer { session.stop() }
         do {
             for (i, step) in script.steps.enumerated() {
@@ -255,6 +262,20 @@ final class DemoRunner {
     }
 
     // MARK: system (M12)
+
+    /// Renders the first state that holds files (after `SceneSync`, which observes first, has put them in the scene)
+    /// and notes how long that took since `t0`.
+    private func watchFirstFiles(since t0: UInt64) {
+        let record = { [weak self] in
+            guard let self, self.firstFilesFrameMs == nil, !self.session.store.state.tokens.isEmpty else { return }
+            self.host.presenter.renderOffscreen(wait: true)
+            self.firstFilesFrameMs = Double(DispatchTime.now().uptimeNanoseconds - t0) / 1e6
+            if let id = self.firstFilesObserver { self.session.store.removeObserver(id) }
+            self.firstFilesObserver = nil
+        }
+        firstFilesObserver = session.store.observe { _, _ in record() }
+        record()
+    }
 
     /// The wall another display of the current size would show at the room's time and lights (`WallArt`).
     private func wallSnapshot(_ name: String) throws {
@@ -572,6 +593,12 @@ final class DemoRunner {
             case "grid.canvas": check(key, "\(host.grid.artSize)", value)
             case "budget.frameMs": if let f = budget(key, measureFrameMs(), value) { out.append(f) }
             case "budget.peakRssMB": if let f = budget(key, Self.peakRSSMB(), value) { out.append(f) }
+            case "budget.firstFrameMs":
+                if let ms = firstFilesFrameMs {
+                    if let f = budget(key, ms, value) { out.append(f) }
+                } else {
+                    out.append("\(key): no frame has shown the files yet")
+                }
             // MARK: containers (M6)
             case let k where k.hasPrefix("drawer:"):
                 guard let id = ContainerID(rawValue: String(k.dropFirst(7))), id.isDrawer else {

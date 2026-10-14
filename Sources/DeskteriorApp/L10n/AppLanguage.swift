@@ -5,10 +5,14 @@ import Foundation
 // and a short spelling for its windows. Menus are translated by `MenuBridge`, toasts and monitor cards by the scene.
 
 extension L10n {
-    /// Speaks what the language setting asks for (the system's first preferred language for `system`).
+    /// Speaks what the language setting asks for (for `system`, the first of the system's preferred languages that
+    /// the app speaks).
     static func apply(_ setting: LanguageSetting) {
         L10n.language = setting.resolved(preferred: Locale.preferredLanguages)
     }
+
+    /// Dates in the language the app speaks (`Language.dateLocale`).
+    static var locale: Locale { language.dateLocale(current: .current) }
 }
 
 /// `key` in the current language (the app's windows).

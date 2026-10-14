@@ -17,7 +17,7 @@ final class DisplayManager {
     private(set) var window: NSWindow?
     private(set) var view: DeskView?
     private(set) var host: SceneHost?
-    /// The settings the plan reads (desk display, cover other displays, pixel size in desk mode).
+    /// The settings the plan reads (desk display, cover other displays, pixel size, and the window level in desk mode).
     var settings: () -> DeskSettings = { DeskSettings() }
     /// The room state walls are lit for (the desk scene's time and lights).
     var wallState: () -> RoomState? = { nil }
@@ -26,6 +26,10 @@ final class DisplayManager {
     /// Wall drops and right-clicks.
     var onWallDrop: (([URL], Bool) -> Void)?
     var onWallMenu: ((WallView, NSPoint) -> Void)?
+    /// Walls take file drags (only once dropped files are imported; until then a drag over a wall is refused).
+    var wallsAcceptFiles = false {
+        didSet { for w in walls.values { w.view.acceptsFiles = wallsAcceptFiles } }
+    }
 
     private(set) var plan = DisplayPlan(desk: nil, walls: [])
     private var planScreens: [DisplayInfo] = []
@@ -58,7 +62,7 @@ final class DisplayManager {
             guard let desk = screens.first(where: { $0.id == plan.desk }) else {
                 throw RenderError.resource("the desk window (no screen)")
             }
-            window = DeskWindow(frame: desk.frame.cg, level: options.level)
+            window = DeskWindow(frame: desk.frame.cg, level: level)
         }
         window.setAccessibilityLabel(tr(.axDesk))
 
@@ -131,7 +135,7 @@ final class DisplayManager {
             NSApp.activate()
             window.makeKeyAndOrderFront(nil)
         } else {
-            window.level = DeskWindow.windowLevel(options.level)
+            window.level = DeskWindow.windowLevel(level)
             if !paused { window.orderFrontRegardless() }
         }
     }
@@ -155,6 +159,16 @@ final class DisplayManager {
 
     /// The desk display's geometry (desk mode), or nil.
     var deskDisplay: DisplayInfo? { planScreens.first { $0.id == plan.desk } }
+
+    /// The pixel size (§4.8 chunky, normal, fine): `--pixel-size` for this run, else Settings ▸ Pixel size.
+    var pixelSize: PixelSize { options.pixelSizeGiven ? options.pixelSize : settings().pixelSize }
+
+    /// The desk's and walls' window level: `--level` for this run, else the hidden `windowLevel` setting (icon+1, or the
+    /// S1 fallback icon+3); read when the windows are made.
+    var level: LaunchOptions.Level {
+        if options.levelGiven { return options.level }
+        return settings().windowLevel == .iconPlus3 ? .iconPlus3 : .iconPlus1
+    }
 
     /// Settings changed the desk display or the walls: plan again now.
     func settingsChanged() {
@@ -206,7 +220,7 @@ final class DisplayManager {
         } else {
             display = DisplayGeometry(widthPt: view.bounds.width, heightPt: view.bounds.height, backingScale: scale)
         }
-        return PixelGrid(display: display, pixelSize: options.pixelSize)
+        return PixelGrid(display: display, pixelSize: pixelSize)
     }
 
     private func show() {
@@ -260,9 +274,10 @@ final class DisplayManager {
         for id in plan.walls {
             guard let display = planScreens.first(where: { $0.id == id }) else { continue }
             if let w = walls[id] {
-                w.update(display: display, pixelSize: options.pixelSize)
+                w.update(display: display, pixelSize: pixelSize)
             } else {
-                let w = WallController(display: display, level: options.level, pixelSize: options.pixelSize)
+                let w = WallController(display: display, level: level, pixelSize: pixelSize)
+                w.view.acceptsFiles = wallsAcceptFiles
                 w.view.onDrop = { [weak self] urls, copy in self?.onWallDrop?(urls, copy) }
                 w.view.onMenu = { [weak self, weak w] p in
                     guard let self, let view = w?.view else { return }

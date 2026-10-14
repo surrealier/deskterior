@@ -52,7 +52,7 @@ final class SafeModeModel {
                 message = tr(.resetNothing)
             }
         } catch {
-            message = "\(error)"
+            message = L10n.format(.resetFailed, ["\(error)"])
         }
         confirming = false
     }

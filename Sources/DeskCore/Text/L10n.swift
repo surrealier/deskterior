@@ -3,19 +3,31 @@ import Foundation
 /// A language the app speaks (DESIGN §4.1 "strings"; M12).
 public enum Language: String, CaseIterable, Sendable {
     case en, ko
+
+    /// The locale dates are written in, in this language: `current` (the Mac's own, with its region's formats) when
+    /// it speaks this language, else the language alone (an English desk on a Korean Mac writes "Oct 14, 2026").
+    public func dateLocale(current: Locale) -> Locale {
+        current.language.languageCode?.identifier == rawValue ? current : Locale(identifier: rawValue)
+    }
 }
 
 /// The language setting: follow the system, or a fixed language (Settings ▸ Language).
 public enum LanguageSetting: String, CaseIterable, Sendable, Codable {
     case system, en, ko
 
-    /// The language this setting speaks, given the system's preferred languages (`Locale.preferredLanguages`):
-    /// `system` is Korean when the first preferred language is Korean, otherwise English.
+    /// The language this setting speaks, given the system's preferred languages (`Locale.preferredLanguages`, most
+    /// preferred first): `system` is the first of them the app speaks (Japanese, Korean, English gives Korean), and
+    /// English when it speaks none of them.
     public func resolved(preferred: [String]) -> Language {
         switch self {
-        case .en: .en
-        case .ko: .ko
-        case .system: preferred.first.map { $0.lowercased().hasPrefix("ko") } == true ? .ko : .en
+        case .en: return .en
+        case .ko: return .ko
+        case .system:
+            for tag in preferred {
+                let code = tag.lowercased().split(whereSeparator: { $0 == "-" || $0 == "_" }).first ?? ""
+                if let l = Language(rawValue: String(code)) { return l }
+            }
+            return .en
         }
     }
 }

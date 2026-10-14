@@ -117,14 +117,62 @@ struct SystemPoliciesTests {
         #expect(pending.calls.isEmpty && u.launchAtLogin)
     }
 
-    @Test("A failed registration is reported and keeps no version")
+    @Test("A failed registration is reported and turns the setting off (the toggle never claims a missing item)")
     func loginFailure() {
         let fake = FakeLoginItem()
         fake.failRegister = true
         var s = DeskSettings()
         let r15 = LoginItemPolicy.set(true, &s, version: "1", service: fake)
         #expect(r15 == .failed)
-        #expect(s.launchAtLogin && s.loginItemVersion == nil)
+        #expect(!s.launchAtLogin && s.loginItemVersion == nil)
+        // At launch after an update, too: the next launch does not try again.
+        var t = DeskSettings()
+        t.launchAtLogin = true
+        t.loginItemVersion = "0"
+        let r16 = LoginItemPolicy.launch(&t, version: "1", service: fake)
+        #expect(r16 == .failed && !t.launchAtLogin && t.loginItemVersion == nil)
+        let again = LoginItemPolicy.launch(&t, version: "1", service: fake)
+        #expect(again == .unchanged && fake.calls == ["register", "register"])
+    }
+
+    @Test("Settings shows what is registered: the toggle follows an item added or removed outside the app")
+    func loginReconcile() {
+        var s = DeskSettings()
+        #expect(!LoginItemPolicy.reconcile(&s, status: .notRegistered, version: "2"))
+        #expect(s == DeskSettings())
+        #expect(LoginItemPolicy.reconcile(&s, status: .enabled, version: "2"))
+        #expect(s.launchAtLogin && s.loginItemVersion == "2")
+        #expect(!LoginItemPolicy.reconcile(&s, status: .requiresApproval, version: "2"), "still registered")
+        #expect(LoginItemPolicy.reconcile(&s, status: .notFound, version: "2"))
+        #expect(!s.launchAtLogin && s.loginItemVersion == nil)
+    }
+
+    @Test("A translocated copy never registers at launch (it would record a temporary path)")
+    func loginTranslocated() {
+        let fake = FakeLoginItem()
+        var s = DeskSettings()
+        s.launchAtLogin = true
+        s.loginItemVersion = "1"
+        let r = LoginItemPolicy.launch(&s, version: "2", service: fake, translocated: true)
+        #expect(r == .unchanged && fake.calls.isEmpty && s.launchAtLogin && s.loginItemVersion == "1")
+    }
+
+    @Test("While peeking, the app's windows sit just above the floating desk; otherwise at the normal level")
+    func peekLevels() {
+        let normal = 0, floating = 3
+        #expect(PeekPolicy.appWindowLevel(peeking: true, deskLevel: floating, normal: normal) == floating + 1)
+        #expect(PeekPolicy.appWindowLevel(peeking: false, deskLevel: floating, normal: normal) == normal)
+        // --windowed: the desk is an ordinary window, and so are the others.
+        #expect(PeekPolicy.appWindowLevel(peeking: true, deskLevel: normal, normal: normal) == normal)
+    }
+
+    @Test("A drop from another app: move, copy with ⌥ or when only copying is offered, nothing when neither is")
+    func dropOps() {
+        #expect(ImportOp.forDrop(copyHeld: false, canMove: true, canCopy: true) == .move)
+        #expect(ImportOp.forDrop(copyHeld: true, canMove: true, canCopy: true) == .copy)
+        #expect(ImportOp.forDrop(copyHeld: false, canMove: false, canCopy: true) == .copy)
+        #expect(ImportOp.forDrop(copyHeld: true, canMove: true, canCopy: false) == nil)
+        #expect(ImportOp.forDrop(copyHeld: false, canMove: false, canCopy: false) == nil)
     }
 
     @Test("App Translocation: a randomized read-only path; the note shows once")

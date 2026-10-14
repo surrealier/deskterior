@@ -1,12 +1,20 @@
 import AppKit
+import DeskCore
 import os
 
-/// Who this process is: the bundle id (with a fallback under `swift run`, where there is no Info.plist) and
-/// whether another desk instance is already running.
+/// Who this process is: the bundle id (with a fallback under `swift run`, where there is no Info.plist), where its
+/// settings live, and whether another desk instance is already running.
 enum AppIdentity {
     static let fallbackBundleID = "io.github.deskterior.dev"
 
     static var bundleID: String { Bundle.main.bundleIdentifier ?? fallbackBundleID }
+
+    /// The settings' defaults (DESIGN §4.8): the app's own domain inside the .app, the fallback id's suite when
+    /// unbundled (`DeskSettings.suiteName`). Only `SettingsStore` reads or writes it, and only in desk mode.
+    static var defaults: UserDefaults {
+        DeskSettings.suiteName(bundleIdentifier: Bundle.main.bundleIdentifier, fallback: fallbackBundleID)
+            .flatMap { UserDefaults(suiteName: $0) } ?? .standard
+    }
 
     /// True when another Deskterior with our bundle id (or, unbundled, our executable) is running.
     static func anotherInstanceIsRunning() -> Bool {

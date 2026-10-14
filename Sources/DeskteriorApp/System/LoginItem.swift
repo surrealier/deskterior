@@ -55,10 +55,13 @@ final class LoginItemController {
         self.version = version
     }
 
-    /// The launch check (re-registers after an update while opted in; nothing at all while off).
-    func launchCheck(_ settings: DeskSettings, done: @escaping @MainActor (DeskSettings, LoginItemOutcome) -> Void) {
-        guard settings.launchAtLogin else { return }
-        run(settings, done: done) { s, version, service in LoginItemPolicy.launch(&s, version: version, service: service) }
+    /// The launch check (re-registers after an update while opted in; nothing at all while off or translocated).
+    func launchCheck(_ settings: DeskSettings, translocated: Bool,
+                     done: @escaping @MainActor (DeskSettings, LoginItemOutcome) -> Void) {
+        guard settings.launchAtLogin, !translocated else { return }
+        run(settings, done: done) { s, version, service in
+            LoginItemPolicy.launch(&s, version: version, service: service, translocated: translocated)
+        }
     }
 
     /// The Settings toggle.

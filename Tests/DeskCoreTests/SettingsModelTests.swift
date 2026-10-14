@@ -92,4 +92,15 @@ struct SettingsModelTests {
         let fresh = DeskSettings.migrations(reading: { _ in nil })
         #expect(fresh.count == 1 && fresh[0].key == "settingsVersion" && fresh[0].value as? Int == DeskSettings.currentVersion)
     }
+
+    @Test("The settings domain: the app's own inside the .app, the fallback suite when unbundled, never a suite named after the app")
+    func domain() {
+        #expect(DeskSettings.suiteName(bundleIdentifier: "io.github.someone.deskterior", fallback: "io.github.deskterior.dev") == nil)
+        #expect(DeskSettings.suiteName(bundleIdentifier: nil, fallback: "io.github.deskterior.dev") == "io.github.deskterior.dev")
+        // Why: macOS refuses a suite named after the running app's own bundle id (nothing would ever be saved).
+        if let own = Bundle.main.bundleIdentifier {
+            #expect(UserDefaults(suiteName: own) == nil)
+            #expect(DeskSettings.suiteName(bundleIdentifier: own, fallback: "x") != own)
+        }
+    }
 }
