@@ -22,11 +22,11 @@ final class PhysicsHub {
     let world = DeskPlaneWorld()
     let bodies: PileBodies
     let tosses: TossAnimator
-    private(set) var piles: DeskPilesElement!
-    private(set) var floor: FloorElement!
-    private(set) var cup: PenCupElement!
-    private(set) var basket: WastebasketElement!
-    private(set) var apron: ApronElement!
+    private(set) lazy var piles = DeskPilesElement(hub: self)
+    private(set) lazy var floor = FloorElement(hub: self)
+    private(set) lazy var cup = PenCupElement(hub: self)
+    private(set) lazy var basket = WastebasketElement(hub: self)
+    private(set) lazy var apron = ApronElement(hub: self)
     /// The latest input event's time (rim-drag speeds, the knock's cooldown).
     var eventTime: () -> Double = { 0 }
     /// Installed elements that take knocks.
@@ -51,11 +51,6 @@ final class PhysicsHub {
         self.context = context
         bodies = PileBodies(world: world)
         tosses = TossAnimator(context: context, z: CGFloat(RoomLayer.underDesk.rawValue * 1000 + 900))
-        piles = DeskPilesElement(hub: self)
-        floor = FloorElement(hub: self)
-        cup = PenCupElement(hub: self)
-        basket = WastebasketElement(hub: self)
-        apron = ApronElement(hub: self)
     }
 
     var state: DeskState? { context.state }
@@ -405,7 +400,8 @@ final class PhysicsHub {
         guard let s = state else { return }
         let keys = s.tokens.members(of: .wastebasket).filter { !hiddenKeys.contains($0) }
         guard !keys.isEmpty else { return }
-        let spots = WastebasketMachine.spillSpots(count: keys.count, right: right)
+        let spots = WastebasketMachine.spillSpots(count: keys.count, right: right,
+                                                  avoiding: FloorLine.spans(floorCentres(s)))
         let lying = WastebasketMachine.tippedRect(right: right)
         let mouth = SIMD2(Float(right ? lying.maxX - 3 : lying.minX + 3), Float(lying.midY + 4))
         for (i, (key, spot)) in zip(keys, spots).enumerated().reversed() {

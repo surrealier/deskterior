@@ -46,6 +46,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         host.scene.startClock()
         reduceMotion = ReduceMotionObserver(scene: host.scene, forced: options.reduceMotion)
         host.loop.renderOnce()
+        // A dev burst plays only in a window (never on the real desk's layout).
+        if options.burst, options.windowed != nil { BurstDriver.start(host: host, store: session.store) }
 
         statusMenu = StatusMenu(
             spec: { [weak self] in self?.statusSpec() ?? MenuSpec([]) },

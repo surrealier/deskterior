@@ -238,14 +238,18 @@ public struct WastebasketMachine: Sendable, Equatable {
     }
 
     /// Floor centres (`FloorLine`) for each of `count` balls tipped out toward the right (`right`) or left: a row
-    /// out from the lying basket's mouth at `spillPitch`, stepping over the cabinet and squeezed closer when the
+    /// out from the lying basket's mouth at `spillPitch`, stepping over the cabinet, the basket's upright spot (it
+    /// stands back up there) and the spans in `avoiding` (floor tokens already there), squeezed closer when the
     /// floor is short; balls that do not fit on that side continue from the basket's other end. The top ball
     /// (last in) lands nearest the mouth.
-    public static func spillSpots(count: Int, right: Bool, params: Params = .standard) -> [Int] {
+    public static func spillSpots(
+        count: Int, right: Bool, avoiding extra: [Range<Int>] = [], params: Params = .standard
+    ) -> [Int] {
         guard count > 0 else { return [] }
         let lying = tippedRect(right: right), half = FloorLine.tokenWidth / 2
-        let avoid = [lying.minX..<lying.maxX, CoreLayout.cabinet.minX..<CoreLayout.cabinet.maxX]
-        let rightStart = lying.maxX + 2 + half, leftStart = lying.minX - 2 - half
+        let avoid = FloorLine.furniture(basket: BasketState(state: right ? tippedRightName : tippedLeftName)) + extra
+        let both = lying.union(CoreLayout.wastebasket)
+        let rightStart = both.maxX + 2 + half, leftStart = both.minX - 2 - half
         let dir = right ? 1 : -1
         var spots: [Int] = []
         for pitch in stride(from: params.spillPitch, through: params.minSpillPitch, by: -1) {

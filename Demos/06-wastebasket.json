@@ -37,6 +37,7 @@
     { "snapshot": "04-rim-mid-arc" },
     { "waitIdle": 2 },
     { "snapshot": "05-rim" },
+    { "expect": { "token:notes.md": "floor", "balls": 1 } },
 
     { "comment": "A miss: down to the floor beside it." },
     { "drag": { "from": "token:readme.txt", "to": "core:132,244", "duration": 0.08 } },

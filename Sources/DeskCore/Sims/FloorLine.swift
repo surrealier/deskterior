@@ -13,7 +13,7 @@ public enum FloorLine {
     ]
 
     /// The floor furniture for a basket in `basket`'s state: tipped, it lies beside its upright spot
-    /// (`WastebasketMachine.tippedRect`) and frees that spot.
+    /// (`WastebasketMachine.tippedRect`), and that spot stays clear too, so standing it back up covers nothing.
     public static func furniture(basket: BasketState) -> [Range<Int>] {
         let lying: ArtRect
         switch basket.state {
@@ -21,7 +21,7 @@ public enum FloorLine {
         case WastebasketMachine.tippedRightName: lying = WastebasketMachine.tippedRect(right: true)
         default: return furniture
         }
-        return [lying.minX..<lying.maxX, CoreLayout.cabinet.minX..<CoreLayout.cabinet.maxX]
+        return [lying.minX..<lying.maxX] + furniture
     }
 
     /// The spans floor tokens centred at `centres` stand on (so others land beside them).

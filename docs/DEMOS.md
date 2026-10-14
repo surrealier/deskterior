@@ -69,6 +69,7 @@ Every step is an object with one key.
 | `screen.empty` | The first empty cell of the current page. |
 | `card.<button>` | A button on a monitor card: `card.show`, `card.keepHidden`, `card.openSettings`, `card.chooseFolder`. |
 | `core:<x>,<y>` / `point:<x>,<y>` | Core px / canvas px. |
+| `pencup`, `pencup.mouth`, `pencup.body`, `wastebasket`, `wastebasket.mouth`, `wastebasket.body` | Where the cup and the basket are now (the cup can be carried; `.body` grabs it rather than a pen). `token:<name>` also finds a token in a desk pile or on the floor. |
 
 ### Expectations
 
@@ -100,6 +101,8 @@ Every step is an object with one key.
 | `lit:<target>` / `light:<target>` | Whether a 16-px token drawn at the target would be seen, hovered and picked (`true`/`false`, `DarkHit`); the light level there. |
 | `hover.part` | The part the pointer rests on (`token`, `token.dark` for a token in the dark, `lamp.switch`…) or `none`. |
 | `keyboard.key` / `plant.jiggle` | The keyboard key drawn pressed (`row,col`) or `none`; whether the plant jiggles. |
+| `penCup` / `wastebasket` | The model's state: `upright`, `lyingLeft`/`lyingRight`; `upright`, `tippedLeft`/`tippedRight`. (`penCup.pose` / `wastebasket.pose`: the scene machine's phase.) |
+| `pens` / `balls` / `piles` / `floor` / `flying` / `swishes` | Counts: tokens in the cup, in the basket; desk piles holding tokens; floor tokens; tokens in the air; clean tosses into the basket. |
 
 ## The demos
 
@@ -111,4 +114,6 @@ Every step is an object with one key.
 | `03-drawers` | The riser: a chomp into the shut left drawer, a stack of eight leaving it overfull and ajar, a scroll peek, click open (minis, hover name, select), five more jamming it (a click shut boings off the paper; the next drop bonks). The cubby's silhouettes, one dragged back out. The chair rolled in front of the cabinet: a pull opens 3 px and thunks it aside, then opens fully. Four into the file drawer (the chomp shuts the open top drawer: interlocked), its folder tabs; spring-loading the middle drawer. The right drawer opened from its menu and flicked shut (slam), then Take All Out (the emptied drawer slides shut). |
 | `08-phone` | Drops become 5×5 app minis with a sparkle; six fill it and a seventh bonks; hover and select a mini; a click on the stand flips it face down (three edge frames; the minis hide and drops bonk), Turn Face Up from its menu, and a mini carried back to the screen. |
 | `07-night-lamp` | Dusk; the clock's minute hand dragged to 19:10 (night falls, the room light warms the room) and its spring back; Lights ▸ Lamp Only from the wall menu; only the lamp's pool, the monitor's glow and the phone light a token (`lit:`); the wall switch in and out of Lamp Only; the lamp's three-frame flicker and the room without it; the monitor's glow leaving with the CRT; a key press and the plant's jiggle; Lights ▸ Auto. |
+| `05-pencup-spill` | Pens dropped in the cup (hover lists them), piles set down on the desk (a second joins the first), the cup carried along the desk, a flick that tips it (mid-tip and spill frames), pens sliding out as piles and flying off the edge to the floor, a click standing it up, a desk knock (nothing moves house), a pen pulled back out, Tip Over / Stand Up from the menu. |
+| `06-wastebasket` | Tosses off the desk's front edge: a SWISH! (mid-arc frame), a rim bounce, a miss to the floor, a lob from mid-desk; the heap above the rim from the 11th ball, full at 24 and the cap bonk; a dig; a sustained rim drag that tips it and the balls rolling out onto the floor; standing it up; Tip Over / Stand Up from the menu. |
 | `09-fs-events` | Finder-side changes within a second: a new file prints in, a rename keeps its cell, a removal poofs, a new folder. |

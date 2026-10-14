@@ -98,6 +98,8 @@ struct LaunchOptions: Equatable {
     var lights = LightsMode.auto
     /// `--reduce-motion`: skip flickers, jiggles, spring-backs and the CRT, whatever the system says.
     var reduceMotion = false
+    /// `--burst`: windowed only, a short scripted interaction burst, then idle (`scripts/measure-idle.sh`).
+    var burst = false
 
     var mode: Mode { headless || demo != nil ? .headless : (windowed != nil ? .windowed : .desk) }
     /// The scene's time source.
@@ -125,6 +127,7 @@ struct LaunchOptions: Equatable {
           --demo FILE                run a demo script headless (snapshots with --snapshot-dir)
           --seed N                   reducer randomness
           --icons kind|live          kind icons only, or pixelated real icons (default live)
+          --burst                    windowed: a short scripted interaction burst, then idle (measure-idle.sh)
           --version, --help
         Every option can also be set as DESKTERIOR_<NAME> in the environment, e.g. DESKTERIOR_SNAPSHOT_DIR.
         """
@@ -256,6 +259,7 @@ struct LaunchOptions: Equatable {
             o.icons = icons
         },
         Spec(names: ["--state-dir"], arity: .value) { o, v in o.stateDir = v },
+        Spec(names: ["--burst"], arity: .switch) { o, _ in o.burst = true },
         Spec(names: ["--help", "-h"], arity: .switch) { o, _ in o.showHelp = true },
         Spec(names: ["--version"], arity: .switch) { o, _ in o.showVersion = true },
     ]

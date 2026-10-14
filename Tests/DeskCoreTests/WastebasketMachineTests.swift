@@ -126,7 +126,8 @@ struct WastebasketMachineTests {
             for n in [1, 5, 12, 17, 24] {
                 let spots = WastebasketMachine.spillSpots(count: n, right: right)
                 #expect(spots.count == n)
-                #expect(spots.allSatisfy { FloorLine.isFree($0, avoiding: [lying.minX..<lying.maxX, cabinet]) },
+                let upright = CoreLayout.wastebasket.minX..<CoreLayout.wastebasket.maxX
+                #expect(spots.allSatisfy { FloorLine.isFree($0, avoiding: [lying.minX..<lying.maxX, upright, cabinet]) },
                         "\(right) \(n): \(spots)")
                 #expect(spots == WastebasketMachine.spillSpots(count: n, right: right))
                 let mouthX = right ? lying.maxX : lying.minX
@@ -135,5 +136,9 @@ struct WastebasketMachineTests {
             }
         }
         #expect(WastebasketMachine.spillSpots(count: 0, right: true).isEmpty)
+        // Floor tokens already there are stepped over.
+        let free = WastebasketMachine.spillSpots(count: 3, right: true)
+        let around = WastebasketMachine.spillSpots(count: 3, right: true, avoiding: FloorLine.spans([free[2]]))
+        #expect(!around.contains { abs($0 - free[2]) < FloorLine.tokenWidth }, "\(free) \(around)")
     }
 }
