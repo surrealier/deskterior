@@ -124,6 +124,8 @@ final class AppSystem {
     }
 
     private func attachSession() {
+        // MARK: harden: Settings follows the leftovers the session finds.
+        session.leftovers.onChange = { [weak self] list in self?.settingsModel?.leftovers = list.count }
         guard let view = displays.view else { return }
         accessibility = DeskAccessibility(view: view, store: session.store)
         session.store.observe { [weak self] new, old in
@@ -208,7 +210,11 @@ final class AppSystem {
                 setLaunchAtLogin: { [weak self] on in self?.setLaunchAtLogin(on) },
                 chooseFolder: { [weak self] in self?.chooseFolder() },
                 useDesktop: { [weak self] in self?.useFolder(nil) },
-                showAbout: { [weak self] in self?.showAbout() }
+                showAbout: { [weak self] in self?.showAbout() },
+                showLeftovers: { [weak self] in self?.session.leftovers.showInFinder() },
+                trashLeftovers: { [weak self] in
+                    self?.session.trashLeftovers { note in self?.settingsModel?.leftoverNote = note }
+                }
             )
             model.pixelSizeLocked = options.pixelSizeGiven
             model.loginLocked = isTranslocated
@@ -217,6 +223,7 @@ final class AppSystem {
             settingsWindow = AppWindow.make(title: tr(.settingsTitle), view: SettingsView(model: model))
         }
         settingsModel?.displays = DisplayManager.displayNames()
+        settingsModel?.leftovers = session.leftovers.found.count  // MARK: harden
         // The toggle shows what is registered (an item added or removed outside the app, or a lost setting).
         loginItem.readStatus { [weak self] status in
             guard let self else { return }

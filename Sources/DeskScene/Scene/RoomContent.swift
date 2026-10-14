@@ -381,6 +381,16 @@ final class RoomContent: GestureTarget {
             || elements.contains { $0.needsFrames }
     }
 
+    // MARK: harden
+    /// The AV logo's frame interval while it is the only thing moving (the loop may tick at that rate); else nil.
+    var slowFrameInterval: Double? {
+        guard let interval = monitor.slowFrameInterval else { return nil }
+        let busy = extras.contains { $0 !== monitor && $0.needsFrames } || router.drag != nil || !settling.isEmpty
+            || context.fx.needsFrames || toast.needsFrames || context.shakeFrames > 0
+            || elements.contains { $0.needsFrames }
+        return busy ? nil : interval
+    }
+
     func step(_ dt: Double) {
         router.drag?.step(dt)
         for d in settling { d.step(dt) }

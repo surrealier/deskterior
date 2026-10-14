@@ -39,6 +39,10 @@ public enum FileRefusal: Error, Sendable, Equatable, CustomStringConvertible {
     case noFreeName
     /// The system said no (EPERM/EACCES: privacy protection, S11/S12).
     case notPermitted
+    // MARK: harden
+    /// A drop-in move of a Finder-locked item (or one in a locked folder): it is not copied instead, so a move never
+    /// leaves a silent duplicate (Errata 25); ⌥ copies it on purpose.
+    case locked
     /// Any other failure: an errno, or a Cocoa error code.
     case failed(Int)
 
@@ -60,6 +64,7 @@ public enum FileRefusal: Error, Sendable, Equatable, CustomStringConvertible {
         case .notEjectable: "not-ejectable"
         case .noFreeName: "no-free-name"
         case .notPermitted: "not-permitted"
+        case .locked: "locked"
         case let .failed(code): "failed(\(code))"
         }
     }
@@ -219,6 +224,12 @@ public actor FileOperator {
         var beforeCheck: (@Sendable (URL) -> Void)?
         /// Runs right after a copy finishes, with the staged copy.
         var afterCopy: (@Sendable (URL) -> Void)?
+        // MARK: harden
+        /// Runs right after a copy's final rename, with where it landed.
+        var afterPlace: (@Sendable (URL) -> Void)?
+        /// Stages copies in a hidden `.deskterior-partial-<uuid>` folder in the desk folder, as when the system
+        /// offers no item-replacement folder on the desk's volume.
+        var stageInDesk = false
         /// Stand-ins for the volume checks and the unmount itself (an eject in tests, which never reach a volume).
         var ejectable: (@Sendable (URL) -> Bool)?
         var unmount: (@Sendable (URL) throws -> Void)?
@@ -283,6 +294,8 @@ public actor FileOperator {
     private func trashOne(_ url: URL, expecting key: TokenKey) async -> (FileOutcome, FileUndoRecord.Step?) {
         if let r = trashRefusal() { return (.refused(url, r), nil) }
         guard let item = deskChild(url) else { return (.refused(url, .outsideRoot), nil) }
+        // MARK: harden: a copy in flight stages here; only a leftover from an earlier run may go (`PartialCopies`).
+        if stagings.contains(item.path) { return (.refused(url, .failed(Int(EBUSY))), nil) }
         if let r = check(item, is: key) { return (.refused(url, r), nil) }
         switch await trashChecked(item, is: key) {
         case let .success(trashed):
@@ -364,8 +377,11 @@ public actor FileOperator {
                 if let r = verify(placed.url, is: key, elseReturnTo: back) { return (.refused(url, r), nil, [key.inode]) }
                 let outcome: FileOutcome = placed.renamed ? .renamed(url, to: placed.url, op: .move) : .moved(url, to: placed.url)
                 return (outcome, .moveBack(current: placed.url, source: back, key: key), [key.inode])
+            case let .failure(.errno(e)) where (e == EPERM || e == EACCES) && Self.isLocked(source):
+                // MARK: harden: a locked item stays put; a copy here would leave a silent duplicate (Errata 25).
+                return (.refused(url, .locked), nil, [key.inode])
             case let .failure(.errno(e)) where e == EXDEV || e == EPERM || e == EACCES:
-                break // Another volume after all, a protected folder (S12) or a locked item: copy instead.
+                break // Another volume after all, or a protected folder (S12): copy instead (the report says so).
             case let .failure(f):
                 return (.refused(url, f.refusal), nil, [key.inode])
             }
@@ -416,10 +432,14 @@ public actor FileOperator {
         // A Finder-locked item cannot be renamed: the copy is unlocked for the rename and locked again in place.
         let locks = Self.lockFlags(staged)
         if locks != 0 { Self.changeFlags(staged, adding: 0, removing: locks) }
+        let size = Self.fileSize(staged)
         switch FileMoves.renameToFreeName(
             staged, in: root, name: name, splitsExtension: splitsExtension, before: hooks.beforeRename
         ) {
         case let .success(placed):
+            // MARK: harden: success only for the copy we wrote; whatever else is there now is left alone.
+            hooks.afterPlace?(placed.url)
+            if let r = landed(placed.url, is: key, size: size) { return (.refused(url, r), nil, [sourceInode]) }
             if locks != 0 { Self.changeFlags(placed.url, adding: locks, removing: 0) }
             let outcome: FileOutcome = placed.renamed ? .renamed(url, to: placed.url, op: .copy) : .copied(url, to: placed.url)
             return (outcome, .trashCopy(placed.url, key: key), [sourceInode, key.inode])
@@ -433,7 +453,7 @@ public actor FileOperator {
     /// volume, a hidden `.deskterior-partial-<uuid>` folder in the desk folder stands in.
     private func makeStaging() throws -> URL {
         guard let desk = Self.fileID(root, follow: true) else { throw FileRefusal.missing }
-        if let dir = try? FileManager.default.url(
+        if !hooks.stageInDesk, let dir = try? FileManager.default.url(
             for: .itemReplacementDirectory, in: .userDomainMask, appropriateFor: root, create: true
         ) {
             if Self.fileID(dir, follow: true)?.dev == desk.dev, !DesktopLocator.isInsideDesktop(dir, desktop: root) {
@@ -484,6 +504,39 @@ public actor FileOperator {
         var st = stat()
         guard lstat(url.path, &st) == 0 else { return }
         _ = lchflags(url.path, (st.st_flags & ~removing) | adding)
+    }
+
+    // MARK: harden
+
+    /// The item at `url` is locked (Finder's lock, append-only, or the system's), or its folder is, so it cannot be
+    /// renamed out of there.
+    static func isLocked(_ url: URL) -> Bool {
+        var st = stat()
+        let item = UInt32(UF_IMMUTABLE | UF_APPEND) | UInt32(SF_IMMUTABLE | SF_APPEND)
+        if lstat(url.path, &st) == 0, st.st_flags & item != 0 { return true }
+        let folder = url.standardizedFileURL.deletingLastPathComponent()
+        return lstat(folder.path, &st) == 0 && st.st_flags & (UInt32(UF_IMMUTABLE) | UInt32(SF_IMMUTABLE)) != 0
+    }
+
+    /// A regular file's size (nil for anything else: a folder or package is checked by identity alone).
+    static func fileSize(_ url: URL) -> Int64? {
+        var st = stat()
+        guard lstat(url.path, &st) == 0, st.st_mode & S_IFMT == S_IFREG else { return nil }
+        return Int64(st.st_size)
+    }
+
+    /// After a copy's final rename: the item now at `placed` is the copy staged (its volume and inode, and for a
+    /// file its size). Anything else (swapped in right after the rename) is not ours: it is left where it is, and
+    /// the copy is not reported as landed.
+    private func landed(_ placed: URL, is key: TokenKey, size: Int64?) -> FileRefusal? {
+        switch identity(of: placed) {
+        case let .success(found) where found == key:
+            return size == nil || Self.fileSize(placed) == size ? nil : .identityChanged
+        case .success:
+            return .identityChanged
+        case let .failure(r):
+            return r
+        }
     }
 
     /// Copies on a GCD thread, so the actor serves other requests meanwhile (DESIGN §3.6). Cancelling the calling

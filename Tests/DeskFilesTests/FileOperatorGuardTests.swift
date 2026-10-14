@@ -282,13 +282,14 @@ struct FileOperatorGuardTests {
         #expect(rig.names(album) == ["locked.txt", "ro"])
     }
 
-    @Test("A Finder-locked file dropped in lands as a locked copy; the source stays", arguments: [ImportOp.copy, .move])
-    func lockedSource(op: ImportOp) async throws {
+    @Test("A Finder-locked file copied in (⌥) lands as a locked copy; the source stays")
+    func lockedSource() async throws {
         let rig = try FileRig()
         let source = try rig.file(rig.elsewhere, "contract.pdf", "signed")
         defer { unlockAll(rig.temp.root) } // also keeps the rig alive until then
         #expect(lchflags(source.path, UInt32(UF_IMMUTABLE)) == 0)
-        let result = await rig.op.importItems([source], op: op, rig.intent(.drop))
+        // A move of a locked item is refused instead (Errata 25): `HardeningFileTests.lockedMove`.
+        let result = await rig.op.importItems([source], op: .copy, rig.intent(.drop))
         let placed = rig.at(rig.desk, "contract.pdf")
         #expect(result.outcomes == [.copied(source, to: placed)])
         #expect(isLocked(placed))

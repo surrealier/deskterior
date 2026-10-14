@@ -213,6 +213,8 @@ final class PenCupElement: DeskElement, Knockable {
     }
 
     func knock(_ plan: DeskKnock.Plan) {
+        // MARK: harden: a stilled knock (Reduce Motion) wobbles nothing.
+        guard plan.wobbles[.penCup] != nil else { return }
         run(machine.knock(strength: plan.strength))
     }
 

@@ -240,6 +240,19 @@ public struct MonitorMachine: Sendable, Equatable {
             || (overlay == .av && phase == .on && (logo.isMoving || logo.sparkle > 0))
     }
 
+    // MARK: harden
+    /// While the AV logo is all that animates here: how often its picture changes (its 8 fps step, or the corner
+    /// sparkle's 12 fps), so the frame loop can tick at that rate instead of 60 Hz (Errata 25); else nil.
+    public var logoFrameInterval: Double? {
+        guard needsFrames, phase == .on, overlay == .av, staticLeft == 0, osdLeft == 0, ledBlinkTime == nil else {
+            return nil
+        }
+        return logo.sparkle > 0 ? Self.sparkleFrameTime : Self.avFrameTime
+    }
+
+    /// The corner sparkle's frame time.
+    public static let sparkleFrameTime = 1.0 / 12
+
     // MARK: What to draw
 
     /// The CRT frame covering the screen, if one does.
@@ -305,6 +318,16 @@ public struct MonitorMachine: Sendable, Equatable {
     public static func powerAction(_ s: DeskState) -> DeskAction {
         if s.monitor.power == .off { return .power(true) }
         return s.access == .notConnected ? .requestConnect : .power(false)
+    }
+
+    // MARK: harden
+    /// The page a carry resting on INPUT turns to (spring-loading, DESIGN §2.1, as a closed drawer front or a page dot
+    /// does; Errata 25): the next HDMI page, HDMI 1 after the last one and from AV; never AV itself (nothing can be
+    /// dropped there). Nil when there is no other page.
+    public static func springInputPage(_ s: DeskState, grid: ScreenGrid = .standard) -> Int? {
+        if s.monitor.av { return 0 }
+        let pages = s.pageCount(grid: grid)
+        return pages > 1 ? (s.monitor.page + 1) % pages : nil
     }
 
     /// The input OSD: "HDMI 2 · 45" (tokens on that page) or "AV".

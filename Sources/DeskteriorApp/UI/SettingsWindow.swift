@@ -13,6 +13,9 @@ struct SettingsActions {
     var chooseFolder: () -> Void = {}
     var useDesktop: () -> Void = {}
     var showAbout: () -> Void = {}
+    // MARK: harden
+    var showLeftovers: () -> Void = {}
+    var trashLeftovers: () -> Void = {}
 }
 
 /// The Settings window's state: the settings, the model's lights, the mirrored folder, the displays and the status
@@ -32,6 +35,10 @@ final class SettingsModel {
     var loginStatus: String?
     var hotkeyStatus: String?
     var folderNote: String?
+    // MARK: harden
+    /// Leftover copies found in the mirrored folder, and what the last Move to Trash said.
+    var leftovers = 0
+    var leftoverNote: String?
     @ObservationIgnored var actions = SettingsActions()
 
     init(settings: DeskSettings, lights: LightsMode, folderPath: String, folderLocked: Bool,
@@ -118,6 +125,22 @@ struct SettingsView: View {
                     Text(tr(.languageSystem)).tag(LanguageSetting.system)
                     Text(tr(.languageEnglish)).tag(LanguageSetting.en)
                     Text(tr(.languageKorean)).tag(LanguageSetting.ko)
+                }
+            }
+            // MARK: harden
+            if model.leftovers > 0 || model.leftoverNote != nil {
+                Section(tr(.leftoversTitle)) {
+                    if model.leftovers > 0 {
+                        Text(L10n.format(model.leftovers == 1 ? .leftoversOne : .leftoversMany, [model.leftovers]))
+                        Text(tr(.leftoversExplain)).font(.caption).foregroundStyle(.secondary)
+                        HStack {
+                            Button(tr(.showInFinder)) { model.actions.showLeftovers() }
+                            Button(tr(.moveToTrash)) { model.actions.trashLeftovers() }
+                        }
+                    }
+                    if let note = model.leftoverNote {
+                        Text(note).font(.caption).foregroundStyle(.secondary)
+                    }
                 }
             }
             Section {

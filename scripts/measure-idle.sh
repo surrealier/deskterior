@@ -1,17 +1,18 @@
 #!/usr/bin/env bash
 # Idle CPU after an interaction burst (docs/DESIGN.md §5; M7 accept: ≤ 0.3%). Portable to macOS's bash 3.2.
 #
-# Usage: scripts/measure-idle.sh [--debug] [--limit PCT] [--exit-after SECONDS]
+# Usage: scripts/measure-idle.sh [--debug] [--limit PCT] [--exit-after SECONDS] [--av]
 #   Builds Deskterior (release unless --debug), makes a fresh mktemp fixture (scripts/make-fixture-desktop.sh) and
 #   state folder, and runs
 #     Deskterior --windowed 1470x956@2 --desktop-folder FIXTURE --state-dir STATE --icons kind --clock 10:00
 #                --burst --exit-after SECONDS            (default 10, a quick check: about 4 one-second samples;
 #                                                         DESIGN §5's 60-s average needs --exit-after 70 or more)
 #   --burst plays a short scripted interaction (a pile set down, a fling, a drop into the basket, a desk knock) once
-#   the fixture is on the monitor and prints "burst: done". After a settle period the script samples the process's
-#   CPU with `top` (one-second interval samples, precise to 0.1%) and with `ps` (accumulated CPU time over the same
-#   tail: `ps -o time` is the only `ps` field that is not a minute-long decaying average), prints both averages, and
-#   fails (exit 1) when the `top` average is above the limit (default 0.3).
+#   the fixture is on the monitor and prints "burst: done". --av (`--burst-av`) ends it on the monitor's AV input,
+#   so the samples see its NO SIGNAL logo bounce (10 s; --exit-after 14 keeps them inside it). After a settle period
+#   the script samples the process's CPU with `top` (one-second interval samples, precise to 0.1%) and with `ps`
+#   (accumulated CPU time over the same tail: `ps -o time` is the only `ps` field that is not a minute-long decaying
+#   average), prints both averages, and fails (exit 1) when the `top` average is above the limit (default 0.3).
 #   Env: SWIFT_SCRATCH_PATH (build folder), SWIFT_JOBS (default 3), DESKTERIOR_BIN (a built Deskterior; no build),
 #   DESKTERIOR_RESOURCES (default Resources/: a release binary needs it for the font, so tooltips and toasts draw).
 #
@@ -27,12 +28,14 @@ SETTLE=${MEASURE_IDLE_SETTLE:-2.5}
 EXIT_AFTER=10
 
 usage() { sed -n '2,21p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//' >&2; exit 2; }
+AV=()
 
 while [ $# -gt 0 ]; do
   case "$1" in
     --debug) CONFIG=debug; shift ;;
     --limit) [ $# -ge 2 ] || usage; LIMIT="$2"; shift 2 ;;
     --exit-after) [ $# -ge 2 ] && [ "$2" -ge 8 ] 2>/dev/null || usage; EXIT_AFTER="$2"; shift 2 ;;
+    --av) AV=(--burst-av); shift ;;
     -h|--help) usage ;;
     *) echo "measure-idle: unknown option $1" >&2; usage ;;
   esac
@@ -65,7 +68,7 @@ cpu_seconds() {
 }
 
 "$APP" --windowed 1470x956@2 --desktop-folder "$TMP/desk" --state-dir "$TMP/state" --icons kind --clock 10:00 \
-  --burst --exit-after "$EXIT_AFTER" >"$TMP/out.log" 2>&1 &
+  --burst ${AV[@]+"${AV[@]}"} --exit-after "$EXIT_AFTER" >"$TMP/out.log" 2>&1 &
 PID=$!
 START=$(date +%s)
 
@@ -83,8 +86,8 @@ echo "measure-idle: burst done $(( $(date +%s) - START )) s after launch" >&2
 sleep "$SETTLE"
 
 ELAPSED=$(( $(date +%s) - START ))
-# Sampling ends 2 s before the app quits (`date +%s` is whole seconds), so the final `ps` still finds it.
-SAMPLES=$(( EXIT_AFTER - 3 - ELAPSED ))
+# Sampling ends 3 s before the app quits (`date +%s` is whole seconds), so the final `ps` still finds it.
+SAMPLES=$(( EXIT_AFTER - 4 - ELAPSED ))
 [ "$SAMPLES" -ge 2 ] || SAMPLES=2
 CPU0="$(cpu_seconds "$PID")"
 T0="$(perl -MTime::HiRes=time -e 'printf "%.3f", time')"

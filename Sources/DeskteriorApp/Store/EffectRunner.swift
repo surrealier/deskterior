@@ -164,7 +164,7 @@ extension EffectRunner {
             record("import")
             let intent = ExplicitIntent(origin: origin)
             files.run(.importItems, op: op, { await $0.importItems(urls, op: op, intent, progress: $1) }) {
-                FileReport(import: $0, undo: $1)
+                FileReport(import: $0, undo: $1, requested: op)
             }
         case let .undoFiles(ref):
             guard let origin = mintable(effect) else {
@@ -183,6 +183,23 @@ extension EffectRunner {
         default:
             break
         }
+    }
+
+    // MARK: harden
+
+    /// Settings ▸ Leftover copies ▸ Move to Trash (Errata 25): the leftovers of an interrupted copy go to the trash,
+    /// each only while it is still the folder that was found (`FileOperator.trash` re-checks its identity). Only a
+    /// button the user pressed may ask (`withOrigin(.menuItem)` in the app delegate); nothing is journaled, and the
+    /// Trash's Put Back returns them. `done` hears the result (nil: nothing ran).
+    func trashLeftovers(_ items: [PartialCopies.Leftover], done: @escaping (FileResult?) -> Void) {
+        guard let files, !items.isEmpty, requestOrigin == .menuItem else {
+            if !items.isEmpty { FileHandle.standardError.write(Data("Deskterior: no intent for leftovers\n".utf8)) }
+            return done(nil)
+        }
+        record("trash")
+        let intent = ExplicitIntent(origin: .menuItem)
+        let urls = items.map(\.url), keys = items.map(\.key)
+        files.runUnjournaled({ await $0.trash(urls, expecting: keys, intent) }, done: done)
     }
 
     /// The origin to mint for `effect`, or nil (with a toast) when the request's gesture does not fit it.
@@ -225,6 +242,7 @@ final class QuickLookSource: NSObject, QLPreviewPanelDataSource {
     }
 
     nonisolated func previewPanel(_ panel: QLPreviewPanel!, previewItemAt index: Int) -> (any QLPreviewItem)! {
-        MainActor.assumeIsolated { urls[index] as NSURL }
+        // MARK: harden: the panel may ask for an index of an earlier, longer list.
+        MainActor.assumeIsolated { () -> NSURL? in urls.indices.contains(index) ? urls[index] as NSURL : nil }
     }
 }

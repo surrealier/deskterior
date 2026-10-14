@@ -24,7 +24,7 @@ final class CarrySession: DragController {
     static let springFrames = 6.0
     /// Sideways speed (art px per frame) past which the shadow trails the stack.
     static let leanSpeed: Float = 3
-    /// Hovering a page dot this long turns to its page (DESIGN §2.1 spring-loading).
+    /// Hovering a page dot this long turns to its page, INPUT to the next one (DESIGN §2.1 spring-loading).
     static let springLoadDelay = 0.6
 
     let keys: [TokenKey]
@@ -199,6 +199,8 @@ final class CarrySession: DragController {
     private func springBack(from: SIMD2<Float>) {
         lean = 0
         springLoad = nil
+        // MARK: harden: Reduce Motion: no flight home; the tokens are back at once (Errata 25).
+        if context.reduceMotion { return finish() }
         redraw()
         phase = .springing(from: from, t: 0)
     }

@@ -20,14 +20,36 @@ enum AppIdentity {
     static func anotherInstanceIsRunning() -> Bool {
         let me = ProcessInfo.processInfo.processIdentifier
         if let id = Bundle.main.bundleIdentifier {
-            return NSRunningApplication.runningApplications(withBundleIdentifier: id)
-                .contains { $0.processIdentifier != me }
+            let others = NSRunningApplication.runningApplications(withBundleIdentifier: id)
+            return isDuplicate(me: me, bundleID: id, executable: nil,
+                               running: others.map { RunningApp(pid: $0.processIdentifier, bundleID: id, executable: nil) })
         }
-        guard let exe = Bundle.main.executableURL?.resolvingSymlinksInPath() else { return false }
-        return NSWorkspace.shared.runningApplications.contains {
-            $0.processIdentifier != me && $0.executableURL?.resolvingSymlinksInPath() == exe
+        let running = NSWorkspace.shared.runningApplications.map {
+            RunningApp(pid: $0.processIdentifier, bundleID: $0.bundleIdentifier, executable: $0.executableURL)
         }
+        return isDuplicate(me: me, bundleID: nil, executable: Bundle.main.executableURL, running: running)
     }
+
+    // MARK: harden
+
+    /// One running process, as the single-instance guard sees it.
+    struct RunningApp: Equatable {
+        var pid: Int32
+        var bundleID: String?
+        var executable: URL?
+    }
+
+    /// The single-instance decision (pure): another process than `me` runs our bundle id, or (unbundled, no id) the
+    /// same executable file, symlinks resolved. A process that cannot be named is never taken for us.
+    static func isDuplicate(me: Int32, bundleID: String?, executable: URL?, running: [RunningApp]) -> Bool {
+        let others = running.filter { $0.pid != me }
+        if let bundleID { return others.contains { $0.bundleID == bundleID } }
+        guard let exe = executable?.resolvingSymlinksInPath() else { return false }
+        return others.contains { $0.executable?.resolvingSymlinksInPath() == exe }
+    }
+
+    /// Only desk mode refuses to start twice; development runs (windowed, headless, demos) may run beside the desk.
+    static func checksForDuplicates(_ options: LaunchOptions) -> Bool { options.mode == .desk }
 }
 
 /// Development log: unified logging (`log stream --predicate 'subsystem == "<bundle id>"'`), echoed to stderr

@@ -84,7 +84,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         host.scene.startClock()
         host.loop.renderOnce()
         // A dev burst plays only in a window (never on the real desk's layout).
-        if options.burst, options.windowed != nil { BurstDriver.start(host: host, store: session.store) }
+        if options.burst, options.windowed != nil {
+            BurstDriver.start(host: host, store: session.store, endOnAV: options.burstAV)
+        }
 
         statusMenu = StatusMenu(
             spec: { [weak self] in self?.statusSpec() ?? MenuSpec([]) },
@@ -308,6 +310,9 @@ final class DeskSession {
     let files: FileActions?
     let dropIn: DropInController
     let dragOut: DragOutController
+    // MARK: harden
+    /// Leftovers of an interrupted copy in the mirrored folder (Settings lists them; Errata 25).
+    let leftovers: LeftoverCopies
 
     /// `fileRoots`: scratch folders a demo may drop from (outside desk mode the operator is confined to the mirrored
     /// folder, the state folder and these).
@@ -353,6 +358,7 @@ final class DeskSession {
         dropIn = DropInController(host: host, store: store, effects: effects)
         dragOut = DragOutController(host: host, store: store, effects: effects)
         mirror = MirrorController(configuration: configuration, store: store, stateStore: stateStore)
+        leftovers = LeftoverCopies(folder: configuration.folder, host: host)  // MARK: harden
         effects.mirror = mirror
         effects.onAccessGranted = { [weak self] in
             self?.store.dispatch(.accessGranted)
@@ -383,6 +389,10 @@ final class DeskSession {
         store.observe { [weak self] new, old in
             guard let self, new.lights.mode != old.lights.mode else { return }
             host.scene.lightsMode = new.lights.mode
+        }
+        // MARK: harden: once the folder may be read (never before ⏻ on a first run), look for leftover copies.
+        store.observe { [weak self] new, old in
+            if new.access == .connected, old.access != .connected { self?.leftovers.look() }
         }
         sync.start()
         mirror.start()
@@ -415,6 +425,22 @@ final class DeskSession {
         var done = false
         effects.withOrigin(origin) { done = perform(command) }
         return done
+    }
+
+    // MARK: harden
+
+    /// Settings ▸ Leftover copies ▸ Move to Trash: the button is the gesture (a menu intent). `done` gets the line
+    /// Settings shows afterwards.
+    func trashLeftovers(_ done: @escaping (String) -> Void) {
+        let items = leftovers.found
+        effects.withOrigin(.menuItem) {
+            effects.trashLeftovers(items) { [weak self] result in
+                guard let self, let result else { return }
+                let report = FileReport(trash: result, keys: items.map(\.key), undo: nil)
+                done(report.toast?.text ?? tr(.leftoversTrashed))
+                leftovers.look()
+            }
+        }
     }
 
     /// Brings the scene to rest (a carry springs back; a drawer or the chair mid-motion commits where it is; whatever

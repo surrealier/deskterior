@@ -44,5 +44,13 @@ let package = Package(
             exclude: ["Goldens"],
             swiftSettings: mainActorByDefault
         ),
+        // MARK: harden
+        // The app target's pure helpers (launch options, the real-Desktop refusal, sheets, drop rules, settings, window
+        // levels, the single-instance guard), through `@testable import` of the executable target.
+        .testTarget(
+            name: "DeskteriorAppTests",
+            dependencies: ["DeskteriorApp", "DeskCore", "DeskFiles", "DeskScene"],
+            swiftSettings: mainActorByDefault
+        ),
     ]
 )

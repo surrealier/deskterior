@@ -59,6 +59,7 @@ extension FileProblem {
         case .identityChanged: self = .changed
         case .missing: self = .gone
         case .notPermitted: self = .notPermitted
+        case .locked: self = .locked
         case .notInTrash: self = .notInTrash
         case .noFreeName: self = .noFreeName
         case .containsDesktop: self = .holdsDesk
@@ -85,9 +86,12 @@ extension FileReport {
 
     /// A drop-in result. Each item is named by its path as the request named it (`DropIn.urls`, which the model's
     /// hints keep). `identity` reads what each landed item is now (volume and inode), so the placement hint that
-    /// follows it fits that item only; an item already on the desk (placement only) is not a file change.
+    /// follows it fits that item only; an item already on the desk (placement only) is not a file change. A move
+    /// (`requested`) that macOS refused and that came in as a copy says so (`copiedInstead`), so a duplicate is never
+    /// silent (Errata 25).
     public init(
-        import result: FileResult, undo: FileUndoRef?, identity: (URL) -> TokenKey? = FileReport.identity(of:)
+        import result: FileResult, undo: FileUndoRef?, requested: ImportOp? = nil,
+        identity: (URL) -> TokenKey? = FileReport.identity(of:)
     ) {
         var placed: [Placed] = []
         var refused: [String] = []
@@ -107,7 +111,8 @@ extension FileReport {
         }
         self.init(
             kind: .importItems, count: result.outcomes.count, placed: placed, refused: refused,
-            problems: result.refusals.map(FileProblem.init), undo: undo
+            problems: result.refusals.map(FileProblem.init), undo: undo,
+            done: requested == .move && placed.contains(where: \.copied) ? .copiedInstead : nil
         )
     }
 

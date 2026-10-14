@@ -89,6 +89,26 @@ final class FileActions {
         dispatch(.fileResult(FileReport(kind: .undo, count: 1, problems: [.failed], ticket: ref, kept: true)))
     }
 
+    // MARK: harden
+    /// Runs an operator call that is not one of the desk's actions (the leftovers of an interrupted copy: no journal
+    /// entry, no report to the store) and hands its result to `done` on the main actor. The call starts at once, off
+    /// the main actor, so its intent is spent while it is fresh however busy the main thread is.
+    func runUnjournaled(_ call: @escaping @Sendable (FileOperator) async -> FileResult,
+                        done: @escaping (FileResult) -> Void) {
+        inFlight += 1
+        let op = fileOperator
+        let work = Task.detached { await call(op) }
+        Task { @MainActor [weak self] in
+            let result = await work.value
+            if let self {
+                self.inFlight -= 1
+                self.finished += 1
+                self.lastFinishedAt = Date()
+            }
+            done(result)
+        }
+    }
+
     /// Runs an eject and dispatches its report (nothing to undo).
     func runEject(_ call: @escaping @Sendable (FileOperator) async -> FileOutcome) {
         start(nextRef()) { op in FileReport(eject: await call(op)) }

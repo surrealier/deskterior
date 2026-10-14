@@ -135,11 +135,12 @@ public struct DeskDocument: Codable, Sendable, Equatable {
 
     // MARK: JSON
 
-    /// Decodes `data` after running schema migrations; then layout migrations.
+    /// Decodes `data` after running schema migrations; then layout migrations; then brings values no desk could have
+    /// saved back into range (`sanitized`, Errata 25).
     public static func decode(_ data: Data) throws -> DeskDocument {
         var doc = try makeDecoder().decode(DeskDocument.self, from: try Migrations.migrate(data))
         Migrations.migrateLayout(&doc)
-        return doc
+        return doc.sanitized()
     }
 
     /// Pretty, key-sorted JSON (stable diffs).

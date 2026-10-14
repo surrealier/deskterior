@@ -34,6 +34,10 @@ extension ToastKey {
         case .undidDropIn: "Sent back; copies moved to the Trash."
         case .cantMoveBack: "macOS would not let it go back."
         case .widgetsOverlap: "Widgets cover part of the desk."
+        // MARK: harden
+        case .fileLocked: "It's locked, so it stayed. ⌥ copies it."
+        case .copiedInstead: "Copied in; the original stayed put."
+        case .leftoverCopies: "An interrupted copy left files. See Settings."
         }
     }
 

@@ -93,7 +93,7 @@ extension ClothSim {
     public init?(state: MatState, bumps: BumpField? = nil, params: ClothParams = .standard) {
         guard state.grid.count == 2, let particles = state.particles else { return nil }
         let cols = state.grid[0], rows = state.grid[1]
-        guard cols >= 3, rows >= 3, cols * rows <= 4096,
+        guard cols >= 3, rows >= 3, cols <= 4096, rows <= 4096, cols * rows <= 4096,
               state.size[0].isFinite, state.size[1].isFinite, state.size[0] > 0, state.size[1] > 0,
               var pos = MatState.decodeParticles(particles, count: cols * rows),
               Self.isPlausible(pos, cols: cols, rows: rows, size: SIMD2(state.size[0], state.size[1]), params: params)

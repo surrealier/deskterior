@@ -37,3 +37,85 @@ Machine: MacBook Air M2 (Mac14,2), macOS 26.6.2, Swift 6.2.3 (Command Line Tools
 | S7 | `ARCHS="arm64 x86_64" ZIP=1 scripts/build-app.sh --version 0.1.0` builds both triples and `lipo`s them (4 min 23 s at `-j 2`): `Mach-O universal (x86_64 arm64)`, ad-hoc signed, `codesign --verify --strict` passes, the zip's `.sha256` checks. The app was not opened. | Running the Intel slice on an Intel Mac. |
 | S6 | Unchanged. The bundle id of a build with no GitHub owner is now the development id `io.github.deskterior.dev` (Errata 24), so local test builds never touch a released app's permissions. | TCC across two rebuilds; the Safari-downloaded zip through Open Anyway (§8.3 item 20). |
 | S12 | Info.plist now explains a Downloads, Documents, removable or network volume prompt, should macOS show one for a drop-in. | Whether a drop from Downloads prompts at all. |
+## Pre-release audit (wave 6)
+
+Desk mode traced by reading the code only (desk mode was never run). "Ours" means the state folder
+`~/Library/Application Support/<bundle id>` (layout, backups, `operations.log`), the icon cache
+`~/Library/Caches/<bundle id>/icons`, and the app's own defaults domain. The file-safety lint holds the writers to
+`FileOperator`, `Trasher`, `OperationLog`, `StateStore`, `IconCache` and `ArtifactWriter` (dev snapshots only).
+
+| Path | (a) Changes files | (b) Registers with the system | (c) Finder or system settings | (d) Main-thread I/O | (e) After quit or crash |
+|---|---|---|---|---|---|
+| `main` → `AppDelegate` (desk mode) | Ours only: the state and cache folders are created (`StateStore`, `OperationLog`, `IconCache`) | The status item; `.accessory` policy (process-local). Single-instance check reads the running-app list | None. `FinderPrefs` only reads `com.apple.finder` / `WindowManager` keys | `desk.json` read (a few KB) and realpath/stat of the folders at launch | Status item and windows belong to the process |
+| First run: monitor ⏻ → TCC → mirror | None until a file action. The first enumeration (the TCC prompt) runs only from ⏻ (`requestConnect` → `connectDesktop`); Choose Folder… and Open Settings only open a panel or System Settings | None | None | None (scanner, watcher and the leftover scan run on background queues; the leftover scan waits for `connected`) | — |
+| Normal launch with saved state | Ours: `desk.json` saves (debounced, background queue), backups by age | Login item: only when `launchAtLogin` is on (`LoginItemController.launchCheck` returns at once otherwise; never from a translocated copy). Hotkey: only when `peekHotkeyEnabled` is on (`HotKeyPolicy`); other modes use recording stand-ins | None | Icon look-ups: `lstat` and `NSWorkspace.icon(forFile:)` of one item at a time (≤ 4 in flight) | — |
+| Pause / Resume Desk | None | None | None | None | Windows are ordered out, nothing else |
+| Peek Desk | None | Esc local key monitor and an app-activation observer while peeking (process-local) | None | None | — |
+| Display changes | None | None | None | None (debounced 0.5 s; walls are CPU-rendered) | — |
+| Sleep / wake, lock, session switch | Ours: the layout is saved on sleep and resign | None | None | `LayoutSaver.flush` waits for its save (`queue.sync`, a few ms) | — |
+| Drop-in, drag-out, Move to Trash, Empty Wastebasket, Eject, Undo, Settings ▸ Leftover copies ▸ Move to Trash | **Only here**, only through `FileOperator`, each with a single-use intent minted in `EffectRunner` for a named gesture | None | None | One `volumeUUID` read per drag (`crossesVolumes`), a realpath per drop (`spelled`), an `lstat` per item in reports and drag-out waits; copies and trashes run off the main actor | A copy cut short by a crash can leave a hidden `.deskterior-partial-*` folder: found and offered at the next launch, never removed by itself |
+| Quit | Ours: a final save (`flush`) | Hotkey unregistered; observers removed | None | The final save | The desk windows go away with the process: Finder's icons show again. Nothing persists that covers them |
+| Crash (`kill -9`) | Nothing (atomic saves; a damaged `desk.json` falls back to `.bak1…3`, and values no desk could hold are reset on load) | A registered login item stays registered (only if the user turned it on) | None | — | As quit: the Window Server drops the windows at once |
+
+**Fixed in this wave** (Errata 25): a drop-in *move* of a locked item no longer comes in as a copy (it is refused; ⌥ copies on purpose), and a move macOS refuses for another reason that comes in as a copy now says so; a copy is reported only when the item at its destination is the one it wrote; leftover `.deskterior-partial-*` folders are surfaced (log, a one-time toast, Settings ▸ Leftover copies) and removed only by the user, into the Trash; a `desk.json` that parses but holds impossible values (a mat grid that overflowed `Int`, counters at `Int.max`, a mile-wide mat, pages in the billions) is brought back into range before it is laid out; Quick Look's data source checks its index; the AV logo no longer runs the loop at 60 Hz.
+
+**Accepted, documented:** the launch reads `desk.json` and the quit/sleep save waits on the main thread (both a few KB in our own folder); drag and drop answers read volume ids and realpaths on the main thread (AppKit asks for the drag operation synchronously); icons are looked up one item at a time on the main thread; a running copy is not waited for at quit (its staging goes, or is surfaced next launch).
+
+**Measured** (release build, this MacBook Air M2, 2026-10-14, while other agents compiled: load average 3–5 on 8
+cores, so single samples are noisy):
+
+| Run | Result |
+|---|---|
+| `measure-idle.sh --av --exit-after 15` (the AV logo bouncing through the whole window), loop at 60 Hz (A/B build with slow ticks off) | 11.8 %, 10.6 %, 12.7 % CPU (`top` average of 4 one-second samples) |
+| The same with slow ticks (this wave) | 3.1 %, 3.1 %, 0.8 %; a `sample` of the bouncing desk found the main thread in a tick 7 of 2,199 ms (≈ 0.3 %). The higher runs kept the link at 60 Hz for part of the window while the burst's piles settled |
+| `measure-idle.sh` (no AV), twice | 0.00 %, 0.00 % — pass (≤ 0.3 %) |
+| `measure-idle.sh --exit-after 70` (DESIGN §5's 60-s average) | 0.00 % over 61 samples — pass |
+| `soak.sh --minutes 10 --release` | 239 cycles in 602 s, 0 failed expectations; RSS 51.8 MB after warm-up, 43.2 MB at the end (peak 68.6 MB): growth −8.5 MB — pass (limit 10 MB) |
+
+### Owner's manual checklist (DESIGN §8.3; release build in /Applications, macOS 26.6)
+
+Run these yourself; no automation runs desk mode. Before you start, write down what is on your Desktop and how
+Finder is set, so you can prove nothing changed:
+
+```sh
+ls -li ~/Desktop > /tmp/desk-before.txt                       # names, inodes, sizes, dates
+defaults read com.apple.finder CreateDesktop 2>&1 | tee /tmp/finder-before.txt
+defaults read com.apple.WindowManager StandardHideDesktopIcons 2>&1 | tee -a /tmp/finder-before.txt
+make app VERSION=0.1.0 && make install                          # build/Deskterior.app → /Applications
+```
+
+| # | Do this | Expect |
+|---|---|---|
+| 1 | Open /Applications/Deskterior.app. Look at the desktop, the menu bar, the notch and the top 81-pt strip; add or keep a desktop widget. | The pixel desk covers Finder's icons; widgets stay on top and clickable; the menu bar and notch look right. |
+| 2 | Click empty wallpaper areas of the desk; use Mission Control, Show Desktop (F11 or the gesture), Spaces and Stage Manager. | No "click wallpaper to reveal desktop"; the desk stays put on every Space; Show Desktop and Stage Manager behave. |
+| 3 | Click a token, press Space, ⌘Z, Esc; then click another app and type. | The click activates Deskterior; Quick Look opens; ⌘Z undoes; Esc works; keys never reach the desk after clicking another app. |
+| 4 | With another app frontmost, hover desk objects. | Hover rings and tooltips still show. |
+| 5 | First launch only (or after `tccutil reset SystemPolicyDesktopFolder <bundle id>`): watch for the Desktop access prompt; press ⏻ on the monitor. Then deny once and use Choose Folder…; turn on Finder's "hide desktop items" if you use it. | The prompt appears only after ⏻. Denied → NO SIGNAL card → Choose Folder… restores the desk. With Finder hiding items, the DESKTOP HIDDEN card asks first. |
+| 6 | Take a screenshot (⌘⇧3); have an iCloud-only (dataless) item on the Desktop. | The screenshot prints in on the monitor; the iCloud item shows its kind icon and is not downloaded. |
+| 7 | Hide tokens in every spot: power off, AV input, both riser drawers, the cubby, the 3 cabinet drawers, the phone (face down), the pen cup, the wastebasket, under the mat, Lamp Only. Then Find Item, Show on Desk, Take Everything Out, Clear the Desk and its ⌘Z. | Each hides and reveals; Find/Show on Desk/Take Everything Out bring them back; Clear the Desk undoes in one step. |
+| 8 | Overfill a drawer and the cup; double-click the apron to knock. | Overfill bonks; jammed drawers stay shut; nothing un-hides without a direct gesture. |
+| 9 | Mat: carry it, peel a corner and grab a file, fold past the middle, tug a corner, ⌥-resize and rotate, brush and scroll-sweep piles under, stack more for taller bumps. | As described in E9; folds and creases persist across a relaunch. |
+| 10 | Drag a token out to a Finder window, to Mail, and onto the Dock's Trash. | Finder: moved; Mail: copied (file stays); Dock Trash: trashed exactly once (⌘Z puts it back). |
+| 11 | Drop in from the same volume, from an external drive, with ⌥, onto a taken name, and a Finder-locked file (Get Info ▸ Locked) without ⌥. Undo each. | Same volume: moved; external or ⌥: copied; clash: " 2"; locked: "It's locked, so it stayed. ⌥ copies it." and nothing changes. Each undo returns the original state. |
+| 12 | Move to Trash from a token's menu and undo; put files in the wastebasket and choose Empty Wastebasket…, first Cancel (and Esc), then Move to Trash. | The sheet lists the names, Cancel is the default and changes nothing; confirming moves them to the Trash; undo or Finder's Put Back restores them. |
+| 13 | Mount a USB stick or disk image. | It plugs into the hub; Eject from its menu ejects it. |
+| 14 | With a second display: answer the cover prompt; drop a file on the wall display; unplug and replug; change Settings ▸ Desk display; toggle the Dock position and auto-hide. | Walls cover the other display; wall drops land on the monitor; the desk follows the display changes. |
+| 15 | Open a full-screen app; sleep and wake; lock; fast-user-switch; turn on Low Power Mode. | The loop pauses (check Activity Monitor: ~0 % CPU) and resumes with no physics explosion. |
+| 16 | Peek Desk from the menu; turn on the ⌃⌥⌘D hotkey in Settings and use it; quit and relaunch holding ⌥. | Peek floats the desk with "× Done" (Esc ends it); the hotkey works only while on; ⌥ at launch opens Safe Mode. |
+| 17 | Look at System Settings ▸ General ▸ Login Items, then turn Launch at Login on in Settings; bump the version (`make app VERSION=0.1.1 && make install`) and log out and in. | Off by default (not listed); on shows "Login item added"; after the update it still launches. Turn it off again if you do not want it. |
+| 18 | Quit from the menu; relaunch; then `kill -9 $(pgrep -x Deskterior)`. Optionally kill it during a long drop-in copy from an external drive and relaunch. | Quit and the crash both bring Finder's icons back at once. After a killed copy, either nothing is left (the copy staged outside the Desktop) or the toast "An interrupted copy left files. See Settings." appears once and Settings ▸ Leftover copies offers Show in Finder and Move to Trash; nothing is removed until you press it. |
+| 19 | Turn on VoiceOver (⌘F5) over the desk; open Find Item and use it with the keyboard only. | Tokens and controls are read; the Inventory is fully keyboard-accessible. |
+| 20 | `make idle` (and `scripts/measure-idle.sh --exit-after 70`); `scripts/soak.sh --release` (1 hour); download the release zip in Safari and open it. | Idle ≤ 0.3 % CPU; the soak grows < 10 MB; the Open Anyway flow works as the README says. |
+
+Afterwards, with no explicit file actions in between (skip rows 10–13 and 18's copy, or redo the "before" files after
+them), prove the session changed nothing:
+
+```sh
+ls -li ~/Desktop > /tmp/desk-after.txt && diff /tmp/desk-before.txt /tmp/desk-after.txt && echo "Desktop unchanged"
+{ defaults read com.apple.finder CreateDesktop; defaults read com.apple.WindowManager StandardHideDesktopIcons; } \
+  > /tmp/finder-after.txt 2>&1; diff /tmp/finder-before.txt /tmp/finder-after.txt && echo "Finder settings unchanged"
+ls -la ~/Desktop | grep -c deskterior-partial                   # 0: no leftovers
+```
+
+`diff` prints nothing (same names, inodes, sizes and dates) and the Finder keys read as before. Deskterior never writes
+Finder's or the WindowManager's settings, so they cannot differ.

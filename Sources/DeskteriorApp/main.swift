@@ -27,7 +27,7 @@ LightRamp.prewarm()
 if options.mode == .headless {
     exit(AppDelegate.runHeadless(options))
 }
-if options.mode == .desk, AppIdentity.anotherInstanceIsRunning() {
+if AppIdentity.checksForDuplicates(options), AppIdentity.anotherInstanceIsRunning() {
     print("Deskterior is already running.")
     exit(0)
 }

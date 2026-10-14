@@ -33,6 +33,9 @@ public enum FileProblem: String, Sendable, Equatable, CaseIterable {
     /// The request came too late, twice, or was cancelled (a stale or spent intent, a cancelled copy).
     case expired
     case failed
+    // MARK: harden
+    /// A move of a Finder-locked item (or one in a locked folder): it stayed, and was not copied instead.
+    case locked
 }
 
 /// What one file effect did, item by item, in model terms (DESIGN §3.5–§3.6). The app's `FileActions` builds it
@@ -159,6 +162,7 @@ public struct FileReport: Sendable, Equatable {
         case .changed: return .fileChanged
         case .gone: return .fileGone
         case .notPermitted: return .fileNotPermitted
+        case .locked: return .fileLocked
         case .notInTrash: return .usePutBack
         case .noFreeName: return .nameTaken
         case .holdsDesk: return .dropHoldsDesk

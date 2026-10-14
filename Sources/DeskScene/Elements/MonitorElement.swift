@@ -278,9 +278,11 @@ public final class MonitorElement: DeskElement {
         return i >= 0 && i < min(8, s.pageCount()) ? i : nil
     }
 
-    /// The page a carry hovering at `p` spring-loads: a page dot of a lit desktop.
+    /// The page a carry hovering at `p` spring-loads: a page dot of a lit desktop, or INPUT (the next HDMI page).
     func springPage(at p: ArtPoint) -> Int? {
         guard let s = state, s.monitor.power == .on, machine?.showsTokens == true || s.monitor.av else { return nil }
+        // MARK: harden
+        if context.layout.rect(CoreLayout.input).contains(p) { return MonitorMachine.springInputPage(s) }
         guard let i = dot(at: p), i != s.monitor.page || s.monitor.av else { return nil }
         return i
     }
@@ -455,6 +457,13 @@ public final class MonitorElement: DeskElement {
 
     public var needsFrames: Bool {
         (machine?.needsFrames ?? false) || scrollAccum != .zero || scrollLocked || dotBlink != nil || fade != nil
+    }
+
+    // MARK: harden
+    /// While the AV logo is all the monitor animates: the rate its picture changes at (`MonitorMachine`), else nil.
+    var slowFrameInterval: Double? {
+        guard scrollAccum == .zero, !scrollLocked, dotBlink == nil, fade == nil else { return nil }
+        return machine?.logoFrameInterval
     }
 
     public func step(_ dt: Double) {

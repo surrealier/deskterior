@@ -116,6 +116,9 @@ struct LaunchOptions: Equatable {
     /// `--demo-record DIR`: a demo also writes every `demoRecordEvery`-th scene frame here (`FrameRecorder`).
     var demoRecord: String?
     var demoRecordEvery = 3
+    // MARK: harden
+    /// `--burst-av`: the burst ends with the monitor on AV, its logo bouncing (`measure-idle.sh --av`).
+    var burstAV = false
 
     var mode: Mode { headless || demo != nil ? .headless : (windowed != nil ? .windowed : .desk) }
     /// The scene's time source.
@@ -144,6 +147,7 @@ struct LaunchOptions: Equatable {
           --seed N                   reducer randomness
           --icons kind|live          kind icons only, or pixelated real icons (default live)
           --burst                    windowed: a short scripted interaction burst, then idle (measure-idle.sh)
+          --burst-av                 with --burst: end it on the monitor's AV input, its logo bouncing
           --safe-mode                start with the Safe Mode window (also: hold ⌥ while Deskterior launches)
           --language system|en|ko    the language outside desk mode (desk mode follows Settings)
           --show LIST                windowed: open settings,about,onboarding,translocation,peek,inventory
@@ -306,6 +310,8 @@ struct LaunchOptions: Equatable {
         Spec(names: ["--demo-record-every"], arity: .value) { o, v in
             o.demoRecordEvery = try int(v, "--demo-record-every", min: 1)
         },
+        // MARK: harden
+        Spec(names: ["--burst-av"], arity: .switch) { o, _ in o.burstAV = true },
         Spec(names: ["--help", "-h"], arity: .switch) { o, _ in o.showHelp = true },
         Spec(names: ["--version"], arity: .switch) { o, _ in o.showVersion = true },
     ]

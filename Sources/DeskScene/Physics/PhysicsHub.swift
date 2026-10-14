@@ -306,7 +306,8 @@ final class PhysicsHub {
     func land(_ keys: [TokenKey], toss: Ballistics.Toss, journaled: Bool, origins: [TokenKey: Location]? = nil) {
         switch toss.landing {
         case let .desk(point):
-            let v = toss.landingVelocity
+            // MARK: harden: with Reduce Motion a toss is set down where it lands, with no slide after.
+            let v = context.reduceMotion ? .zero : toss.landingVelocity
             landOnDesk(keys, at: point, velocity: SIMD2(v.x, v.y), journaled: journaled, origins: origins)
         case let .floor(x):
             let end = toss.projection.project(toss.end)
@@ -552,8 +553,10 @@ final class PhysicsHub {
     func knock(atCoreX x: Float) {
         guard let s = state else { return }
         let origin = SIMD2(x, 0)
-        guard let plan = knocker.knock(s, drawers: drawerSims(), at: eventTime(), origin: origin, seed: nextSeed())
+        guard var plan = knocker.knock(s, drawers: drawerSims(), at: eventTime(), origin: origin, seed: nextSeed())
         else { return }
+        // MARK: harden: Reduce Motion keeps the knock's one change (ajar drawers shut) and drops its hops and wobbles.
+        if context.reduceMotion { plan = plan.stilled }
         knocks += 1
         bodies.thawAll(from: origin)
         let all = knockables()

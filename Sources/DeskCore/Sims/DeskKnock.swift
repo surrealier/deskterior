@@ -77,6 +77,20 @@ public struct DeskKnock: Sendable, Equatable {
         public var basketJiggle = false
         public var seed: UInt64
 
+        // MARK: harden
+        /// The knock as Reduce Motion shows it (Errata 25): no hops, wobbles, jiggles or ripple; the drawers it snaps
+        /// shut still shut, which is the only change a knock makes.
+        public var stilled: Plan {
+            var p = self
+            p.pileHops = [:]
+            p.floorHops = [:]
+            p.wobbles = [:]
+            p.drawerJostle = []
+            p.clothRipple = false
+            p.basketJiggle = false
+            return p
+        }
+
         /// Frames until every hop and wobble is over.
         public var frames: Int {
             max(pileHops.values.map(\.endFrame).max() ?? 0, floorHops.values.map(\.endFrame).max() ?? 0,

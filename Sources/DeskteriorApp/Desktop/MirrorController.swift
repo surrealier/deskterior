@@ -164,9 +164,13 @@ final class MirrorController {
     /// Desk mode mirrors the folder chosen in Settings (`settings.mirroredFolder`) when no `--desktop-folder` is given,
     /// unless `useSavedFolder` is false (Settings is switching folders right now). `settings` are the launch's
     /// (`SettingsStore`: the app's in desk mode, throwaway ones otherwise); nothing here reads `UserDefaults`.
+    /// `realDesktop` and `home` are the user's (tests pass stand-ins, so the refusal is checked without ever naming
+    /// the real folder).
     static func configuration(
         options: LaunchOptions, environment: [String: String] = ProcessInfo.processInfo.environment,
-        bundleID: String = AppIdentity.bundleID, settings: DeskSettings = DeskSettings(), useSavedFolder: Bool = true
+        bundleID: String = AppIdentity.bundleID, settings: DeskSettings = DeskSettings(), useSavedFolder: Bool = true,
+        realDesktop: URL = DesktopLocator.defaultDesktopURL(),
+        home: URL = FileManager.default.homeDirectoryForCurrentUser
     ) throws(SafetyGuard.Refusal) -> Configuration {
         let mode: SafetyGuard.Mode = switch options.mode {
         case .desk: .desk
@@ -175,7 +179,7 @@ final class MirrorController {
         }
         let saved = useSavedFolder && mode == .desk ? settings.mirroredFolder : nil
         let resolution = DesktopLocator.resolve(override: options.desktopFolder ?? saved, environment: environment)
-        let folder = try SafetyGuard.mirrorFolder(resolution, mode: mode)
+        let folder = try SafetyGuard.mirrorFolder(resolution, mode: mode, realDesktop: realDesktop, home: home)
         let stateDir: URL
         let cacheDir: URL
         if let dir = options.stateDir {
@@ -188,13 +192,29 @@ final class MirrorController {
             stateDir = FileManager.default.temporaryDirectory.appendingPathComponent("deskterior-\(mode.rawValue)-state")
             cacheDir = stateDir.appendingPathComponent("icons", isDirectory: true)
         }
-        let realDesktop = DesktopLocator.defaultDesktopURL()
         try SafetyGuard.checkOwnFolder(stateDir, desktop: realDesktop, mirrored: folder)
         try SafetyGuard.checkOwnFolder(cacheDir, desktop: realDesktop, mirrored: folder)
         return Configuration(
             folder: folder, stateDirectory: stateDir, iconCacheDirectory: cacheDir, connectImmediately: mode != .desk,
             settings: settings
         )
+    }
+
+    // MARK: harden
+
+    /// The launch guard as a decision (DESIGN §3.7 item 7): the refusal that makes the app exit with code 64 before
+    /// any window, mirror or file operator exists, or nil when `options` may start.
+    static func launchRefusal(
+        options: LaunchOptions, environment: [String: String], settings: DeskSettings = DeskSettings(),
+        realDesktop: URL, home: URL
+    ) -> SafetyGuard.Refusal? {
+        do throws(SafetyGuard.Refusal) {
+            _ = try configuration(options: options, environment: environment, bundleID: AppIdentity.fallbackBundleID,
+                                  settings: settings, realDesktop: realDesktop, home: home)
+            return nil
+        } catch {
+            return error
+        }
     }
 
     /// `configuration(options:)`, or prints the refusal and exits with code 64 (DESIGN §3.7 item 7).

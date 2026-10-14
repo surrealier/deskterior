@@ -394,6 +394,10 @@ public final class DeskScene: SKScene {
     /// True while a scripted, bounded animation (or a drag in hand) runs: the loop must not hard-sleep yet.
     public var scriptedAnimating: Bool { room?.scriptedAnimating ?? false }
 
+    // MARK: harden
+    /// While only the AV logo moves: its frame interval, the rate the loop may tick at (Errata 25); else nil.
+    public var slowFrameInterval: Double? { calibration == nil ? room?.slowFrameInterval : nil }
+
     /// The 1-px screen shake of this frame (bonks).
     public var shake: ArtPoint { room?.shake ?? .zero }
 

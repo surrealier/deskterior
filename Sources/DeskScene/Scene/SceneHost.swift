@@ -65,6 +65,8 @@ public final class SceneHost: FrameLoopHost {
         if event.kind == .move {
             // Hovering may start something bounded (the AV logo's bounce); otherwise one frame at most.
             if scene.needsFrames { loop.wake() } else if changed { loop.renderOnce() }
+            // MARK: harden: a slow-ticking loop (only the AV logo moves) shows a hover change now, not a tick later.
+            if changed, loop.isTickingSlowly { loop.renderOnce() }
             return
         }
         loop.noteInput()
@@ -77,6 +79,7 @@ public final class SceneHost: FrameLoopHost {
         let changed = scene.handleKey(command)
         loop.noteInput()
         if scene.needsFrames { loop.wake() } else if changed { loop.renderOnce() }
+        if changed, loop.isTickingSlowly { loop.renderOnce() }  // MARK: harden: as for a hover change
     }
 
     /// Drops a press or drag in progress (focus went elsewhere): a carry springs home.
@@ -125,6 +128,9 @@ public final class SceneHost: FrameLoopHost {
     public var frameLoopNeedsFrames: Bool { scene.needsFrames }
 
     public var frameLoopScriptedAnimating: Bool { scene.scriptedAnimating }
+
+    // MARK: harden
+    public var frameLoopSlowFrameInterval: Double? { scene.slowFrameInterval }
 
     public func frameLoopForceRest() {
         scene.forceRest()

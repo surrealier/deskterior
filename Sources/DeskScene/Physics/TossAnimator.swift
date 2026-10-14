@@ -9,7 +9,8 @@ import SpriteKit
 /// basket crumples into a paper ball (over two frames) as it nears the mouth and stays one until it lands, where a
 /// miss uncrumples. Each rim contact calls `onRim`. On touchdown it squashes for three frames, as hard as it landed
 /// (none in the basket), then `onLand` commits where it ended. `landAll` (hard sleep) lands everything at once.
-/// Deterministic: time comes only from `step`.
+/// With Reduce Motion nothing flies: a flight is never drawn and lands where its path ends on the next step, with a
+/// puff there (DESIGN §2.1 juice kit, Errata 25). Deterministic: time comes only from `step`.
 final class TossAnimator {
     enum Path {
         case toss(Ballistics.Toss)
@@ -128,12 +129,24 @@ final class TossAnimator {
         shadows.addChild(f.shadow)
         flights.append(f)
         place(f)
+        // MARK: harden: Reduce Motion never shows the arc; the next step sets it down.
+        if context.reduceMotion {
+            f.node.isHidden = true
+            f.shadow.isHidden = true
+        }
         return f
     }
 
     func step(_ dt: Double) {
         guard !flights.isEmpty else { return }
         for f in flights {
+            // MARK: harden: Reduce Motion places it straight away where the path ends (no flight, no squash).
+            if context.reduceMotion {
+                let end = Self.end(f.path)
+                context.fx.puff(at: context.layout.point(ArtPoint(Int(end.x.rounded()), Int(end.y.rounded()))))
+                finish(f)
+                continue
+            }
             if f.delay > 0 {
                 f.delay -= Float(dt)
                 if f.delay > 0 { continue }

@@ -75,6 +75,10 @@ public enum L10nKey: String, CaseIterable, Sendable {
     case toastUndidTrash, toastUndidMoveIn, toastUndidCopyIn, toastUndidDropIn, toastCantMoveBack
     case sheetEmptyOne, sheetEmptyMany, sheetAndMore, sheetEmptyExplain, copyingOne, copyingMany
 
+    // MARK: harden: locked drops, moves that came in as copies, leftovers of an interrupted copy (Errata 25)
+    case toastFileLocked, toastCopiedInstead, toastLeftoverCopies, leftoversTitle, leftoversOne, leftoversMany
+    case leftoversExplain, leftoversTrashed
+
     public var en: String { Self.table[self]?.en ?? rawValue }
     public var ko: String { Self.table[self]?.ko ?? rawValue }
 
@@ -374,5 +378,18 @@ public enum L10nKey: String, CaseIterable, Sendable {
                               "쓰레기통은 책상 위 파일을 숨기기만 해요. 이 작업은 파일을 휴지통으로 옮기고, 실행 취소나 Finder의 되돌려 놓기로 돌려놓을 수 있어요."),
         .copyingOne: p("Copying %d item… ⌘Z stops", "항목 %d개 복사 중… ⌘Z로 멈춤"),
         .copyingMany: p("Copying %d items… ⌘Z stops", "항목 %d개 복사 중… ⌘Z로 멈춤"),
+
+        // MARK: harden
+        .toastFileLocked: p("It's locked, so it stayed. ⌥ copies it.", "잠겨 있어서 그대로 뒀어요. ⌥로 복사해요."),
+        .toastCopiedInstead: p("Copied in; the original stayed put.", "복사해 왔어요. 원본은 그대로예요."),
+        .toastLeftoverCopies: p("An interrupted copy left files. See Settings.", "중단된 복사의 파일이 남았어요. 설정을 보세요."),
+        .leftoversTitle: p("Leftover copies", "남은 복사본"),
+        .leftoversOne: p("%d hidden folder from an interrupted copy is in the desk folder.",
+                         "중단된 복사로 생긴 숨은 폴더 %d개가 책상 폴더에 있어요."),
+        .leftoversMany: p("%d hidden folders from an interrupted copy are in the desk folder.",
+                          "중단된 복사로 생긴 숨은 폴더 %d개가 책상 폴더에 있어요."),
+        .leftoversExplain: p("Deskterior never removes them by itself. Look inside, then move them to the Trash if you don't need them.",
+                             "Deskterior는 이 폴더를 스스로 지우지 않아요. 안을 확인하고 필요 없으면 휴지통으로 옮기세요."),
+        .leftoversTrashed: p("Moved to the Trash.", "휴지통으로 옮겼어요."),
     ]
 }

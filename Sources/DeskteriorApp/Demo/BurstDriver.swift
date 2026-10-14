@@ -5,7 +5,8 @@ import Foundation
 /// `--burst` (windowed runs only; `scripts/measure-idle.sh`, DESIGN §5): once the mirror has put tokens on the
 /// monitor, plays a short burst of real input through the scene host at 60 events a second — a token set down on
 /// the desk, one flung off it, one dropped into the basket, a desk knock, a hover — then leaves the desk alone so
-/// the idle tail can be measured. Prints `burst: done` when the last event is sent.
+/// the idle tail can be measured. Prints `burst: done` when the last event is sent. With `endOnAV` (`--burst-av`) the
+/// monitor then switches to its AV input, whose NO SIGNAL logo bounces for its 10 s (the loop's slow ticks, Errata 25).
 @MainActor
 final class BurstDriver {
     private let host: SceneHost
@@ -13,16 +14,18 @@ final class BurstDriver {
     private var events: [(kind: InputEvent.Kind, art: SIMD2<Float>, count: Int)] = []
     private var timer: Timer?
     private var waited = 0
+    private let endOnAV: Bool
 
-    private init(host: SceneHost, store: Store) {
+    private init(host: SceneHost, store: Store, endOnAV: Bool) {
         self.host = host
         self.store = store
+        self.endOnAV = endOnAV
     }
 
     private static var running: BurstDriver?
 
-    static func start(host: SceneHost, store: Store) {
-        let driver = BurstDriver(host: host, store: store)
+    static func start(host: SceneHost, store: Store, endOnAV: Bool = false) {
+        let driver = BurstDriver(host: host, store: store, endOnAV: endOnAV)
         running = driver
         driver.schedule()
     }
@@ -46,7 +49,12 @@ final class BurstDriver {
         }
         let e = events.removeFirst()
         host.handle(InputEvent(e.kind, art: e.art, clickCount: e.count, t: ProcessInfo.processInfo.systemUptime))
-        if events.isEmpty { stop("burst: done") }
+        guard events.isEmpty else { return }
+        if endOnAV {
+            store.dispatch(.selectAV)
+            host.modelChanged()
+        }
+        stop(endOnAV ? "burst: done (AV)" : "burst: done")
     }
 
     private func stop(_ message: String) {

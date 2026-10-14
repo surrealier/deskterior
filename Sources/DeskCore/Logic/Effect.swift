@@ -106,4 +106,8 @@ public enum ToastKey: String, Sendable, CaseIterable {
     // MARK: system (M12)
     /// Desktop widgets cover a critical part of the desk and no nudge clears them (one-time tip, DESIGN §1.2).
     case widgetsOverlap
+    // MARK: harden
+    /// A locked item dropped to move stayed where it was; a move macOS refused came in as a copy; leftovers of an
+    /// interrupted copy are in the desk folder (Settings shows them) (Errata 25).
+    case fileLocked, copiedInstead, leftoverCopies
 }

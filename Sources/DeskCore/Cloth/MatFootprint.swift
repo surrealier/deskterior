@@ -78,7 +78,7 @@ extension MatState {
 extension ClothSim {
     /// A flat mat laid from a saved frame (origin, size, angle and grid), for a `MatState` without particles.
     public static func flat(_ mat: MatState, params: ClothParams = .standard) -> ClothSim {
-        let ok = mat.grid.count == 2 && mat.grid.allSatisfy { $0 >= 3 } && mat.grid[0] * mat.grid[1] <= 4096
+        let ok = mat.grid.count == 2 && mat.grid.allSatisfy { (3...4096).contains($0) } && mat.grid[0] * mat.grid[1] <= 4096
         let size = mat.size.isFinite && mat.size.x > 0 && mat.size.y > 0 ? mat.size : MatState().size
         return ClothSim(origin: mat.origin.isFinite ? mat.origin : MatState().origin, size: size,
                         angle: mat.angle.isFinite ? mat.angle : 0, cols: ok ? mat.grid[0] : 35,

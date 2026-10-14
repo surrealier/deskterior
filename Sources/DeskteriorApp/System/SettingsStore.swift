@@ -32,12 +32,16 @@ final class SettingsStore {
 
     /// The store for a launch: desk mode keeps settings in the app's defaults; everything else in memory.
     static func forLaunch(_ options: LaunchOptions) -> SettingsStore {
-        if options.mode == .desk { return SettingsStore(defaults: AppIdentity.defaults) }
+        if persists(options) { return SettingsStore(defaults: AppIdentity.defaults) }
         // Development runs speak English unless --language says otherwise, so their screenshots stay stable.
         return SettingsStore(memory: [DeskSettings.Key.language.rawValue: (options.language ?? .en).rawValue])
     }
 
     var isPersistent: Bool { defaults != nil }
+
+    // MARK: harden
+    /// Whether a launch with `options` keeps its settings in the app's defaults: desk mode only.
+    static func persists(_ options: LaunchOptions) -> Bool { options.mode == .desk }
 
     /// Calls `body(new, old)` after every change.
     func observe(_ body: @escaping (DeskSettings, DeskSettings) -> Void) {

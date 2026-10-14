@@ -1,6 +1,6 @@
 # Deskterior developer tasks. Scripts live in scripts/; every target works with Command Line Tools only.
 # `make app VERSION=0.1.0` sets the bundle version (default: latest git tag, else 0.0.0-dev).
-.PHONY: build release test lint check app universal install icon run soak clean
+.PHONY: build release test lint check app universal install icon run idle soak clean
 # MARK: release (M13)
 .PHONY: gif
 
@@ -37,6 +37,10 @@ icon:
 run:
 	@FIX="$$(mktemp -d "$${TMPDIR:-/tmp}/deskterior-run.XXXXXX")" && scripts/make-fixture-desktop.sh "$$FIX/desk" && \
 	  swift run Deskterior --windowed --desktop-folder "$$FIX/desk" --state-dir "$$FIX/state"
+
+# MARK: harden: DESIGN §5 idle check (§8.3 item 20); add ARGS="--exit-after 70" for the 60-s average.
+idle:
+	scripts/measure-idle.sh $(ARGS)
 
 soak:
 	scripts/soak.sh --release
