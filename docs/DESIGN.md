@@ -173,6 +173,8 @@
       pushes (in front of it, or behind when the mat lies at the desk's front) and the pass is fitted into 2.4 s;
       "TIDY!" follows. With Reduce Motion everything is under at once.
     - **`matMode=flat`** comes from the setting or Reduce Motion (`DeskScene.matFlat`).
+    - **Rest.** The cloth's pose commits (`matSettled`) when it falls asleep; an awake cloth with nothing driving it
+      (no grab, script or transform) accepts its pose after 4 s, so creeping creases never keep the loop awake.
     - **Demos** gain a `move` step (a held drag moved on, for frame dumps).
 
 ---

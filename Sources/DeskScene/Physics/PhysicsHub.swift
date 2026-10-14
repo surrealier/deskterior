@@ -161,7 +161,7 @@ final class PhysicsHub {
         for (id, p) in s.piles {
             let members = s.tokens.members(of: id)
             if members.contains(where: inAir.contains) { flying.insert(id) }
-            if members.contains(where: { !hidden.contains($0) }), !isUnderMat(id) { shown[id] = p }
+            if members.contains(where: { !hidden.contains($0) }), !isUnderMat(id) { shown[id] = p }  // MARK: mat
         }
         bodies.sync(shown, obstacles: obstacles, flying: flying)
     }
