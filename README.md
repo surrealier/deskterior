@@ -75,9 +75,14 @@ Deskterior has no Dock icon. Its menu is the small pixel icon in the menu bar, o
   - dropping files from Finder onto the desk (moved into your Desktop folder; copied when they come from another
     disk, or when you hold ⌥);
   - dragging a file out to another app (that app does what it would do with a drag from Finder);
-  - **Eject** from a drive's menu.
+  - **Eject** from a drive's menu;
+  - **Move to Trash** under Settings ▸ Leftover copies, which appears only after an interrupted copy (below).
 - **Trash, never delete.** Deskterior moves files to the macOS Trash and never deletes anything. It never
   overwrites a file: a name that is taken gets " 2", " 3"…
+- **Locked files stay put.** A locked file dropped onto the desk is not moved into your Desktop folder (hold ⌥ to
+  copy it instead). If a copy is cut short, for example by quitting mid-copy, its hidden `.deskterior-partial-…`
+  folder stays in your Desktop folder: Deskterior tells you once and lists it under Settings ▸ Leftover copies
+  (Show in Finder, Move to Trash), but never removes it by itself.
 - **Undo.** ⌘Z undoes layout changes and Deskterior's own file actions (Move to Trash, Empty Wastebasket…, drops
   onto the desk): trashed files come back to the same spot on the desk, dropped files go back where they came from
   (copies go to the Trash). Eject and drags out to other apps cannot be undone. If macOS will not let Deskterior
@@ -139,7 +144,7 @@ Menu bar icon ▸ **Settings…**
 | Setting | Choices | Default |
 |---|---|---|
 | Lights | Auto (follows the time of day), Day, Night, Lamp Only | Auto |
-| Reduce motion | Follow System, Always, Never: no shakes or flickers, the CRT fades instead of collapsing, the mat lies flat | Follow System |
+| Reduce motion | Follow System, Always, Never: no shakes or flickers, the CRT fades instead of collapsing, the mat lies flat, tossed files land without flying, the AV logo holds still | Follow System |
 | Desk mat | Cloth (lifts, folds, creases) or Flat (bumps only) | Cloth |
 | Pixel size | Chunky, Normal, Fine | Normal |
 | Mirrored folder | Your Desktop, or another folder (Choose Folder… / Use Desktop) | Desktop |
@@ -244,6 +249,8 @@ More: [docs/DESIGN.md](docs/DESIGN.md) (the design), [docs/DEMOS.md](docs/DEMOS.
 - Desktop widgets stay above the desk; Deskterior shifts the room a little to keep them off the monitor and drawers
   when it can.
 - In scaled display modes the pixels are slightly soft.
+- A mirrored folder on an **exFAT** drive cannot take drops or undo them: exFAT does not support the no-overwrite
+  rename Deskterior uses for every move, so it refuses and changes nothing. FAT32 and APFS work.
 - Finder's own desktop is still there underneath. If Finder had icons selected on the desktop before Deskterior
   covered it, ⌘⌫ in Finder can still move them to the Trash (Finder's Undo puts them back).
 - The scene's own lettering is in English in v0.1, also with the Korean language setting: its tooltips, the

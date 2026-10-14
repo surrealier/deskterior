@@ -96,7 +96,7 @@ struct HardeningCoreTests {
         let both = FileReport(kind: .importItems, count: 2, problems: [.notPermitted], done: .copiedInstead)
         #expect(both.toast == .someCopiedInstead, "a move that came in as a copy is never left unsaid")
         let english = ["It's locked, so it stayed. ⌥ copies it.", "Copied in; the original stayed put.",
-                       "An interrupted copy left files. See Settings.", "Some were locked, so they stayed.",
+                       "Interrupted copy left files. See Settings.", "Some were locked, so they stayed.",
                        "Some came in as copies; the rest stayed.", "Copied in, but it can't be undone.",
                        "No leftover copies now."]
         for e in english {

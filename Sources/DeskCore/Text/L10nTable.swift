@@ -384,7 +384,7 @@ public enum L10nKey: String, CaseIterable, Sendable {
         // MARK: harden
         .toastFileLocked: p("It's locked, so it stayed. ⌥ copies it.", "잠겨 있어서 그대로 뒀어요. ⌥로 복사해요."),
         .toastCopiedInstead: p("Copied in; the original stayed put.", "복사해 왔어요. 원본은 그대로예요."),
-        .toastLeftoverCopies: p("An interrupted copy left files. See Settings.", "중단된 복사의 파일이 남았어요. 설정을 보세요."),
+        .toastLeftoverCopies: p("Interrupted copy left files. See Settings.", "중단된 복사의 파일이 남았어요. 설정을 보세요."),
         .leftoversTitle: p("Leftover copies", "남은 복사본"),
         .leftoversOne: p("%d hidden folder from an interrupted copy is in the desk folder.",
                          "중단된 복사로 생긴 숨은 폴더 %d개가 책상 폴더에 있어요."),

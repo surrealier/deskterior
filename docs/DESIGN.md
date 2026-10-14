@@ -408,7 +408,7 @@
     - **Leftover copies.** A `.deskterior-partial-<uuid>` staging folder (the in-desk fallback) cut short by a quit or a
       crash is never touched automatically. After the mirror's first snapshot (never before ⏻), the mirrored folder's top
       level is listed off the main thread (`PartialCopies.find`, read-only); leftovers are logged, toasted once per session
-      ("An interrupted copy left files. See Settings.") and listed in Settings ▸ Leftover copies with Show in Finder and
+      ("Interrupted copy left files. See Settings.") and listed in Settings ▸ Leftover copies with Show in Finder and
       Move to Trash. Only that button removes them: the session names the gesture (`withOrigin(.menuItem)` in
       AppDelegate.swift), `EffectRunner.trashLeftovers` mints the intent, and `FileOperator.trash` re-checks each
       folder's identity and refuses the staging folder of a copy still running (EBUSY). Running copies are listed
@@ -506,6 +506,17 @@
       brighter red, so at 16–32 px the body's top edge holds against a dark Dock and the monitor stands off the wall.
       Every shape of the 32-px artwork starts and ends on an even pixel, so the 16-px image macOS derives from the 64-px
       slot (a 4:1 average) is the hand-drawn 16-px art but for its rim.
+27. **Wave 6 glue (M13 + hardening + polish).** These refine §6's workflows and Errata 24–26.
+    - **Actions pinned.** Both workflows pin each action by commit SHA, on releases that run on Node 24:
+      `actions/checkout` v5.1.0, `actions/upload-artifact` v7.0.2 (v4 ran on the deprecated Node 20) and
+      `actions/attest-build-provenance` v4.2.2 (v2 wrapped a Node 20 `actions/attest`). §6's `checkout@v5` and
+      `attest-build-provenance@v2` are superseded; a bump changes the SHA and its version comment together.
+    - **Docs follow all three tracks.** README (English and Korean) and CHANGELOG also describe the hardening track's
+      locked-file refusal, Settings ▸ Leftover copies (listed among the explicit file actions), Reduce Motion's
+      still tosses and AV logo, and the exFAT limit, and the polish track's tall-display room, turned keyboard and
+      template menu bar icon.
+    - **Media.** `docs/media` is regenerated with `make gif` from the integrated tree, so the tour and stills show the
+      shipped build (for example the mat drawn over the keyboard while it is peeled).
 
 ---
 
