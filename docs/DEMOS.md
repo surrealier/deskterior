@@ -178,20 +178,26 @@ folder (`SafetyGuard.scratchSource`), since demos move files in from it. File re
 `Demos/hero.json` is the README's tour, outside the numbered set: files on the monitor; a photo chomped into the left
 riser drawer; three files ⌘-clicked along a row, set down beside the mat as one pile and brushed under its edge (the
 brush double-clicked home); the mat's front edge peeled back and held, the pile standing where it lay, its front file
-carried back to the monitor while the edge stays up; the power button's CRT collapse; 21:00 and the wall switch (Lamp
-Only), then the monitor back on. Unrecorded steps after it set up the hiding places by day for a still. Its snapshots
-are the README's stills.
+carried back to the monitor while the edge stays up; the power button's CRT collapse; the clock's minute hand dragged
+four turns from 16:00 into the night (the real clock is set to 20:00 before the release, so the hands stay), the wall
+switch (Lamp Only), then the monitor back on, held 1.6 s. The tooltips that linger are English names. Unrecorded steps
+after it set up the hiding places by day for a still. Its snapshots are the README's stills.
+
+The first line writes frames to `.build/demo-out/hero/frames`; `make gif` writes `docs/media/hero.gif` and the stills
+(ffmpeg).
 
 ```sh
-SWIFT_SCRATCH_PATH=.build-mine scripts/run-demo.sh --record 3 --scale 2 hero   # frames in .build/demo-out/hero/frames
-make gif                                                                    # docs/media/hero.gif and the stills (ffmpeg)
+SWIFT_SCRATCH_PATH=.build-mine scripts/run-demo.sh --record 3 --scale 2 hero
+make gif
 ```
 
 `run-demo.sh --record N` passes `--demo-record <out>/<name>/frames --demo-record-every N`: the app writes every Nth
 scene frame it steps as `frame-NNNNN.png` (art px, the lit frame) with the demo's pointer drawn in (an arrow, grey while
 a button is down, a ring after a press; snapshots never show it). Real-time waits write nothing, so the frames play at
 60/N fps of scene time. `scripts/make-gif.sh` records with `DESKTERIOR_ICONS=kind`, so the media are the same on every
-Mac, and assembles a ×2 nearest-neighbour, undithered, looping GIF (20 fps, at most 4 MB).
+Mac, and assembles a ×2 nearest-neighbour, undithered, looping GIF (20 fps, at most 4 MB), the ×2 stills and two ×4
+crops (the mat peeled; the riser, pen cup, phone and filing cabinet in use). The README shows each image at half its
+width, so every art pixel covers whole screen pixels.
 
 | Step | Example | Does |
 |---|---|---|

@@ -12,8 +12,10 @@
 # desktop) with the built-in kind icons (--icons kind), so the media come out the same on every Mac and show no other
 # apps' document icons. Frames are art px with the demo's pointer drawn in; the GIF is nearest-neighbour ×2 with a palette of
 # the frames' own (Apollo) colours, no dithering, looping. The stills come from the demo's snapshots: desk.png (the
-# room by day, ×2), mat-peel.png (the desk around the mat, its edge peeled off a pile, ×3), hiding.png (the hiding
-# places in use, ×2) and lamp-only.png (Lamp Only at night, ×2).
+# room by day, ×2), mat-peel.png (the desk around the mat, its edge peeled off a pile, a ×4 crop), hiding.png (the
+# riser, pen cup, phone and filing cabinet in use, a ×4 crop) and lamp-only.png (Lamp Only at night, ×2). The README
+# shows each at half its width, so every art pixel is a whole number of screen pixels (1 or 2 for the ×2 images, 2 or
+# 4 for the crops).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -22,7 +24,7 @@ EVERY=3
 KEEP=0
 MAX_BYTES="${GIF_MAX_BYTES:-4194304}"
 
-usage() { sed -n '2,16p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//' >&2; exit 2; }
+usage() { sed -n '2,18p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//' >&2; exit 2; }
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -55,12 +57,15 @@ ffmpeg -v error -y -framerate "60/$EVERY" -i "$FRAMES/frame-%05d.png" \
   -vf "scale=iw*2:ih*2:flags=neighbor,split[a][b];[a]palettegen=max_colors=64:stats_mode=full:reserve_transparent=0[p];[b][p]paletteuse=dither=none:diff_mode=rectangle" \
   -loop 0 "$GIF"
 
-for still in desk hiding lamp-only; do
+for still in desk lamp-only; do
   cp "$WORK/hero/still-$still@2x.png" "$OUT/$still.png"
 done
-# The desk around the mat (canvas px of the hero's 1470x956@2 display: 588x383), nearest ×3.
-ffmpeg -v error -y -i "$WORK/hero/still-peel.png" -vf "crop=288:96:150:204,scale=iw*3:ih*3:flags=neighbor" \
+# Crops in canvas px of the hero's 1470x956@2 display (588x383), nearest ×4: the desk around the mat, and the hiding
+# places from the riser to the filing cabinet.
+ffmpeg -v error -y -i "$WORK/hero/still-peel.png" -vf "crop=288:96:150:204,scale=iw*4:ih*4:flags=neighbor" \
   "$OUT/mat-peel.png"
+ffmpeg -v error -y -i "$WORK/hero/still-hiding.png" -vf "crop=300:182:212:201,scale=iw*4:ih*4:flags=neighbor" \
+  "$OUT/hiding.png"
 
 BYTES="$(wc -c < "$GIF" | tr -d ' ')"
 echo "make-gif: $GIF ($COUNT frames at $((60 / EVERY)) fps, $(awk "BEGIN { printf \"%.1f\", $COUNT * $EVERY / 60 }") s, $BYTES bytes)"

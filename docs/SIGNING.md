@@ -67,10 +67,11 @@ id in `release.yml` so users keep their permissions, settings and layout.
 
 ```sh
 SIGN_IDENTITY="Deskterior Self-Signed" make app
-codesign -d -r - build/Deskterior.app   # designated => identifier "…" and certificate root = H"…"
+codesign -d -r - build/Deskterior.app
 ```
 
-The first signing asks for permission to use the private key. Click **Always Allow**.
+The second command prints `designated => identifier "…" and certificate root = H"…"`. The first signing asks for
+permission to use the private key. Click **Always Allow**.
 
 ## 3. Export a .p12 for CI
 
@@ -90,8 +91,10 @@ With the GitHub CLI (`gh auth login` first), from the repository folder:
 
 ```sh
 base64 -i deskterior-signing.p12 | gh secret set SIGNING_P12_BASE64
-gh secret set SIGNING_P12_PASSWORD   # paste the .p12 password when prompted
+gh secret set SIGNING_P12_PASSWORD
 ```
+
+The second command asks for the secret: paste the `.p12` password.
 
 Or add them in the browser under **Settings › Secrets and variables › Actions › New repository secret**:
 

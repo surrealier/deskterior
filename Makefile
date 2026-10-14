@@ -33,8 +33,10 @@ install: app
 icon:
 	scripts/make-icon.sh
 
+# MARK: release (M13): a window on a fresh mktemp fixture and state folder (the app refuses runs without one).
 run:
-	swift run Deskterior --windowed
+	@FIX="$$(mktemp -d "$${TMPDIR:-/tmp}/deskterior-run.XXXXXX")" && scripts/make-fixture-desktop.sh "$$FIX/desk" && \
+	  swift run Deskterior --windowed --desktop-folder "$$FIX/desk" --state-dir "$$FIX/state"
 
 soak:
 	scripts/soak.sh --release

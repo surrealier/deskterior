@@ -18,6 +18,12 @@ jobs:
     runs-on: macos-26
     steps:
       - uses: actions/checkout@v5
+      - name: Check version
+        # The tagged commit carries the release: a dated CHANGELOG heading and the same DeskCore.version.
+        run: |
+          v="${GITHUB_REF_NAME#v}"
+          grep -Eq "^## \[$v\] - [0-9]{4}-[0-9]{2}-[0-9]{2}$" CHANGELOG.md || { echo "CHANGELOG has no dated [$v]"; exit 1; }
+          grep -q "version = \"$v\"" Sources/DeskCore/DeskCore.swift || { echo "DeskCore.version is not $v"; exit 1; }
       - name: Toolchain
         run: swift --version && xcode-select -p
       - name: Build
@@ -61,8 +67,15 @@ jobs:
         run: |
           codesign --verify --strict --verbose=2 build/Deskterior.app
           codesign -d -r - build/Deskterior.app
-          lipo -info build/Deskterior.app/Contents/MacOS/Deskterior
+          lipo build/Deskterior.app/Contents/MacOS/Deskterior -verify_arch arm64 x86_64
           plutil -lint build/Deskterior.app/Contents/Info.plist
+          info() { plutil -extract "$1" raw -o - build/Deskterior.app/Contents/Info.plist; }
+          owner="$(printf '%s' "$GITHUB_REPOSITORY_OWNER" | tr '[:upper:]' '[:lower:]')"
+          [ "$(info CFBundleIdentifier)" = "io.github.$owner.deskterior" ] ||
+            { echo "bundle id $(info CFBundleIdentifier) is not io.github.$owner.deskterior"; exit 1; }
+          v="${GITHUB_REF_NAME#v}"
+          [ "$(info CFBundleShortVersionString)" = "${v%%[-+]*}" ] ||
+            { echo "CFBundleShortVersionString $(info CFBundleShortVersionString) is not ${v%%[-+]*}"; exit 1; }
           (cd build && shasum -a 256 -c Deskterior-*.zip.sha256)
 
       - name: Attest build provenance

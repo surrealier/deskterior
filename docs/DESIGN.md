@@ -358,9 +358,12 @@
     - **Hero demo.** `Demos/hero.json` stands outside the numbered set. `scripts/make-gif.sh` (`make gif`) runs it on a
       mktemp fixture with the kind icons (`DESKTERIOR_ICONS=kind`), so the media are the same on every Mac and show no
       other apps' document icons. It writes `docs/media/hero.gif` (×2 nearest, a palette of the frames' own colours,
-      no dither, 20 fps, looping, at most 4 MB) and the stills `desk`, `hiding`, `lamp-only` (×2) and `mat-peel` (a
-      ×3 crop). A bottom-row icon's label flips above it and wins the hit test, so the tour's pointer never crosses one
-      on its way to a target.
+      no dither, 20 fps, looping, at most 4 MB) and the stills `desk`, `lamp-only` (×2), `mat-peel` and `hiding` (×4
+      crops: the mat peeled; the riser, pen cup, phone and filing cabinet). The READMEs show each with an `<img
+      width>` of half its pixels, so every art pixel covers whole screen pixels. A bottom-row icon's label flips above
+      it and wins the hit test, so the tour's pointer never crosses one on its way to a target. The tour turns day into
+      night by dragging the clock's minute hand whole turns (16:00 to 20:00) and sets the real clock before the
+      release, so the hands do not spring back; the night is held 1.6 s; the lingering tooltips are English names.
     - **Bundle id.** With no GitHub owner (no github.com `origin`, no `GITHUB_REPOSITORY_OWNER`), `build-app.sh`
       names the app `io.github.deskterior.dev`, the unbundled id (Errata 22), not `io.github.deskterior.deskterior`:
       a development build never shares settings, state or permissions with a released app. CI and releases get
@@ -373,6 +376,22 @@
       15's Open Anyway, the checksum and `gh attestation verify`.
     - **Docs.** README.md and README.ko.md link releases relatively (`../../releases/latest`), so no owner is
       hard-coded; CHANGELOG.md follows Keep a Changelog.
+    - **Release review.**
+      - Shell blocks people paste carry no `#` comments: macOS's interactive zsh does not treat `#` as a comment, so a
+        trailing comment becomes arguments (to `rm -rf`, say). The uninstall block runs only when `defaults read`
+        succeeds and the id is `io.github.*.deskterior` or `io.github.deskterior.dev` (ReleaseDocsTests checks both).
+      - The tagged commit carries the release: `DeskCore.version` is `X.Y.Z` and CHANGELOG has `## [X.Y.Z] - date`
+        (the release workflow's first step and ReleaseDocsTests check it); development after it adds `-dev`.
+      - `build-app.sh` builds for `uname -m` unless ARCHS says otherwise (so `make install` works on Intel), puts only
+        the numeric `X.Y.Z` of a pre-release version in CFBundleShortVersionString (the zip keeps the full one), and
+        deletes the linker's rpath into the build machine's toolchain when nothing loads through `@rpath`. The
+        release workflow also checks both architectures, the bundle id against the repository owner and the short
+        version.
+      - Building needs macOS 15.6 or later with the Command Line Tools for Xcode 26 (Swift 6.2); the app runs on
+        macOS 14 and later but has only been run on macOS 26.
+      - `make run` opens a window on a mktemp fixture and state folder (the app refuses `--windowed` without one).
+      - The body's `io.github.surrealier.deskterior` and `.dev` ids (§4, §11) are superseded: the released id is
+        `io.github.<owner>.deskterior` (Errata 2, above) and the unbundled one `io.github.deskterior.dev` (Errata 22).
 
 ---
 

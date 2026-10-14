@@ -4,7 +4,7 @@ All notable changes to Deskterior are listed here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.1.0] - Unreleased
+## [0.1.0] - 2026-10-14
 
 The first release: milestones M0–M13 of [docs/DESIGN.md](docs/DESIGN.md).
 
@@ -43,7 +43,8 @@ The first release: milestones M0–M13 of [docs/DESIGN.md](docs/DESIGN.md).
   and Take Everything Out bring files back to the monitor.
 - **File actions, only when asked.** Move to Trash and Empty Wastebasket… (with a sheet listing the names) go to the
   macOS Trash; drop-in from Finder moves or copies files into the Desktop folder (never overwriting); drag-out hands
-  files to other apps, Mail and the Dock's Trash; Eject from the drive hub. Every one is undoable with ⌘Z and logged.
+  files to other apps, Mail and the Dock's Trash; Eject from the drive hub. Every one is logged; all but Eject and
+  drags out to other apps can be undone with ⌘Z.
 - **System integration.** Covers Finder's icons without changing Finder; menu bar item and bare-wall menu; walls on
   other displays (drops go to the monitor); Peek Desk (optional ⌃⌥⌘D shortcut, off by default) and Pause Desk;
   pausing for full-screen apps, sleep, lock, user switching, and optionally on battery; widget avoidance; Launch at
@@ -60,12 +61,13 @@ The first release: milestones M0–M13 of [docs/DESIGN.md](docs/DESIGN.md).
 
 - Not notarized: each downloaded version needs System Settings ▸ Privacy & Security ▸ Open Anyway, and macOS may ask
   for Desktop access again after an update.
-- Tested on one Mac (MacBook Air M2, macOS 26); the Intel build has not been run on an Intel Mac.
+- Tested on one Mac (MacBook Air M2, macOS 26); it has never been run on macOS 14 or 15, and the Intel build has not
+  been run on an Intel Mac.
 - Not yet checked by hand: clicks and hover while another app is in front, keys after a desk click, pausing under
   full-screen apps, drag-out to Finder, Mail and the Dock's Trash, undo through the real Trash, drop-in from
   Downloads ([docs/SPIKES.md](docs/SPIKES.md)).
 - Clicking the wallpaper to reveal the desktop does not work over the desk; widgets stay above it.
 - A Finder desktop selection made before the desk covered it can still be trashed with ⌘⌫ in Finder.
-- The scene's tooltips and "TIDY!" are English only.
+- The scene's own lettering is English only: tooltips, the NO SIGNAL logo, BONK, SWISH! and TIDY!.
 
 [0.1.0]: ../../releases/tag/v0.1.0

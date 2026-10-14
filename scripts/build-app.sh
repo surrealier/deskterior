@@ -3,11 +3,12 @@
 #
 # Usage: scripts/build-app.sh [--version X.Y.Z] [--universal]
 #
-#   --version          CFBundleShortVersionString (default: latest git tag without the "v", else 0.0.0-dev)
+#   --version          the app's version (default: latest git tag without the "v", else 0.0.0-dev); it names the zip,
+#                      and CFBundleShortVersionString gets its numeric part (0.2.0-rc.1 → 0.2.0), as macOS expects
 #   --universal        shorthand for ARCHS="arm64 x86_64"
 #
 # Environment:
-#   ARCHS              architectures to build, space-separated (default "arm64")
+#   ARCHS              architectures to build, space-separated (default: this Mac's, from `uname -m`)
 #   BUNDLE_ID          default io.github.<owner>.deskterior, where <owner> is the lowercased GitHub owner of
 #                      the `origin` remote, else $GITHUB_REPOSITORY_OWNER (set on GitHub Actions); with neither, the
 #                      development id io.github.deskterior.dev (the id unbundled `swift run` builds use)
@@ -89,11 +90,16 @@ VERSION="${VERSION#v}"
 case "$VERSION" in
   "" | *[!0-9A-Za-z.+-]*) die "invalid version: '$VERSION'" ;;
 esac
+# CFBundleShortVersionString is up to three dot-separated integers: a pre-release or build suffix stays out of it.
+SHORT_VERSION="${VERSION%%[-+]*}"
+case "$SHORT_VERSION" in
+  "" | *[!0-9.]* | .* | *. | *..*) die "version '$VERSION' does not start with X.Y.Z" ;;
+esac
 
 BUILD="$(git rev-list --count HEAD 2>/dev/null || echo 0)"
 IDENTITY="${SIGN_IDENTITY:--}"
 
-ARCHS="${ARCHS:-arm64}"
+ARCHS="${ARCHS:-$(uname -m)}"
 for arch in $ARCHS; do
   case "$arch" in
     arm64 | x86_64) ;;
@@ -133,6 +139,19 @@ if [ ${#BINS[@]} -eq 1 ]; then
 else
   lipo -create -output "$CONTENTS/MacOS/Deskterior" "${BINS[@]}"
 fi
+# The linker adds an rpath into the build machine's toolchain (for Swift back-deployment libraries). Nothing loads
+# through it (no @rpath dylibs), so it goes, with the build machine's path.
+case "$(otool -L "$CONTENTS/MacOS/Deskterior")" in
+  *@rpath/*) ;;
+  *)
+    otool -l "$CONTENTS/MacOS/Deskterior" | awk '$1 == "path" && $2 ~ /\/Developer\// { print $2 }' | sort -u |
+      while IFS= read -r rpath; do
+        # (It warns that the linker's signature goes stale; the bundle is signed below.)
+        install_name_tool -delete_rpath "$rpath" "$CONTENTS/MacOS/Deskterior" 2>&1 |
+          { grep -v 'invalidate the code signature' || true; } >&2
+      done
+    ;;
+esac
 # Drop debug symbols and the debug map (it records build-machine object paths); keeps exported symbols.
 strip -S -x "$CONTENTS/MacOS/Deskterior"
 
@@ -144,7 +163,7 @@ fill() { # <key> <placeholder> <value>: substitutes the placeholder inside the k
   plutil -replace "$1" -string "${current//$2/$3}" "$PLIST"
 }
 fill CFBundleIdentifier __BUNDLE_ID__ "$BUNDLE_ID"
-fill CFBundleShortVersionString __VERSION__ "$VERSION"
+fill CFBundleShortVersionString __VERSION__ "$SHORT_VERSION"
 fill CFBundleVersion __BUILD__ "$BUILD"
 fill NSHumanReadableCopyright __COPYRIGHT_OWNER__ "$COPYRIGHT_OWNER"
 if grep -q '__[A-Z_]*__' "$PLIST"; then die "unfilled placeholder left in $PLIST"; fi

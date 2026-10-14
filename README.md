@@ -2,7 +2,7 @@
 
 **English** · [한국어](README.ko.md)
 
-![Deskterior: files on a pixel-art monitor; one dropped into a riser drawer, a pile brushed under the desk mat, the mat's edge peeled back to take a file out, the monitor switched off, and the room at night with only the desk lamp on](docs/media/hero.gif)
+<img src="docs/media/hero.gif" width="588" alt="Deskterior: files on a pixel-art monitor; one dropped into a riser drawer, a pile brushed under the desk mat, the mat's edge peeled back to take a file out, the monitor switched off, the clock's minute hand turned on to night, the room light switched off with only the desk lamp on, then the monitor back on">
 
 <sub>The pictures use the desk's built-in file icons. On your Mac each file shows its own icon or thumbnail, in pixels.</sub>
 
@@ -22,7 +22,7 @@ free and open source (MIT)
 
 ## Where things hide
 
-![The hiding places in use by day: an open riser drawer with three photos, the cubby, the pen cup with pens, the phone face up with app icons, the cabinet's file drawer with folder tabs, and crumpled paper in the wastebasket](docs/media/hiding.png)
+<img src="docs/media/hiding.png" width="600" alt="The hiding places in use by day, close up: an open riser drawer with three photos, a note in the cubby, two pens in the pen cup, the phone face up with three app icons, and the filing cabinet's bottom drawer open on its folder tabs">
 
 | Place | How you hide | How you get it back |
 |---|---|---|
@@ -32,7 +32,7 @@ free and open source (MIT)
 | **Phone stand** | Drop files on the face-up phone; they become app icons. Click the phone to turn it face down (a face-up phone glows at night, like a real one). | Click it again, or Turn Face Up from its menu. |
 | **Pen cup** | Drop a file in and it becomes a pen; the cap colour tells its kind. | Drag the last pen out of the cup. A quick flick of the cup with three or more pens in it tips it over, and the pens spill onto the desk; click it to stand it up. |
 | **Wastebasket** | Drop or toss a file in. It is crumpled up, **not deleted**: "hidden, not deleted". | Drag the top ball out, or drag the rim sideways to tip the basket over. *Empty Wastebasket…* moves its contents to the macOS Trash, after a confirmation that lists them. |
-| **Desk mat** and **brush** | Drop a file on the mat and it slides under, leaving a bump; taller stacks make bigger bumps. Push piles in with the brush, or with a sideways two-finger scroll over the desk. | Peel an edge or corner back: the piles underneath stand up and can be taken. Or right-click ▸ Peek Under. |
+| **Desk mat** and **brush** | Drop a file on the mat and it slides under, leaving a bump; taller stacks make bigger bumps. Push piles in with the brush, or with a sideways two-finger scroll over the desk. | Peel an edge or corner back: the piles underneath stand up and can be taken. Or right-click ▸ Peek Under. With the Flat mat (or Reduce Motion) the mat does not lift: right-click it ▸ List Items Under Mat ▸ a name puts that file back on the monitor, and Find Item… (⌘F) works too. |
 | **Lamp** and **Lamp Only** | At night, switch the room light off and keep the desk lamp on: only the lamp's pool, the monitor's glow and the phone's glow light anything. Files in the dark are silhouettes: no names, no clicks. | Use the lamp as a flashlight, switch the room light back on, or pick Lights ▸ Auto. |
 | **Drive hub** | Deskterior covers Finder's drive icons too, so mounted drives plug into the hub on the desk. | Double-click to open; Eject from the drive's menu. |
 | **Clear the Desk** | One menu item: the monitor goes off, the phone turns over, drawers shut and the brush sweeps every loose pile under the mat. "TIDY!" | One ⌘Z puts everything back exactly. |
@@ -56,10 +56,10 @@ a menu, Find Item…, Show on Desk or Take Everything Out.
 | **Tug** | Drag a corner of the mat outward to pull its creases flat (or double-click an edge, or Smooth Desk Mat). |
 | **⌥ (Option)** | Over the mat, shows its handles: ⌥-drag a corner to resize and turn it (⇧ snaps to 15°); ⌥-drag the middle to slide it without creases. |
 | **Two-finger scroll** | Sideways over the desk: the **scroll-broom** sweeps piles under the mat. Over the screen: changes page. Over a closed drawer: peeks inside. |
-| **Right-click** | A menu for everything: files (Open, Quick Look, Show in Finder, Copy, **Move to ▸** any hiding place, Move to Trash), the monitor, each container, the mat (Peek Under, Smooth, Rotate, Size, List Items Under Mat…), drives. Right-click the bare wall for the same menu as the menu bar icon. |
+| **Right-click** | A menu for everything: files (Open, Quick Look, Show in Finder, Copy, **Move to ▸** any hiding place, Move to Trash), the monitor, each container, the mat (Peek Under, Smooth, Rotate, Size, List Items Under Mat ▸), drives. Right-click the bare wall for the same menu as the menu bar icon. |
 | **Keys** (after clicking the desk) | Space: Quick Look · ⌘O / ⌘↓: open · arrows: move the selection · ⌘A · ⌘C: copy · ⌘F: Find Item… · ⌘Z / ⌘⇧Z: undo and redo · Esc: cancel a carry or end a peek. There is no delete key. |
 
-![The desk around the mat: its front edge peeled back, rubber side up, and a pile of three files standing where it lay](docs/media/mat-peel.png)
+<img src="docs/media/mat-peel.png" width="576" alt="The desk around the mat: its front edge peeled back, rubber side up, and a pile of three files standing where it lay">
 
 Deskterior has no Dock icon. Its menu is the small pixel icon in the menu bar, or a right-click on the bare wall
 (handy if you hide menu bar items).
@@ -78,9 +78,10 @@ Deskterior has no Dock icon. Its menu is the small pixel icon in the menu bar, o
   - **Eject** from a drive's menu.
 - **Trash, never delete.** Deskterior moves files to the macOS Trash and never deletes anything. It never
   overwrites a file: a name that is taken gets " 2", " 3"…
-- **Undo.** ⌘Z undoes layout changes and file actions alike: trashed files come back to the same spot on the desk,
-  dropped files go back where they came from (copies go to the Trash). If macOS will not let Deskterior reach the
-  Trash, it says so and you can use Finder's Put Back.
+- **Undo.** ⌘Z undoes layout changes and Deskterior's own file actions (Move to Trash, Empty Wastebasket…, drops
+  onto the desk): trashed files come back to the same spot on the desk, dropped files go back where they came from
+  (copies go to the Trash). Eject and drags out to other apps cannot be undone. If macOS will not let Deskterior
+  reach the Trash, it says so and you can use Finder's Put Back.
 - **Finder is left alone.** The desk is a window just above Finder's desktop icons: it covers them, it does not hide
   them by changing any Finder setting (Finder's settings are only read). Quit Deskterior, or use Pause Desk, and your
   normal desktop is back.
@@ -101,19 +102,19 @@ signed, so macOS blocks the first launch of every downloaded version once. That 
 3. Open Deskterior.
    - **macOS 15 Sequoia and later:** macOS says *"Deskterior" Not Opened*. Click **Done** (not Move to Trash). Open
      **System Settings ▸ Privacy & Security**, scroll down to **Security** and click **Open Anyway** next to the
-     message about Deskterior (it is there for about an hour). Enter your password and click **Open Anyway** again.
-     Control-click ▸ Open no longer skips this step.
+     message about Deskterior (it is there for about an hour), then confirm with **Open Anyway** and your password or
+     Touch ID. Control-click ▸ Open no longer skips this step.
    - **macOS 14 Sonoma:** Control-click (or right-click) the app, choose **Open**, then **Open** again. The Open
      Anyway button in Privacy & Security works too.
 4. Do this again after each update. Because the build is ad-hoc signed, macOS may also ask for Desktop folder access
    again after an update.
 
 To check a download, compare it with the `.sha256` file from the same release, or verify that the release workflow
-built it from this repository (with the GitHub CLI):
+built it from this repository (with the GitHub CLI; replace OWNER with the account in this page's URL):
 
 ```sh
 shasum -a 256 -c Deskterior-0.1.0.zip.sha256
-gh attestation verify Deskterior-0.1.0.zip --repo OWNER/deskterior   # OWNER: the account in this page's URL
+gh attestation verify Deskterior-0.1.0.zip --repo OWNER/deskterior
 ```
 
 ## First run
@@ -129,7 +130,7 @@ gh attestation verify Deskterior-0.1.0.zip --repo OWNER/deskterior   # OWNER: th
 5. With more than one display, the welcome window asks whether to cover the other displays with a matching wall.
    Files dropped on a wall go to the monitor.
 
-![The desk by day, connected: the Desktop's files on the monitor, the mat and keyboard, the riser, phone stand, pen cup and drive hub on the desk, the chair, filing cabinet and wastebasket below](docs/media/desk.png)
+<img src="docs/media/desk.png" width="588" alt="The desk by day, connected: the Desktop's files on the monitor, the mat and keyboard, the riser, phone stand, pen cup and drive hub on the desk, the chair, filing cabinet and wastebasket below">
 
 ## Settings
 
@@ -150,7 +151,7 @@ Menu bar icon ▸ **Settings…**
 
 Settings ▸ **About & Credits…** shows the version and credits.
 
-![Lamp Only at night: the room is dark blue, the desk lamp throws a warm pool across the desk, and the monitor and the phone glow](docs/media/lamp-only.png)
+<img src="docs/media/lamp-only.png" width="588" alt="Lamp Only at night: the room is dark blue, the desk lamp throws a warm pool across the desk, and the monitor and the phone glow">
 
 ## Safe Mode
 
@@ -171,41 +172,50 @@ back; your files were never touched.
 1. If you turned on **Launch at login**, turn it off in Settings.
 2. Quit Deskterior (menu bar icon ▸ Quit Deskterior).
 3. Optionally remove its layout, icon cache, settings and privacy permissions. They are named after the app's
-   bundle identifier, so read it before deleting the app:
+   bundle identifier, so read it before deleting the app. Paste the whole block into Terminal at once:
 
    ```sh
-   ID="$(defaults read /Applications/Deskterior.app/Contents/Info CFBundleIdentifier)"
-   rm -rf ~/Library/Application\ Support/"$ID" ~/Library/Caches/"$ID"   # layout and backups, operations.log; icons
-   defaults delete "$ID"                                                 # settings
-   tccutil reset All "$ID"                                               # Desktop folder (and other) permissions
+   ID="$(defaults read /Applications/Deskterior.app/Contents/Info CFBundleIdentifier)" &&
+   case "$ID" in io.github.*.deskterior | io.github.deskterior.dev)
+     rm -rf ~/Library/Application\ Support/"$ID" ~/Library/Caches/"$ID"
+     defaults delete "$ID"
+     tccutil reset All "$ID"
+   esac
    ```
+
+   If the first line prints an error, stop: Deskterior is not in /Applications. The block removes the layout, its
+   backups and `operations.log` (Application Support), the icon cache (Caches), the settings (`defaults`) and the
+   Desktop folder permission (`tccutil`), and does nothing unless the identifier is Deskterior's.
 
 4. Move `Deskterior.app` to the Trash.
 
 ## Build from source
 
-You need macOS 14 or later and Swift 6.2 from the Command Line Tools (`xcode-select --install`); Xcode is not
-needed. Then, in a clone of this repository:
+You need macOS 15.6 or later with the Command Line Tools for Xcode 26 (Swift 6.2; `xcode-select --install`). Xcode
+is not needed. The app you build runs on macOS 14 and later. Then, in a clone of this repository:
 
-```sh
-make build      # swift build
-make test       # the test suites (scripts/swift-test.sh)
-make lint       # the file-safety lint (scripts/check-file-safety.sh)
-make app        # build/Deskterior.app, ad-hoc signed (VERSION=0.1.0 sets the version)
-make universal  # the same for Apple silicon and Intel
-make gif        # records Demos/hero.json and rebuilds docs/media (needs ffmpeg)
-```
+| Command | Does |
+|---|---|
+| `make build` | `swift build` |
+| `make test` | the test suites (`scripts/swift-test.sh`) |
+| `make lint` | the file-safety lint (`scripts/check-file-safety.sh`) |
+| `make app` | `build/Deskterior.app` for this Mac's processor, ad-hoc signed (`VERSION=0.1.0` sets the version) |
+| `make universal` | the same for Apple silicon and Intel in one app |
+| `make install` | `make app`, then copies the app to /Applications |
+| `make run` | runs the desk in a window on a fresh scratch folder of sample files |
+| `make gif` | records `Demos/hero.json` and rebuilds `docs/media` (needs ffmpeg) |
 
-`make install` copies the app to /Applications; an app you built yourself is not quarantined, so Gatekeeper does
-not stop it. The bundle identifier comes from your clone's GitHub remote (`io.github.OWNER.deskterior`, as in the
-release); without one it is the development identifier `io.github.deskterior.dev`. Signing with a free self-signed
-certificate keeps the Desktop permission across rebuilds: see [docs/SIGNING.md](docs/SIGNING.md).
+An app you built yourself is not quarantined, so Gatekeeper does not stop it. The bundle identifier comes from your
+clone's GitHub remote (`io.github.OWNER.deskterior`, as in the release); without one it is the development identifier
+`io.github.deskterior.dev`. Signing with a free self-signed certificate keeps the Desktop permission across rebuilds:
+see [docs/SIGNING.md](docs/SIGNING.md).
 
 Development runs never touch your real Desktop: they need a scratch folder, and the app refuses (exit 64) the real
-Desktop or anything inside it. Scripted demos run headless on a fresh fixture folder and write PNGs:
+Desktop or anything inside it. Scripted demos run headless on a fresh fixture folder and write PNGs (this one to
+`.build/demo-out/10-clear-desk`); the last two lines are what `make run` does:
 
 ```sh
-scripts/run-demo.sh 10-clear-desk                       # PNGs in .build/demo-out/10-clear-desk
+scripts/run-demo.sh 10-clear-desk
 FIX="$(mktemp -d)"; scripts/make-fixture-desktop.sh "$FIX/desk"
 swift run Deskterior --windowed --desktop-folder "$FIX/desk" --state-dir "$FIX/state"
 ```
@@ -223,8 +233,8 @@ More: [docs/DESIGN.md](docs/DESIGN.md) (the design), [docs/DEMOS.md](docs/DEMOS.
 
 - **Not notarized.** Every downloaded version needs the Open Anyway step above, and after an update macOS may ask
   for Desktop access again (the ad-hoc signature changes with every build).
-- **Tested on one Mac** (a MacBook Air M2 on macOS 26). The Intel half of the app is built but has not been run on an
-  Intel Mac.
+- **Tested on one Mac** (a MacBook Air M2 on macOS 26). Deskterior is built for macOS 14 and 15 too, but it has
+  never been run on them, and the Intel half of the app has not been run on an Intel Mac.
 - **Some platform behaviour needs a human check** that automation cannot do: clicks and hover while another app is
   in front, Quick Look and ⌘Z after clicking the desk, pausing under full-screen apps, drags out to Finder, Mail and
   the Dock's Trash, undoing a trash through the real Trash, and drops from Downloads. See
@@ -236,7 +246,8 @@ More: [docs/DESIGN.md](docs/DESIGN.md) (the design), [docs/DEMOS.md](docs/DEMOS.
 - In scaled display modes the pixels are slightly soft.
 - Finder's own desktop is still there underneath. If Finder had icons selected on the desktop before Deskterior
   covered it, ⌘⌫ in Finder can still move them to the Trash (Finder's Undo puts them back).
-- The scene's tooltips and "TIDY!" are in English in v0.1, also with the Korean language setting.
+- The scene's own lettering is in English in v0.1, also with the Korean language setting: its tooltips, the
+  NO SIGNAL logo, BONK, SWISH! and TIDY!.
 
 ## Credits
 
@@ -244,8 +255,9 @@ More: [docs/DESIGN.md](docs/DESIGN.md) (the design), [docs/DEMOS.md](docs/DEMOS.
   unmodified with its license.
 - Palette: [Apollo](https://lospec.com/palette-list/apollo) by AdamCYounis. Every pixel on the desk is one of its 46
   colours.
-- Deskterior is an independent project inspired by Terkel Gjervig's *Desktop Cleaning*. It is not affiliated with or
-  endorsed by him or GitHub, and uses none of its code, name, art or branding.
+- Deskterior is an independent project inspired by Terkel Gjervig's desktop-rug prototype *Desktop Cleaning*
+  (desktop.cleaning). It is not affiliated with or endorsed by him or GitHub, and uses none of its code, name, art or
+  branding.
 
 ## License
 
