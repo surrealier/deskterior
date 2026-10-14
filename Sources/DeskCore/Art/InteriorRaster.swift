@@ -112,6 +112,7 @@ public enum InteriorRaster {
         let front = size.h - 1
         if id == .cabinetFile {
             let back = Int(baseBounds(id).lowerBound) + 2
+            if n > folderFanMax { return folderRows(n, front: front, back: back, width: size.w) }
             let pitch = n > 1 ? min(3, Float(front - back) / Float(n - 1)) : 0
             return (0..<n).map { i in
                 ArtPoint(folderTabSlot(i, width: size.w), front - Int((Float(n - 1 - i) * pitch).rounded()))
@@ -254,6 +255,24 @@ public enum InteriorRaster {
         let slots = 5
         let pitch = (width - 2 - folderTab.w) / (slots - 1)
         return 1 + [0, 2, 4, 1, 3][i % slots] * pitch
+    }
+
+    // MARK: w6-polish
+    /// Folders that still fan front to back one by one: past this, folders sharing a tab slot would come closer than
+    /// 3 rows (`folderRows`).
+    static let folderFanMax = 14
+
+    /// A crowded file drawer's homes: the folders stand in rows of five, one per tab slot (five in a row always
+    /// take all five slots), the last row nearest the front, the rows spread evenly back to `back`. Folders sharing a
+    /// slot stand a whole row apart, so each tab keeps a strip at least 2 rows deep up to 25 folders (at the hard cap
+    /// of 26, six rows of tabs leave some 1 row).
+    static func folderRows(_ n: Int, front: Int, back: Int, width: Int) -> [ArtPoint] {
+        let lanes = 5, rows = (n + lanes - 1) / lanes
+        let step = Float(front - back) / Float(max(1, rows - 1))
+        return (0..<n).map { i in
+            let rank = (n - 1 - i) / lanes
+            return ArtPoint(folderTabSlot(i, width: width), front - Int((Float(rank) * step).rounded()))
+        }
     }
 
     /// Up to two initials from the start of a name, uppercased, when the tab font has them ("report.pdf" → "RE");

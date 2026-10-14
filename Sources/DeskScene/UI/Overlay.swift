@@ -13,24 +13,26 @@ enum ScreenCard {
         var buttons: [String: ArtRect]
     }
 
-    static func render(_ overlay: ScreenOverlay, wallpaper: PixelBuffer, font: PixelFont?) -> Rendered? {
+    /// The card for `overlay`, its text in `language` (nil: the current language).
+    static func render(_ overlay: ScreenOverlay, wallpaper: PixelBuffer, font: PixelFont?, language: Language? = nil)
+        -> Rendered? {
         guard let font else { return nil }
         switch overlay {
-        case .connectPrompt: return connectPrompt(wallpaper, font)
-        case .connecting: return connecting(wallpaper, font)
-        case .noAccess: return noAccess(font)
-        case .desktopHidden: return desktopHidden(wallpaper, font)
+        case .connectPrompt: return connectPrompt(wallpaper, font, language)
+        case .connecting: return connecting(wallpaper, font, language)
+        case .noAccess: return noAccess(font, language)
+        case .desktopHidden: return desktopHidden(wallpaper, font, language)
         case .none, .av: return nil
         }
     }
 
     /// "PRESS ⏻ TO CONNECT DESKTOP" on a panel over the dimmed wallpaper, with an arrow toward the power button.
-    static func connectPrompt(_ wallpaper: PixelBuffer, _ font: PixelFont) -> Rendered {
+    static func connectPrompt(_ wallpaper: PixelBuffer, _ font: PixelFont, _ language: Language? = nil) -> Rendered {
         var c = PixelCanvas(dimmed(wallpaper, steps: 2))
-        let head = PixelText.shadowed(L10n.tr("PRESS"), .neutral9, shadow: .neutral0, font: font)
-        let tail = PixelText.shadowed(L10n.tr("TO CONNECT"), .neutral9, shadow: .neutral0, font: font)
-        let second = PixelText.shadowed(L10n.tr("DESKTOP"), .neutral9, shadow: .neutral0, font: font)
-        let sub = PixelText.line(L10n.tr("Shows your Desktop files here."), .neutral7, font: font)
+        let head = PixelText.shadowed(L10n.tr("PRESS", language), .neutral9, shadow: .neutral0, font: font)
+        let tail = PixelText.shadowed(L10n.tr("TO CONNECT", language), .neutral9, shadow: .neutral0, font: font)
+        let second = PixelText.shadowed(L10n.tr("DESKTOP", language), .neutral9, shadow: .neutral0, font: font)
+        let sub = PixelText.line(L10n.tr("Shows your Desktop files here.", language), .neutral7, font: font)
         let glyph = powerGlyph(Role.ledOn)
         let gap = 4
         let firstW = head.width + gap + glyph.width + gap + tail.width
@@ -55,9 +57,9 @@ enum ScreenCard {
         return Rendered(image: c.buffer, buttons: [:])
     }
 
-    static func connecting(_ wallpaper: PixelBuffer, _ font: PixelFont) -> Rendered {
+    static func connecting(_ wallpaper: PixelBuffer, _ font: PixelFont, _ language: Language? = nil) -> Rendered {
         var c = PixelCanvas(dimmed(wallpaper, steps: 1))
-        let text = PixelText.shadowed(L10n.tr("CONNECTING…"), .neutral9, shadow: .neutral0, font: font)
+        let text = PixelText.shadowed(L10n.tr("CONNECTING…", language), .neutral9, shadow: .neutral0, font: font)
         let panel = ArtRect((c.width - text.width) / 2 - 6, (c.height - text.height) / 2 - 4, text.width + 12, text.height + 8)
         drawPanel(&c, panel)
         c.blit(text, at: ArtPoint(panel.x + 6, panel.y + 4))
@@ -65,13 +67,13 @@ enum ScreenCard {
     }
 
     /// NO SIGNAL: the folder could not be read. Open Settings, or pick the folder (which grants access).
-    static func noAccess(_ font: PixelFont) -> Rendered {
+    static func noAccess(_ font: PixelFont, _ language: Language? = nil) -> Rendered {
         var c = PixelCanvas(MonitorArt.noSignalScreen(logo: ArtPoint(-100, -100), input: ""))
         let logo = MonitorArt.noSignalLogo().image
-        let l1 = PixelText.line(L10n.tr("Can't read the Desktop folder."), .neutral8, font: font)
-        let l2 = PixelText.line(L10n.tr("Allow access, or choose it:"), .neutral6, font: font)
-        let settings = button(L10n.tr("Open Settings"), primary: false, font: font)
-        let choose = button(L10n.tr("Choose Folder…"), primary: true, font: font)
+        let l1 = PixelText.line(L10n.tr("Can't read the Desktop folder.", language), .neutral8, font: font)
+        let l2 = PixelText.line(L10n.tr("Allow access, or choose it:", language), .neutral6, font: font)
+        let settings = button(L10n.tr("Open Settings", language), primary: false, font: font)
+        let choose = button(L10n.tr("Choose Folder…", language), primary: true, font: font)
         let rowW = settings.width + 6 + choose.width
         let total = logo.height + 6 + l1.height + 1 + l2.height + 6 + settings.height
         var y = (c.height - total) / 2
@@ -90,13 +92,13 @@ enum ScreenCard {
     }
 
     /// DESKTOP HIDDEN: Finder hides desktop items; ask before mirroring them.
-    static func desktopHidden(_ wallpaper: PixelBuffer, _ font: PixelFont) -> Rendered {
+    static func desktopHidden(_ wallpaper: PixelBuffer, _ font: PixelFont, _ language: Language? = nil) -> Rendered {
         var c = PixelCanvas(dimmed(wallpaper, steps: 2))
-        let title = PixelText.shadowed(L10n.tr("DESKTOP HIDDEN"), .walnut5, shadow: .neutral0, font: font)
-        let l1 = PixelText.line(L10n.tr("Finder hides desktop items."), .neutral8, font: font)
-        let l2 = PixelText.line(L10n.tr("Show them on the desk anyway?"), .neutral8, font: font)
-        let show = button(L10n.tr("Show"), primary: true, font: font)
-        let keep = button(L10n.tr("Keep Hidden"), primary: false, font: font)
+        let title = PixelText.shadowed(L10n.tr("DESKTOP HIDDEN", language), .walnut5, shadow: .neutral0, font: font)
+        let l1 = PixelText.line(L10n.tr("Finder hides desktop items.", language), .neutral8, font: font)
+        let l2 = PixelText.line(L10n.tr("Show them on the desk anyway?", language), .neutral8, font: font)
+        let show = button(L10n.tr("Show", language), primary: true, font: font)
+        let keep = button(L10n.tr("Keep Hidden", language), primary: false, font: font)
         let rowW = show.width + 6 + keep.width
         let contentW = max(title.width, l1.width, l2.width, rowW)
         let contentH = title.height + 3 + l1.height + 1 + l2.height + 5 + show.height

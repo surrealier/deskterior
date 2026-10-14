@@ -239,6 +239,8 @@ public struct ClothSim: Sendable {
     var transformRun: TransformRun?
     /// Frames left in which whatever flips over after a carry lays back, and the folded count it started from.
     var postCarry: (frames: Int, folded: Int)?
+    /// Where every particle lay when a peek began (z over its floor): the peek lays the cloth back there (Errata 26).
+    var peekRest: [SIMD3<Float>]?
 
     public var count: Int { cols * rows }
 

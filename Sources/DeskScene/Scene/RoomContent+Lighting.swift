@@ -47,16 +47,19 @@ final class DarkTokenElement: DeskElement {
 }
 
 /// The hover ring's own pixels, which the lit pass lights so whatever the pointer finds shows in the dark (the
-/// lamp, the wall switch, the clock): at full light, or `DarkTokenElement.ringLevel` for a dark token's outline.
+/// lamp, the wall switch, the clock): at full light. A token's ring (and a dark token's outline) is lit only to
+/// `DarkTokenElement.ringLevel`: it keeps the light it stands in where that is brighter, so a token in a dim spot
+/// stays as dim as its neighbours, its ring faint but visible (Errata 26).
 struct HoverRingLight: Equatable {
     let image: PixelBuffer
     let origin: ArtPoint
     let level: Int
 
-    init(element: any DeskElement, image: PixelBuffer, origin: ArtPoint) {
+    init(element: any DeskElement, hit: Hit? = nil, image: PixelBuffer, origin: ArtPoint) {
         self.image = image
         self.origin = origin
-        level = element is DarkTokenElement ? DarkTokenElement.ringLevel : LightRamp.maxLevel
+        let token = element is DarkTokenElement || hit?.token != nil
+        level = token ? DarkTokenElement.ringLevel : LightRamp.maxLevel
     }
 }
 
@@ -83,7 +86,9 @@ extension RoomContent {
         install([RoomSwitchElement(context: context, placed: placed("room.switch"))], inSlotOf: "room.switch")
         install([ClockElement(context: context, placed: placed("clock"))], inSlotOf: "clock")
         install([KeyboardElement(context: context, placed: placed("keyboard"))], inSlotOf: "keyboard")
-        install([PlantElement(context: context, placed: placed("plant"))], inSlotOf: "plant")
+        let plant = PlantElement(context: context, placed: placed("plant"))
+        plant.refreshHover = { [unowned self, unowned plant] in restyleHover(plant) }
+        install([plant], inSlotOf: "plant")
     }
 
     /// Dark-token hit filtering (`DarkHit`): a token hit (any element's, through `Hit.token`) where the light has

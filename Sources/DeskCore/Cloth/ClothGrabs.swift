@@ -939,11 +939,17 @@ extension ClothSim {
         wake()
         let rise = 15, total = max(rise + 1, Int(((seconds ?? params.peekSeconds) * 60).rounded()))
         script = .peekFold(frame: 0, rise: rise, hold: total - rise, spec: spec, angle: angle, pins: held)
+        peekRest = parts.map(\.x)
     }
 
     /// The pass that lays a peek's edge flat where it lay: every particle near the peeked edge (the tongue's reach and
     /// 12 px more) still off its flat place or off the desk eases there over 8 frames. Nil when nothing is.
+    ///
+    /// When the peek's start was recorded (`peekRest`), the whole cloth eases back to where it lay instead (z over its
+    /// floor, so a pile taken out meanwhile leaves no lifted cloth): the tongue's pull reaches past the band and would
+    /// otherwise leave a ridge and a lifted hem, and a crease the mat had before stays as it was (O10; Errata 26).
     func smoothing(after spec: FoldSpec) -> ScriptState? {
+        if let rest = peekRest, rest.count == count { return restoring(rest) }
         let c = Float(cos(Double(spec.frame.angle))), s = Float(sin(Double(spec.frame.angle)))
         let o = spec.frame.origin, n = spec.normal
         var indices: [Int32] = [], from: [SIMD3<Float>] = [], to: [SIMD3<Float>] = []
@@ -957,6 +963,25 @@ extension ClothSim {
             to.append(SIMD3(flat.x, flat.y, params.thickness))
         }
         guard !indices.isEmpty else { return nil }
+        return .path(frame: 0, frames: 8, holdFrames: 0, indices: indices, from: from, to: to,
+                     arc: Array(repeating: 0, count: indices.count))
+    }
+
+    // MARK: w6-polish
+    /// Eases every unweighted particle back to `rest` over 8 frames, all of them held together (one left free would be
+    /// shouldered up by its neighbours as they come down, and friction would keep it there), so the cloth ends exactly
+    /// as it was. Nil when nothing is more than 0.3 px off.
+    func restoring(_ rest: [SIMD3<Float>]) -> ScriptState? {
+        var indices: [Int32] = [], from: [SIMD3<Float>] = [], to: [SIMD3<Float>] = []
+        var moved = false
+        for i in 0..<count where !parts[i].weighted {
+            let cur = parts[i].x, r = rest[i]
+            if length2(SIMD2(cur.x - r.x, cur.y - r.y)) > 0.3 || abs(cur.z - r.z) > 0.3 { moved = true }
+            indices.append(Int32(i))
+            from.append(cur)
+            to.append(r)
+        }
+        guard moved else { return nil }
         return .path(frame: 0, frames: 8, holdFrames: 0, indices: indices, from: from, to: to,
                      arc: Array(repeating: 0, count: indices.count))
     }
@@ -1037,6 +1062,7 @@ extension ClothSim {
 
     /// Stops a running script and lets its pinned particles fall.
     public mutating func cancelScript() {
+        peekRest = nil
         guard script != nil else { return }
         script = nil
         releasePins()
@@ -1302,6 +1328,7 @@ extension ClothSim {
             guard frame < 2 * rise + hold else {
                 // A short smoothing pass lays the edge it lifted exactly flat again: no steps, no notches.
                 script = smoothing(after: spec)
+                peekRest = nil
                 return
             }
             var now = spec

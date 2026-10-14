@@ -263,6 +263,7 @@ extension LightMask {
                 let bulb = DecorArt.pendantBulb(in: p.rect.size).offsetBy(p.rect.x, p.rect.y)
                 m.addEllipse(bulb.insetBy(-10, -6), level: 7, tint: .warm, edge: 6)
             }
+            m.addCeilingLamps(layout)
         }
         if time.isDark, RoomArt.stringLightsLit(time) {
             for d in layout.decor(.stringLights) {

@@ -2,9 +2,9 @@ import AppKit
 import DeskCore
 import DeskPixels
 
-/// The menu-bar status item (DESIGN §4.9) with a 16-pt pixel template glyph. Its menu is rebuilt from
-/// `MenuSpec.status` each time it opens, so check marks, the undo label and the wastebasket count are current;
-/// the same items live on the bare wall's right-click menu for when menu-bar extras are hidden.
+/// The menu-bar status item (DESIGN §4.9) with an 18-pt pixel template glyph (`StatusGlyphArt`). Its menu is
+/// rebuilt from `MenuSpec.status` each time it opens, so check marks, the undo label and the wastebasket count are
+/// current; the same items live on the bare wall's right-click menu for when menu-bar extras are hidden.
 final class StatusMenu: NSObject, NSMenuDelegate {
     private let item: NSStatusItem
     private let menu = NSMenu()
@@ -27,34 +27,15 @@ final class StatusMenu: NSObject, NSMenuDelegate {
         bridge.fill(menu, with: spec())
     }
 
-    /// 16×16 desk with a monitor (template: only alpha matters).
-    static let glyph = IndexedSprite("""
-        ................
-        ..kkkkkkkkkkkk..
-        ..k..........k..
-        ..k.kk.......k..
-        ..k.k........k..
-        ..k..........k..
-        ..k..........k..
-        ..kkkkkkkkkkkk..
-        .......kk.......
-        .....kkkkkk.....
-        ................
-        kkkkkkkkkkkkkkkk
-        kkkkkkkkkkkkkkkk
-        .kk..........kk.
-        .kk..........kk.
-        .kk..........kk.
-        """)
-
-    /// The glyph as a 16-pt template image with exact 1× and 2× pixel representations.
+    // MARK: w6-polish
+    /// The glyph (`StatusGlyphArt`) as an 18-pt template image with its own 1× and 2× pixel representations.
     static func templateImage() -> NSImage {
-        let image = NSImage(size: NSSize(width: 16, height: 16))
-        let base = glyph.render()
-        for factor in [1, 2] {
-            guard let cg = base.scaledNearest(factor).makeCGImage() else { continue }
+        let pt = CGFloat(StatusGlyphArt.points)
+        let image = NSImage(size: NSSize(width: pt, height: pt))
+        for scale in [1, 2] {
+            guard let cg = StatusGlyphArt.image(scale: scale).makeCGImage() else { continue }
             let rep = NSBitmapImageRep(cgImage: cg)
-            rep.size = NSSize(width: 16, height: 16)
+            rep.size = NSSize(width: pt, height: pt)
             image.addRepresentation(rep)
         }
         image.isTemplate = true

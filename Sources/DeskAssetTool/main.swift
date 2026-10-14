@@ -14,6 +14,7 @@ import Foundation
 //   deskterior-assets zoom <in.png> --rect x,y,w,h --out <file> [--scale N]
 //                                                     nearest-neighbour crop of a 1× image for close review
 //   deskterior-assets cloth-review --out <dir>        desk-mat cloth scenarios rendered for review
+//   deskterior-assets status-glyph --out <dir>        the status item's template glyph on light and dark bars
 
 let args = Array(CommandLine.arguments.dropFirst())
 
@@ -24,6 +25,7 @@ func usage() -> Never {
                deskterior-assets contact-sheet --out <dir> [--scale N] [--rooms]
                deskterior-assets zoom <in.png> --rect x,y,w,h --out <file> [--scale N]
                deskterior-assets cloth-review --out <dir>
+               deskterior-assets status-glyph --out <dir>
         """)
     exit(2)
 }
@@ -248,6 +250,10 @@ do {
     case "icon":
         guard let out = value(of: "--out") else { usage() }
         try writeIcon(to: URL(fileURLWithPath: out, isDirectory: true), allSizes: args.contains("--all-sizes"))
+    // MARK: w6-polish
+    case "status-glyph":
+        guard let out = value(of: "--out") else { usage() }
+        try StatusGlyphReview.run(outDir: URL(fileURLWithPath: out, isDirectory: true))
     case "fixture":
         try MirrorTools.fixture(Array(args.dropFirst()))
     case "mirror-dump":

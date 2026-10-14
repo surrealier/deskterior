@@ -484,7 +484,7 @@ final class RoomContent: GestureTarget {
                 return true
             }
         }
-        hoverRing = HoverRingLight(element: element, image: ring, origin: origin)
+        hoverRing = HoverRingLight(element: element, hit: hit, image: ring, origin: origin)
         hoverNode.texture = TextureFactory.texture(ring)
         space.place(hoverNode, at: ArtRect(origin: origin, size: ring.size))
         hoverNode.isHidden = false

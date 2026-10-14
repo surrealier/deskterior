@@ -69,12 +69,20 @@ public final class KeyboardElement: DeskElement {
 
     public func hover(_ hit: Hit?) -> Bool { hit == nil ? matModifiers?([]) ?? false : false }
 
+    // MARK: w6-polish
+    /// How the mat draws the keyboard now (turned with it); nil: upright.
+    var turned: TurnedKeyboard?
+
     /// Presses the key under canvas pixel `p`; false between keys or off the keyboard.
     @discardableResult
     func pressKey(at p: ArtPoint) -> Bool {
-        guard let o = origin, let key = PropArt.keyboardKey(at: ArtPoint(p.x - o.x, p.y - o.y)) else { return false }
+        guard let o = origin else { return false }
+        let local = ArtPoint(p.x - o.x, p.y - o.y)
+        let turn = turned?.degrees ?? 0
+        guard let key = turn == 0 ? PropArt.keyboardKey(at: local) : turned?.key(at: local) else { return false }
         pressed = (key.row, key.col, DecorAnimation(count: Self.pressFrames))
-        let image = PropArt.keyboard(pressed: key).image
+        let upright = PropArt.keyboard(pressed: key).image
+        let image = turn == 0 ? upright : TurnedKeyboard(upright, degrees: turn).image
         pressedNode.texture = TextureFactory.texture(image)
         context.space.place(pressedNode, at: ArtRect(origin: o, size: image.size))
         pressedNode.zPosition = context.placementZ(id) + 0.5

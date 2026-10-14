@@ -446,6 +446,44 @@
     - **Measuring.** `--burst-av` (`measure-idle.sh --av`) ends the idle burst on the AV input; `make idle` runs
       `measure-idle.sh`. The desk-mode audit, the known limitations (exFAT, path-numbered network shares) and the
       owner's manual checklist (§8.3) are in SPIKES.md, "Pre-release audit (wave 6)".
+26. **Visual and UX polish before v0.1.0 (wave 6).** These refine Errata 7, 15, 17, 18, 20 and 23.
+    - **Keyboard on a turned mat.** The keyboard turns with the particles it weighs down (`ClothSim.keyboardAngle`, the
+      frame they fit), so a relaunch from the saved particles draws the same turn. `TurnedKeyboard` maps the upright
+      sprite's top face through the 2:1 view of the turn, (x, y) → (x cos θ + 2y sin θ, −x sin θ / 2 + y cos θ),
+      sampling each view pixel back onto the face (nearest neighbour: at the turns a mat takes no key, gap or row is
+      skipped, and rows and gaps stay regular stairs), drops spur pixels off the outline, and extrudes the sides two
+      rows down (front greys, darker ends, the LED). It follows whole degrees with 0.75° of hysteresis, and turns under
+      5° draw square (a slope that shallow reads as a break; a carry's sway stays within it). Its keys answer where
+      they are drawn. The desk plane's keyboard body and the tuck clearance stay axis-aligned.
+    - **Tall canvases.** A wall taller than `maxWallAbove` rises up to `LayoutSolver.maxTallWall` (420) while at least
+      `minCeiling` (160) rows of ceiling stay, so a portrait display shows more wall and less ceiling. Its free band
+      holds an upper shelf (books, a globe, a cactus, a stack with a mug, a box, a pothos) above the painting and a
+      cluster of four prints over it; the pendant and the hanging plant hang from the ceiling 48 px out from the wall
+      (`ceilingDrop`; cords now pass the crown); the ceiling carries four oak beams, shaded with its own bands, and the
+      room light, a linen drum (`.ceilingLamp`) whose glass glows with the room light after dark (not in Lamp Only).
+      Landscape and medium walls are unchanged.
+    - **Peek Under lays the cloth back where it lay.** A peek records every particle (`peekRest`, z over its floor) and
+      its closing pass eases the whole cloth back there, all particles held together for 8 frames, instead of laying only
+      the edge band flat: the tongue's pull reached past the band and left a ridge across the mat and a lifted hem
+      (demo 04, after the stack is taken out). Creases the mat had before the peek stay (O10); a pile taken out
+      meanwhile leaves the cloth flat on the desk. A grab or menu that cancels the peek drops the record.
+    - **Hover rings.** A token's ring (any element's, by `Hit.token`) is lit only to `DarkTokenElement.ringLevel`, so it
+      keeps the light it stands in (at least faintly visible) and the token stays as dim as its neighbours; the lamp,
+      the wall switch, the clock and other objects keep full-light rings (Errata 15). The plant's ring follows its
+      jiggle frame by frame.
+    - **File drawer.** Up to 14 folders fan as before; more stand in rows of five, one per tab slot, the rows spread
+      over the drawer's depth, so every folder keeps a pick strip at least 2 rows deep up to 25 folders (1 at the hard
+      cap of 26, six rows in eight).
+    - **Korean fit.** Measured with Galmuri9: every toast and progress line fits the toast band, the wall between the
+      clock and the calendar centred on the monitor (`ToastView.band`, 232 px; inside the 512-px visible band of the
+      smallest canvas), in Korean (widest 219 px) and English; every monitor card and its buttons fit the glass. No Korean
+      string needed shortening. Two English toasts were shortened to fit: "Nothing to undo: those items are gone." and
+      "Can't drop the Desktop or a parent folder." (Errata 20's "Nothing to undo there").
+    - **Status item.** An 18-pt template glyph (`StatusGlyphArt`: a monitor with desktop icons on a desk), drawn pixel for
+      pixel at 1× and 2×, black and alpha; `deskterior-assets status-glyph --out <dir>` renders it on light and dark
+      menu bars.
+    - **App icon.** The wall is the lamp-lit night blue a step lighter, the monitor's bezel grey and the lamp's shade a
+      brighter red, so at 16–32 px the body's top edge holds against a dark Dock and the monitor stands off the wall.
 
 ---
 

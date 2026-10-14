@@ -174,10 +174,10 @@ struct L10nTests {
             // File actions (M11)
             "It changed on disk. Nothing was done.", "That file is gone already.", "macOS did not allow that.",
             "Use Finder's Put Back.", "Some items stayed where they were.", "That did not work. Nothing changed.",
-            "Can't drop the Desktop or a folder holding it.", "The drive could not be ejected.", "Too many items with that name.",
+            "Can't drop the Desktop or a parent folder.", "The drive could not be ejected.", "Too many items with that name.",
             "Some changed on disk, so they stayed.", "Some were gone already.", "macOS kept some items where they were.",
             "Drag files from the drive, not the drive.", "The desk isn't connected to its folder.",
-            "Nothing to undo there: those items are gone.", "Still working on that.", "Stopping the copy…",
+            "Nothing to undo: those items are gone.", "Still working on that.", "Stopping the copy…",
             "Put back from the Trash.", "Sent back where they came from.", "Copies moved to the Trash.",
             "Sent back; copies moved to the Trash.", "macOS would not let it go back.",
             "Copying 1 item… ⌘Z stops", "Copying 37 items… ⌘Z stops",

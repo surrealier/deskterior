@@ -39,6 +39,10 @@ public enum ArtCatalog {
             DecorArt.pendant(ArtSize(24, 60), lit: false), DecorArt.pendant(ArtSize(24, 60), lit: true),
             DecorArt.hangingPlant(ArtSize(32, 90)), RoomArt.ceiling(ArtSize(64, 48)), RoomArt.rail(width: 64),
             DecorArt.painting(ArtSize(48, 30)).renamed("decor.painting.small"),
+            // MARK: w6-polish
+            DecorArt.upperShelf(ArtSize(440, 44)), DecorArt.gallery(ArtSize(180, 96)),
+            DecorArt.ceilingLamp(ArtSize(40, 10), lit: false), DecorArt.ceilingLamp(ArtSize(40, 10), lit: true),
+            RoomArt.ceiling(ArtSize(160, 96)).renamed("decor.ceiling.beams"),
         ])
     }
 
@@ -223,7 +227,7 @@ public enum RoomPlan {
         if wanted("decor") {
             for (i, d) in layout.decor.enumerated() {
                 let lit = switch d.kind {
-                case .pendant: tod.isDark && lights.roomLightOn
+                case .pendant, .ceilingLamp: tod.isDark && lights.roomLightOn
                 case .stringLights: RoomArt.stringLightsLit(tod)
                 default: tod.isDark
                 }

@@ -12,6 +12,8 @@ public final class PlantElement: DeskElement {
     /// The jiggle in progress.
     private(set) var jiggle: DecorAnimation?
     private var shownFrame = -1
+    /// Redraws the hover ring when the picture changes under a resting pointer (the room sets it).
+    var refreshHover: (() -> Void)?
 
     static let jiggleFrames = 4
 
@@ -31,8 +33,17 @@ public final class PlantElement: DeskElement {
         placed()?.hitTest(p).map { Hit(element: id, part: $0.part, rect: $0.rect) }
     }
 
+    /// The silhouette ring, round the jiggle's frame on show while the blades sway.
     public func hoverStyle(_ hit: Hit) -> HoverStyle {
-        RoomContent.silhouetteRing(placed())
+        guard jiggle != nil, shownFrame >= 0, let origin = placed()?.placements.first(where: { $0.id == id })?.origin else {
+            return RoomContent.silhouetteRing(placed())
+        }
+        let image = PropArt.plantJiggle(shownFrame)
+        let ring = image.outlined(RoomContent.hoverInk)
+        let at = ArtPoint(origin.x - PropArt.plantJigglePad - 1, origin.y - 1)
+        // Trim the frame's clear padding so the ring hugs what shows, as the still plant's does.
+        let b = ring.opaqueBounds()
+        return .image(ring.cropped(to: b), at: ArtPoint(at.x + b.x, at.y + b.y))
     }
 
     public func tooltip(_ hit: Hit) -> TooltipSpec? {
@@ -69,6 +80,7 @@ public final class PlantElement: DeskElement {
         jiggleNode.zPosition = context.placementZ(id) + 0.5
         jiggleNode.isHidden = false
         pl.root.isHidden = true
+        refreshHover?()
     }
 
     public var needsFrames: Bool { jiggle != nil }
@@ -90,5 +102,6 @@ public final class PlantElement: DeskElement {
         shownFrame = -1
         jiggleNode.isHidden = true
         placed()?.root.isHidden = false
+        refreshHover?()
     }
 }

@@ -25,6 +25,7 @@ extension RoomContent {
             keyboard.matGesture = { [unowned mat] gesture, hit in mat.handleFromKeyboard(gesture, hit) }
             keyboard.matMenu = { [unowned mat] hit in mat.menuFromKeyboard(hit) }
             keyboard.matModifiers = { [unowned mat] mods in mat.modifiersChanged(mods, Hit(element: mat.id, part: "mat", rect: mat.bounds)) }
+            mat.onKeyboardTurn = { [unowned keyboard] in keyboard.turned = $0 }
         }
     }
 

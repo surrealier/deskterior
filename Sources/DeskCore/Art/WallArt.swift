@@ -22,7 +22,7 @@ public enum WallArt {
         RoomArt.drawFloor(&c, from: layout.wallBaseY, layout: layout)
         for d in decor(layout) {
             let lit = switch d.kind {
-            case .pendant: tod.isDark && lights.roomLightOn
+            case .pendant, .ceilingLamp: tod.isDark && lights.roomLightOn
             case .stringLights: RoomArt.stringLightsLit(tod)
             default: tod.isDark
             }
@@ -54,6 +54,7 @@ public enum WallArt {
                 let bulb = DecorArt.pendantBulb(in: p.rect.size).offsetBy(p.rect.x, p.rect.y)
                 m.addEllipse(bulb.insetBy(-10, -6), level: 7, tint: .warm, edge: 6)
             }
+            m.addCeilingLamps(layout)
         }
         if tod.isDark, RoomArt.stringLightsLit(tod) {
             for d in layout.decor(.stringLights) {

@@ -170,10 +170,13 @@ struct ArtReviewTests {
     func wallHeights() throws {
         let tall = LayoutSolver.solve(display: pixelGridDesignTable[8].display())
         let crown = try #require(tall.decor(.crown).first).rect
-        #expect(tall.coreOrigin.y - crown.y <= LayoutSolver.maxWallAbove)
+        // Errata 26: a portrait wall rises up to `maxTallWall`, keeping `minCeiling` rows of ceiling; the hanging
+        // pieces hang from the ceiling just out from the wall.
+        #expect(tall.coreOrigin.y - crown.y <= LayoutSolver.maxTallWall && crown.y >= LayoutSolver.minCeiling)
         #expect(tall.decor(.ceiling).first?.rect.maxY == crown.y)
         for d in tall.decor(.pendant) + tall.decor(.hangingPlant) {
-            #expect(d.rect.y == crown.maxY && d.rect.h <= LayoutSolver.maxCord + 28, "\(d)")
+            #expect(d.rect.y == crown.y - LayoutSolver.ceilingDrop, "\(d)")
+            #expect(d.rect.h <= LayoutSolver.maxCord + 28 + LayoutSolver.ceilingDrop + 6, "\(d)")
         }
         let medium = LayoutSolver.solve(display: DisplayGeometry(widthPt: 1280, heightPt: 800, backingScale: 1, topInsetPt: 25))
         let rail = try #require(medium.decor(.rail).first).rect

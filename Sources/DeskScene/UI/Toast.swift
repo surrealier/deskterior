@@ -17,7 +17,7 @@ extension ToastKey {
         case .usePutBack: "Use Finder's Put Back."
         case .someNotDone: "Some items stayed where they were."
         case .fileFailed: "That did not work. Nothing changed."
-        case .dropHoldsDesk: "Can't drop the Desktop or a folder holding it."
+        case .dropHoldsDesk: "Can't drop the Desktop or a parent folder."
         case .ejectFailed: "The drive could not be ejected."
         case .nameTaken: "Too many items with that name."
         case .someChanged: "Some changed on disk, so they stayed."
@@ -25,7 +25,7 @@ extension ToastKey {
         case .someNotPermitted: "macOS kept some items where they were."
         case .dropWholeDrive: "Drag files from the drive, not the drive."
         case .filesUnavailable: "The desk isn't connected to its folder."
-        case .nothingToUndo: "Nothing to undo there: those items are gone."
+        case .nothingToUndo: "Nothing to undo: those items are gone."
         case .fileBusy: "Still working on that."
         case .stoppingCopy: "Stopping the copy…"
         case .undidTrash: "Put back from the Trash."
@@ -46,6 +46,9 @@ extension ToastKey {
 
     /// The toast text in the current language.
     public var text: String { L10n.tr(english) }
+
+    /// The toast text in `language`.
+    public func text(_ language: Language) -> String { L10n.tr(english, language) }
 }
 
 /// Pixel toasts on the L9 ui layer: one short line on a dark tab that drops in from the top of the visible band
@@ -84,8 +87,8 @@ final class ToastView {
         render(line, font: font, layout: layout, space: space, inPlace: inPlace)
     }
 
-    private func render(_ line: String, font: PixelFont?, layout: SceneLayout, space: ArtSpace, inPlace: Bool) {
-        guard let font else { return }
+    /// The toast's tab for `line`: the shadowed text on a dark tab with a walnut rim.
+    static func image(_ line: String, font: PixelFont) -> PixelBuffer {
         let text = PixelText.shadowed(line, .neutral9, shadow: .neutral0, font: font)
         let w = text.width + 10, h = text.height + 6
         var c = PixelCanvas(width: w, height: h + 1)
@@ -93,14 +96,31 @@ final class ToastView {
         c.roundedRectFill(ArtRect(0, 0, w, h), radius: 2, .walnut4)
         c.roundedRectFill(ArtRect(1, 1, w - 2, h - 2), radius: 1, .neutral1)
         c.blit(text, at: ArtPoint(5, 3))
-        image = c.buffer
+        return c.buffer
+    }
+
+    // MARK: w6-polish
+    /// The span of wall a toast may take (core x): between the wall clock and the calendar, centred on the monitor
+    /// it hangs over (232 px). It lies inside the visible band of the smallest canvas, and every toast's tab in either
+    /// language fits it (`KoreanFitTests`).
+    static let band: Range<Int> = {
+        let mid = CoreLayout.monitorBody.midX
+        let half = min(mid - CoreLayout.clock.maxX, CoreLayout.calendar.minX - mid)
+        return (mid - half)..<(mid + half)
+    }()
+
+    private func render(_ line: String, font: PixelFont?, layout: SceneLayout, space: ArtSpace, inPlace: Bool) {
+        guard let font else { return }
+        let tab = Self.image(line, font: font)
+        image = tab
         key = nil
         self.text = line
         age = inPlace ? min(age, Self.slide) : 0
         // On the wall just above the monitor (over its top edge when the wall is short).
         let monitor = layout.rect(CoreLayout.monitorBody)
-        restingRect = ArtRect(monitor.midX - c.width / 2, max(layout.visible.minY + 3, monitor.minY - c.height - 3), c.width, c.height)
-        node.texture = TextureFactory.texture(c.buffer)
+        restingRect = ArtRect(monitor.midX - tab.width / 2, max(layout.visible.minY + 3, monitor.minY - tab.height - 3),
+                              tab.width, tab.height)
+        node.texture = TextureFactory.texture(tab)
         place(space)
     }
 

@@ -106,11 +106,34 @@ final class DeskMatElement: DeskElement, Knockable {
 
     // MARK: Keyboard
 
-    /// The keyboard's drawn top-left (canvas), with hysteresis.
+    /// The keyboard's drawn top-left (canvas), with hysteresis: the upright sprite's, before its turn's offset.
     private var keyboardDrawn: ArtPoint?
-    /// Offsets (from the keyboard's top-left) of its contact shadow on the felt.
-    private static let keyboardShadow: [ArtPoint] = {
-        let image = PropArt.keyboard().image
+    // MARK: w6-polish
+    /// The turn the keyboard follows (whole degrees, with hysteresis), the turn it is drawn at (square within
+    /// `squareWithin`), and the turned art made so far.
+    private var keyboardTurn: Int?
+    private var keyboardShown = 0
+    private var turnedKeyboards: [Int: (art: TurnedKeyboard, shadow: [ArtPoint])] = [:]
+    /// Tells the keyboard element how it is drawn now (its keys answer where they are drawn).
+    var onKeyboardTurn: ((TurnedKeyboard) -> Void)?
+    /// A turn the keyboard follows only once the cloth's turn has moved this far from it (degrees), so a carry's
+    /// wobble never flickers it; at rest it takes its pose's own turn.
+    static let turnHysteresis: Float = 0.75
+    /// Turns under this (degrees) draw the keyboard square: a slope that shallow shows only as a step or two along
+    /// its long edges, which reads as a break, not a turn (a carry's sway stays within it).
+    static let squareWithin = 5
+
+    /// The keyboard turned by `degrees`, with its contact shadow (offsets from the image's top-left).
+    func turnedKeyboard(_ degrees: Int) -> (art: TurnedKeyboard, shadow: [ArtPoint]) {
+        if let t = turnedKeyboards[degrees] { return t }
+        let art = TurnedKeyboard(PropArt.keyboard().image, degrees: degrees)
+        let t = (art, Self.contactShadow(art.image))
+        turnedKeyboards[degrees] = t
+        return t
+    }
+
+    /// Offsets (from an image's top-left) of its contact shadow on the felt: a row under it and a column on its right.
+    static func contactShadow(_ image: PixelBuffer) -> [ArtPoint] {
         var out: [ArtPoint] = []
         for y in 0...image.height {
             for x in 0...image.width {
@@ -121,7 +144,7 @@ final class DeskMatElement: DeskElement, Knockable {
             }
         }
         return out
-    }()
+    }
 
     // MARK: Runs
 
@@ -779,7 +802,8 @@ final class DeskMatElement: DeskElement, Knockable {
 
     // MARK: Keyboard
 
-    /// Moves the room's keyboard to where the cloth carries it (0.75-px hysteresis), and its shadow with it.
+    /// Moves the room's keyboard to where the cloth carries it (0.75-px hysteresis), turned as its weighed particles
+    /// are (`ClothSim.keyboardAngle`, whole degrees, `turnHysteresis`), and its shadow with it.
     private func followKeyboard(force: Bool) {
         guard let centre = cloth.keyboardCenter, centre.isFinite, let kb = placed("keyboard"),
               let current = kb.placements.first(where: { $0.id == "keyboard" }) else { return }
@@ -789,7 +813,7 @@ final class DeskMatElement: DeskElement, Knockable {
                           Float(CoreLayout.keyboard.y) + (home.y - centre.y) / 2)
         let core = context.layout.coreOrigin
         let target = ArtPoint(Int(exact.x.rounded()) + core.x, Int(exact.y.rounded()) + core.y)
-        var drawn = keyboardDrawn ?? current.origin
+        var drawn = keyboardDrawn ?? target
         if force || keyboardDrawn == nil {
             drawn = target
         } else {
@@ -797,9 +821,21 @@ final class DeskMatElement: DeskElement, Knockable {
             if abs(exact.y + Float(core.y) - Float(drawn.y)) > 0.75 { drawn.y = target.y }
         }
         keyboardDrawn = drawn
-        guard drawn != current.origin else { return }
+        let degrees = (cloth.keyboardAngle ?? 0) * 180 / .pi
+        var turn = keyboardTurn ?? Int(degrees.rounded())
+        if force || abs(degrees - Float(turn)) > Self.turnHysteresis { turn = Int(degrees.rounded()) }
+        keyboardTurn = turn
+        let shown = abs(turn) < Self.squareWithin ? 0 : turn
+        let turned = turnedKeyboard(shown)
+        if shown != keyboardShown {
+            keyboardShown = shown
+            onKeyboardTurn?(turned.art)
+        }
+        let origin = drawn + turned.art.offset
+        let sprite = shown == 0 ? PropArt.keyboard() : SpriteAsset("keyboard.turned\(shown)", turned.art.image)
+        guard origin != current.origin || sprite.name != current.sprite.name else { return }
         let z = kb.root.children.first { $0.name == "keyboard" }?.zPosition ?? context.placementZ("keyboard")
-        kb.apply([RoomPlacement("keyboard", .deskFront, current.sprite, at: drawn)], replacingAll: false, z: { _ in z })
+        kb.apply([RoomPlacement("keyboard", .deskFront, sprite, at: origin)], replacingAll: false, z: { _ in z })
         rasterDirty = true
     }
 
@@ -839,7 +875,7 @@ final class DeskMatElement: DeskElement, Knockable {
         guard let r = keyboardRect else { return }
         let o = context.layout.point(DeskSurfaceRaster.origin)
         let ramp = raster.pattern.topRamp.map(\.color)
-        for d in Self.keyboardShadow {
+        for d in turnedKeyboard(keyboardShown).shadow {
             let x = r.x + d.x - o.x, y = r.y + d.y - o.y
             guard x >= 0, y >= 0, x < image.width, y < image.height,
                   raster.owner[y * DeskSurfaceRaster.width + x] >= 0,

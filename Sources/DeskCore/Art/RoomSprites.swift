@@ -586,21 +586,21 @@ public enum RoomArt {
         return SpriteAsset("decor.crown", c, anchor: .zero)
     }
 
-    /// The ceiling plane above a tall wall: it darkens in three steps away from the crown (2×2 Bayer bands)
-    /// and its board joints crowd together toward the far wall.
+    /// The ceiling plane above a tall wall: it darkens in three steps away from the crown (2×2 Bayer bands), its board
+    /// joints crowd together toward the far wall, and four oak beams run back to the wall over them (Errata 26).
     public static func ceiling(_ size: ArtSize) -> SpriteAsset {
         var c = PixelCanvas(width: size.w, height: size.h, fill: .neutral8)
         let inks: [Ink] = [.neutral9, .neutral8, .neutral7]
         let step = max(8, size.h / 3)
-        for y in 0..<size.h {
+        // The band (0 at the crown) each pixel falls in, dithered over the last quarter of a band.
+        func band(_ x: Int, _ y: Int) -> Int {
             let d = Double(size.h - 1 - y) / Double(step)
             let band = min(Int(d), inks.count - 1)
             let f = d - Double(band)
-            for x in 0..<size.w {
-                let next = min(band + 1, inks.count - 1)
-                let ink = f > 0.75 && Dither.pick(x: x, y: y, fraction: (f - 0.75) * 4, cell: 2) ? inks[next] : inks[band]
-                c.plot(x, y, ink)
-            }
+            return f > 0.75 && Dither.pick(x: x, y: y, fraction: (f - 0.75) * 4, cell: 2) ? min(band + 1, inks.count - 1) : band
+        }
+        for y in 0..<size.h {
+            for x in 0..<size.w { c.plot(x, y, inks[band(x, y)]) }
         }
         // Joints: gaps grow by a third each board away from the crown.
         var gap = 5.0, y = Double(size.h - 1) - gap
@@ -610,6 +610,7 @@ public enum RoomArt {
             gap *= 1.33
             y -= gap
         }
+        DecorArt.drawBeams(&c, band: band)
         return SpriteAsset("decor.ceiling", c, anchor: .zero)
     }
 
@@ -915,6 +916,10 @@ public enum DecorArt {
         case .rail: RoomArt.rail(width: d.rect.w)
         case .pendant: pendant(d.rect.size, lit: lit)
         case .hangingPlant: hangingPlant(d.rect.size)
+        // MARK: w6-polish
+        case .upperShelf: upperShelf(d.rect.size)
+        case .gallery: gallery(d.rect.size)
+        case .ceilingLamp: ceilingLamp(d.rect.size, lit: lit)
         }
     }
 
