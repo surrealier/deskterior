@@ -67,6 +67,11 @@ final class DeskMatElement: DeskElement, Knockable {
     private(set) var billboards: [PileID: Billboard] = [:]
     /// Piles going under right now (the squash), and the frames each has shown.
     private var squashes: [Squash] = []
+    /// Piles just revealed, popping up over two frames: the frame each shows next (2: full height again).
+    private(set) var pops: [PileID: Int] = [:]
+
+    /// The pop-up frame a revealed pile shows now (0, 1), nil at full height.
+    func popFrame(_ id: PileID) -> Int? { pops[id].flatMap { $0 < 2 ? $0 : nil } }
 
     struct Billboard {
         var keys: [TokenKey]
@@ -78,6 +83,8 @@ final class DeskMatElement: DeskElement, Knockable {
         var position: SIMD2<Float>
         /// The stack image's top-left on the canvas (the sprite pads it).
         var stackOrigin: ArtPoint
+        /// The pop-up frame drawn (squashed), nil at full height.
+        var pop: Int? = nil
     }
 
     struct Squash {
@@ -346,6 +353,7 @@ final class DeskMatElement: DeskElement, Knockable {
         var settled: [PileID: SIMD2<Float>] = [:]
         for change in changes {
             guard let id = pile(number: change.id), let p = positions[change.id] else { continue }
+            if !change.covered, !context.reduceMotion { pops[id] = 0 }
             if change.covered {
                 let spot = tucked(p, count: s.tokens.members(of: id).count)
                 tuckedCounts[id] = nil
@@ -471,7 +479,7 @@ final class DeskMatElement: DeskElement, Knockable {
     // MARK: Frames
 
     var needsFrames: Bool {
-        isLive && (!cloth.isAsleep || bumps.isEasing || clearRun != nil || !squashes.isEmpty)
+        isLive && (!cloth.isAsleep || bumps.isEasing || clearRun != nil || !squashes.isEmpty || !pops.isEmpty)
     }
 
     func step(_ dt: Double) {
@@ -501,6 +509,16 @@ final class DeskMatElement: DeskElement, Knockable {
         if wasAwake && cloth.isAsleep { commit() }
         if showsHandles { drawHandles() }
         render()
+        stepPops()
+    }
+
+    /// A revealed pile pops up over two frames: squashed to a third, then two thirds, then full height (the mat's
+    /// billboards and the desk's piles both draw the frame `popFrame` gives).
+    private func stepPops() {
+        guard !pops.isEmpty else { return }
+        hub?.piles.refresh()
+        for (id, k) in pops { pops[id] = k < 2 ? k + 1 : nil }
+        rasterDirty = true
     }
 
     /// Hard sleep or teardown: the brush pass ends, the cloth accepts its pose and commits it.
@@ -516,6 +534,10 @@ final class DeskMatElement: DeskElement, Knockable {
         cloth.forceSleep()
         indexFresh = false
         trackCoverage()
+        if !pops.isEmpty {
+            pops.removeAll()
+            hub?.piles.refresh()
+        }
         followKeyboard(force: false)
         if wasAwake { commit() }
         render()
@@ -646,7 +668,8 @@ final class DeskMatElement: DeskElement, Knockable {
         for v in pileViews() where !coverage.isCovered(number(v.id)) && clearRun?.holds(v.id) != true {
             guard clothOver(v.position) else { continue }
             let selected = v.keys.allSatisfy(selection.contains)
-            if var old = billboards[v.id], old.keys == v.keys, old.selected == selected {
+            let pop = popFrame(v.id)
+            if var old = billboards[v.id], old.keys == v.keys, old.selected == selected, old.pop == pop {
                 if old.position != v.position { old = placedBillboard(old, at: v.position, hub: hub) }
                 next[v.id] = old
                 continue
@@ -656,13 +679,16 @@ final class DeskMatElement: DeskElement, Knockable {
             let half = max(b.x, stack.image.width - b.x)
             var sprite = PixelBuffer(width: 2 * half, height: b.y)
             sprite.blit(stack.image, at: ArtPoint(half - b.x, 0))
+            if let k = pop {
+                sprite = PileArt.reshaped(sprite, to: ArtSize(sprite.width, max(1, sprite.height * (k + 1) / 3)))
+            }
             let board = Billboard(keys: v.keys, selected: selected, stack: stack, sprite: sprite, origin: .zero,
-                                  position: v.position, stackOrigin: .zero)
+                                  position: v.position, stackOrigin: .zero, pop: pop)
             next[v.id] = placedBillboard(board, at: v.position, hub: hub)
         }
         let changed = Set(next.keys) != Set(billboards.keys)
             || next.contains { billboards[$0.key]?.origin != $0.value.origin || billboards[$0.key]?.keys != $0.value.keys
-                || billboards[$0.key]?.selected != $0.value.selected }
+                || billboards[$0.key]?.selected != $0.value.selected || billboards[$0.key]?.pop != $0.value.pop }
         billboards = next
         if changed { hub.piles.refresh() }
         return changed

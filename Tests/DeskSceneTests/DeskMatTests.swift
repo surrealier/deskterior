@@ -164,6 +164,22 @@ struct DeskMatTests {
         #expect(stage.mat.billboards.isEmpty && stage.scene.matExpectation("underMat") == "0")
     }
 
+    @Test("A pile the cloth lifts off pops up over two frames (DESIGN §2.2 E9 hiding)")
+    func revealPops() throws {
+        let stage = try PhysicsStage(matDesk([[320, 26]], counts: [2]), physics: true, mat: true)
+        stage.frames(3)
+        stage.mat.lastHitPoint = stage.point(plane: [318, 14])
+        stage.dispatch(.mat(.peekUnder))
+        // Frame by frame from the reveal: the pop-up frame drawn (the mat's billboard or the desk's pile), then none.
+        var seen: [Int?] = []
+        for _ in 0..<60 where seen.count < 5 {
+            stage.frames(1)
+            if !seen.isEmpty || !stage.mat.coversPile("P1") { seen.append(stage.hub.revealPop("P1")) }
+        }
+        #expect(seen == [1, nil, nil, nil, nil] || seen == [0, 1, nil, nil, nil], "\(seen)")
+        #expect(!stage.mat.coversPile("P1"))
+    }
+
     @Test("Carrying the mat slides it over a pile (covered) and off it (revealed, its body back); the keyboard rides along")
     func carryCoversAndReveals() throws {
         let stage = try PhysicsStage(matDesk([[400, 50]]), physics: true, mat: true)

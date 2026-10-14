@@ -183,6 +183,11 @@
       each side as far as it fits on its own (a mat at the back of the desk still gets wider), at its angle, or straight
       when it lies within 2° of square; then it turns toward the drag as far as fits.
     - **Hover curl** (§2.1): the edge-curl glyph turns toward the mat's nearest corner and lies inside the mat.
+    - **Shared bumps.** Piles Clear the Desk sends under that will share a bump (10 px, as `PileClusterer` groups them)
+      rest as far in as the shared, taller bump needs (`inset(count:)` of the group); a pile already under the mat that
+      joins such a bump slides in with them (`ClearDeskPlan.nudges`, part of the same undo).
+    - **Reveal pop.** A pile the cloth comes off pops up over two frames (a third, two thirds, then full height) wherever
+      it is drawn: in the mat's raster, or among the desk's piles (`PhysicsHub.revealPop`). Not with Reduce Motion.
 
 ---
 

@@ -48,6 +48,8 @@ public struct ClearDeskPlan: Sendable, Equatable {
     public var shutDrawers: [ContainerID: Float] = [:]
     public var sweeps: [Sweep] = []
     public var tucks: [Tuck] = []
+    /// Piles already under the mat that slide further in, because a pile sent under joins their bump.
+    public var nudges: [PileID: SIMD2<Float>] = [:]
     /// The brush pass (empty when nothing is swept): from where it lies, pile by pile, and back.
     public var brush: [BrushKey] = []
     /// Seconds until "TIDY!".
@@ -83,7 +85,7 @@ public struct ClearDeskPlan: Sendable, Equatable {
 
     /// Whether applying the plan changes the layout.
     public var changesLayout: Bool {
-        powerOff || phoneDown || !shutDrawers.isEmpty || !sweeps.isEmpty || !tucks.isEmpty
+        powerOff || phoneDown || !shutDrawers.isEmpty || !sweeps.isEmpty || !tucks.isEmpty || !nudges.isEmpty
     }
 
     // MARK: Planning
@@ -101,12 +103,18 @@ public struct ClearDeskPlan: Sendable, Equatable {
         var targets = Targets(mat: mat, keyboard: s.mat.keyboardFootprint)
 
         // Loose piles: every pile holding tokens that the mat does not cover yet.
-        var loose: [(id: PileID, from: SIMD2<Float>, edge: SIMD2<Float>, to: SIMD2<Float>)] = []
+        var spots: [(at: SIMD2<Float>, count: Int)] = []
+        var looseFrom: [(id: PileID, from: SIMD2<Float>)] = []
+        var covered: [(id: PileID, at: SIMD2<Float>, count: Int)] = []
         for id in s.tokens.piles {
-            guard let p = s.piles[id], p.isFinite, mat.coveredSamples(at: p) < 3,
-                  let to = targets.take(near: p, count: s.tokens.members(of: id).count)
-            else { continue }
-            loose.append((id, p, mat.edgeCrossing(from: p, to: to), to))
+            guard let p = s.piles[id], p.isFinite else { continue }
+            let n = s.tokens.members(of: id).count
+            if mat.coveredSamples(at: p) >= 3 {
+                covered.append((id, p, n))
+            } else if let to = targets.take(near: p, count: n) {
+                looseFrom.append((id, p))
+                spots.append((to, n))
+            }
         }
 
         // Floor stacks, left to right: each aims at the desk's front edge above it.
@@ -116,19 +124,57 @@ public struct ClearDeskPlan: Sendable, Equatable {
         }
         let xs = stacks.keys.sorted()
         let ids = s.makePileIDs(xs.count)
-        let stagger = xs.count > 1 ? min(tuckStagger, maxTuckStart / Float(xs.count - 1)) : 0
+        var floorStacks: [(x: Int, pile: PileID)] = []
         for (i, x) in xs.enumerated() {
-            let aim = SIMD2(Float(x), 0)
-            guard let to = targets.take(near: aim, count: stacks[x]!.count) else { continue }
-            let start = 0.1 + Float(plan.tucks.count) * stagger
-            plan.tucks.append(Tuck(keys: stacks[x]!, floorX: x, pile: ids[i], edge: mat.edgeCrossing(from: aim, to: to),
-                                   to: to, start: start, land: start + hopTime, under: start + hopTime + slideTime))
+            guard let to = targets.take(near: SIMD2(Float(x), 0), count: stacks[x]!.count) else { continue }
+            floorStacks.append((x, ids[i]))
+            spots.append((to, stacks[x]!.count))
+        }
+        var under = covered.map { (at: $0.at, count: $0.count) }
+        Self.spreadSharedBumps(&spots, covered: &under, targets: targets)
+        for (pile, now) in zip(covered, under) where now.at != pile.at { plan.nudges[pile.id] = now.at }
+
+        let loose = looseFrom.enumerated().map { i, pile in
+            (id: pile.id, from: pile.from, edge: mat.edgeCrossing(from: pile.from, to: spots[i].at), to: spots[i].at)
+        }
+        let stagger = floorStacks.count > 1 ? min(tuckStagger, maxTuckStart / Float(floorStacks.count - 1)) : 0
+        for (i, stack) in floorStacks.enumerated() {
+            let aim = SIMD2(Float(stack.x), 0), to = spots[looseFrom.count + i].at
+            let start = 0.1 + Float(i) * stagger
+            plan.tucks.append(Tuck(keys: stacks[stack.x]!, floorX: stack.x, pile: stack.pile,
+                                   edge: mat.edgeCrossing(from: aim, to: to), to: to, start: start,
+                                   land: start + hopTime, under: start + hopTime + slideTime))
         }
 
         plan.planBrush(loose, from: s.brush.pos.isFinite ? s.brush.pos : BrushState().pos, around: mat)
         let ends = plan.sweeps.map(\.under) + plan.tucks.map(\.under) + [plan.brush.last?.t ?? 0]
         plan.duration = (ends.max() ?? 0) + tidyDelay
         return plan
+    }
+
+    /// Spots whose piles will share a bump (with each other, or with a pile already under the mat: `PileClusterer`'s
+    /// 10 px) rest as far inside the edges as the shared, taller bump needs (`inset(count:)` of the group), so a group
+    /// never holds the hem up where each pile alone would not. A pile already under the mat that joins such a group
+    /// slides in with it (`covered`; only groups that gain a new pile move).
+    static func spreadSharedBumps(_ spots: inout [(at: SIMD2<Float>, count: Int)],
+                                  covered: inout [(at: SIMD2<Float>, count: Int)], targets: Targets) {
+        let n = spots.count
+        for _ in 0..<3 {
+            let all = spots + covered
+            let inputs = all.enumerated().map { PileInput(id: $0.offset, position: $0.element.at,
+                                                          count: $0.element.count) }
+            var moved = false
+            for g in PileClusterer.groups(inputs) where g.ids.count > 1 && g.ids.contains(where: { $0 < n }) {
+                let inset = Self.inset(count: g.count)
+                for id in g.ids {
+                    let q = targets.mat.clampedInside(all[id].at, inset: inset)
+                    guard length2(q - all[id].at) > 1e-3, targets.fits(q) else { continue }
+                    if id < n { spots[id].at = q } else { covered[id - n].at = q }
+                    moved = true
+                }
+            }
+            if !moved { return }
+        }
     }
 
     /// The brush visits the loose piles nearest first, pushes each to the mat's edge, then goes back where it lay.
@@ -264,13 +310,15 @@ public struct ClearDeskPlan: Sendable, Equatable {
 
     // MARK: Applying
 
-    /// Writes the plan's layout into `s`: monitor off, phone face down, drawers shut, swept piles under the mat and
-    /// the floor stacks there as new piles. Tokens that moved since the plan was made are left where they are.
+    /// Writes the plan's layout into `s`: monitor off, phone face down, drawers shut, swept piles under the mat, the
+    /// floor stacks there as new piles, and piles already under it nudged in where a new one joins their bump. Tokens
+    /// that moved since the plan was made are left where they are.
     public func apply(to s: inout DeskState, grid: ScreenGrid = .standard) {
         if powerOff { s.monitor.power = .off }
         if phoneDown { s.phone.faceDown = true }
         for (id, p) in shutDrawers { s.drawers[id] = DrawerState(p: p) }
         for sweep in sweeps where !s.tokens.members(of: sweep.pile).isEmpty { s.piles[sweep.pile] = sweep.to }
+        for (id, p) in nudges where s.piles[id] != nil && !s.tokens.members(of: id).isEmpty { s.piles[id] = p }
         for tuck in tucks {
             let live = tuck.keys.filter { s.tokens.location(of: $0) == .floor(x: tuck.floorX) }
             guard !live.isEmpty else { continue }

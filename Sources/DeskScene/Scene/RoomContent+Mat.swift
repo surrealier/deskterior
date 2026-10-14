@@ -15,6 +15,7 @@ extension RoomContent {
         if let hub = context.physics {
             hub.isUnderMat = { [unowned mat] in mat.coversPile($0) }
             hub.drawnByMat = { [unowned mat] in mat.billboards[$0] != nil }
+            hub.revealPop = { [unowned mat] in mat.popFrame($0) }
             hub.matLanding = { [unowned mat] in mat.landing(at: $0, count: $1) }
         }
         install([brush], inSlotOf: "brush")

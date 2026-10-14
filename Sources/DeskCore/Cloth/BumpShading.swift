@@ -25,10 +25,29 @@ struct BumpShading {
             box = nil
         }
         guard let bumps else { return }
+        // Settled, the raised nodes lie within the groups' reach; while a change eases in or out, anywhere.
+        var s0 = 0, s1 = cols - 1, t0 = 0, t1 = rows - 1
+        if !bumps.isEasing {
+            (s0, s1, t0, t1) = (Int.max, Int.min, Int.max, Int.min)
+            let cell = BumpField.cell, o = BumpField.origin
+            func node(_ v: Float, _ n: Int) -> Int { Int(min(max(v, -1), Float(n))) }
+            for g in bumps.groups {
+                let r = BumpField.extent(count: g.count) + cell
+                s0 = min(s0, node(((g.minPosition.x - r - o.x) / cell).rounded(.down), cols))
+                s1 = max(s1, node(((g.maxPosition.x + r - o.x) / cell).rounded(.up), cols))
+                t0 = min(t0, node(((g.minPosition.y - r - o.y) / cell).rounded(.down), rows))
+                t1 = max(t1, node(((g.maxPosition.y + r - o.y) / cell).rounded(.up), rows))
+            }
+        }
+        s0 = max(s0, 0)
+        s1 = min(s1, cols - 1)
+        t0 = max(t0, 0)
+        t1 = min(t1, rows - 1)
+        guard s0 <= s1, t0 <= t1 else { return }
         var i0 = Int.max, i1 = Int.min, j0 = Int.max, j1 = Int.min
         bumps.heights.withUnsafeBufferPointer { H in
-            for j in 0..<rows {
-                for i in 0..<cols where H[j * cols + i] > 0 {
+            for j in t0...t1 {
+                for i in s0...s1 where H[j * cols + i] > 0 {
                     i0 = min(i0, i)
                     i1 = max(i1, i)
                     j0 = min(j0, j)

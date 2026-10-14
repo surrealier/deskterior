@@ -59,6 +59,8 @@ final class PhysicsHub {
     /// spot it rests at, and the covered pile within reach it joins).
     var isUnderMat: (PileID) -> Bool = { _ in false }
     var drawnByMat: (PileID) -> Bool = { _ in false }
+    /// The pop-up frame (0, 1) of a pile the cloth has just come off, nil at full height.
+    var revealPop: (PileID) -> Int? = { _ in nil }
     var matLanding: (SIMD2<Float>, Int) -> (pile: PileID?, at: SIMD2<Float>)? = { _, _ in nil }
 
     /// Within this distance (plane px) a landing joins a pile instead of starting one: about a pile's width, so two

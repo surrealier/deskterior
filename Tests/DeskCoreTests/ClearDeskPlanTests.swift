@@ -128,4 +128,39 @@ struct ClearDeskPlanTests {
         #expect((1...9).map { ClearDeskPlan.inset(count: $0) } == (1...9).map { ClearDeskPlan.inset(count: $0) }.sorted())
         #expect(ClearDeskPlan.inset(count: 8) >= BumpField.extent(count: 8) + 6)
     }
+
+    @Test("Piles that will share a bump rest as far in as the shared bump needs, clear of the hem")
+    func sharedBumps() {
+        var s = busyDesk()
+        // Another floor stack beside the one at x 120 and a pile beside P1: they go under near the front-left, where
+        // their shared bump comes to take in P3 (already under the mat), which is nudged in with them.
+        s.tokens.move(F.key(9), to: .floor(x: 128))
+        s.tokens.move(F.key(11), to: .desk(pile: "P4", order: 0))
+        s.tokens.move(F.key(12), to: .desk(pile: "P4", order: 1))
+        s.piles["P4"] = [104, 30]
+        let plan = ClearDeskPlan.make(s)
+        let mat = MatFootprint(s.mat)
+        var after = s
+        plan.apply(to: &after)
+        let piles = after.tokens.piles.compactMap { id in
+            after.piles[id].map { PileInput(id: after.tokens.piles.firstIndex(of: id)!, position: $0,
+                                            count: after.tokens.members(of: id).count) }
+        }
+        let groups = PileClusterer.groups(piles)
+        #expect(groups.contains { $0.ids.count > 1 }, "some piles share a bump")
+        #expect(plan.nudges.keys.sorted() == ["P3"] && after.piles["P3"] == plan.nudges["P3"])
+        // One undo of the whole change puts P3 back too.
+        var journal = UndoJournal()
+        var undone = s
+        _ = Reducer.reduce(&undone, journal: &journal, .clearDesk, env)
+        _ = Reducer.reduce(&undone, journal: &journal, .undo, env)
+        #expect(undone.piles["P3"] == s.piles["P3"] && undone.tokens == s.tokens)
+        for g in groups {
+            let need = ClearDeskPlan.inset(count: g.count) - 0.01
+            for id in g.ids {
+                let p = piles.first { $0.id == id }!.position
+                #expect(mat.isInside(p, inset: need), "a pile of a \(g.count)-token bump at \(p) is within \(need) px of an edge")
+            }
+        }
+    }
 }

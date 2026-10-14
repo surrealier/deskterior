@@ -39,6 +39,8 @@ final class DeskPilesElement: DeskElement, Knockable {
     private var drawnRevision = 0
     private var selectionRevision = -1
     private var hoveredPile: PileID?
+    // MARK: mat (the pop-up frame each pile shows, `PhysicsHub.revealPop`)
+    private var popFrames: [PileID: Int] = [:]
 
     /// Hysteresis of the drawn position (art px).
     static let hysteresis: Float = 0.75
@@ -114,6 +116,19 @@ final class DeskPilesElement: DeskElement, Knockable {
                 entry = Shown(keys: keys, lift: lift, selected: selected, stack: stack, base: entry?.base ?? .zero,
                               node: node, d: p.y, tagNode: tagNode, tagAt: nil)
                 entry!.base = ArtPoint(Int.min, Int.min)
+                popFrames[id] = nil  // MARK: mat
+            }
+            // MARK: mat (a pile the cloth has just come off pops up over two frames: a third, two thirds, full)
+            let pop = hub.revealPop(id)
+            var popped: PixelBuffer?
+            if let k = pop {
+                let full = entry!.stack.image
+                popped = PileArt.reshaped(full, to: ArtSize(full.width, max(1, full.height * (k + 1) / 3)))
+            }
+            if pop != popFrames[id] {
+                popFrames[id] = pop
+                entry!.node.texture = TextureFactory.texture(popped ?? entry!.stack.image)
+                entry!.base = ArtPoint(Int.min, Int.min)
             }
             let base = snap(id, hub.canvas(plane: p))
             if entry!.base != base || entry!.d != p.y {
@@ -121,7 +136,8 @@ final class DeskPilesElement: DeskElement, Knockable {
                 entry!.d = p.y
                 let image = entry!.stack.image
                 let origin = ArtPoint(base.x - entry!.stack.base.x, base.y - entry!.stack.base.y)
-                context.space.place(entry!.node, at: ArtRect(origin: origin, size: image.size))
+                let size = popped?.size ?? image.size  // MARK: mat (a popping pile stands on its base)
+                context.space.place(entry!.node, at: ArtRect(origin.x, origin.y + image.height - size.h, size.w, size.h))
                 entry!.node.zPosition = Self.z(d: p.y)
             }
             shown[id] = entry
@@ -131,6 +147,7 @@ final class DeskPilesElement: DeskElement, Knockable {
             e.tagNode?.removeFromParent()
             shown[id] = nil
             snapped[id] = nil
+            popFrames[id] = nil  // MARK: mat
         }
         placeTags()
     }
