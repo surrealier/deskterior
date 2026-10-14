@@ -47,7 +47,7 @@ struct ClothStage {
             PileBillboard(id: $0.id, sprite: ClothReview.pileSprite(count: $0.count),
                           position: SIMD3($0.position.x, $0.position.y, 0))
         }
-        raster.render(cloth: cloth, piles: billboards)
+        raster.render(cloth: cloth, piles: billboards, bumps: bumps)
         var frame = ClothReview.background()
         frame.blit(raster.image, at: .zero)
         return frame.cropped(to: crop.offsetBy(-DeskSurfaceRaster.origin.x, -DeskSurfaceRaster.origin.y))

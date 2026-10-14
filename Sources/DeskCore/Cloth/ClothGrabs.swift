@@ -564,10 +564,13 @@ extension ClothSim {
         return (lo, hi)
     }
 
+    /// A mat this close to square (radians) counts as lying square when an anchored resize is fitted.
+    static let squareSlack: Float = 2 * .pi / 180
+
     /// The pose a transform toward `size`/`angle` ends at. A pose whose footprint leaves the desk turns only as far
     /// as fits (from the current angle, or from straight when even that does not fit the new size and the mat may
-    /// move); an anchored grab that cannot fit the size at its current angle grows or shrinks only as far as fits.
-    /// With `canShift` the anchor then slides so the footprint lies on the desk.
+    /// move); an anchored grab that cannot fit the size at its current angle grows or shrinks each side only as far
+    /// as fits. With `canShift` the anchor then slides so the footprint lies on the desk.
     private func transformPlan(size: SIMD2<Float>, angle: Float, anchorCorner: Int?, canShift: Bool,
                                snap: Float? = nil) -> TransformPlan {
         let fromSize: SIMD2<Float>, fromAngle: Float, anchor: SIMD2<Float>, auv: SIMD2<Float>
@@ -580,14 +583,18 @@ extension ClothSim {
         }
         let margin: Float = 0.5
         let xr = params.xRange, dr = params.dRange
+        // An anchored grab counts where the mat already lies as fitting (a mat squared up against the front edge has a
+        // best-fit corner a hair past it), so it is never refused for a pose it did not make.
+        let (lo0, hi0) = footprint(fromSize, fromAngle, anchor: anchor, anchorUV01: auv)
+        let xLo = min(xr.lowerBound + margin, lo0.x), xHi = max(xr.upperBound - margin, hi0.x)
+        let dLo = min(dr.lowerBound + margin, lo0.y), dHi = max(dr.upperBound - margin, hi0.y)
         func fits(_ s: SIMD2<Float>, _ a: Float) -> Bool {
             let (lo, hi) = footprint(s, a, anchor: anchor, anchorUV01: auv)
             if canShift {
                 return hi.x - lo.x <= xr.upperBound - xr.lowerBound - 2 * margin
                     && hi.y - lo.y <= dr.upperBound - dr.lowerBound - 2 * margin
             }
-            return lo.x >= xr.lowerBound + margin && hi.x <= xr.upperBound - margin
-                && lo.y >= dr.lowerBound + margin && hi.y <= dr.upperBound - margin
+            return lo.x >= xLo && hi.x <= xHi && lo.y >= dLo && hi.y <= dHi
         }
         let target = unwrap(angle, near: fromAngle)
         var outSize = size, outAngle = target
@@ -597,20 +604,42 @@ extension ClothSim {
                 outAngle = farthest(from: fromAngle, to: target) { fits(size, $0) }
             } else if canShift && fits(size, straight) {
                 outAngle = farthest(from: straight, to: target) { fits(size, $0) }
-            } else if fits(fromSize, fromAngle) {
-                outAngle = fromAngle
-                let t = farthest(from: 0, to: 1) { fits(fromSize + (size - fromSize) * $0, fromAngle) }
-                outSize = fromSize
-                let q = params.sizeSnap
-                var grid = fromSize + (size - fromSize) * t
-                for k in 0..<2 {
-                    let up = size[k] > fromSize[k]
-                    grid[k] = ((grid[k] / q).rounded(up ? .down : .up)) * q
-                    grid[k] = up ? max(grid[k], fromSize[k]) : min(grid[k], fromSize[k])
-                }
-                if fits(grid, fromAngle) { outSize = grid }
             } else {
-                (outSize, outAngle) = (fromSize, fromAngle)
+                // Each side grows or shrinks as far as it fits on its own (a mat that cannot get deeper still gets
+                // wider), on the size grid, at the current angle, or straight when the mat lies square within
+                // `squareSlack` (its best-fit tilt is noise that would stop a corner at the desk's edge), whichever
+                // lets more of the size through; then the mat turns toward the drag as far as that size fits.
+                let q = params.sizeSnap
+                func grown(at a: Float) -> SIMD2<Float>? {
+                    guard fits(fromSize, a) else { return nil }
+                    var out = fromSize
+                    for k in 0..<2 where size[k] != fromSize[k] {
+                        let base = out
+                        let t = farthest(from: 0, to: 1) { t in
+                            var s = base
+                            s[k] = fromSize[k] + (size[k] - fromSize[k]) * t
+                            return fits(s, a)
+                        }
+                        let up = size[k] > fromSize[k]
+                        var grid = base
+                        grid[k] = ((fromSize[k] + (size[k] - fromSize[k]) * t) / q).rounded(up ? .down : .up) * q
+                        grid[k] = up ? max(grid[k], fromSize[k]) : min(grid[k], fromSize[k])
+                        if fits(grid, a) { out = grid }
+                    }
+                    return out
+                }
+                var best: (size: SIMD2<Float>, angle: Float)?
+                let square = abs(fromAngle - straight) <= Self.squareSlack
+                for a in square ? [fromAngle, straight] : [fromAngle] {
+                    guard let s = grown(at: a) else { continue }
+                    if best == nil || length2(s - size) < length2(best!.size - size) - 1e-3 { best = (s, a) }
+                }
+                if let best {
+                    outSize = best.size
+                    outAngle = farthest(from: best.angle, to: target) { fits(best.size, $0) }
+                } else {
+                    (outSize, outAngle) = (fromSize, fromAngle)
+                }
             }
             if let step = snap, outAngle != target {
                 // ⇧: the nearest whole step that still fits, or no turn at all.

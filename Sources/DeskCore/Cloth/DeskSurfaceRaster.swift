@@ -24,6 +24,8 @@ struct SurfaceTexel {
     var v: Int32
     /// Shading level · 1024 (0…4, flat = 2).
     var light: Int32
+    /// Height above the floor the cloth rests on · 16 (top faces; felt lying on a bump takes the bump's light).
+    var lift: Int32 = 0
     var owner: Int32
     var kind: UInt8
     var color: RGBA8
@@ -77,6 +79,18 @@ public struct DeskSurfaceRaster: Sendable {
     /// viewer-facing slopes that fill most of this oblique view stay felt-coloured and only turned-away faces darken.
     static let shadeGainLit: Float = 4.5
     static let shadeGainDark: Float = 1.5
+    /// Felt this far off its floor (px · 16) or more takes the mesh's light; below it, blending down to resting
+    /// felt, the bump field's own slope (`BumpShading`).
+    static let bumpLiftBlend: Int32 = 24
+
+    /// The shading level (· 1024, 0…4.999, flat = 2048) of a unit normal `(nx, ny, nz)` in desk space.
+    @inline(__always)
+    static func shadeLevel(_ nx: Float, _ ny: Float, _ nz: Float) -> Int32 {
+        let L = light
+        let diff = nx * L.x + ny * L.y + nz * L.z - L.z
+        let s = 2 + diff * (diff > 0 ? shadeGainLit : shadeGainDark)
+        return Int32((min(max(s, 0), 4.999) * 1024).rounded(.down))
+    }
 
     public private(set) var image: PixelBuffer
     /// `width × height`, row-major: −1 empty, ≥ 0 particle id, ≤ −2 pile (`pileID(owner:)`).
@@ -86,6 +100,8 @@ public struct DeskSurfaceRaster: Sendable {
     }
 
     var texels: [SurfaceTexel]
+    /// The bump field's light for felt resting on bumps (M9).
+    var bumpShading = BumpShading()
     /// Receiver depth of a cast shadow per pixel (`Int32.min` = none).
     var shadow: [Int32]
     /// Region written by the last render (buffer px).
@@ -114,10 +130,13 @@ public struct DeskSurfaceRaster: Sendable {
         return owner[y * Self.width + x]
     }
 
-    /// Renders the cloth and pile billboards (drawn in order; ties keep the earlier one).
-    public mutating func render(cloth: ClothSim, piles: [PileBillboard] = []) {
+    /// Renders the cloth and pile billboards (drawn in order; ties keep the earlier one). With `bumps` (the field the
+    /// cloth drapes over), felt resting on a bump is lit by the bump's own slope, so even a lone token's small mound
+    /// reads under the coarse cloth mesh.
+    public mutating func render(cloth: ClothSim, piles: [PileBillboard] = [], bumps: BumpField? = nil) {
         let previous = dirty
         clear(previous)
+        bumpShading.update(bumps)
         var bounds = Bounds()
         verts.update(cloth: cloth)
         let verts = verts
@@ -144,7 +163,34 @@ public struct DeskSurfaceRaster: Sendable {
             }
         }
         dirty = bounds.rect
+        shadeBumps(dirty, cloth.params.projection)
         resolve(dirty, matW: matW, matD: matD, cols: cloth.cols)
+    }
+
+    // MARK: - Bump light
+
+    /// Felt resting on a bump takes the bump field's light, blending back to the mesh's as it lifts off its floor.
+    private mutating func shadeBumps(_ r: ArtRect, _ proj: DeskProjection) {
+        guard !r.isEmpty, bumpShading.box != nil else { return }
+        let w = Self.width, shading = bumpShading, blend = Int(Self.bumpLiftBlend)
+        let ox = Self.origin.x * 16 + 8, oy = Float(Self.origin.y) + 0.5
+        texels.withUnsafeMutableBufferPointer { T in
+            for y in r.minY..<r.maxY {
+                // Desk depth from the screen row and the texel's height: y = frontY − d·k − z.
+                let rowY = proj.frontY - (Float(y) + oy)
+                for x in r.minX..<r.maxX {
+                    let i = y * w + x
+                    guard T[i].kind == Self.kindFront else { continue }
+                    let lift = Int(T[i].lift)
+                    guard lift < blend else { continue }
+                    let z = Float(T[i].depth) / Self.depthScale
+                    let d16 = Int(((rowY - z) / proj.k * 16).rounded(.down))
+                    guard let bump = shading.sample(x16: x * 16 + ox, d16: d16) else { continue }
+                    let k = max(lift, 0)
+                    T[i].light = Int32((Int(bump) * (blend - k) + Int(T[i].light) * k) / blend)
+                }
+            }
+        }
     }
 
     // MARK: - Clear
@@ -333,18 +379,12 @@ struct VertexSet {
             valid = Array(repeating: true, count: n)
             folded = valid
         }
-        let L = DeskSurfaceRaster.light
-        let lit = DeskSurfaceRaster.shadeGainLit, dark = DeskSurfaceRaster.shadeGainDark
         func fixed(_ f: Float, _ scale: Float) -> Int32? {
             let s = (f * scale).rounded(.toNearestOrAwayFromZero)
             guard s.isFinite, abs(s) < 1_000_000 else { return nil }
             return Int32(s)
         }
-        func shade(_ nx: Float, _ ny: Float, _ nz: Float) -> Int32 {
-            let diff = nx * L.x + ny * L.y + nz * L.z - L.z
-            let s = 2 + diff * (diff > 0 ? lit : dark)
-            return Int32((min(max(s, 0), 4.999) * 1024).rounded(.down))
-        }
+        let shade = DeskSurfaceRaster.shadeLevel
         cloth.parts.withUnsafeBufferPointer { P in
             cloth.uv.withUnsafeBufferPointer { UV in
                 for r in 0..<rows {
@@ -481,6 +521,7 @@ private func rasterizeCloth(
     let va = Int(V.v[ia]), vb = Int(V.v[ib]), vc = Int(V.v[ic])
     let lights = front ? V.lightFront : V.lightBack
     let la = Int(lights[ia]), lb = Int(lights[ib]), lc = Int(lights[ic])
+    let fa = Int(V.lift[ia]), fb = Int(V.lift[ib]), fc = Int(V.lift[ic])
     let bias = front ? 0
         : (V.folded[ia] || V.folded[ib] || V.folded[ic] ? 1 : -1) * Int(DeskSurfaceRaster.backBias)
     let area = s.area
@@ -522,8 +563,9 @@ private func rasterizeCloth(
             let nearest = wA >= wB && wA >= wC ? ia : (wB >= wC ? ib : ic)
             T[i] = SurfaceTexel(
                 depth: Int32(clamping: depth), u: Int32(clamping: u), v: Int32(clamping: v),
-                light: Int32(clamping: (wA * la + wB * lb + wC * lc) / area), owner: Int32(nearest), kind: kind,
-                color: .clear
+                light: Int32(clamping: (wA * la + wB * lb + wC * lc) / area),
+                lift: front ? Int32(clamping: (wA * fa + wB * fb + wC * fc) / area) : 0, owner: Int32(nearest),
+                kind: kind, color: .clear
             )
             wrote = true
         }

@@ -56,7 +56,7 @@ struct ClothPerfTests {
             cloth.step(bumps: bumps)
         }
         var raster = DeskSurfaceRaster()
-        let render = Self.median(201) { raster.render(cloth: cloth, piles: piles) }
+        let render = Self.median(201) { raster.render(cloth: cloth, piles: piles, bumps: bumps) }
         var tracker = CoverageTracker()
         let coverPiles = (0..<12).map {
             CoveragePile(id: $0, position: SIMD2(170 + Float($0) * 15, 20 + Float($0 % 4) * 18))

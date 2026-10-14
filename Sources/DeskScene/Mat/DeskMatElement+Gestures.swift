@@ -51,24 +51,34 @@ extension DeskMatElement {
         }
         switch hit.part {
         case "mat.edge", "mat.corner", "mat.flap":
-            // The edge curls up a little under the pointer: lift here.
-            return .image(Self.curl, at: ArtPoint(hit.rect.x, hit.rect.y))
+            // The edge curls up a little under the pointer, toward the nearest corner and into the mat: lift here.
+            let p = ArtPoint(hit.rect.x + 3, hit.rect.y + 5)
+            let q = particle(at: SIMD2(Float(p.x) + 0.5, Float(p.y) + 0.5)).map { cloth.uv[$0] } ?? .zero
+            let size = cloth.restSize
+            let back = q.y > size.y / 2
+            let glyph = Self.curls[(q.x > size.x / 2 ? 0 : 1) + (back ? 2 : 0)]
+            return .image(glyph, at: ArtPoint(p.x - 3, back ? p.y : p.y - glyph.height + 1))
         default:
             return .none
         }
     }
 
-    /// The edge-curl affordance (DESIGN §2.1 hover): a dog-eared corner showing the mat's rubber underside.
-    static let curl: PixelBuffer = IndexedSprite("""
-        .....kk
-        ....kuk
-        ...kuuk
-        ..kuuik
-        .kuuiik
-        kkkkkkk
-        """, SpriteKey.extending(["k": Role.outline, "u": MatPattern.felt.undersideRamp[4],
-                                 "i": MatPattern.felt.undersideRamp[2]]))
-        .render()
+    /// The edge-curl affordance (DESIGN §2.1 hover): a dog-eared corner showing the mat's rubber underside, for the
+    /// front-right, front-left, back-right and back-left quarters of the mat.
+    static let curls: [PixelBuffer] = {
+        let frontRight = IndexedSprite("""
+            .....kk
+            ....kuk
+            ...kuuk
+            ..kuuik
+            .kuuiik
+            kkkkkkk
+            """, SpriteKey.extending(["k": Role.outline, "u": MatPattern.felt.undersideRamp[4],
+                                     "i": MatPattern.felt.undersideRamp[2]]))
+            .render()
+        let frontLeft = frontRight.flippedHorizontally()
+        return [frontRight, frontLeft, frontRight.flippedVertically(), frontLeft.flippedVertically()]
+    }()
 
     func tooltip(_ hit: Hit) -> TooltipSpec? {
         if let id = pileID(hit), let b = billboards[id], let s = context.state {

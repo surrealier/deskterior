@@ -618,7 +618,7 @@ final class DeskMatElement: DeskElement, Knockable {
         let boards = billboards.compactMap { id, b in
             PileBillboard(id: number(id), sprite: b.sprite, position: SIMD3(b.position.x, b.position.y, 0))
         }.sorted { $0.id < $1.id }
-        raster.render(cloth: cloth, piles: boards)
+        raster.render(cloth: cloth, piles: boards, bumps: bumps)
         var image = raster.image
         shadeUnderKeyboard(&image)
         surface.texture = TextureFactory.dynamicTexture(image)

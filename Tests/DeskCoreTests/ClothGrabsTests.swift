@@ -449,4 +449,26 @@ struct ClothGrabsTests {
         let shift = zip(cloth.positions, before).map { length2(SIMD2($0.x - $1.x, $0.y - $1.y)) }.max() ?? 0
         #expect(shift < 0.1)
     }
+
+    // MARK: - M9
+
+    @Test("⌥-drag on a mat lying against the desk's front edge still grows it, each side as far as it fits")
+    func transformGrabAtTheEdge() {
+        var m = MatState()
+        m.origin = SIMD2(150, 0.6)
+        m.angle = -0.01
+        var cloth = ClothSim.flat(m)
+        ClothFixtures.run(&cloth, 5)
+        let anchor = cloth.position(cloth.cornerIndices[0])
+        // The back-right corner out 48 px and back 16: 252 wide fits, 100 deep does not quite.
+        ClothFixtures.drag(&cloth, cloth.cornerIndices[2], by: SIMD2(48, -8), frames: 10, modifiers: .option)
+        ClothFixtures.run(&cloth, 30)
+        let size = cloth.restSize
+        #expect(size.x >= 240 && size.x.truncatingRemainder(dividingBy: 6) == 0, "size \(size)")
+        #expect(size.y > 84 && size.y < 104 && size.y.truncatingRemainder(dividingBy: 6) == 0, "size \(size)")
+        let a = cloth.position(cloth.cornerIndices[0])
+        #expect(abs(a.x - anchor.x) < 1 && abs(a.y - anchor.y) < 1)
+        #expect(ClothMetrics.foldedCount(cloth) == 0)
+        #expect(cloth.positions.allSatisfy { $0.y > -0.5 && $0.y < 104 })
+    }
 }

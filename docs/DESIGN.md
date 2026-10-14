@@ -176,6 +176,13 @@
     - **Rest.** The cloth's pose commits (`matSettled`) when it falls asleep; an awake cloth with nothing driving it
       (no grab, script or transform) accepts its pose after 4 s, so creeping creases never keep the loop awake.
     - **Demos** gain a `move` step (a held drag moved on, for frame dumps).
+    - **Bump light.** The 6-px cloth mesh is coarser than a small stack's bump, so felt resting on a bump (blending back to
+      the mesh's light as it lifts 1.5 px off its floor) is lit per pixel by the bump field's own slope
+      (`BumpShading`; `DeskSurfaceRaster.render(cloth:piles:bumps:)`): a lone token reads as a small mound.
+    - **⌥ resize** fitting: an anchored corner drag counts where the mat already lies as fitting, and grows or shrinks
+      each side as far as it fits on its own (a mat at the back of the desk still gets wider), at its angle, or straight
+      when it lies within 2° of square; then it turns toward the drag as far as fits.
+    - **Hover curl** (§2.1): the edge-curl glyph turns toward the mat's nearest corner and lies inside the mat.
 
 ---
 

@@ -68,17 +68,21 @@ extension DeskScene {
         func at(_ p: SIMD2<Float>) -> ArtRect { ArtRect(Int(p.x.rounded(.down)) - 1, Int(p.y.rounded(.down)) - 1, 3, 3) }
         let c = mat.cloth, cols = c.cols, rows = c.rows
         func particle(_ col: Int, _ row: Int) -> ArtRect { at(mat.canvas(particle: c.index(col: col, row: row))) }
+        // "Just inside" is a column and row in, and past the fringe and hem (8 material px) on a small mat.
+        let inX = max(1, Int((8 / (c.restSize.x / Float(cols - 1))).rounded()))
+        let inY = max(1, Int((8 / (c.restSize.y / Float(rows - 1))).rounded()))
+        let (w, e, s, n) = (inX, cols - 1 - inX, inY, rows - 1 - inY)
         switch name {
         case "mat.center":
             return at(mat.canvas(particle: c.index(col: cols / 2, row: rows / 2)))
-        case "mat.corner.sw": return particle(1, 1)
-        case "mat.corner.se": return particle(cols - 2, 1)
-        case "mat.corner.ne": return particle(cols - 2, rows - 2)
-        case "mat.corner.nw": return particle(1, rows - 2)
-        case "mat.edge.s": return particle(cols / 2, 1)
-        case "mat.edge.n": return particle(cols / 2, rows - 2)
-        case "mat.edge.w": return particle(1, rows / 2)
-        case "mat.edge.e": return particle(cols - 2, rows / 2)
+        case "mat.corner.sw": return particle(w, s)
+        case "mat.corner.se": return particle(e, s)
+        case "mat.corner.ne": return particle(e, n)
+        case "mat.corner.nw": return particle(w, n)
+        case "mat.edge.s": return particle(cols / 2, s)
+        case "mat.edge.n": return particle(cols / 2, n)
+        case "mat.edge.w": return particle(w, rows / 2)
+        case "mat.edge.e": return particle(e, rows / 2)
         case "mat.flap":
             let folded = (0..<c.count).filter { c.isFolded($0) }
             guard !folded.isEmpty else { return nil }

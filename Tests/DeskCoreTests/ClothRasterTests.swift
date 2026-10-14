@@ -38,7 +38,7 @@ struct ClothScene {
 
     func render() -> DeskSurfaceRaster {
         var r = DeskSurfaceRaster()
-        r.render(cloth: cloth, piles: billboards)
+        r.render(cloth: cloth, piles: billboards, bumps: bumps)
         return r
     }
 }
