@@ -14,7 +14,13 @@ extension RoomContent {
         hub.knockables = { [unowned self] in extras.compactMap { $0 as? any Knockable } }
         hub.apron.wobbleNodes = { [unowned self] prop in wobbleNodes(prop) }
         hub.hidePlacements = { [unowned self] in hidePhysicsPlacements() }
-        hub.chairLeft = { [unowned self] in Float(state.chairX) }
+        hub.chairLeft = { [unowned self] in chairElement?.sim.x ?? Float(state.chairX) }
+        hub.drawerSims = { [unowned self] in drawerSims }
+        // A slam knocks the desk where the drawer shut (DESIGN §2.2 E3).
+        onDrawerSlam { [unowned self, unowned hub] id, _ in
+            guard let front = (riserElement?.unit(id) ?? cabinetElement?.unit(id))?.front else { return }
+            hub.knock(atCoreX: hub.core(SIMD2(Float(front.midX), Float(front.midY))).x)
+        }
         install([hub.cup, hub.piles], inSlotOf: "pencup")
         install([hub.basket, hub.floor], inSlotOf: "wastebasket")
         install([hub.apron], inSlotOf: "desk")
@@ -142,4 +148,13 @@ extension DeskScene {
     func physicsDidSimulate() {
         room?.didSimulatePhysics()
     }
+}
+
+/// The drawers take a knock themselves: ajar ones snap shut on their live sims and commit their own rests.
+extension RiserElement: Knockable {
+    var knockedDrawers: Set<ContainerID> { Set(units.map(\.id)) }
+}
+
+extension CabinetElement: Knockable {
+    var knockedDrawers: Set<ContainerID> { Set(units.map(\.id)) }
 }

@@ -129,6 +129,22 @@
       first and given a mid-grey rim where their own edge is dark; a variation selector no font maps is dropped for
       its base character (text presentation, U+FE0E, always draws the base glyph); a hollow box last. The emoji
       golden holds only against the Apple Color Emoji version it was recorded with.
+16. **Containers in the scene (M6) and their glue with M7.** These refine §2.2 E3–E6 and E11.
+    - A chomp or a peek opens a drawer at most 7 px (`DrawerSim.concealedLimit`, below `Visibility.drawerOpen`), so
+      it never reveals the contents; an overfull drawer gapes less than its 6-px jam gap while chomping.
+    - Hard sleep and quit stop a drawer where it is (and commit it), but end a chomp shut. An emptied drawer resting
+      at its old jam gap slides shut.
+    - A drop back into the container the tokens came from springs back without a move or an undo step. "Move to ▸"
+      ticks and disables the container the tokens are already in.
+    - The cubby shows two staggered rows; the front row sinks 3 px behind the lip.
+    - List Contents is a submenu of the members' names (up to 20, then "N More…" opens Find Item); picking one
+      flies it to the monitor (E5).
+    - Show on Desk for a token in a container opens it fully (`revealContainer`): interlocked siblings shut, a
+      blocking chair rolls clear, the phone turns face up.
+    - The phone's flip is the absolute `.phoneFace(down:)`; face down, its minis hide and drops bonk.
+    - A desk knock reaches the drawers through `Knockable` (they close themselves on their live sims), and the knock
+      plan sees the live drawer sims, so a held or chomping drawer is left alone. A slam knocks the desk where the
+      drawer shut (§2.2 E3). Floor landings keep clear of the chair where it actually stands.
 
 ---
 

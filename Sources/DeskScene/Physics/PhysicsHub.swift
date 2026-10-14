@@ -37,8 +37,10 @@ final class PhysicsHub {
     var knockables: () -> [any Knockable] = { [] }
     /// Hides the room's static cup and basket sprites (after every rebuild of the room).
     var hidePlacements: () -> Void = {}
-    /// Core x of the chair's left edge as the room draws it (new floor landings keep clear of its base).
+    /// Core x of the chair's left edge where it is now (new floor landings keep clear of its base).
     var chairLeft: () -> Float = { Float(CoreLayout.chair.x) }
+    /// The drawers' live sims, so a knock leaves a held or chomping drawer alone (`DeskKnock.plan(drawers:)`).
+    var drawerSims: () -> [ContainerID: DrawerSim] = { [:] }
     private var knocker = DeskKnock()
     /// Desk knocks so far (the cooldown drops double-clicks that come too soon).
     private(set) var knocks = 0
@@ -529,7 +531,8 @@ final class PhysicsHub {
     func knock(atCoreX x: Float) {
         guard let s = state else { return }
         let origin = SIMD2(x, 0)
-        guard let plan = knocker.knock(s, at: eventTime(), origin: origin, seed: nextSeed()) else { return }
+        guard let plan = knocker.knock(s, drawers: drawerSims(), at: eventTime(), origin: origin, seed: nextSeed())
+        else { return }
         knocks += 1
         bodies.thawAll(from: origin)
         let all = knockables()
