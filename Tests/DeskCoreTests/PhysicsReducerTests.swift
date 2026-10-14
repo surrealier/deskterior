@@ -88,7 +88,7 @@ struct PhysicsReducerTests {
         #expect(s.makePileIDs(0).isEmpty)
     }
 
-    @Test("Cup and basket menus: Tip Over while standing, Stand Up while down; Empty Wastebasket… pending (M11)")
+    @Test("Cup and basket menus: Tip Over while standing, Stand Up while down; Empty Wastebasket… with something in it")
     func menus() {
         var s = F.mirrored(["a.txt"])
         #expect(MenuSpec.penCup(s).item("tipOver")?.isEnabled == true && MenuSpec.penCup(s).item("standUp")?.isEnabled == false)
@@ -96,7 +96,7 @@ struct PhysicsReducerTests {
         #expect(MenuSpec.penCup(s).item("tipOver")?.isEnabled == false && MenuSpec.penCup(s).item("standUp")?.isEnabled == true)
         s.tokens.move(F.key(1), to: .container(.wastebasket, order: 0))
         let basket = MenuSpec.wastebasket(s)
-        #expect(basket.item("emptyWastebasket")?.isEnabled == false && basket.item("emptyWastebasket")?.command == .emptyWastebasket)
+        #expect(basket.item("emptyWastebasket")?.isEnabled == true && basket.item("emptyWastebasket")?.command == .emptyWastebasket)
         s.wastebasket.state = WastebasketMachine.tippedLeftName
         #expect(MenuSpec.wastebasket(s).item("standUp")?.isEnabled == true)
     }

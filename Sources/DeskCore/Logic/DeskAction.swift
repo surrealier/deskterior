@@ -92,12 +92,26 @@ public enum DeskAction: Sendable {
     /// Tokens set down on the mat join the covered `pile`, which slides in to `at` so its taller bump still clears the
     /// edge (`ClearDeskPlan.tuckSpot`): one move and one undo. Journaled.
     case tuckUnderMat([TokenKey], pile: PileID, at: SIMD2<Float>)
+    // MARK: files
+    /// What a file effect did (`FileReport`, from the app's `FileActions`): trashed tokens leave with a poof and a
+    /// tombstone, dropped files' hints follow the names they landed under, refusals become a toast, and an undo
+    /// record joins the journal. Never a file effect itself.
+    case fileResult(FileReport)
+    /// Files dropped onto a desk spot (DESIGN §3.6 Drop-in): items from the desk folder only move; the others are
+    /// moved or copied in.
+    case requestDropIn(DropIn)
+    /// The drive hub (E15): open the volume with this `VolumeEntry.id` in Finder, or show it there.
+    case requestOpenVolume(String)
+    case requestRevealVolume(String)
 
     /// Explicit user requests. Only these may produce file effects (`Effect.touchesFiles`).
     public var isRequest: Bool {
         switch self {
         case .requestConnect, .requestOpen, .requestQuickLook, .requestReveal, .requestCopy, .requestTrash,
              .requestEmptyWastebasket, .requestEject, .importDropped, .requestPrivacySettings, .requestChooseFolder:
+            true
+        // MARK: files: ⌘Z / Undo replays a file action's record when that is the newest entry (redo never does).
+        case .requestDropIn, .requestOpenVolume, .requestRevealVolume, .undo:
             true
         default:
             false

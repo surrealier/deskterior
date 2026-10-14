@@ -30,6 +30,14 @@ final class DemoRunner {
     private var lastFS: Date?
     private var appCommands: [String] = []
     private let fsBridge: Bool
+    // MARK: files
+    /// The harness's second scratch folder, files are dropped in from (`DESKTERIOR_DEMO_SOURCE`).
+    var dropSource: URL?
+    /// How the next confirmation sheet is answered, and the name to write its picture under (`menu` steps).
+    private var pendingConfirm: Bool?
+    private var pendingSheetName: String?
+    /// The identity each token had when the script first named it (`key:<name>` expectations).
+    private var firstKeys: [String: TokenKey] = [:]
 
     /// After an `fs` step, the watcher batch (0.25 s latency + 0.25 s debounce) is waited for this long.
     static let quietPeriod = 1.0
@@ -47,6 +55,11 @@ final class DemoRunner {
             case .inventory: self?.appCommands.append("inventory")
             case let .command(c): self?.appCommands.append("\(c)")
             }
+        }
+        // MARK: files
+        session.effects.confirm = { [weak self] kind, count, done in
+            guard let self else { return done(false) }
+            answerSheet(kind, count, done)
         }
     }
 
@@ -76,6 +89,14 @@ final class DemoRunner {
             return 2
         }
         var configuration = MirrorController.configurationOrExit(options: options)
+        configuration.watchesVolumes = false // MARK: files: demos list their own volumes (`volumes` steps)
+        let source: URL?
+        do {
+            source = try dropSource(configuration)
+        } catch {
+            FileHandle.standardError.write(Data("Deskterior demo: \(error)\n".utf8))
+            return SafetyGuard.refusalExitCode
+        }
         if script.firstRun == true {
             configuration.connectImmediately = false
             configuration.finderHidesItems = script.finderHidden ?? false
@@ -102,7 +123,7 @@ final class DemoRunner {
             }
             AppDelegate.configure(host, o)
             let session = DeskSession(host: host, options: o, configuration: configuration, dryRun: true,
-                                      lights: script.lights, seed: script.seed)
+                                      lights: script.lights, seed: script.seed, fileRoots: source.map { [$0] } ?? [])
             let writer = try options.snapshotDir.map {
                 try ArtifactWriter(directory: URL(fileURLWithPath: ($0 as NSString).expandingTildeInPath, isDirectory: true),
                                    mirrored: configuration.folder)
@@ -110,6 +131,7 @@ final class DemoRunner {
             let fsBridge = ProcessInfo.processInfo.environment["DESKTERIOR_DEMO_FS"] == "stdio"
             let runner = DemoRunner(script: script, host: host, session: session, writer: writer,
                                     scale: options.snapshotScale, fsBridge: fsBridge)
+            runner.dropSource = source
             print("demo \(script.name): \(display), S \(grid.scale), canvas \(grid.artSize)")
             return await runner.run()
         } catch {
@@ -201,6 +223,14 @@ final class DemoRunner {
             failures += problems.map { "step \(index) (within \(w.within ?? 3) s): \($0)" }
         case let .comment(text):
             print("demo \(script.name): # \(text)")
+        // MARK: files
+        case let .dropIn(d):
+            try dropIn(d, index: index)
+        case let .volumes(list):
+            session.store.dispatch(.volumes(list))
+            frame()
+        case let .dragOut(d):
+            try dragOut(d, index: index)
         }
     }
 
@@ -233,6 +263,13 @@ final class DemoRunner {
         guard item.isEnabled else {
             failures.append("step \(index): menu item '\(m.item)' is disabled")
             return
+        }
+        // MARK: files: a confirmation sheet the command asks for is answered as the step says (no: cancel).
+        pendingConfirm = m.confirm
+        pendingSheetName = m.sheetSnapshot
+        defer {
+            pendingConfirm = nil
+            pendingSheetName = nil
         }
         if !session.perform(command) { appCommands.append("\(command)") }
         frame()
@@ -313,6 +350,12 @@ final class DemoRunner {
         let now = Date()
         if let t = lastFS, now.timeIntervalSince(t) < Self.quietPeriod { return true }
         if let t = session.mirror.lastEventAt, now.timeIntervalSince(t) < 0.1 { return true }
+        // MARK: files: an operator call under way, the mirror catching up with one, a drag-out's wait.
+        if let files = session.files {
+            if files.inFlight > 0 { return true }
+            if let t = files.lastFinishedAt, now.timeIntervalSince(t) < Self.quietPeriod { return true }
+        }
+        if !session.dragOut.held.isEmpty { return true }
         return false
     }
 
@@ -384,6 +427,7 @@ final class DemoRunner {
         if let r = host.scene.physicsAnchor(target) { return center(r) }
         // MARK: mat (the mat's corners and edges, the brush and the keyboard, where they are now)
         if let r = host.scene.matAnchor(target) { return center(r) }
+        if let r = host.scene.fileAnchor(target) { return center(r) } // MARK: files: the hub's drives
         guard let r = host.scene.liveAnchor(target) ?? layout.anchors[target] else {
             throw ScriptError(description: "unknown target '\(target)'")
         }
@@ -393,7 +437,9 @@ final class DemoRunner {
     private func tokenKey(named name: String) -> TokenKey? {
         let s = session.store.state
         let nfc = TextLayout.nfc(name)
-        return s.tokens.sortedKeys.first { s.tokens.meta(of: $0)?.displayName == nfc }
+        let key = s.tokens.sortedKeys.first { s.tokens.meta(of: $0)?.displayName == nfc }
+        if let key, firstKeys[nfc] == nil { firstKeys[nfc] = key } // MARK: files
+        return key
     }
 
     // MARK: Snapshots and expectations
@@ -486,6 +532,17 @@ final class DemoRunner {
             case let k where k.hasPrefix("light:"):
                 let p = try point(String(k.dropFirst(6)))
                 check(key, String(scene.lightLevel(at: ArtPoint(Int(p.x.rounded(.down)), Int(p.y.rounded(.down))))), value)
+            // MARK: files
+            case "sheet": check(key, session.effects.lastSheet ?? "none", value)
+            case "fileOps": check(key, String(session.files?.finished ?? 0), value)
+            case "drives": check(key, String(scene.hubDrives.shown), value)
+            case "drives.more": check(key, String(scene.hubDrives.more), value)
+            case "held": check(key, String(session.dragOut.held.count), value)
+            case let k where k.hasPrefix("key:"):
+                // `same`: the token has the identity (volume and inode) it had when the script first named it.
+                let name = TextLayout.nfc(String(k.dropFirst(4)))
+                let now = tokenKey(named: name)
+                check(key, now == nil ? "missing" : (now == firstKeys[name] ? "same" : "changed"), value)
             default:
                 guard let actual = scene.physicsExpectation(key) ?? scene.matExpectation(key) else {  // MARK: mat
                     throw ScriptError(description: "unknown expectation '\(key)'")
@@ -518,5 +575,86 @@ final class DemoRunner {
         case "plant.jiggle": return String((scene.roomElement("plant") as? PlantElement)?.isJiggling ?? false)
         default: return "none"
         }
+    }
+}
+
+// MARK: - files
+
+extension DemoRunner {
+    /// The harness's drop source folder (`DESKTERIOR_DEMO_SOURCE`), if any: an existing scratch folder that is not
+    /// the real desktop, Downloads or home (nor inside or around them), nor the mirrored folder's relative.
+    static func dropSource(_ configuration: MirrorController.Configuration) throws -> URL? {
+        guard let path = ProcessInfo.processInfo.environment["DESKTERIOR_DEMO_SOURCE"], !path.isEmpty else { return nil }
+        let url = try SafetyGuard.mirrorFolder(DesktopLocator.resolve(override: path), mode: .demo)
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        let guarded = [home.appendingPathComponent("Downloads", isDirectory: true), configuration.folder,
+                       configuration.stateDirectory]
+        for other in guarded where DesktopLocator.relation(of: url, to: other) != .unrelated {
+            throw ScriptError(description: "refusing the drop source \(url.path): it overlaps \(other.path)")
+        }
+        return URL(fileURLWithPath: DesktopLocator.canonicalPath(url), isDirectory: true)
+    }
+
+    /// Answers a confirmation sheet as the current `menu` step says, writing its picture first when asked.
+    fileprivate func answerSheet(_ kind: ConfirmKind, _ count: Int, _ done: (Bool) -> Void) {
+        if let name = pendingSheetName {
+            if let writer, let png = EmptyBasketSheet.picture(kind, count: count) {
+                do {
+                    print("wrote \(try writer.write(png, named: "\(name).png").path)")
+                } catch {
+                    failures.append("sheet \(name): \(error)")
+                }
+            } else {
+                print("demo \(script.name): sheet \(name) (no picture)")
+            }
+        }
+        done(pendingConfirm == true)
+    }
+
+    /// Hands files from the drop source (or the desk folder) to the app's drop-in path at a target.
+    fileprivate func dropIn(_ d: DemoDropIn, index: Int) throws {
+        let folder: URL
+        switch d.from ?? "source" {
+        case "source":
+            guard let dropSource else {
+                throw ScriptError(description: "step \(index): dropIn needs the harness's source folder (scripts/run-demo.sh)")
+            }
+            folder = dropSource
+        case "desk":
+            folder = session.configuration.folder
+        case let other:
+            throw ScriptError(description: "step \(index): dropIn from '\(other)' (source or desk)")
+        }
+        guard !d.files.isEmpty, d.files.allSatisfy(DeskState.isPlainName) else {
+            throw ScriptError(description: "step \(index): dropIn takes plain file names")
+        }
+        let urls = d.files.map { folder.appendingPathComponent($0, isDirectory: false) }
+        let mods = try modifiers(d.mods ?? [])
+        let p = try point(d.at)
+        send(.move, p)
+        session.dropIn.drop(urls, at: p, copy: mods.contains(.option))
+        frame()
+    }
+
+    /// Picks a token up, carries it a few pixels (as toward the window's edge), hands the carry off as the app does
+    /// when it leaves the window, and ends the system's drag with the step's operation.
+    fileprivate func dragOut(_ d: DemoDragOut, index: Int) throws {
+        guard let outcome = DragOutRule.Outcome(rawValue: d.operation) else {
+            throw ScriptError(description: "step \(index): dragOut operation '\(d.operation)'")
+        }
+        let from = try point(d.from)
+        send(.move, from)
+        send(.down, from, count: 1)
+        frame()
+        for k in 1...6 {
+            send(.drag, from + SIMD2(Float(2 * k), -Float(k)))
+            frame()
+        }
+        guard let keys = host.scene.handOffCarry() else {
+            throw ScriptError(description: "step \(index): nothing in hand at \(d.from)")
+        }
+        frame()
+        session.dragOut.ended(keys, outcome)
+        frame()
     }
 }

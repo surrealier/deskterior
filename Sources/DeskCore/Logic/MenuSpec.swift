@@ -137,6 +137,11 @@ public enum MenuCommand: Sendable, Equatable {
     // MARK: mat
     /// The desk mat's menu and the status item's Smooth Desk Mat.
     case mat(MatCommand)
+    // MARK: files
+    /// A drive on the hub (by `VolumeEntry.id`): Open, Show in Finder, Eject (explicit; through `FileOperator`).
+    case openVolume(String)
+    case revealVolume(String)
+    case ejectVolume(String)
 
     /// The model action this command dispatches; nil for app commands.
     public func action(_ s: DeskState) -> DeskAction? {
@@ -170,6 +175,10 @@ public enum MenuCommand: Sendable, Equatable {
         case let .standUp(id): .standUp(id)
         // MARK: mat
         case let .mat(command): .mat(command)
+        // MARK: files
+        case let .openVolume(id): .requestOpenVolume(id)
+        case let .revealVolume(id): .requestRevealVolume(id)
+        case let .ejectVolume(id): .requestEject(id)
         }
     }
 }
@@ -192,8 +201,8 @@ extension MenuSpec {
     }
 
     /// Commands whose milestone has not landed yet: shown, but disabled (each track removes its own).
-    /// Move to Trash and Empty Wastebasket need `FileOperator` (M11), Peek Desk and Settings… their windows (M12).
-    public static let pending: Set<String> = ["trash", "emptyWastebasket", "peekDesk", "settings"]
+    /// Peek Desk and Settings… need their windows (M12).
+    public static let pending: Set<String> = ["peekDesk", "settings"]
 
     /// Right-click on tokens (the selection): open, look, reveal, copy, move to another page or a hiding place,
     /// trash.

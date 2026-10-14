@@ -28,6 +28,8 @@ final class MirrorController {
         var confirmDelay: TimeInterval = 2
         /// Overrides `FinderPrefs` for first-run gating (demo scripts).
         var finderHidesItems: Bool?
+        /// Follow the mounted volumes for the drive hub (demos list their own, never the real ones).
+        var watchesVolumes = true
     }
 
     let configuration: Configuration
@@ -79,7 +81,7 @@ final class MirrorController {
             let hides = configuration.finderHidesItems ?? FinderPrefs.current().hidesDesktopItems
             if hides && configuration.settings.showDespiteFinderHidden != true { store.dispatch(.finderHidesItems) }
         }
-        engine.startVolumes()
+        if configuration.watchesVolumes { engine.startVolumes() }
     }
 
     /// Starts watching, or rescans when the watcher already runs (`Effect.connectDesktop`, Choose Folder…).

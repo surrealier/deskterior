@@ -1,24 +1,42 @@
 import AppKit
 import DeskCore
-import DeskFiles
+@_spi(IntentMinting) import DeskFiles
 import DeskScene
 import QuickLookUI
 
 /// Runs the reducer's effects (DESIGN §3.5, §4.3) on the main actor. Opening, revealing, Quick Look and copying
 /// hand files to the system and never change them; the scene gets its animations, toasts and wakeups; the
-/// mirror connects on ⏻. File mutations (Move to Trash, Empty Wastebasket, Eject, drop-in imports) arrive with
-/// `FileOperator` in M11: until then they only show the "Not available yet" toast, and no `ExplicitIntent` is
-/// minted. In dry runs (`--demo`, `--headless`) nothing reaches the system at all: effects are only recorded.
+/// mirror connects on ⏻. In dry runs (`--demo`, `--headless`) none of those reaches the system: they are only
+/// recorded.
+///
+/// File changes (Move to Trash, Empty Wastebasket, drop-in imports, their undo, Eject) go to `FileOperator` through
+/// `FileActions`, each with one `ExplicitIntent` minted here — the only place intents are minted (Errata 14) —
+/// right before its one call: a trash with the origin it was requested from (`withOrigin`: a token menu by default,
+/// the Inventory, the Dock Trash), or `sheetConfirm` once Empty Wastebasket's sheet was confirmed; an import with
+/// `drop`, an undo with `undo` (its record from the journal, redeemed on the operator that issued it), an eject from
+/// a menu. Demos run them for real, on the fixture with the FakeTrash (`FileActionScope`).
 final class EffectRunner {
     let host: SceneHost
     weak var mirror: MirrorController?
     /// The mirrored folder (Choose Folder… must pick this one).
     let folder: URL
     let dryRun: Bool
-    /// File-touching effects so far, newest last (`open`, `reveal`, `quickLook`, `copy`; demo expectations).
+    /// Effects that touched files so far, newest last (`open`, `reveal`, `quickLook`, `copy`, `trash`,
+    /// `emptyWastebasket`, `import`, `undo`, `eject`; demo expectations).
     private(set) var fileLog: [String] = []
     /// Called after Choose Folder… granted access (the store dispatches `.accessGranted`).
     var onAccessGranted: (() -> Void)?
+    // MARK: files
+    /// The session's file operator and undo records (nil: no file can change; requests only toast).
+    var files: FileActions?
+    /// Asks before Empty Wastebasket… (the app's sheet; demos answer for themselves); `done(true)` goes ahead.
+    var confirm: (ConfirmKind, Int, @escaping (Bool) -> Void) -> Void = { kind, count, done in
+        EmptyBasketSheet.present(kind, count: count, done: done)
+    }
+    /// The last confirmation asked for (`emptyWastebasket:<count>`; demo expectations).
+    private(set) var lastSheet: String?
+    /// Where the request being dispatched came from (`withOrigin`); a menu item unless said otherwise.
+    private(set) var requestOrigin: ExplicitIntent.Origin = .menuItem
 
     init(host: SceneHost, folder: URL, dryRun: Bool) {
         self.host = host
@@ -44,10 +62,8 @@ final class EffectRunner {
                 pb.clearContents()
                 pb.writeObjects(urls.map { $0 as NSURL })
             }
-        case .trash, .importFiles, .eject:
-            // TODO(M11): FileOperator with an ExplicitIntent minted here, and only here.
-            host.scene.toast(.notYetAvailable)
-            host.modelChanged()
+        case .trash, .importFiles, .eject, .undoFiles:
+            runFileEffect(effect)
         case .connectDesktop:
             mirror?.connect()
         case let .play(id, target):
@@ -69,6 +85,14 @@ final class EffectRunner {
             record("chooseFolder")
             if !dryRun { chooseFolder() }
         }
+    }
+
+    /// Dispatches inside `body` count as requested from `origin` (the Inventory, the Dock Trash).
+    func withOrigin(_ origin: ExplicitIntent.Origin, _ body: () -> Void) {
+        let outer = requestOrigin
+        requestOrigin = origin
+        defer { requestOrigin = outer }
+        body()
     }
 
     private func record(_ name: String) {
@@ -94,6 +118,76 @@ final class EffectRunner {
             host.scene.toast(.accessDenied)
             host.modelChanged()
         }
+    }
+}
+
+// MARK: - File actions (the only place an ExplicitIntent is minted)
+
+extension EffectRunner {
+    /// One file effect: refused with a toast when no operator runs or the origin does not fit; Empty Wastebasket
+    /// asks first. Every intent is minted right before the one operator call that spends it.
+    fileprivate func runFileEffect(_ effect: Effect) {
+        guard let files else {
+            toast(.fileFailed)
+            return
+        }
+        switch effect {
+        case let .trash(urls, keys, confirm?):
+            if case let .emptyWastebasket(names, more) = confirm { lastSheet = "emptyWastebasket:\(names.count + more)" }
+            self.confirm(confirm, urls.count) { [weak self] go in
+                guard go, let self, let origin = ExplicitIntent.Origin.minted(for: effect, requestedVia: .sheetConfirm,
+                                                                               confirmed: true) else { return }
+                record("emptyWastebasket")
+                let intent = ExplicitIntent(origin: origin)
+                files.run({ await $0.trash(urls, expecting: keys, intent) }) {
+                    FileReport(trash: $0, keys: keys, kind: .emptyWastebasket, undo: $1)
+                }
+            }
+        case let .trash(urls, keys, nil):
+            guard let origin = mintable(effect) else { return }
+            record("trash")
+            let intent = ExplicitIntent(origin: origin)
+            files.run({ await $0.trash(urls, expecting: keys, intent) }) {
+                FileReport(trash: $0, keys: keys, kind: .trash, undo: $1)
+            }
+        case let .importFiles(urls, op, _):
+            guard let origin = mintable(effect) else { return }
+            record("import")
+            let intent = ExplicitIntent(origin: origin)
+            files.run({ await $0.importItems(urls, op: op, intent) }) { FileReport(import: $0, undo: $1) }
+        case let .undoFiles(ref):
+            guard let origin = mintable(effect) else { return }
+            guard let undo = files.take(ref) else {
+                toast(.fileFailed)
+                return
+            }
+            record("undo")
+            let intent = ExplicitIntent(origin: origin)
+            files.run({ await $0.undo(undo, intent) }) { result, _ in FileReport(undo: result) }
+        case let .eject(path):
+            guard let origin = mintable(effect) else { return }
+            record("eject")
+            let intent = ExplicitIntent(origin: origin)
+            let volume = URL(fileURLWithPath: path, isDirectory: true)
+            files.runEject { await $0.eject(volume, intent) }
+        default:
+            break
+        }
+    }
+
+    /// The origin to mint for `effect`, or nil (with a toast) when the request's origin does not fit it.
+    private func mintable(_ effect: Effect) -> ExplicitIntent.Origin? {
+        guard let origin = ExplicitIntent.Origin.minted(for: effect, requestedVia: requestOrigin) else {
+            FileHandle.standardError.write(Data("Deskterior: no intent for \(effect) from \(requestOrigin)\n".utf8))
+            toast(.fileFailed)
+            return nil
+        }
+        return origin
+    }
+
+    private func toast(_ key: ToastKey) {
+        host.scene.toast(key)
+        host.modelChanged()
     }
 }
 

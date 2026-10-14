@@ -193,8 +193,8 @@ public enum Reducer {
             return urls.isEmpty ? [] : [.copy(urls)]
 
         case .requestTrash, .requestEmptyWastebasket, .requestEject, .importDropped:
-            // TODO(M11): FileOperator effects (.trash / .eject / .importFiles); M4 never changes files.
-            return [.toast(.notYetAvailable)]
+            // MARK: files
+            return reduceFiles(&s, a, env)
 
         case .requestPrivacySettings:
             return [.openPrivacySettings]
@@ -214,6 +214,9 @@ public enum Reducer {
         // MARK: mat
         case .mat, .brushSettled, .tuckUnderMat:
             return reduceMat(&s, a, env)
+        // MARK: files
+        case .fileResult, .requestDropIn, .requestOpenVolume, .requestRevealVolume:
+            return reduceFiles(&s, a, env)
         }
     }
 

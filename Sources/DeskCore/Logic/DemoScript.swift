@@ -111,6 +111,42 @@ public struct DemoMenu: Codable, Sendable, Equatable {
     public var item: String
     /// Accept a confirmation sheet if the command asks for one.
     public var confirm: Bool?
+    // MARK: files
+    /// Also write the confirmation sheet the command shows as `<name>.png` (the app's own sheet, drawn offscreen).
+    public var sheetSnapshot: String?
+}
+
+// MARK: files
+
+/// Files dropped onto the desk through the app's drop-in path (`DropInController`), as Finder would hand them over.
+public struct DemoDropIn: Codable, Sendable, Equatable {
+    /// Plain names in the `from` folder.
+    public var files: [String]
+    /// `source` (the harness's second scratch folder, default) or `desk` (the mirrored folder itself).
+    public var from: String?
+    /// Where they are dropped (a pointer target).
+    public var at: String
+    /// `opt` forces a copy.
+    public var mods: [String]?
+
+    public init(files: [String], from: String? = nil, at: String, mods: [String]? = nil) {
+        self.files = files
+        self.from = from
+        self.at = at
+        self.mods = mods
+    }
+}
+
+/// A token dragged out of the desk window to another app, which ended the drag with `operation` (`DragOutRule`):
+/// `none`, `copy`, `link`, `move`, `generic` or `delete` (the Dock Trash).
+public struct DemoDragOut: Codable, Sendable, Equatable {
+    public var from: String
+    public var operation: String
+
+    public init(from: String, operation: String) {
+        self.from = from
+        self.operation = operation
+    }
 }
 
 /// A change to the fixture folder, performed by the demo harness (`scripts/run-demo.sh`), never by the app.
@@ -120,8 +156,16 @@ public enum DemoFS: Codable, Sendable, Equatable {
     case newFolder(String)
     case mv(String, String)
     case rm(String)
+    // MARK: files
+    /// `{"source": name}`: a small text file in the harness's drop source folder.
+    case sourceFile(String)
+    /// `{"sourceDir": name}`: a folder (with one file in it) in the drop source folder.
+    case sourceFolder(String)
+    /// `{"ls": "desk" | "source" | "trash"}`: the harness prints `ls -li` of the fixture, the drop source folder or
+    /// the FakeTrash into the demo log.
+    case list(String)
 
-    private enum Key: String, CodingKey { case touch, newFolder = "mkdir", mv, rm }
+    private enum Key: String, CodingKey { case touch, newFolder = "mkdir", mv, rm, source, sourceDir, ls }
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: Key.self)
@@ -132,6 +176,14 @@ public enum DemoFS: Codable, Sendable, Equatable {
         case .touch: self = .touch(try c.decode(String.self, forKey: .touch))
         case .newFolder: self = .newFolder(try c.decode(String.self, forKey: .newFolder))
         case .rm: self = .rm(try c.decode(String.self, forKey: .rm))
+        case .source: self = .sourceFile(try c.decode(String.self, forKey: .source))
+        case .sourceDir: self = .sourceFolder(try c.decode(String.self, forKey: .sourceDir))
+        case .ls:
+            let what = try c.decode(String.self, forKey: .ls)
+            guard ["desk", "source", "trash"].contains(what) else {
+                throw DecodingError.dataCorruptedError(forKey: .ls, in: c, debugDescription: "ls takes desk, source or trash")
+            }
+            self = .list(what)
         case .mv:
             let names = try c.decode([String].self, forKey: .mv)
             guard names.count == 2 else {
@@ -148,6 +200,9 @@ public enum DemoFS: Codable, Sendable, Equatable {
         case let .newFolder(n): try c.encode(n, forKey: .newFolder)
         case let .rm(n): try c.encode(n, forKey: .rm)
         case let .mv(a, b): try c.encode([a, b], forKey: .mv)
+        case let .sourceFile(n): try c.encode(n, forKey: .source)
+        case let .sourceFolder(n): try c.encode(n, forKey: .sourceDir)
+        case let .list(what): try c.encode(what, forKey: .ls)
         }
     }
 
@@ -158,6 +213,9 @@ public enum DemoFS: Codable, Sendable, Equatable {
         case let .newFolder(n): ["mkdir", n]
         case let .rm(n): ["rm", n]
         case let .mv(a, b): ["mv", a, b]
+        case let .sourceFile(n): ["source", n]
+        case let .sourceFolder(n): ["sourceDir", n]
+        case let .list(what): ["ls", what]
         }
     }
 
@@ -239,10 +297,18 @@ public enum DemoStep: Codable, Sendable, Equatable {
     case expect([String: DemoValue])
     case waitFor(DemoWaitFor)
     case comment(String)
+    // MARK: files
+    /// Files dropped onto the desk from a folder (`DemoDropIn`).
+    case dropIn(DemoDropIn)
+    /// The mounted volumes the drive hub shows (demos never see the real ones).
+    case volumes([VolumeEntry])
+    /// A token dragged out to another app that ended the drag (`DemoDragOut`).
+    case dragOut(DemoDragOut)
 
     private enum Key: String, CodingKey, CaseIterable {
         case waitIdle, wait, snapshot, click, hover, drag, release, scroll, key, menu, fs, action, expect, waitFor, comment
         case move
+        case dropIn, volumes, dragOut // MARK: files
     }
 
     public init(from decoder: Decoder) throws {
@@ -270,6 +336,9 @@ public enum DemoStep: Codable, Sendable, Equatable {
         case .expect: self = .expect(try c.decode([String: DemoValue].self, forKey: key))
         case .waitFor: self = .waitFor(try c.decode(DemoWaitFor.self, forKey: key))
         case .comment: self = .comment(try c.decode(String.self, forKey: key))
+        case .dropIn: self = .dropIn(try c.decode(DemoDropIn.self, forKey: key))
+        case .volumes: self = .volumes(try c.decode([VolumeEntry].self, forKey: key))
+        case .dragOut: self = .dragOut(try c.decode(DemoDragOut.self, forKey: key))
         }
     }
 
@@ -292,6 +361,9 @@ public enum DemoStep: Codable, Sendable, Equatable {
         case let .expect(e): try c.encode(e, forKey: .expect)
         case let .waitFor(w): try c.encode(w, forKey: .waitFor)
         case let .comment(t): try c.encode(t, forKey: .comment)
+        case let .dropIn(d): try c.encode(d, forKey: .dropIn)
+        case let .volumes(v): try c.encode(v, forKey: .volumes)
+        case let .dragOut(d): try c.encode(d, forKey: .dragOut)
         }
     }
 

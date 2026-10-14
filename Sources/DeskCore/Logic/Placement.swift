@@ -11,13 +11,19 @@ public struct PlacementHint: Sendable, Equatable {
     public var expires: Date
     public var key: TokenKey?
     public var size: Int64?
+    /// Where a new pile the file starts stands on the desk plane (a drop on the bare desk; DESIGN §3.6).
+    public var pilePos: SIMD2<Float>?
 
-    public init(name: String, location: Location, expires: Date, key: TokenKey? = nil, size: Int64? = nil) {
+    public init(
+        name: String, location: Location, expires: Date, key: TokenKey? = nil, size: Int64? = nil,
+        pilePos: SIMD2<Float>? = nil
+    ) {
         self.name = TextLayout.nfc(name)
         self.location = location
         self.expires = expires
         self.key = key
         self.size = size
+        self.pilePos = pilePos
     }
 
     /// Whether `entry` may take this hint.
@@ -62,13 +68,18 @@ public enum Placement {
         }
     }
 
-    /// Removes and returns the unexpired hint `entry` may take (names compared in NFC).
+    /// Removes and returns the location of the unexpired hint `entry` may take (names compared in NFC).
     public static func takeHint(for entry: DesktopEntry, from hints: inout [PlacementHint], now: Date) -> Location? {
+        takeHintEntry(for: entry, from: &hints, now: now)?.location
+    }
+
+    /// Removes and returns the unexpired hint `entry` may take (names compared in NFC).
+    public static func takeHintEntry(for entry: DesktopEntry, from hints: inout [PlacementHint], now: Date) -> PlacementHint? {
         let nfc = entry.meta.displayName
         guard let i = hints.lastIndex(where: { $0.name == nfc && $0.expires > now && $0.accepts(entry) }) else {
             return nil
         }
-        return hints.remove(at: i).location
+        return hints.remove(at: i)
     }
 
     /// Drops expired hints, tombstones and reconcile memory; returns how many tombstones went.

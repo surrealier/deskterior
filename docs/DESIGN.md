@@ -232,6 +232,32 @@
       overlap.
     - **Odds.** "TIDY!" pops over the monitor's dark glass. At rest the keyboard is drawn at its pose's own pixel, as a
       relaunch draws it.
+19. **File actions in the app (M11).** These refine §2.2 E8 and E15, §3.5–§3.7 and Errata 14.
+    - Requests become file effects in the reducer (`Reducer+Files`); `FileActions` runs `FileOperator` off the main
+      actor and dispatches `.fileResult(FileReport)`. A trash takes its tokens off at once (a poof; a handle wiggle in a
+      drawer; a puff at the basket's mouth) and leaves tombstones, so its undo brings the same inodes back to the same
+      places — into the wastebasket again after Empty Wastebasket.
+    - The app keeps each `FileUndoRecord`; the journal holds a `FileUndoRef` beside layout entries ("Undo Move to
+      Trash", "Empty Wastebasket", "Drop In"). ⌘Z on one replays it (`Effect.undoFiles`, so `.undo` counts as a
+      request); file entries are not redone.
+    - Intent origins (`ExplicitIntent.Origin.minted`): a trash takes the origin it was requested from (a token menu
+      by default, the Inventory's button, the Dock Trash), or `sheetConfirm` once Empty Wastebasket's sheet is
+      confirmed, never before; an import is `drop`, an undo `undo`, an eject a menu's.
+    - Only desk mode uses the system Trash (`FileActionScope`). Windowed, headless and demo modes trash into
+      `<state>/FakeTrash` and confine the operator to the mirrored folder, the state folder and a demo's drop source.
+    - Empty Wastebasket's sheet is an app-modal alert: the count, up to 20 names by name, then "and N more". Cancel
+      is the default button (Return); "Move to Trash" is marked destructive.
+    - A drop from outside lands where a carry would (`DeskScene.fileDropVerdict`): a cell, a hiding place, a new pile
+      at the desk-plane spot (`PlacementHint.pilePos`), the floor below the desk, else the first free monitor cell.
+      It bonks where a carry would. Its name hints wait up to 2 minutes for the operation (a long copy), then follow
+      the names the files landed under, with their identity, for the usual 10 s; so a drop into the wastebasket places
+      them there too. Items from the desk folder only move (journaled "Move").
+    - Drag-out hands the carry off on the first drag event over another window, or at once when ⌘ was held at the
+      press. The tokens are home at once, as in Finder, and hide only while a `.move` (5 s) or a `.delete` (1.5 s)
+      waits for the file to leave (`DragOutRule`).
+    - The drive hub shows four drives in its slots (USB stick, disk or server by `VolumeEntry.Kind`). The rest sit
+      behind a "+n" tag right of the hub, which lists them on a click or a right-click.
+    - A refused undo of a trash toasts "Use Finder's Put Back" and, in desk mode, opens the Trash (S11).
 
 ---
 

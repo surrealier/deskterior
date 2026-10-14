@@ -24,6 +24,11 @@ final class InventoryWindowController: NSObject, NSWindowDelegate {
     var coveredPiles: () -> Set<PileID> {
         get { model.coveredPiles }
         set { model.coveredPiles = newValue }
+    // MARK: files
+    /// Move to Trash from the Inventory (an `inventory` intent; no key equivalent).
+    var moveToTrash: (([TokenKey]) -> Void)? {
+        get { model.moveToTrash }
+        set { model.moveToTrash = newValue }
     }
 
     init(store: Store, perform: @escaping (MenuCommand) -> Void) {
@@ -101,6 +106,13 @@ final class InventoryModel {
     var onClose: (() -> Void)?
     // MARK: mat
     @ObservationIgnored var coveredPiles: () -> Set<PileID> = { [] }
+    // MARK: files
+    var moveToTrash: (([TokenKey]) -> Void)?
+
+    func trash(_ keys: [TokenKey]) {
+        guard !keys.isEmpty else { return }
+        moveToTrash?(keys)
+    }
 
     init(state: DeskState, perform: @escaping (MenuCommand) -> Void) {
         self.state = state
@@ -187,6 +199,10 @@ struct InventoryView: View {
                 if keys.count == 1, let key = keys.first {
                     Button("Show on Desk") { model.showOnDesk(key) }
                 }
+                // MARK: files
+                Divider()
+                Button("Move to Trash") { model.trash(Array(keys)) }
+                    .disabled(model.moveToTrash == nil)
             } primaryAction: { keys in
                 if keys.count == 1, let key = keys.first { model.showOnDesk(key) }
             }
@@ -203,6 +219,9 @@ struct InventoryView: View {
                     .disabled(model.selectedKeys.isEmpty)
                 Button("Take Out") { model.takeOut() }
                     .disabled(model.takeOutKeys.isEmpty)
+                // MARK: files (no key equivalent: nothing destructive has one)
+                Button("Move to Trash") { model.trash(model.selectedKeys) }
+                    .disabled(model.selectedKeys.isEmpty || model.moveToTrash == nil)
                 Spacer()
                 Button("Take Everything Out") { model.run(.takeEverythingOut) }
                 Button("Show on Desk") { if let key = model.single { model.showOnDesk(key) } }

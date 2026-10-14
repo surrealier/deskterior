@@ -133,6 +133,7 @@ final class RoomContent: GestureTarget {
         installRoomControls()
         installPhysics()
         installMat()  // MARK: mat
+        installFiles() // MARK: files
         rebuild()
     }
 
@@ -321,6 +322,7 @@ final class RoomContent: GestureTarget {
     func play(_ id: AnimationID, _ target: AnimTarget) {
         if playPhysics(id, target) { return }
         if playMat(id, target) { return }  // MARK: mat
+        if playFiles(id, target) { return } // MARK: files
         switch (id, target) {
         case let (.printIn, .tokens(keys)), let (.parade, .tokens(keys)):
             screen.playPrintIn(keys)

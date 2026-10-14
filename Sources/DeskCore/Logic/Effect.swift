@@ -7,6 +7,7 @@ public enum Effect: Sendable, Equatable {
     case reveal([URL])
     case quickLook([URL])
     case copy([URL])
+    /// Eject the volume mounted at this path (`VolumeEntry.path`).
     case eject(String)
     case trash([URL], expected: [TokenKey], confirm: ConfirmKind?)
     case importFiles([URL], op: ImportOp, hints: [String: Location])
@@ -20,11 +21,15 @@ public enum Effect: Sendable, Equatable {
     case wakeLoop
     case openPrivacySettings
     case chooseFolder
+    // MARK: files
+    /// Undo a file action: the app replays the `FileUndoRecord` this names, on the operator that issued it.
+    case undoFiles(FileUndoRef)
 
     /// Effects that open, read, hand off or change user files.
     public var touchesFiles: Bool {
         switch self {
         case .open, .reveal, .quickLook, .copy, .eject, .trash, .importFiles, .connectDesktop: true
+        case .undoFiles: true // MARK: files
         default: false
         }
     }
@@ -33,6 +38,7 @@ public enum Effect: Sendable, Equatable {
     public var mutatesFiles: Bool {
         switch self {
         case .trash, .importFiles, .eject: true
+        case .undoFiles: true // MARK: files
         default: false
         }
     }
@@ -77,4 +83,10 @@ public enum ToastKey: String, Sendable, CaseIterable {
     case containerFull, accessDenied, notYetAvailable
     /// A token dropped on a drive bonks: copying to drives is Finder's job in v0.1 (E15).
     case drivesReadOnly
+    // MARK: files
+    /// A file action stopped for an item (`FileReport.toast`): it changed on disk, it is gone, macOS said no, undo
+    /// needs Finder's Put Back, only some items went, it failed, a drop held the desk folder, an eject failed, every
+    /// numbered name was taken.
+    case fileChanged, fileGone, fileNotPermitted, usePutBack, someNotDone, fileFailed, dropHoldsDesk, ejectFailed
+    case nameTaken
 }

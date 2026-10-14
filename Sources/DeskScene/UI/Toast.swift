@@ -10,6 +10,16 @@ extension ToastKey {
         case .accessDenied: "No access to the Desktop folder."
         case .notYetAvailable: "Not available yet."
         case .drivesReadOnly: "Use Finder to copy to drives."
+        // MARK: files
+        case .fileChanged: "It changed on disk. Nothing was done."
+        case .fileGone: "That file is gone already."
+        case .fileNotPermitted: "macOS did not allow that."
+        case .usePutBack: "Use Finder's Put Back."
+        case .someNotDone: "Some items stayed where they were."
+        case .fileFailed: "That did not work. Nothing changed."
+        case .dropHoldsDesk: "That folder holds the desk."
+        case .ejectFailed: "The drive could not be ejected."
+        case .nameTaken: "Too many items with that name."
         }
     }
 }

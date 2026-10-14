@@ -45,6 +45,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         session.isPaused = { [weak self] in self?.isUserPaused ?? false }
         host.scene.onRequest = { [weak self] in self?.handle($0) }
         self.session = session
+        // MARK: files
+        displays.view?.dragOut = session.dragOut
+        displays.view?.dropIn = session.dropIn
         session.start()
         host.scene.startClock()
         reduceMotion = ReduceMotionObserver(scene: host.scene, forced: options.reduceMotion)
@@ -163,6 +166,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let controller = InventoryWindowController(store: session.store) { [weak self] in self?.perform($0) }
             controller.monitorFrame = { [weak self] in self?.monitorScreenFrame() }
             controller.coveredPiles = { [weak self] in self?.session?.host.scene.matCoverage.coveredPiles ?? [] }  // MARK: mat
+            // MARK: files
+            controller.moveToTrash = { [weak self] keys in self?.session?.perform(.moveToTrash(keys), from: .inventory) }
             inventory = controller
         }
         inventory?.show()
@@ -234,9 +239,16 @@ final class DeskSession {
     }
     private let lights: LightsMode
     private let dryRun: Bool
+    // MARK: files
+    /// The file operator and its undo records (nil when the state folder cannot hold the operation log).
+    let files: FileActions?
+    let dropIn: DropInController
+    let dragOut: DragOutController
 
+    /// `fileRoots`: scratch folders a demo may drop from (outside desk mode the operator is confined to the mirrored
+    /// folder, the state folder and these).
     init(host: SceneHost, options: LaunchOptions, configuration: MirrorController.Configuration, dryRun: Bool,
-         lights: LightsMode? = nil, seed: UInt64? = nil) {
+         lights: LightsMode? = nil, seed: UInt64? = nil, fileRoots: [URL] = []) {
         self.host = host
         self.configuration = configuration
         self.lights = lights ?? options.lights
@@ -259,6 +271,23 @@ final class DeskSession {
         }
         sync = SceneSync(host: host, store: store, icons: icons)
         effects = EffectRunner(host: host, folder: configuration.folder, dryRun: dryRun)
+        // MARK: files
+        let mode: SafetyGuard.Mode = switch options.mode {
+        case .desk: .desk
+        case .windowed: .windowed
+        case .headless: options.demo == nil ? .headless : .demo
+        }
+        let scope = FileActionScope(mode: mode, folder: configuration.folder,
+                                    stateDirectory: configuration.stateDirectory, extraRoots: fileRoots)
+        do {
+            files = try FileActions(folder: configuration.folder, stateDirectory: configuration.stateDirectory, scope: scope)
+        } catch {
+            FileHandle.standardError.write(Data("Deskterior: file actions unavailable: \(error)\n".utf8))
+            files = nil
+        }
+        effects.files = files
+        dropIn = DropInController(host: host, store: store, effects: effects)
+        dragOut = DragOutController(host: host, store: store, effects: effects)
         mirror = MirrorController(configuration: configuration, store: store, stateStore: stateStore)
         effects.mirror = mirror
         effects.onAccessGranted = { [weak self] in
@@ -267,6 +296,7 @@ final class DeskSession {
         }
         let bundleID = AppIdentity.bundleID
         store.effects = { [weak self] in self?.effects.run($0) }
+        files?.dispatch = { [weak self] in self?.store.dispatch($0) } // MARK: files
         store.willDispatch = { action, state in
             // "Show them on the desk anyway" is remembered (DESIGN §4.8 showDespiteFinderHidden).
             if case .requestConnect = action, state.access == .finderHidden, !dryRun {
@@ -302,6 +332,16 @@ final class DeskSession {
         store.dispatch(action)
         sync.refreshMenuContext()
         return true
+    }
+
+    // MARK: files
+
+    /// Runs a model menu command as requested from `origin` (the Inventory's Move to Trash).
+    @discardableResult
+    func perform(_ command: MenuCommand, from origin: ExplicitIntent.Origin) -> Bool {
+        var done = false
+        effects.withOrigin(origin) { done = perform(command) }
+        return done
     }
 
     /// Brings the scene to rest (a carry springs back; a drawer or the chair mid-motion commits where it is; whatever

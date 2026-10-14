@@ -29,13 +29,18 @@ public struct LayoutSnapshot: Sendable, Equatable {
 /// back (following re-keys; files removed since are skipped, and a cell taken since sends its token to the
 /// nearest free cell), and only the monitor, phone and drawer fields the action changed are restored. So files
 /// that arrived or left in between, and settings changed in between, survive an undo. Redo replays the forward
-/// change the same way. File operations join the journal in M11.
+/// change the same way. File actions (M11) join as entries that name a `FileUndoRef`: undoing one asks the app to
+/// replay the file record (`Effect.undoFiles`), and the mirror brings the layout along (a trashed file returns to
+/// its tombstone's place). They are not redone.
 public struct UndoJournal: Sendable, Equatable {
     public struct Entry: Sendable, Equatable {
         /// "Move", "Take Everything Out"… (menus show "Undo <label>").
         public var label: String
         public var before: LayoutSnapshot
         public var after: LayoutSnapshot
+        // MARK: files
+        /// A file action's record (the snapshots are then unused).
+        public var file: FileUndoRef? = nil
     }
 
     public static let capacity = 20
@@ -57,6 +62,8 @@ public struct UndoJournal: Sendable, Equatable {
         case .takeEverythingOut: "Take Everything Out"
         case .cleanUp: "Clean Up"
         case .clearDesk: "Clear the Desk"
+        // MARK: files
+        case .requestDropIn, .importDropped: "Move" // desk items dropped back move; files from outside are a file entry
         default: nil
         }
     }
@@ -69,10 +76,22 @@ public struct UndoJournal: Sendable, Equatable {
         redoStack.removeAll()
     }
 
+    // MARK: files
+
+    /// Records a file action that `ref` can take back (clearing redo).
+    public mutating func recordFile(_ label: String, _ ref: FileUndoRef, state s: DeskState) {
+        let snapshot = LayoutSnapshot(s)
+        undoStack.append(Entry(label: label, before: snapshot, after: snapshot, file: ref))
+        if undoStack.count > Self.capacity { undoStack.removeFirst(undoStack.count - Self.capacity) }
+        redoStack.removeAll()
+    }
+
     /// Undoes the latest entry that still changes something; entries whose tokens are all gone are dropped on
-    /// the way, so one ⌘Z always does something visible or nothing at all.
+    /// the way, so one ⌘Z always does something visible or nothing at all. A file entry always acts: it asks the
+    /// app to replay its record, and is not redone.
     public mutating func undo(_ s: inout DeskState, grid: ScreenGrid = .standard) -> [Effect] {
         while let entry = undoStack.popLast() {
+            if let ref = entry.file { return [.undoFiles(ref)] } // MARK: files
             let before = s
             Self.apply(from: entry.after, to: entry.before, onto: &s, grid: grid)
             guard s != before else { continue }
@@ -163,6 +182,11 @@ extension Reducer {
             return journal.undo(&s, grid: env.grid)
         case .redo:
             return journal.redo(&s, grid: env.grid)
+        // MARK: files
+        case let .fileResult(report):
+            let effects = reduce(&s, a, env)
+            if let ref = report.undo { journal.recordFile(report.kind.undoLabel, ref, state: s) }
+            return effects
         default:
             guard let label = UndoJournal.label(for: a) else { return reduce(&s, a, env) }
             let before = LayoutSnapshot(s)

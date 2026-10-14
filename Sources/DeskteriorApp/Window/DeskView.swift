@@ -94,10 +94,14 @@ final class DeskView: NSView {
 
     override func mouseDown(with event: NSEvent) {
         send(.down, event)
+        dragOut?.mouseDown(event) // MARK: files
     }
 
     override func mouseUp(with event: NSEvent) { send(.up, event) }
-    override func mouseDragged(with event: NSEvent) { send(.drag, event) }
+    override func mouseDragged(with event: NSEvent) {
+        send(.drag, event)
+        dragOut?.mouseDragged(event, in: self) // MARK: files
+    }
     override func mouseMoved(with event: NSEvent) { send(.move, event) }
     // MARK: mat
     /// A modifier key went down or up: a move at the pointer, so ⌥ over the mat shows its handles without a move.
@@ -216,6 +220,42 @@ final class DeskView: NSView {
 
     nonisolated override func endPreviewPanelControl(_ panel: QLPreviewPanel!) {
         MainActor.assumeIsolated { panel.dataSource = nil }
+    }
+
+    // MARK: files
+
+    /// Drags out to other apps, and files dropped in from Finder (DESIGN §3.6); set by the app.
+    var dragOut: DragOutController?
+    var dropIn: DropInController? {
+        didSet {
+            if dropIn == nil { unregisterDraggedTypes() } else { registerForDraggedTypes([.fileURL]) }
+        }
+    }
+
+    override func draggingEntered(_ sender: any NSDraggingInfo) -> NSDragOperation { dropInUpdate(sender) }
+    override func draggingUpdated(_ sender: any NSDraggingInfo) -> NSDragOperation { dropInUpdate(sender) }
+    override func draggingExited(_ sender: (any NSDraggingInfo)?) { dropIn?.dragEnded() }
+    override func wantsPeriodicDraggingUpdates() -> Bool { false }
+
+    override func performDragOperation(_ sender: any NSDraggingInfo) -> Bool {
+        guard let dropIn else { return false }
+        let urls = DropInController.fileURLs(sender.draggingPasteboard)
+        let copy = DropInController.wantsCopy(sender.draggingSourceOperationMask, modifiers: NSEvent.modifierFlags)
+        return dropIn.drop(urls, at: artPoint(windowPoint: sender.draggingLocation), copy: copy)
+    }
+
+    private func dropInUpdate(_ sender: any NSDraggingInfo) -> NSDragOperation {
+        guard let dropIn else { return [] }
+        let count = DropInController.fileURLs(sender.draggingPasteboard).count
+        let copy = DropInController.wantsCopy(sender.draggingSourceOperationMask, modifiers: NSEvent.modifierFlags)
+        return dropIn.dragged(count: count, at: artPoint(windowPoint: sender.draggingLocation), copy: copy)
+    }
+
+    /// The canvas art point under a window point.
+    private func artPoint(windowPoint: NSPoint) -> SIMD2<Float> {
+        guard let host else { return .zero }
+        let local = convert(windowPoint, from: nil)
+        return ArtSpace.canvasArtPoint(fromViewPoint: SIMD2(Double(local.x), Double(bounds.height - local.y)), grid: host.grid)
     }
 
     // MARK: Conversion

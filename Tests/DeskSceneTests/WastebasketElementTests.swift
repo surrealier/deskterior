@@ -88,7 +88,7 @@ struct WastebasketElementTests {
         #expect(stage.state.tokens.members(of: .wastebasket) == [F.key(1), F.key(2)])
     }
 
-    @Test("A toss in front of the mouth is a swish, counted and saved; Empty Wastebasket… waits for M11")
+    @Test("A toss in front of the mouth is a swish, counted and saved; Empty Wastebasket… is offered")
     func swishAndMenu() throws {
         let stage = try PhysicsStage(basketDesk(balls: 0), physics: false)
         let from = try #require(stage.tokenPoint(F.key(1)))
@@ -97,7 +97,7 @@ struct WastebasketElementTests {
         #expect(stage.location(F.key(1)) == .container(.wastebasket, order: 0))
         #expect(stage.state.wastebasket.swishes == 1)
         let menu = stage.scene.contextMenu(at: stage.hub.basket.bounds.center)
-        #expect(menu.item("emptyWastebasket")?.isEnabled == false && menu.item("tipOver")?.isEnabled == true)
+        #expect(menu.item("emptyWastebasket")?.isEnabled == true && menu.item("tipOver")?.isEnabled == true)
         #expect(menu.item("emptyWastebasket")?.title == "Empty Wastebasket… (1)")
     }
 }

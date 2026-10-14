@@ -58,7 +58,8 @@ public enum Reconciler {
     }
 
     private enum Plan {
-        case hint(Location)
+        /// Our own operation's hint, with the spot of a new pile it starts.
+        case hint(Location, SIMD2<Float>?)
         /// Arrives as new and takes the renamed token `partner`'s place if it vanishes soon.
         case swap(partner: TokenKey)
         case unmatched
@@ -138,8 +139,8 @@ public enum Reconciler {
         var planned: [(DesktopEntry, Plan)] = []
         for entry in fresh {
             let nk = NameKind(entry.meta)
-            if let loc = Placement.takeHint(for: entry, from: &state.hints, now: now) {
-                planned.append((entry, .hint(loc)))
+            if let hint = Placement.takeHintEntry(for: entry, from: &state.hints, now: now) {
+                planned.append((entry, .hint(hint.location, hint.pilePos)))
                 continue
             }
             if reused.contains(entry.key) {
@@ -207,8 +208,8 @@ public enum Reconciler {
         var partners: [TokenKey: TokenKey] = [:]
         for (entry, plan) in planned {
             switch plan {
-            case let .hint(loc):
-                placed.append((entry, loc, nil, .hint))
+            case let .hint(loc, pilePos):
+                placed.append((entry, loc, pilePos, .hint))
             case let .swap(partner):
                 partners[entry.key] = partner
                 newcomers.append(entry)

@@ -396,10 +396,14 @@ struct ReducerTests {
             .requestPrivacySettings, .requestChooseFolder, .clock(F.t0),
             // MARK: mat
             .mat(.smooth), .mat(.rotate(degrees: 15)), .brushSettled([400, 60]),
+            // MARK: files
+            .requestDropIn(DropIn(urls: [URL(fileURLWithPath: "/tmp/y")], location: .container(.phone, order: 0), op: .move)),
+            .requestOpenVolume("V"), .requestRevealVolume("V"),
+            .fileResult(FileReport(kind: .trash, count: 1, trashed: [F.key(1)], undo: FileUndoRef(1))),
         ]
     }
 
-    @Test("Only request actions emit file effects, and nothing changes files before M11")
+    @Test("Only request actions emit file effects (M11: and only they may change files)")
     func fileEffectRule() {
         for action in Self.catalogue() {
             var s = F.mirrored(["a", "b", "c"])
@@ -408,24 +412,25 @@ struct ReducerTests {
             let mutates = effects.contains { $0.mutatesFiles }
             if !action.isRequest {
                 #expect(!touches, "\(action) emitted \(effects)")
+                #expect(!mutates, "\(action) emitted \(effects)")
             }
-            #expect(!mutates, "\(action) emitted \(effects)")
             #expect(s.violations().isEmpty, "\(action) broke an invariant")
         }
     }
 
-    @Test("Through the undo journal (the Store's entry point) too, only requests emit file effects; undo and redo emit none")
+    @Test("Through the undo journal (the Store's entry point) too, only requests emit file effects; redo emits none")
     func fileEffectRuleJournaled() {
         for action in Self.catalogue() {
             var s = F.mirrored(["a", "b", "c"])
             var journal = UndoJournal()
-            var effects = Reducer.reduce(&s, journal: &journal, action, env)
-            effects += Reducer.reduce(&s, journal: &journal, .undo, env)
-            effects += Reducer.reduce(&s, journal: &journal, .redo, env)
-            if !action.isRequest {
-                #expect(!effects.contains { $0.touchesFiles }, "\(action) emitted \(effects)")
+            // MARK: files: ⌘Z is a request too: it replays a file action's record when that is the newest entry.
+            for a in [action, DeskAction.undo, .redo] {
+                let effects = Reducer.reduce(&s, journal: &journal, a, env)
+                if !a.isRequest {
+                    #expect(!effects.contains { $0.touchesFiles }, "\(action) then \(a) emitted \(effects)")
+                    #expect(!effects.contains { $0.mutatesFiles }, "\(action) then \(a) emitted \(effects)")
+                }
             }
-            #expect(!effects.contains { $0.mutatesFiles }, "\(action) emitted \(effects)")
             #expect(s.violations().isEmpty, "\(action) broke an invariant")
         }
     }

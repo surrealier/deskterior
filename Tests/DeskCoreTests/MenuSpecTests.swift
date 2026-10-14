@@ -14,7 +14,7 @@ struct MenuSpecTests {
         #expect(m.item("quickLook")?.title == "Quick Look “a.txt”")
         #expect(m.item("open")?.command == .open(keys))
         #expect(m.item("trash")?.command == .moveToTrash(keys))
-        #expect(m.item("trash")?.isEnabled == false, "Move to Trash waits for FileOperator (M11)")
+        #expect(m.item("trash")?.isEnabled == true, "Move to Trash runs through FileOperator (M11)")
         #expect(m.item("moveTo.monitor") == nil, "tokens on the screen are already on the monitor")
         for id in ContainerID.allCases {
             #expect(m.item("moveTo.\(id.rawValue)")?.command == .moveTo(keys, .container(id, order: 0)))
@@ -95,11 +95,12 @@ struct MenuSpecTests {
         let status = MenuSpec.status(s, MenuSpec.Context(paused: true))
         #expect(status.item("pause")?.title == "Resume Desk")
         #expect(wall.ids == status.ids)
-        for id in ["peekDesk", "settings", "emptyWastebasket"] {
+        for id in ["peekDesk", "settings"] {
             #expect(wall.item(id)?.isEnabled == false, "\(id) waits for its milestone")
         }
         // MARK: mat
         #expect(wall.item("clearDesk")?.isEnabled == true && wall.item("smoothMat")?.command == .mat(.smooth))
+        #expect(wall.item("emptyWastebasket")?.isEnabled == true, "M11: Empty Wastebasket… runs (after its sheet)")
         #expect(wall.item("find")?.isEnabled == true && wall.item("about")?.isEnabled == true)
         // Lights commands keep the other switches.
         if case let .lights(l)? = MenuCommand.lightsMode(.lampOnly).action(s) {

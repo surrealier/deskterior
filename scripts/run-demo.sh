@@ -14,9 +14,13 @@
 # targets inside the real desktop, this script refuses an --out folder inside (or containing) it before touching
 # anything, and the app refuses (exit 64) a mirrored, state or snapshot folder that is the real desktop or inside
 # it. The demo's fs steps (touch, mkdir, mv, rm) are performed here, inside the fixture only: the app asks on
-# stdout ("DEMO-FS<TAB>op<TAB>name[<TAB>name]") and waits for "ok" on its stdin, so the app itself never changes a
-# file. Names are single plain components without control characters; symlinks are never followed (the fixture
-# holds links to /Applications and the like), and mv never replaces anything.
+# stdout ("DEMO-FS<TAB>op<TAB>name[<TAB>name]") and waits for "ok" on its stdin, so these changes are the harness's,
+# not the app's (the app changes files only through its explicit file actions, into the FakeTrash). Names are single
+# plain components without control characters; symlinks are never followed (the fixture holds links to /Applications
+# and the like), and mv never replaces anything. Each demo also gets an empty mktemp "source" folder beside the
+# fixture (DESKTERIOR_DEMO_SOURCE) that files are dropped in from: `source`/`sourceDir` steps create items there, and
+# `ls desk|source|trash` prints `ls -li` of the fixture, the source folder or the FakeTrash (<state>/FakeTrash, where
+# the app's file actions trash to in demos) into the log.
 # Exit: 0 when every demo passes, else the first failing demo's code (1 expectation, 2 script error, 64 guard).
 set -euo pipefail
 
@@ -27,7 +31,7 @@ COUNT=0
 CONFIG=debug
 NAMES=()
 
-usage() { sed -n '2,22p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//' >&2; exit 2; }
+usage() { sed -n '2,24p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//' >&2; exit 2; }
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -66,13 +70,26 @@ plain() {
   return 0
 }
 
-# Performs one fs request inside the fixture $DESK: op, name, [name]. Symlinks are never followed: touch sets a
-# link's own times, mkdir and mv refuse a link (or anything) already at the target, rm removes a link, not what it
-# points to.
+# Performs one fs request inside the fixture $DESK (or the drop source $SOURCE): op, name, [name]. Symlinks are
+# never followed: touch sets a link's own times, mkdir and mv refuse a link (or anything) already at the target, rm
+# removes a link, not what it points to.
 fs_op() {
   local op="$1" a="$2" b="${3:-}"
   plain "$a" || return 1
   case "$op" in
+    source) [ ! -e "$SOURCE/$a" ] && [ ! -L "$SOURCE/$a" ] || return 1; printf 'dropped in: %s\n' "$a" > "$SOURCE/$a" ;;
+    sourceDir)
+      [ ! -e "$SOURCE/$a" ] && [ ! -L "$SOURCE/$a" ] || return 1
+      mkdir "$SOURCE/$a" && printf 'inside %s\n' "$a" > "$SOURCE/$a/inside.txt"
+      ;;
+    ls)
+      case "$a" in
+        desk) echo "ls -li fixture ($DESK):" ; ls -li "$DESK" ;;
+        source) echo "ls -li source ($SOURCE):" ; ls -li "$SOURCE" ;;
+        trash) echo "ls -li FakeTrash ($STATE/FakeTrash):"; if [ -d "$STATE/FakeTrash" ]; then ls -li "$STATE/FakeTrash"; else echo "(none yet)"; fi ;;
+        *) return 1 ;;
+      esac
+      ;;
     touch) if [ -L "$DESK/$a" ]; then touch -h "$DESK/$a"; else touch "$DESK/$a"; fi ;;
     mkdir) [ ! -e "$DESK/$a" ] && [ ! -L "$DESK/$a" ] || return 1; mkdir "$DESK/$a" ;;
     rm) rm -rf "${DESK:?}/$a" ;;
@@ -97,9 +114,11 @@ run_one() {
   tmp="$(mktemp -d "${TMPDIR:-/tmp}/deskterior-demo.XXXXXX")" || tmp=""
   [ -n "$tmp" ] && [ -d "$tmp" ] || { echo "run-demo: mktemp failed" >&2; return 2; }
   DESK="$tmp/desk"
-  local state="$tmp/state"
+  STATE="$tmp/state"
+  SOURCE="$tmp/source"
+  local state="$STATE"
   out="$OUT_ROOT/$name"
-  mkdir -p "$state" "$out" || return 2
+  mkdir -p "$state" "$SOURCE" "$out" || return 2
   rm -f "$out"/*.png
   if [ "$COUNT" -gt 0 ]; then
     "$ROOT/scripts/make-fixture-desktop.sh" --count "$COUNT" "$DESK" >&2 || return 2
@@ -108,7 +127,7 @@ run_one() {
   fi
   mkfifo "$tmp/to-app" "$tmp/from-app" || return 2
   echo "run-demo: $name (fixture $DESK)" >&2
-  DESKTERIOR_DEMO_FS=stdio "$APP" --headless --demo "$script" --desktop-folder "$DESK" --state-dir "$state" \
+  DESKTERIOR_DEMO_FS=stdio DESKTERIOR_DEMO_SOURCE="$SOURCE" "$APP" --headless --demo "$script" --desktop-folder "$DESK" --state-dir "$state" \
     --seed 1 --snapshot-dir "$out" --snapshot-scale "$SCALE" <"$tmp/to-app" >"$tmp/from-app" &
   local pid=$!
   exec 3>"$tmp/to-app"
