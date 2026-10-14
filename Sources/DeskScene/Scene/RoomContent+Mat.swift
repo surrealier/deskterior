@@ -20,6 +20,12 @@ extension RoomContent {
         }
         install([brush], inSlotOf: "brush")
         install([mat], inSlotOf: "mat")
+        // The keyboard lies on the mat: dragging it moves the mat, and its menu is the mat's.
+        if let keyboard = extras.lazy.compactMap({ $0 as? KeyboardElement }).first {
+            keyboard.matGesture = { [unowned mat] gesture, hit in mat.handleFromKeyboard(gesture, hit) }
+            keyboard.matMenu = { [unowned mat] hit in mat.menuFromKeyboard(hit) }
+            keyboard.matModifiers = { [unowned mat] mods in mat.modifiersChanged(mods, Hit(element: mat.id, part: "mat", rect: mat.bounds)) }
+        }
     }
 
     var matElement: DeskMatElement? { extras.lazy.compactMap { $0 as? DeskMatElement }.first }
@@ -34,7 +40,11 @@ extension RoomContent {
         case let (.clearDesk, .clearDesk(plan)):
             mat.playClearDesk(plan)
         case let (.peekMat, .location(loc)):
-            if let pile = loc.pile, let p = context.state?.piles[pile], mat.coversPile(pile) { mat.peek(at: p) }
+            if let pile = loc.pile { mat.show(pile) }
+        case let (.pulse, .token(key)):
+            // A token in a desk pile is selected and blinks once on show; the screen and containers pulse theirs too.
+            mat.playPulse(key)
+            return false
         default:
             return false
         }
@@ -101,7 +111,8 @@ extension DeskScene {
 
     /// Demo expectations about the mat and the brush (`docs/DEMOS.md`): `underMat` (tokens it covers), `revealed`
     /// (tokens on show inside its rectangle: under lifted or folded cloth), `bumps` (bump groups), `bump.max` (px),
-    /// `mat.folded`, `mat.asleep`, `mat.saved` (the model holds the cloth's resting pose), `mat.grab`, `mat.wrinkled`, `mat.size` (`WxD`), `mat.angle` (degrees),
+    /// `mat.folded`, `mat.asleep`, `mat.saved` (the model holds the cloth's resting pose), `mat.grab`, `mat.wrinkled`
+    /// (wrinkles all over, or one crease at least 1 px high), `mat.size` (`WxD`), `mat.angle` (degrees),
     /// `mat.keyboard` (`x,d`), `mat.mode`, `mat.handles`, `brush` (`x,d`), `brush.home`, `clearDesk` (`running` or
     /// `idle`), `visible` (tokens not hidden, by the `Visibility` matrix with the mat's coverage). Nil for other keys.
     public func matExpectation(_ key: String) -> String? {
@@ -124,7 +135,7 @@ extension DeskScene {
         case "mat.asleep": return String(c.isAsleep)
         case "mat.saved": return String(c.isAsleep && s.mat == c.matState(pattern: s.mat.pattern, mode: s.mat.mode))
         case "mat.grab": return c.grabMode?.rawValue ?? "none"
-        case "mat.wrinkled": return String(ClothMetrics.wrinkle(c) > 0.25)
+        case "mat.wrinkled": return String(ClothMetrics.wrinkle(c) > 0.25 || ClothMetrics.maxCrease(c) >= 1)
         case "mat.size": return "\(Int(c.restSize.x.rounded()))x\(Int(c.restSize.y.rounded()))"
         case "mat.angle": return String(Int((c.baseFrame().angle * 180 / .pi).rounded()))
         case "mat.keyboard": return c.keyboardCenter.map(pair) ?? "none"

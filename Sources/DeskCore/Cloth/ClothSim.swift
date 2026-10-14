@@ -53,15 +53,30 @@ public struct ClothParams: Hashable, Sendable, Codable {
     /// drag stay put instead of being ironed flat.
     public var carryStillFade: Float = 0.1
     public var carryLift: Float = 6
+    /// The grabbed patch chases the pointer at most this fast (px/s): heavy felt follows a flick with a lag instead of
+    /// whipping over into folds (M9 review).
+    public var carrySpeed: Float = 300
+    /// Bending compliance while carried, as a fraction of `bendCompliance`: felt held in the hand stays stiff.
+    public var carryBendScale: Float = 0.1
     public var releaseKeep: Float = 0.4
+    /// A carry faster than `creaseSpeed` (px/s) leaves a crease up to `creaseHeight` px (at `carrySpeed`); for
+    /// `unflipFrames` after letting go, a corner it flips over lays back.
+    public var creaseSpeed: Float = 90
+    public var creaseHeight: Float = 5
+    public var unflipFrames = 60
     public var peelHeight: Float = 12
     /// Half-width of the edge segment an edge peel holds. It also seeds the taper of the fold the peel guides along
     /// the edge (σ = this + reach²/8), so pulling one point lifts a tongue that widens as the pull goes further.
     public var peelEdgeHalfWidth: Float = 18
     public var tugHeight: Float = 1.5
     public var tugConeDegrees: Float = 60
-    /// Frames over which a released peel is finished: laid down folded, or laid back flat.
+    /// Frames over which a released peel is finished: laid down folded, or laid back flat (slower, as felt settles).
     public var layDownFrames = 8
+    public var layBackFrames = 16
+    /// A peel held still this long (frames) before it is let go stays propped up for `proppedFrames`, so a pile it
+    /// uncovered can be picked out (O7), then lays back.
+    public var propStillFrames = 18
+    public var proppedFrames = 90
     /// Peel fold guide: below this many px between the grab point's flat place and the held point, the lift is pure
     /// physics; beyond it the flap follows a paper fold at `foldGain` per substep.
     public var foldMinDistance: Float = 6
@@ -93,6 +108,10 @@ public struct ClothParams: Hashable, Sendable, Codable {
     /// How far past the peeked point (plane px) the lifted edge is drawn back. The scene's mat draws it back 16 px,
     /// a pile's footprint and then some, so a pile tucked deeper under the edge is revealed too (M9).
     public var peekBeyond: Float = 8
+    /// How far a peeked flap turns up (radians): up and leaning back past vertical; a back edge's lies over (so it
+    /// never stands in front of what it uncovers).
+    public var peekAngle: Float = 0.78 * .pi
+    public var peekBackAngle: Float = 0.94 * .pi
     /// Desk knock: hop height (px), duration and the wavelength (px) of its ripple.
     public var knockHeight: Float = 2
     public var knockFrames = 12
@@ -218,6 +237,8 @@ public struct ClothSim: Sendable {
     var frictionScale: Float = 1
     var keyboardOffset: SIMD2<Float>?
     var transformRun: TransformRun?
+    /// Frames left in which whatever flips over after a carry lays back, and the folded count it started from.
+    var postCarry: (frames: Int, folded: Int)?
 
     public var count: Int { cols * rows }
 
@@ -347,6 +368,18 @@ public struct ClothSim: Sendable {
         } else {
             sampleGround(HeightSampler.flat)
         }
+        // A released carry whose patch has caught up with where the pointer let go lets go now.
+        if grab?.caughtUp == true { endGrab() }
+        if let pc = postCarry, grab == nil, script == nil {
+            if ClothMetrics.foldedCount(self) > pc.folded {
+                postCarry = nil
+                unflipFolds()
+            } else {
+                postCarry = pc.frames > 1 ? (pc.frames - 1, pc.folded) : nil
+            }
+        } else if grab != nil {
+            postCarry = nil
+        }
         updateSleep()
     }
 
@@ -391,8 +424,9 @@ public struct ClothSim: Sendable {
         let maxMove = params.maxSubstepMove
         let xr = params.xRange, dr = params.dRange, zMax = params.zMax
         let pinStep = params.pinSpeed * h
+        let bendScale = carry != nil ? params.carryBendScale : 1
         let alphas = (params.stretchCompliance / (h * h), params.shearCompliance / (h * h),
-                      params.bendCompliance / (h * h))
+                      params.bendCompliance * bendScale / (h * h))
         let stretch = stretch, shear = shear, bend = bend
         let pins = pins
         let carry = carry, guideIndices = guideIndices, guideTargets = guideTargets, foldGain = params.foldGain

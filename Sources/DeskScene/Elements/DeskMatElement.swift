@@ -61,14 +61,20 @@ final class DeskMatElement: DeskElement, Knockable {
     private var pilesByNumber: [Int: PileID] = [:]
     /// Each pile's model position when it was last judged covered or not.
     private var judged: [PileID: SIMD2<Float>] = [:]
-    /// The token count each covered pile was last tucked in for.
-    private var tuckedCounts: [PileID: Int] = [:]
     /// Revealed piles the cloth lies over, drawn here as billboards (not by the desk plane's `piles`).
     private(set) var billboards: [PileID: Billboard] = [:]
+    /// Cards of the piles near the cloth (`card(for:keys:selected:)`).
+    private var cards: [PileID: (keys: [TokenKey], selected: Bool, stack: PileArt.Stack, full: PixelBuffer)] = [:]
     /// Piles going under right now (the squash), and the frames each has shown.
     private var squashes: [Squash] = []
     /// Piles just revealed, popping up over two frames: the frame each shows next (2: full height again).
     private(set) var pops: [PileID: Int] = [:]
+    /// Piles that just went under at the edge, their bump sliding in to where they rest (from, to, frames shown).
+    private var slides: [PileID: (from: SIMD2<Float>, to: SIMD2<Float>, frame: Int)] = [:]
+    /// Clear the Desk's stand-ins at the edge, drawn here so the cloth hides what has gone under (a card per pile),
+    /// and the bumps of those sliding in under it (where, and how much has grown).
+    var ghostCards: [PileID: (stack: PileArt.Stack, position: SIMD2<Float>)] = [:]
+    var ghostBumps: [PileID: (position: SIMD2<Float>, scale: Float)] = [:]
 
     /// The pop-up frame a revealed pile shows now (0, 1), nil at full height.
     func popFrame(_ id: PileID) -> Int? { pops[id].flatMap { $0 < 2 ? $0 : nil } }
@@ -76,9 +82,13 @@ final class DeskMatElement: DeskElement, Knockable {
     struct Billboard {
         var keys: [TokenKey]
         var selected: Bool
+        /// The cloth's edge is sliding over it (the card clipped at the edge, squashed near it).
+        var entering = false
         var stack: PileArt.Stack
-        /// The raster sprite (bottom centre = the pile's base) and its canvas top-left.
+        /// The raster sprite (bottom centre = the pile's base) and its canvas top-left; `full` is the card before the
+        /// edge clips it.
         var sprite: PixelBuffer
+        var full: PixelBuffer
         var origin: ArtPoint
         var position: SIMD2<Float>
         /// The stack image's top-left on the canvas (the sprite pads it).
@@ -117,6 +127,11 @@ final class DeskMatElement: DeskElement, Knockable {
 
     /// Clear the Desk's brush pass, while it plays.
     var clearRun: ClearDeskRun?
+    /// Show on Desk's token in a desk pile: it waits (up to `pulseMaxWait` s) for the token to come on show, selects
+    /// it, then its pile blinks for `pulseSeconds`.
+    private(set) var pulse: (key: TokenKey, age: Double, waited: Double, selected: Bool)?
+    /// Piles Show on Desk shows over flat cloth (`matMode=flat` or Reduce Motion: no peek), and the seconds left.
+    private(set) var forcedReveals: [PileID: Double] = [:]
     /// The grab in hand (`MatGrab`), if any.
     weak var grabbing: MatGrab?
     /// The last canvas point hit-tested on the mat (a right-click's menu: Peek Under lifts the edge nearest it).
@@ -129,6 +144,14 @@ final class DeskMatElement: DeskElement, Knockable {
 
     /// The footprint radius coverage samples a pile with (DESIGN §2.2 E9).
     static let pileRadius: Float = 6
+    /// Within this far (plane px) of the cloth's edge a pile's card squashes down as the edge slides over it.
+    static let enterReach: Float = 8
+    /// How far a card's columns reach either side of its pile (px), for the cheap test before clipping one.
+    static let cardReach: Float = 14
+    /// Frames a bump takes to slide in from the edge to where its pile rests.
+    static let slideFrames = 10
+    /// How far the hem rides up over a pile going under (px).
+    static let hemLift: Float = 3
     /// How far in front of the mat's front edge (plane px) a landing still tucks under: a stack's base sits 8 screen
     /// px (16 plane px) below the pointer that set it down.
     static let landingReach: Float = 18
@@ -164,12 +187,26 @@ final class DeskMatElement: DeskElement, Knockable {
 
     /// Peek Under draws the edge back this far past what it peeks at, so a tucked pile's whole footprint shows.
     static let peekBeyond: Float = 16
+    /// Show on Desk's pulse, how long it waits for its token to come on show, and how long its peek stays up (s).
+    static let pulseSeconds = 2.0
+    static let pulseMaxWait = 3.0
+    static let showPeekSeconds: Float = 2.8
 
     var isFlat: Bool { flatSetting || context.reduceMotion }
 
     private func updateFlat() {
         guard cloth.params.flatMode != isFlat else { return }
         cloth.params.flatMode = isFlat
+        // Flat mode keeps no folds and no lifts: a flap folded before lies back at once, a peek ends.
+        guard isFlat, ClothMetrics.foldedCount(cloth) > 0 || cloth.isScriptRunning || cloth.grabMode != nil else {
+            return
+        }
+        if ClothMetrics.foldedCount(cloth) > 0 { cloth.unfold() }
+        cloth.settleNow(bumps: bumps)
+        indexFresh = false
+        rasterDirty = true
+        coverageDirty = true
+        if isLive, context.state != nil { commit() }
     }
 
     // MARK: Layout and state
@@ -199,7 +236,6 @@ final class DeskMatElement: DeskElement, Knockable {
         if s.mat != knownMat { adopt(s.mat, s) }
         // Piles the model dropped are forgotten; moved ones are judged again when asked (`coversPile`).
         for id in judged.keys where s.piles[id] == nil { judged[id] = nil }
-        retuck(s)
         coverageDirty = true
         rasterDirty = true
         restampBumps()
@@ -288,34 +324,59 @@ final class DeskMatElement: DeskElement, Knockable {
     }
 
     private func judge(_ id: PileID, at p: SIMD2<Float>) {
-        coverage.setCovered(number(id), coveredSamples(at: p) >= 3)
+        coverage.setCovered(number(id), forcedReveals[id] == nil && coveredSamples(at: p) >= 3)
         judged[id] = p
         coverageDirty = true
         rasterDirty = true
     }
 
     /// A landing of `count` tokens at desk point `p` on the mat tucks under it (DESIGN §2.1 DropResolver, mat
-    /// footprint): it rests `ClearDeskPlan.inset(count:)` inside the cloth's edge (far enough that its bump does not
-    /// hold the edge up) and joins a covered pile within 10 px. A set-down lands where the stack's base was, a little in
-    /// front of the pointer, so a landing just off the front edge (`landingReach`) counts as on the mat. Nil off the
-    /// mat, or where the cloth is lifted off the desk (it lands under the lifted cloth, which covers it as it lays back).
+    /// footprint). It joins a covered pile whose bump reaches it (at least 10 px), which slides in as far as its taller
+    /// bump needs; otherwise it rests at `tuckSpot` (deep enough inside the edges for its bump, never under the
+    /// keyboard: a drop on the keyboard lands beside it). Either way the returned spot is the pile's final place, so
+    /// the drop commits it in one journaled move. A set-down lands where the stack's base was, a little in front of
+    /// the pointer, so a landing just off the front edge (`landingReach`) counts as on the mat. Nil off the mat, or
+    /// where the cloth is lifted off the desk (it lands under the lifted cloth, which covers it as it lays back).
     func landing(at p: SIMD2<Float>, count: Int = 1) -> (pile: PileID?, at: SIMD2<Float>)? {
         guard isLive, p.isFinite, let s = context.state else { return nil }
-        let frame = cloth.baseFrame(), size = cloth.restSize, inset = ClearDeskPlan.inset(count: count)
+        let frame = cloth.baseFrame(), size = cloth.restSize
         let q = frame.material(p)
         guard q.x >= -4, q.x <= size.x + 4, q.y >= -Self.landingReach, q.y <= size.y + 4 else { return nil }
         refreshIndex()
         if let c = index.clearance(at: p), c >= CoverageTracker.zMargin { return nil }
-        let i = SIMD2(min(inset, size.x / 2), min(inset, size.y / 2))
-        let spot = frame.point(SIMD2(min(max(q.x, i.x), size.x - i.x), min(max(q.y, i.y), size.y - i.y)))
-        guard coveredSamples(at: spot) >= 3 else { return nil }
-        var join: (id: PileID, d: Float)?
+        let footprint = MatFootprint(cloth: cloth)
+        let near = footprint.clampedInside(p, inset: ClearDeskPlan.tuckInset)
+        var join: (id: PileID, d: Float, n: Int)?
         for id in s.tokens.piles.sorted() where coverage.isCovered(number(id)) && clearRun?.holds(id) != true {
             guard let at = s.piles[id] else { continue }
-            let d = simd_length(at - spot)
-            if d <= 10, join == nil || d < join!.d { join = (id, d) }
+            let n = s.tokens.members(of: id).count
+            let d = min(simd_length(at - p), simd_length(at - near))
+            if d <= Self.joinReach(count: n), join == nil || d < join!.d { join = (id, d, n) }
         }
-        return (join?.id, spot)
+        if let join, let at = s.piles[join.id] {
+            let spot = ClearDeskPlan.tuckSpot(near: at, count: join.n + count, mat: footprint,
+                                              keyboard: keyboardFootprint) ?? at
+            return (join.id, spot)
+        }
+        guard let spot = ClearDeskPlan.tuckSpot(near: p, count: count, mat: footprint, keyboard: keyboardFootprint)
+        else { return nil }
+        return (nil, spot)
+    }
+
+    /// How far from a covered pile of `n` tokens a landing joins it: its bump's reach, at least 10 px.
+    static func joinReach(count n: Int) -> Float { max(10, BumpField.extent(count: n)) }
+
+    /// The keyboard's footprint where the cloth carries it now.
+    var keyboardFootprint: DeskPlaneRect {
+        var m = MatState()
+        m.keyboard = cloth.keyboardCenter
+        return m.keyboardFootprint
+    }
+
+    /// Where a stack of `count` tokens at desk point `p` rests under the cloth as it lies now
+    /// (`ClearDeskPlan.tuckSpot`), nil where it offers no such spot.
+    func tuckSpot(near p: SIMD2<Float>, count: Int) -> SIMD2<Float>? {
+        ClearDeskPlan.tuckSpot(near: p, count: count, mat: MatFootprint(cloth: cloth), keyboard: keyboardFootprint)
     }
 
     /// Every pile holding tokens on show, where it is now (its body, else the model's place) and its tokens top first.
@@ -346,7 +407,7 @@ final class DeskMatElement: DeskElement, Knockable {
             if judged[id] != model { judge(id, at: model) }
             let p = hub?.world.position(of: id) ?? model
             positions[number(id)] = p
-            samples.append((number(id), coveredSamples(at: p)))
+            samples.append((number(id), forcedReveals[id] != nil ? 0 : coveredSamples(at: p)))
         }
         let changes = coverage.update(samples: samples)
         guard !changes.isEmpty else { return }
@@ -355,11 +416,25 @@ final class DeskMatElement: DeskElement, Knockable {
             guard let id = pile(number: change.id), let p = positions[change.id] else { continue }
             if !change.covered, !context.reduceMotion { pops[id] = 0 }
             if change.covered {
-                let spot = tucked(p, count: s.tokens.members(of: id).count)
-                tuckedCounts[id] = nil
+                // It slides in as far as the bump it now makes (with covered piles beside it) needs.
+                var n = s.tokens.members(of: id).count
+                for other in s.tokens.piles where other != id && coverage.isCovered(number(other)) {
+                    if let q = s.piles[other], simd_length(q - p) <= 10 { n += s.tokens.members(of: other).count }
+                }
+                let spot = tuckSpot(near: p, count: n) ?? p
                 if let model = s.piles[id], model != spot, spot.isFinite { settled[id] = spot }
                 judged[id] = spot
-                goesUnder(id, at: p)
+                if !context.reduceMotion {
+                    // The hem rides over it and its bump slides in from the edge.
+                    slides[id] = (p, spot, 0)
+                    cloth.liftHem(near: p, height: Self.hemLift)
+                }
+                if billboards[id]?.entering == true {
+                    // The edge already slid over its card: only a puff where it went.
+                    if let hub { context.fx.puff(at: Self.pixel(hub.canvas(plane: p))) }
+                } else {
+                    goesUnder(id, at: p)
+                }
             }
         }
         hub?.syncBodies()
@@ -371,50 +446,39 @@ final class DeskMatElement: DeskElement, Knockable {
         rasterDirty = true
     }
 
-    /// Where a pile of `count` tokens that went under the mat comes to rest: it slides in under the edge far enough
-    /// that its bump does not hold the edge up off the desk (`ClearDeskPlan.inset(count:)`), if the cloth covers it
-    /// there.
-    func tucked(_ p: SIMD2<Float>, count: Int = 1) -> SIMD2<Float> {
-        let frame = cloth.baseFrame(), size = cloth.restSize, inset = ClearDeskPlan.inset(count: count)
-        let q = frame.material(p), i = SIMD2(min(inset, size.x / 2), min(inset, size.y / 2))
-        let spot = frame.point(SIMD2(min(max(q.x, i.x), size.x - i.x), min(max(q.y, i.y), size.y - i.y)))
-        return spot != p && coveredSamples(at: spot) >= 3 ? spot : p
-    }
-
-    /// A covered pile whose bump grew (a drop joined it, or a neighbour now shares its bump) slides further in, so the
-    /// taller bump still clears the edge.
-    private func retuck(_ s: DeskState) {
-        var moved: [PileID: SIMD2<Float>] = [:]
-        let covered = s.tokens.piles.filter { clearRun?.holds($0) != true && coverage.isCovered(number($0)) }
-        let groups = PileClusterer.groups(covered.compactMap { id in
-            s.piles[id].map { PileInput(id: number(id), position: $0, count: s.tokens.members(of: id).count) }
-        })
-        for id in covered {
-            let n = groups.first { $0.ids.contains(number(id)) }?.count ?? s.tokens.members(of: id).count
-            // A pile seen for the first time (a relaunch, an undo) stays where the model has it.
-            guard let old = tuckedCounts[id] else {
-                tuckedCounts[id] = n
-                continue
-            }
-            guard let p = s.piles[id], n > old, judged[id] == p else { continue }
-            tuckedCounts[id] = n
-            let spot = tucked(p, count: n)
-            if spot != p { moved[id] = spot }
-        }
-        guard !moved.isEmpty else { return }
-        for (id, p) in moved { judged[id] = p }
-        context.dispatch(.pilesSettled(moved))
-    }
-
-    /// The covered piles' bumps (held ones wait until they are under).
-    func restampBumps() {
+    /// The covered piles' bumps (held ones wait until they are under): a pile that just went under has its bump slide
+    /// in from the edge (`slides`), a stand-in of Clear the Desk's grows its own as it goes (`ghostBumps`); while either
+    /// moves, the field follows at once instead of easing.
+    func restampBumps(animated: Bool? = nil) {
         guard let s = context.state else { return }
         var inputs: [PileInput] = []
         for id in s.tokens.piles {
-            guard let p = s.piles[id], clearRun?.holds(id) != true, coverage.isCovered(number(id)) else { continue }
-            inputs.append(PileInput(id: number(id), position: p, count: s.tokens.members(of: id).count))
+            guard var p = s.piles[id], clearRun?.holds(id) != true, coverage.isCovered(number(id)) else { continue }
+            var scale: Float = 1
+            if let slide = slides[id] {
+                let u = min(1, Float(slide.frame) / Float(Self.slideFrames))
+                let e = u * u * (3 - 2 * u)
+                p = slide.from + (slide.to - slide.from) * e
+                scale = 0.35 + 0.65 * e
+            }
+            inputs.append(PileInput(id: number(id), position: p, count: s.tokens.members(of: id).count, scale: scale))
         }
-        bumps.setCoveredPiles(inputs.sorted { $0.id < $1.id })
+        for (id, g) in ghostBumps where clearRun?.holds(id) == true {
+            let n = max(1, s.tokens.members(of: id).count)
+            inputs.append(PileInput(id: number(id), position: g.position, count: n, scale: g.scale))
+        }
+        bumps.setCoveredPiles(inputs.sorted { $0.id < $1.id },
+                              animated: animated ?? (slides.isEmpty && ghostBumps.isEmpty))
+    }
+
+    /// One frame of the bumps sliding in.
+    private func stepSlides() {
+        guard !slides.isEmpty else { return }
+        for (id, slide) in slides {
+            slides[id] = slide.frame + 1 > Self.slideFrames ? nil : (slide.from, slide.to, slide.frame + 1)
+        }
+        restampBumps()
+        rasterDirty = true
     }
 
     /// Tokens the mat covers now (top of each pile first).
@@ -479,7 +543,8 @@ final class DeskMatElement: DeskElement, Knockable {
     // MARK: Frames
 
     var needsFrames: Bool {
-        isLive && (!cloth.isAsleep || bumps.isEasing || clearRun != nil || !squashes.isEmpty || !pops.isEmpty)
+        isLive && (!cloth.isAsleep || bumps.isEasing || clearRun != nil || !squashes.isEmpty || !pops.isEmpty
+            || pulse != nil || !forcedReveals.isEmpty || !slides.isEmpty)
     }
 
     func step(_ dt: Double) {
@@ -490,6 +555,8 @@ final class DeskMatElement: DeskElement, Knockable {
             if run.isDone { endClearRun() }
         }
         stepSquashes()
+        stepShowOnDesk(dt)
+        stepSlides()
         if coverageDirty || !cloth.isAsleep || hub?.bodies.isMoving == true { trackCoverage() }
         bumps.advance()
         let wasAwake = !cloth.isAsleep
@@ -506,7 +573,11 @@ final class DeskMatElement: DeskElement, Knockable {
         } else {
             awakeSteps = 0
         }
-        if wasAwake && cloth.isAsleep { commit() }
+        if wasAwake && cloth.isAsleep {
+            // At rest the keyboard stands at its pose's own pixel (as a relaunch draws it), whatever the hysteresis.
+            followKeyboard(force: true)
+            commit()
+        }
         if showsHandles { drawHandles() }
         render()
         stepPops()
@@ -521,25 +592,47 @@ final class DeskMatElement: DeskElement, Knockable {
         rasterDirty = true
     }
 
-    /// Hard sleep or teardown: the brush pass ends, the cloth accepts its pose and commits it.
+    /// Hard sleep or teardown: the brush pass ends, and the cloth comes to rest the way it was going (a peek lays its
+    /// flap back, a lay-down or a resize finishes, a grab lets go and the cloth falls; `ClothSim.settleNow`), never in
+    /// the air, then commits its pose. Every pile is judged where it lies.
     func settle() {
         guard isLive else { return }
         clearRun?.finish()
         endClearRun()
         for sq in squashes { sq.node.removeFromParent() }
         squashes.removeAll()
-        if cloth.grabMode != nil { cloth.endGrab() }
-        cloth.cancelScript()
-        let wasAwake = !cloth.isAsleep
-        cloth.forceSleep()
+        while bumps.isEasing { bumps.advance() }
+        let moving = !cloth.isAsleep || cloth.grabMode != nil || cloth.isScriptRunning || cloth.isTransforming
+        cloth.settleNow(bumps: bumps)
+        let settledRevision = bumps.revision
         indexFresh = false
+        forcedReveals.removeAll()
+        slides.removeAll()
+        ghostCards.removeAll()
+        ghostBumps.removeAll()
+        if pulse != nil {
+            pulse = nil
+            rasterDirty = true
+        }
+        if let s = context.state {
+            for id in s.tokens.piles where clearRun?.holds(id) != true {
+                if let p = s.piles[id] { judge(id, at: p) }
+            }
+        }
+        // The bumps of what it covers now stand at once, and the cloth lies down over them.
+        restampBumps(animated: false)
+        let redraped = bumps.revision != settledRevision
+        if redraped {
+            cloth.settleNow(bumps: bumps)
+            indexFresh = false
+        }
         trackCoverage()
         if !pops.isEmpty {
             pops.removeAll()
             hub?.piles.refresh()
         }
-        followKeyboard(force: false)
-        if wasAwake { commit() }
+        followKeyboard(force: true)
+        if moving || redraped { commit() }
         render()
     }
 
@@ -554,6 +647,25 @@ final class DeskMatElement: DeskElement, Knockable {
         guard m != knownMat else { return }
         knownMat = m
         context.dispatch(.matSettled(m))
+        clearKeyboard()
+    }
+
+    /// Covered piles the keyboard came to rest over (the mat was carried or turned under them) slide out to the
+    /// nearest spot clear of it, so nothing ever lies where no peek can reach it. A 2-px allowance keeps a pile Clear
+    /// the Desk or a drop set down at the clearance's edge where it is.
+    private func clearKeyboard() {
+        guard let s = context.state, cloth.keyboardCenter != nil else { return }
+        let c = ClearDeskPlan.keyboardClearance(keyboardFootprint)
+        let keep = DeskPlaneRect(x: c.x + 2, d: c.d + 2, width: c.width - 4, depth: c.depth - 4)
+        var moved: [PileID: SIMD2<Float>] = [:]
+        for id in s.tokens.piles.sorted() where coverage.isCovered(number(id)) && clearRun?.holds(id) != true {
+            guard let p = s.piles[id], keep.contains(p),
+                  let spot = tuckSpot(near: p, count: s.tokens.members(of: id).count), spot != p else { continue }
+            moved[id] = spot
+            judged[id] = spot
+        }
+        guard !moved.isEmpty else { return }
+        context.dispatch(.pilesSettled(moved))
     }
 
     // MARK: Clear the Desk
@@ -582,11 +694,87 @@ final class DeskMatElement: DeskElement, Knockable {
         hub?.syncBodies()
     }
 
-    /// A held pile reached its place under the mat: it is judged there and its bump eases in.
+    /// A held pile reached its place under the mat: it is judged there at once, so its bump carries on from the one
+    /// its stand-in grew.
     func arrived(_ id: PileID) {
         judged[id] = nil
+        if clearRun?.holds(id) != true, let p = context.state?.piles[id] { judge(id, at: p) }
         restampBumps()
         rasterDirty = true
+    }
+
+    // MARK: Show on Desk
+
+    /// Show on Desk for a covered pile: the nearest edge peeks up for the pulse's length; flat cloth (`matMode=flat`,
+    /// Reduce Motion) cannot lift, so the pile is shown over it instead for as long.
+    func show(_ id: PileID) {
+        guard isLive, let p = context.state?.piles[id], coversPile(id) else { return }
+        if isFlat {
+            forcedReveals[id] = Self.pulseSeconds + Self.pulseMaxWait
+            coverage.setCovered(number(id), false)
+            judged[id] = p
+            coverageDirty = true
+            rasterDirty = true
+            restampBumps()
+            hub?.syncBodies()
+        } else {
+            peek(at: p, seconds: Self.showPeekSeconds)
+        }
+    }
+
+    /// Show on Desk's pulse for a token in a desk pile (under the mat or loose).
+    func playPulse(_ key: TokenKey) {
+        guard isLive, context.state?.tokens.location(of: key)?.pile != nil else { return }
+        pulse = (key, 0, 0, false)
+    }
+
+    /// Whether `key` is drawn now: on a pile the cloth was lifted off (a billboard), or among the desk's loose piles.
+    private func isOnShow(_ key: TokenKey) -> Bool {
+        if billboards.values.contains(where: { $0.keys.contains(key) }) { return true }
+        guard let s = context.state, let pile = s.tokens.location(of: key)?.pile else { return false }
+        return !coversPile(pile) && !(hub?.hiddenKeys.contains(key) ?? false)
+    }
+
+    private func stepShowOnDesk(_ dt: Double) {
+        if !forcedReveals.isEmpty {
+            for (id, left) in forcedReveals {
+                guard left - dt <= 0 || context.state?.piles[id] == nil else {
+                    forcedReveals[id] = left - dt
+                    continue
+                }
+                // Back under the flat cloth at once (no lift to lay back), with a puff.
+                forcedReveals[id] = nil
+                if let p = context.state?.piles[id] {
+                    judge(id, at: p)
+                    if coverage.isCovered(number(id)), let hub { context.fx.puff(at: Self.pixel(hub.canvas(plane: p))) }
+                }
+                restampBumps()
+                hub?.syncBodies()
+            }
+            coverageDirty = true
+        }
+        guard var p = pulse else { return }
+        if !p.selected {
+            guard isOnShow(p.key) else {
+                p.waited += dt
+                pulse = p.waited >= Self.pulseMaxWait ? nil : p
+                return
+            }
+            context.selection.select(p.key)
+            context.screen?.refreshIfSelectionChanged()
+            p.selected = true
+            // The reveal lasts as long as the pulse from here.
+            for id in forcedReveals.keys { forcedReveals[id] = Self.pulseSeconds }
+        }
+        p.age += dt
+        pulse = p.age >= Self.pulseSeconds ? nil : p
+        rasterDirty = true
+    }
+
+    /// Whether the pile holding `keys` shows its blink's selected frame now.
+    private func blinksOn(_ keys: [TokenKey]) -> Bool {
+        guard let p = pulse, p.selected, keys.contains(p.key) else { return false }
+        return Int(p.age * 4) % 2 == 0
     }
 
     // MARK: Keyboard
@@ -634,12 +822,12 @@ final class DeskMatElement: DeskElement, Knockable {
     /// and uploads the texture, only when something drawn changed.
     func render() {
         guard isLive else { return }
-        let changedBillboards = updateBillboards()
+        let changedBillboards = updateBillboards() || !ghostCards.isEmpty
         guard rasterDirty || changedBillboards else { return }
         rasterDirty = false
-        let boards = billboards.compactMap { id, b in
+        let boards = (billboards.compactMap { id, b in
             PileBillboard(id: number(id), sprite: b.sprite, position: SIMD3(b.position.x, b.position.y, 0))
-        }.sorted { $0.id < $1.id }
+        } + ghostBoards()).sorted { $0.id < $1.id }
         raster.render(cloth: cloth, piles: boards, bumps: bumps)
         var image = raster.image
         shadeUnderKeyboard(&image)
@@ -660,38 +848,115 @@ final class DeskMatElement: DeskElement, Knockable {
         }
     }
 
-    /// Billboards for the revealed piles the cloth lies over; true when they changed.
+    /// Billboards for the piles the cloth has to do with; true when they changed. A revealed pile under lifted cloth
+    /// stands as its whole card; a pile the cloth's edge is sliding over (a brush push, a carried mat, Clear the Desk's
+    /// stand-ins) is clipped where the cloth lies over it and squashed toward the desk near the edge, so it goes under
+    /// the edge rather than over the felt (`clippedCard`).
     private func updateBillboards() -> Bool {
         guard let hub else { return false }
         var next: [PileID: Billboard] = [:]
         let selection = context.selection
+        let frame = cloth.baseFrame(), size = cloth.restSize
+        refreshIndex()
+        var used = Set<PileID>()
         for v in pileViews() where !coverage.isCovered(number(v.id)) && clearRun?.holds(v.id) != true {
-            guard clothOver(v.position) else { continue }
-            let selected = v.keys.allSatisfy(selection.contains)
-            let pop = popFrame(v.id)
-            if var old = billboards[v.id], old.keys == v.keys, old.selected == selected, old.pop == pop {
-                if old.position != v.position { old = placedBillboard(old, at: v.position, hub: hub) }
-                next[v.id] = old
-                continue
+            // Revealed on the mat: under lifted cloth, in the hole a peek or a fold leaves, or shown over flat cloth.
+            let inside = Self.inside(frame.material(v.position), size)
+            let clearance = index.clearance(at: v.position)
+            let lifted = clearance.map { $0 >= CoverageTracker.zMargin } ?? (inside > 0) || forcedReveals[v.id] != nil
+            let near = inside > -(Self.enterReach + Self.cardReach)
+            guard lifted || near else { continue }
+            // Show on Desk's pile blinks; others show the selection.
+            let pulsing = pulse.map { $0.selected && v.keys.contains($0.key) } ?? false
+            let selected = pulsing ? blinksOn(v.keys) : v.keys.allSatisfy(selection.contains)
+            used.insert(v.id)
+            let made = card(for: v.id, keys: v.keys, selected: selected)
+            // A card the edge clips or squashes is the mat's to draw; one clear of the cloth is the desk's.
+            var sprite = made.full, entering = false
+            if !lifted {
+                sprite = clippedCard(made.full, at: v.position, frame: frame, size: size)
+                entering = sprite != made.full
+                guard entering else { continue }
             }
-            let stack = DeskPilesElement.stack(v.keys, lift: 0, selected: selected, drawsTag: true, context: context)
-            let b = stack.base
-            let half = max(b.x, stack.image.width - b.x)
-            var sprite = PixelBuffer(width: 2 * half, height: b.y)
-            sprite.blit(stack.image, at: ArtPoint(half - b.x, 0))
+            let pop = entering ? nil : popFrame(v.id)
             if let k = pop {
                 sprite = PileArt.reshaped(sprite, to: ArtSize(sprite.width, max(1, sprite.height * (k + 1) / 3)))
             }
-            let board = Billboard(keys: v.keys, selected: selected, stack: stack, sprite: sprite, origin: .zero,
-                                  position: v.position, stackOrigin: .zero, pop: pop)
+            var board = Billboard(keys: v.keys, selected: selected, stack: made.stack, sprite: sprite, full: made.full,
+                                  origin: .zero, position: v.position, stackOrigin: .zero, pop: pop)
+            board.entering = entering
             next[v.id] = placedBillboard(board, at: v.position, hub: hub)
         }
+        for id in cards.keys where !used.contains(id) { cards[id] = nil }
         let changed = Set(next.keys) != Set(billboards.keys)
-            || next.contains { billboards[$0.key]?.origin != $0.value.origin || billboards[$0.key]?.keys != $0.value.keys
-                || billboards[$0.key]?.selected != $0.value.selected || billboards[$0.key]?.pop != $0.value.pop }
+            || next.contains { id, b in
+                guard let old = billboards[id] else { return true }
+                return old.origin != b.origin || old.keys != b.keys || old.selected != b.selected || old.pop != b.pop
+                    || old.sprite != b.sprite
+            }
         billboards = next
         if changed { hub.piles.refresh() }
         return changed
+    }
+
+    /// The card of a pile drawn here, kept while its tokens and selection stay the same.
+    private func card(for id: PileID, keys: [TokenKey], selected: Bool) -> (stack: PileArt.Stack, full: PixelBuffer) {
+        if let c = cards[id], c.keys == keys, c.selected == selected { return (c.stack, c.full) }
+        let stack = DeskPilesElement.stack(keys, lift: 0, selected: selected, drawsTag: true, context: context)
+        let full = Self.card(stack)
+        cards[id] = (keys, selected, stack, full)
+        return (stack, full)
+    }
+
+    /// Clear the Desk's stand-ins at the edge, as raster cards (clipped like an entering pile's).
+    private func ghostBoards() -> [PileBillboard] {
+        guard !ghostCards.isEmpty else { return [] }
+        let frame = cloth.baseFrame(), size = cloth.restSize
+        return ghostCards.sorted { $0.key < $1.key }.compactMap { id, g in
+            let sprite = clippedCard(Self.card(g.stack), at: g.position, frame: frame, size: size)
+            return PileBillboard(id: number(id), sprite: sprite, position: SIMD3(g.position.x, g.position.y, 0))
+        }
+    }
+
+    /// A stack's card for the raster: its image padded so the base is the bottom centre.
+    static func card(_ stack: PileArt.Stack) -> PixelBuffer {
+        let b = stack.base
+        let half = max(b.x, stack.image.width - b.x)
+        var sprite = PixelBuffer(width: 2 * half, height: b.y)
+        sprite.blit(stack.image, at: ArtPoint(half - b.x, 0))
+        return sprite
+    }
+
+    /// How far material point `q` lies inside a mat of `size` (negative outside).
+    static func inside(_ q: SIMD2<Float>, _ size: SIMD2<Float>) -> Float { min(q.x, size.x - q.x, q.y, size.y - q.y) }
+
+    /// Whether a pile at desk point `p` is where the cloth's edge may slide over its card (within `enterReach` and a
+    /// card's half-width outside the mat, or on it).
+    func isAtEdge(_ p: SIMD2<Float>) -> Bool {
+        Self.inside(cloth.baseFrame().material(p), cloth.restSize) > -(Self.enterReach + Self.cardReach)
+    }
+
+    /// The card `full` of a pile at desk point `p` as the cloth's edge slides over it: each column whose foot (its
+    /// desk x at the pile's depth) lies under resting cloth is gone; within `enterReach` outside the mat's edge it
+    /// squashes toward the desk (to 15 % at the edge), so the pile slips in under the hem. Lifted cloth hides nothing.
+    func clippedCard(_ full: PixelBuffer, at p: SIMD2<Float>, frame: ClothFrame, size: SIMD2<Float>) -> PixelBuffer {
+        let w = full.width, h = full.height
+        let base = DeskProjection.standard.project(SIMD3(p.x, p.y, 0))
+        let left = DeskProjection.snap(base.x) - w / 2
+        refreshIndex()
+        var out = PixelBuffer(width: w, height: h)
+        for c in 0..<w {
+            let foot = SIMD2(Float(left + c) + 0.5, p.y)
+            if let clear = index.clearance(at: foot), clear < CoverageTracker.zMargin { continue }
+            let e = Self.inside(frame.material(foot), size)
+            let f = e < 0 ? min(1, max(0.15, -e / Self.enterReach)) : 1
+            let rows = max(1, Int((Float(h) * f).rounded()))
+            for r in 0..<rows {
+                let src = h - 1 - min(h - 1, Int(Float(r) / f))
+                out[c, h - 1 - r] = full[c, src]
+            }
+        }
+        return out
     }
 
     /// Where the raster draws a billboard (`DeskSurfaceRaster`: its bottom centre on the projected base).

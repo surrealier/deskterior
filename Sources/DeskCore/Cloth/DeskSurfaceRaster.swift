@@ -26,6 +26,8 @@ struct SurfaceTexel {
     var light: Int32
     /// Height above the floor the cloth rests on · 16 (top faces; felt lying on a bump takes the bump's light).
     var lift: Int32 = 0
+    /// `BumpShading` flags of felt resting on a bump (its outline, no mesh creases).
+    var bump: UInt8 = 0
     var owner: Int32
     var kind: UInt8
     var color: RGBA8
@@ -79,9 +81,10 @@ public struct DeskSurfaceRaster: Sendable {
     /// viewer-facing slopes that fill most of this oblique view stay felt-coloured and only turned-away faces darken.
     static let shadeGainLit: Float = 4.5
     static let shadeGainDark: Float = 1.5
-    /// Felt this far off its floor (px · 16) or more takes the mesh's light; below it, blending down to resting
-    /// felt, the bump field's own slope (`BumpShading`).
-    static let bumpLiftBlend: Int32 = 24
+    /// Felt less than this far off its floor (px · 16) rests on it: on a bump it is drawn as the bump (`BumpShading`).
+    static let bumpLiftBlend: Int32 = 12
+    /// The ramp step of a bump's back-rim outline (flat felt is 3).
+    static let rimShade = 1
 
     /// The shading level (· 1024, 0…4.999, flat = 2048) of a unit normal `(nx, ny, nz)` in desk space.
     @inline(__always)
@@ -136,7 +139,7 @@ public struct DeskSurfaceRaster: Sendable {
     public mutating func render(cloth: ClothSim, piles: [PileBillboard] = [], bumps: BumpField? = nil) {
         let previous = dirty
         clear(previous)
-        bumpShading.update(bumps)
+        bumpShading.update(bumps, projection: cloth.params.projection)
         var bounds = Bounds()
         verts.update(cloth: cloth)
         let verts = verts
@@ -169,25 +172,18 @@ public struct DeskSurfaceRaster: Sendable {
 
     // MARK: - Bump light
 
-    /// Felt resting on a bump takes the bump field's light, blending back to the mesh's as it lifts off its floor.
+    /// Felt resting on a bump is drawn as the bump: its light, its rim and contact outlines, and no mesh creases.
     private mutating func shadeBumps(_ r: ArtRect, _ proj: DeskProjection) {
-        guard !r.isEmpty, bumpShading.box != nil else { return }
-        let w = Self.width, shading = bumpShading, blend = Int(Self.bumpLiftBlend)
-        let ox = Self.origin.x * 16 + 8, oy = Float(Self.origin.y) + 0.5
+        let b = bumpShading.rect.intersection(r)
+        guard !b.isEmpty else { return }
+        let w = Self.width, shading = bumpShading, rest = Self.bumpLiftBlend
         texels.withUnsafeMutableBufferPointer { T in
-            for y in r.minY..<r.maxY {
-                // Desk depth from the screen row and the texel's height: y = frontY − d·k − z.
-                let rowY = proj.frontY - (Float(y) + oy)
-                for x in r.minX..<r.maxX {
+            for y in b.minY..<b.maxY {
+                for x in b.minX..<b.maxX {
                     let i = y * w + x
-                    guard T[i].kind == Self.kindFront else { continue }
-                    let lift = Int(T[i].lift)
-                    guard lift < blend else { continue }
-                    let z = Float(T[i].depth) / Self.depthScale
-                    let d16 = Int(((rowY - z) / proj.k * 16).rounded(.down))
-                    guard let bump = shading.sample(x16: x * 16 + ox, d16: d16) else { continue }
-                    let k = max(lift, 0)
-                    T[i].light = Int32((Int(bump) * (blend - k) + Int(T[i].light) * k) / blend)
+                    guard T[i].kind == Self.kindFront, T[i].lift < rest, let s = shading.at(x, y) else { continue }
+                    T[i].light = s.level
+                    T[i].bump = s.flags
                 }
             }
         }
@@ -253,6 +249,7 @@ public struct DeskSurfaceRaster: Sendable {
                                 // cloth passes in front of itself or creases.
                                 var edge = 0  // 0 none, 1 contour, 2 outline
                                 var gradient: Int32 = 0
+                                let onBump = t.bump != 0
                                 if !thread {
                                     for k in 0..<4 {
                                         let nx = x + (k == 0 ? -1 : k == 1 ? 1 : 0)
@@ -275,6 +272,8 @@ public struct DeskSurfaceRaster: Sendable {
                                             edge = 2
                                             break
                                         }
+                                        // A bump's own outlines replace the coarse mesh's creases over it.
+                                        if onBump && n.bump != 0 { continue }
                                         let a = Int(t.owner), b = Int(n.owner)
                                         let steps = max(abs(a % cols - b % cols), abs(a / cols - b / cols))
                                         let jump = t.depth - n.depth > Self.creaseJump
@@ -313,7 +312,8 @@ public struct DeskSurfaceRaster: Sendable {
                                     let bayer = Dither.bayer4(x: x + Self.origin.x, y: y + Self.origin.y)
                                     lv = whole + (bayer < ramp16 ? 1 : 0)
                                 }
-                                let shade = min(max(lv + 1 + tone, 0), 6)
+                                var shade = min(max(lv + 1 + tone, 0), 6)
+                                if t.bump & BumpShading.rim != 0 { shade = min(shade, Self.rimShade) }
                                 I[i] = ramp[edge == 1 ? max(shade - 1, 0) : shade]
                             }
                         }

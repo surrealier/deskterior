@@ -32,7 +32,7 @@ extension DeskMatElement {
     /// body.
     private func clothHit(particle i: Int, at p: ArtPoint) -> Hit {
         let near = ArtRect(p.x - 3, p.y - 5, 7, 7)
-        if cloth.isFolded(i), !isFlat { return Hit(element: id, part: "mat.flap", rect: near) }
+        if cloth.isFolded(i) { return Hit(element: id, part: "mat.flap", rect: near) }
         switch cloth.region(of: i) {
         case .corner: return Hit(element: id, part: "mat.corner", rect: near)
         case .edge: return Hit(element: id, part: "mat.edge", rect: near)
@@ -97,10 +97,39 @@ extension DeskMatElement {
         }
         guard hit.part != "desk" else { return nil }
         let n = coveredTokens.count
-        var spec = TooltipSpec(title: "Desk Mat", detail: n == 0 ? nil : "\(n) item\(n == 1 ? "" : "s") under it",
-                               anchor: hit.rect)
+        let under = n == 0 ? nil : "\(n) item\(n == 1 ? "" : "s") under it"
+        let hint = Self.hint(for: hit.part)
+        // The count and the gesture hint, or the hint alone when both would not fit one line.
+        var detail = [under, hint].compactMap { $0 }.joined(separator: " · ")
+        if let font = context.font, PixelText.width(detail, font: font) > TooltipArt.maxTextWidth { detail = hint }
+        var spec = TooltipSpec(title: "Desk Mat", detail: detail, anchor: hit.rect)
         spec.prefersAbove = true
         return spec
+    }
+
+    /// The gestures a part of the mat answers, for its tooltip (short enough for one line).
+    static func hint(for part: String?) -> String {
+        switch part {
+        case "mat.edge": "drag in: lift · double-click: smooth"
+        case "mat.corner": "tug out: smooth · ⌥-drag: size, turn"
+        case "mat.flap": "drag back: unfold"
+        default: "drag: move · ⌥-drag: slide"
+        }
+    }
+
+    /// ⌥ pressed or let go while the pointer rests on the cloth shows or hides the transform handles.
+    func modifiersChanged(_ mods: InputEvent.Modifiers, _ hit: Hit) -> Bool {
+        guard isLive, grabbing == nil else { return false }
+        let show = mods.contains(.option) && (hit.part?.hasPrefix("mat") ?? false)
+        guard show != showsHandles else { return false }
+        showsHandles = show
+        return true
+    }
+
+    func hover(_ hit: Hit?) -> Bool {
+        guard hit == nil, showsHandles, grabbing == nil else { return false }
+        showsHandles = false
+        return true
     }
 
     // MARK: Gestures
@@ -147,6 +176,19 @@ extension DeskMatElement {
         }
     }
 
+    /// A gesture on the keyboard, which lies on the cloth: a press (⌥ shows the handles) and a drag go to the cloth
+    /// under it, which the drag carries (⌥: slides) with the keyboard riding along.
+    func handleFromKeyboard(_ gesture: Gesture, _ hit: Hit) -> GestureResponse {
+        guard isLive else { return .pass }
+        return handle(gesture, Hit(element: id, part: "mat", rect: bounds))
+    }
+
+    /// The keyboard's context menu: the mat's (Peek Under aims near the keyboard).
+    func menuFromKeyboard(_ hit: Hit) -> MenuSpec? {
+        lastHitPoint = SIMD2(Float(hit.rect.midX), Float(hit.rect.midY))
+        return menu(Hit(element: id, part: "mat", rect: bounds))
+    }
+
     /// The particle drawn at canvas point `p`, else the one nearest it on screen (within a few px).
     func particle(at p: SIMD2<Float>) -> Int? {
         let o = owner(at: Self.pixel(p - 0.5))
@@ -166,37 +208,44 @@ extension DeskMatElement {
         return m
     }
 
-    /// A pile the cloth was lifted off: picked like a desk pile (select, open, carry).
+    /// A pile the cloth was lifted off: its front (top) token is picked out, as from under a rug: a press selects it,
+    /// a double-click opens it, a drag carries it alone; with ⇧ (or ⌥ for a drag) the whole pile.
     private func handlePile(_ gesture: Gesture, _ id: PileID) -> GestureResponse {
-        guard let b = billboards[id] else { return .pass }
+        guard let b = billboards[id], let top = b.keys.first else { return .pass }
         let selection = context.selection
-        let keys = Set(b.keys)
+        let all = Set(b.keys)
         switch gesture {
         case let .press(_, mods):
-            if mods.contains(.command), keys.isSubset(of: selection.keys) {
-                selection.set(selection.keys.subtracting(keys))
-            } else if mods.contains(.command) || mods.contains(.shift) {
-                selection.set(selection.keys.union(keys), primary: b.keys.first)
-            } else if !keys.isSubset(of: selection.keys) {
-                selection.set(keys, primary: b.keys.first)
+            if mods.contains(.command) {
+                if selection.contains(top) {
+                    selection.set(selection.keys.subtracting([top]))
+                } else {
+                    selection.set(selection.keys.union([top]), primary: top)
+                }
+            } else if mods.contains(.shift) {
+                selection.set(selection.keys.union(all), primary: top)
+            } else if !selection.contains(top) {
+                selection.set([top], primary: top)
             }
             context.screen?.refreshIfSelectionChanged()
             return .handled
         case let .click(_, mods, count):
             if count == 2 {
-                context.dispatch(.requestOpen(b.keys))
+                context.dispatch(.requestOpen([top]))
             } else if count == 1, mods.isEmpty {
-                selection.set(keys, primary: b.keys.first)
+                selection.set([top], primary: top)
                 context.screen?.refreshIfSelectionChanged()
             }
             return .handled
-        case let .dragBegan(from, at, _):
-            let origins = b.keys.indices.map { i -> ArtPoint in
+        case let .dragBegan(from, at, mods):
+            let whole = mods.contains(.shift) || mods.contains(.option)
+            let keys = whole ? b.keys : [top]
+            let origins = keys.indices.map { i -> ArtPoint in
                 let o = b.stack.iconOrigins[min(i, b.stack.iconOrigins.count - 1)]
                 return ArtPoint(b.stackOrigin.x + o.x, b.stackOrigin.y + o.y)
             }
             hub?.bodies.thaw(near: b.position)
-            let session = CarrySession(keys: b.keys, origins: origins, grab: from, context: context)
+            let session = CarrySession(keys: keys, origins: origins, grab: from, context: context)
             session.moved(to: at, mods: [])
             hub?.syncBodies()
             rasterDirty = true
@@ -223,7 +272,7 @@ extension DeskMatElement {
         var info = MenuSpec.MatInfo()
         let angle = cloth.matFrame().angle, size = cloth.restSize
         let step: Float = 15 * .pi / 180
-        info.folded = !isFlat && ClothMetrics.foldedCount(cloth) > 0
+        info.folded = ClothMetrics.foldedCount(cloth) > 0
         info.canRotateCW = cloth.canTransform(size: size, angle: angle - step)
         info.canRotateCCW = cloth.canTransform(size: size, angle: angle + step)
         info.canStraighten = cloth.canTransform(size: size, angle: 0)
@@ -255,7 +304,7 @@ extension DeskMatElement {
     /// A mat command from its menu or the status item.
     func perform(_ command: MatCommand) {
         guard isLive else { return }
-        if cloth.grabMode != nil { cloth.endGrab() }
+        if cloth.grabMode != nil { cloth.endGrab(immediately: true) }
         let angle = cloth.matFrame().angle
         switch command {
         case .smooth: cloth.smooth()
@@ -276,10 +325,10 @@ extension DeskMatElement {
         return near.flatMap { simd_length($0 - p) <= 40 ? $0 : nil } ?? p
     }
 
-    /// Peek Under: the edge nearest desk point `p` lifts for 1.5 s (not in `matMode=flat`).
-    func peek(at p: SIMD2<Float>) {
+    /// Peek Under: the edge nearest desk point `p` turns up for `seconds` (1.5 s by default; not in `matMode=flat`).
+    func peek(at p: SIMD2<Float>, seconds: Float? = nil) {
         guard !isFlat else { return }
-        cloth.peekUnder(p)
+        cloth.peekUnder(p, seconds: seconds)
         rasterDirty = true
     }
 
@@ -332,6 +381,9 @@ extension DeskMatElement {
 final class MatGrab: DragController {
     unowned let mat: DeskMatElement
     private(set) var isFinished = false
+    /// The modifiers of the last move: a release reports the keys up at that moment (⇧ let go a hair early must not
+    /// unsnap a turn).
+    private var lastMods: InputEvent.Modifiers = []
 
     init(mat: DeskMatElement) {
         self.mat = mat
@@ -341,13 +393,14 @@ final class MatGrab: DragController {
 
     func moved(to p: SIMD2<Float>, mods: InputEvent.Modifiers) {
         guard !isFinished else { return }
+        lastMods = mods
         mat.cloth.moveGrab(to: mat.core(p), modifiers: DeskMatElement.clothMods(mods))
         mat.hub?.bodies.thaw(near: mat.plane(canvas: p))
     }
 
     func ended(at p: SIMD2<Float>, velocity: SIMD2<Float>, mods: InputEvent.Modifiers) {
         guard !isFinished else { return }
-        moved(to: p, mods: mods)
+        moved(to: p, mods: lastMods)
         finish()
     }
 

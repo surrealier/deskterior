@@ -188,6 +188,50 @@
       joins such a bump slides in with them (`ClearDeskPlan.nudges`, part of the same undo).
     - **Reveal pop.** A pile the cloth comes off pops up over two frames (a third, two thirds, then full height) wherever
       it is drawn: in the mat's raster, or among the desk's piles (`PhysicsHub.revealPop`). Not with Reduce Motion.
+18. **The desk mat after its review (M9).** These refine Errata 10 and 17 and supersede 17's bump light.
+    - **Bumps as drawn.** `BumpShading` renders the bump field itself in the 2:1 view (each screen column marched front to
+      back over felt at `H + 1`): the crest a level up, the left flank lit, the front slope felt-coloured, the right flank
+      dark, in whole levels dithered only in a narrow band; an unbroken 1-px outline along the back rim where the mound
+      hides the felt behind it, and a 1-px contact line at its front base. Within a bump's reach (+6 px) the coarse mesh
+      draws no creases there.
+    - **Going under.** A pile within 8 plane px of the cloth's edge (or under resting cloth, not yet covered) is drawn
+      in the mat's raster: columns whose foot lies under the cloth are gone, those near the edge squash toward the desk.
+      When it is covered, no squash sprite plays (a puff instead), the hem lifts 3 px there and falls back
+      (`ClothSim.liftHem`), and the bump slides in from the edge to the pile's rest over 10 frames, growing
+      (`PileInput.scale`). Clear the Desk's stand-ins do the same at the edge and grow their bumps as they slide.
+    - **One tuck rule.** `ClearDeskPlan.tuckSpot`: `inset(count:)` inside the edges, all 5 footprint samples covered,
+      clear of `keyboardClearance` (the keyboard plus 10 px in x and 8 in d), else the nearest such spot. Landings,
+      cover changes and Clear the Desk all use it, and the scene never moves a pile again after the journaled move that
+      sent it under. A landing joins a covered pile within its bump's reach (at least 10 px); the pile slides in for its
+      new count in the same journaled move (`DeskAction.tuckUnderMat`, "Move"). A drop on the keyboard lands beside it.
+      A mat that comes to rest with the keyboard over a covered pile slides that pile out to the nearest clear spot.
+    - **Carry.** The grabbed patch chases the pointer at 300 px/s at most and the cloth bends at a tenth of its
+      compliance while carried; a release lets the patch catch up first (Esc and menus do not wait). Whatever a carry
+      flipped over lays back on release: only a peel leaves a fold.
+    - **Peel and peek.** A peel held still for 0.3 s before it is let go stays propped for 1.5 s; a peel lays back over 16
+      frames (it still folds down over 8). Peek Under turns up a fold-guided tongue whose crease curves back into the
+      edge (to 0.62π; a back edge's lies over, 0.94π), holds it and turns it back down flat where it lay; it reaches
+      less far rather than over the keyboard's weighted particles. Show on Desk holds its peek 2.8 s.
+    - **Show on Desk** for a token in a desk pile waits up to 3 s for it to come on show, selects it and blinks its pile
+      for 2 s. Flat cloth (`matMode=flat`, Reduce Motion) cannot lift: the covered pile is shown over it for as long.
+    - **Settle** (quit, hard sleep, a rebuild) mid-motion finishes the motion at rest (`ClothSim.settleNow`): a grab
+      lets go, whatever a script holds up (a peek, a propped peel) skips its hold, a resize jumps to its end, and the
+      cloth steps unrendered until its script ends and it sleeps (at most 240 frames), then lies down over the bumps of
+      what it covers before its pose commits. Entering flat mode lays any fold back at once; Unfold stays available.
+    - **After a peek** a short pass (8 frames) lays the edge it lifted exactly flat where it lay.
+    - **Creases.** A carry faster than 90 px/s leaves a ridge across its trailing end, up to 5 px at 300 px/s, with the
+      material it takes drawn in so it stays (O10); `mat.wrinkled` (demos) also counts one crease 1 px high. For a
+      second after a carry, a corner it flips over lays back.
+    - **Saved particles** more than 24 px off the desk, with a grid edge stretched past 1.5× rest, or with over a
+      quarter of them squeezed below half, are malformed: a fresh mat is laid.
+    - **Input.** A drag on the keyboard carries the mat (⌥ slides it) and its right-click is the mat's menu. From a pile
+      under lifted cloth a press, drag or double-click takes its front token (⇧, or ⌥ for a drag: the whole pile). ⌥
+      over the mat shows the handles without a move (`flagsChanged` → `DeskElement.modifiersChanged`); the mat's
+      tooltip names its gestures. A transform grab keeps the ⇧ it began with, and a release uses the last move's
+      modifiers. A menu turn counts only when it moves a corner 2 px. The scroll-broom starts behind a pile it would
+      overlap.
+    - **Odds.** "TIDY!" pops over the monitor's dark glass. At rest the keyboard is drawn at its pose's own pixel, as a
+      relaunch draws it.
 
 ---
 

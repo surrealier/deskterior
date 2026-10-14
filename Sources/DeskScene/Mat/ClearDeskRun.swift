@@ -4,10 +4,11 @@ import SpriteKit
 /// Clear the Desk as the scene plays it (DESIGN §2.2 E16). The model already holds the result (`ClearDeskPlan`
 /// applied by the reducer as one undo); this only shows how it got there, on the plan's clock:
 ///
-/// - the brush leaves its spot and pushes each loose pile to the mat's edge, where the pile slides under, flattening as
-///   it goes, with a puff of dust;
+/// - the brush leaves its spot and pushes each loose pile to the mat's edge, where the edge slides over it (its card is
+///   drawn in the mat's raster there, clipped where the cloth lies over it), the hem rides up and its bump grows in
+///   from the edge, with a puff of dust;
 /// - floor stacks hop up onto the mat's edge one after another and tuck under the same way;
-/// - then "TIDY!" pops over the mat and the brush is back where it lay.
+/// - then "TIDY!" pops over the monitor's dark glass and the brush is back where it lay.
 ///
 /// Until a pile is under, the mat holds it (`holds`): no body, no bump, no billboard; its stand-in here draws it. With
 /// Reduce Motion everything arrives at once with a puff. Hard sleep finishes it (`finish`).
@@ -25,17 +26,16 @@ final class ClearDeskRun {
     final class Ghost {
         let node = SKSpriteNode()
         let stack: PileArt.Stack
-        /// Squashed frames by flattening step (cached).
-        var flattened: [Int: PixelBuffer] = [:]
-        var shown: (origin: ArtPoint, step: Int)?
+        /// Where it was last drawn (canvas top-left).
+        var shown: ArtPoint?
+        /// The hem has ridden over it (once, as it reaches the edge).
+        var lifted = false
 
         init(stack: PileArt.Stack) {
             self.stack = stack
         }
     }
 
-    /// Steps of flattening as a pile slides under the edge.
-    static let flattenSteps = 4
     /// A floor stack's hop rises this far over the higher end (core px).
     static let hopHeight: Float = 34
     /// Flights from the floor draw above the apron and below the chair, as other tosses do.
@@ -86,6 +86,8 @@ final class ClearDeskRun {
     /// The model moved on (an undo while the pass plays): the stand-ins go without a word.
     func cancel() {
         guard !isDone else { return }
+        mat.ghostCards.removeAll()
+        mat.ghostBumps.removeAll()
         for id in pending { mat.arrived(id) }
         pending.removeAll()
         tidied = true
@@ -109,6 +111,8 @@ final class ClearDeskRun {
     func tearDown() {
         for g in ghosts.values { g.node.removeFromParent() }
         ghosts.removeAll()
+        mat.ghostCards.removeAll()
+        mat.ghostBumps.removeAll()
     }
 
     private func tidy() {
@@ -116,8 +120,9 @@ final class ClearDeskRun {
         tidied = true
         isDone = true
         mat.brush?.scripted = nil
-        let r = mat.bounds
-        let top = ArtPoint(r.midX, max(r.minY - 2, 14))
+        // Over the monitor's dark glass (Clear the Desk turned it off), where its green reads.
+        let glass = mat.context.layout.rect(CoreLayout.screen)
+        let top = ArtPoint(glass.midX, glass.midY + 10)
         mat.context.fx.pop(.tidy, at: top)
         if !mat.context.reduceMotion {
             mat.context.fx.sparkle(at: ArtPoint(top.x - 24, top.y - 6))
@@ -128,6 +133,8 @@ final class ClearDeskRun {
     private func arrive(_ id: PileID) {
         guard pending.remove(id) != nil else { return }
         if let g = ghosts.removeValue(forKey: id) { g.node.removeFromParent() }
+        mat.ghostCards[id] = nil
+        mat.ghostBumps[id] = nil
         if let hub = mat.hub, let at = plan.sweeps.first(where: { $0.pile == id })?.to
             ?? plan.tucks.first(where: { $0.pile == id })?.edge {
             mat.context.fx.puff(at: DeskMatElement.pixel(hub.canvas(plane: at)))
@@ -140,6 +147,7 @@ final class ClearDeskRun {
     private func place() {
         guard let hub = mat.hub else { return }
         if let p = plan.brushPosition(at: t) { mat.brush?.scripted = p }
+        var bumpsMoved = false
         for sweep in plan.sweeps where pending.contains(sweep.pile) {
             guard let g = ghosts[sweep.pile] else { continue }
             if t >= sweep.under {
@@ -147,8 +155,12 @@ final class ClearDeskRun {
                 continue
             }
             let p = ClearDeskPlan.position(of: sweep, at: t)
-            let u = t <= sweep.atEdge ? 0 : (t - sweep.atEdge) / max(sweep.under - sweep.atEdge, 1e-3)
-            show(g, foot: hub.canvas(plane: p), flatten: u, z: DeskPilesElement.z(d: p.y))
+            if t < sweep.atEdge {
+                pushed(sweep.pile, g, at: p, hub: hub)
+            } else {
+                bumpsMoved = slidUnder(sweep.pile, g, at: p, edge: sweep.edge,
+                                       u: (t - sweep.atEdge) / max(sweep.under - sweep.atEdge, 1e-3)) || bumpsMoved
+            }
         }
         for tuck in plan.tucks where pending.contains(tuck.pile) {
             guard let g = ghosts[tuck.pile] else { continue }
@@ -167,36 +179,53 @@ final class ClearDeskRun {
                 // A parabola through the floor, the peak and the edge (vertex at the peak's time).
                 let y = (1 - u) * (1 - u) * a + 2 * u * (1 - u) * (2 * peak - (a + c) / 2) + u * u * c
                 let x = floorPt.x + (edge.x - floorPt.x) * u
-                show(g, foot: SIMD2(x, y), flatten: 0, z: Self.flightZ)
+                show(g, foot: SIMD2(x, y), z: Self.flightZ)
             } else {
                 let u = (t - tuck.land) / max(tuck.under - tuck.land, 1e-3)
                 let p = tuck.edge + (tuck.to - tuck.edge) * u
-                show(g, foot: hub.canvas(plane: p), flatten: u, z: DeskPilesElement.z(d: p.y))
+                bumpsMoved = slidUnder(tuck.pile, g, at: p, edge: tuck.edge, u: u) || bumpsMoved
             }
+        }
+        if bumpsMoved { mat.restampBumps() }
+    }
+
+    /// A stand-in pushed along the desk: a sprite on top, or, once the mat's edge reaches it, a card in the mat's
+    /// raster that the edge slides over.
+    private func pushed(_ id: PileID, _ g: Ghost, at p: SIMD2<Float>, hub: PhysicsHub) {
+        if mat.isAtEdge(p) {
+            g.node.isHidden = true
+            mat.ghostCards[id] = (g.stack, p)
+            mat.rasterDirty = true
+        } else {
+            mat.ghostCards[id] = nil
+            g.node.isHidden = false
+            show(g, foot: hub.canvas(plane: p), z: DeskPilesElement.z(d: p.y))
         }
     }
 
-    /// Draws a ghost with its base at canvas `foot`, flattened by `flatten` (0…1) as it slides under the cloth.
-    private func show(_ g: Ghost, foot: SIMD2<Float>, flatten: Float, z: CGFloat) {
-        let step = min(Self.flattenSteps, Int((max(0, flatten) * Float(Self.flattenSteps)).rounded(.down)))
-        let image: PixelBuffer
-        if step == 0 {
-            image = g.stack.image
-        } else if let cached = g.flattened[step] {
-            image = cached
-        } else {
-            let base = g.stack.image
-            let h = max(2, base.height * (Self.flattenSteps + 1 - step) / (Self.flattenSteps + 1))
-            image = PileArt.reshaped(base, to: ArtSize(base.width + step, h))
-            g.flattened[step] = image
+    /// A stand-in gone under the edge (`u` of the way to its rest): hidden by the cloth, the hem riding up over it once,
+    /// its bump growing as it slides in. True: the bumps moved.
+    private func slidUnder(_ id: PileID, _ g: Ghost, at p: SIMD2<Float>, edge: SIMD2<Float>, u: Float) -> Bool {
+        g.node.isHidden = true
+        mat.ghostCards[id] = nil
+        if !g.lifted {
+            g.lifted = true
+            mat.cloth.liftHem(near: edge, height: DeskMatElement.hemLift)
         }
-        let baseX = image.width * g.stack.base.x / max(g.stack.image.width, 1)
-        let below = g.stack.image.height - g.stack.base.y
-        let origin = ArtPoint(Int(foot.x.rounded()) - baseX, Int(foot.y.rounded()) - image.height + below)
+        let e = min(1, max(0, u))
+        mat.ghostBumps[id] = (p, 0.35 + 0.65 * e * e * (3 - 2 * e))
+        mat.rasterDirty = true
+        return true
+    }
+
+    /// Draws a ghost with its base at canvas `foot` (on the desk, or in flight from the floor).
+    private func show(_ g: Ghost, foot: SIMD2<Float>, z: CGFloat) {
+        let image = g.stack.image
+        let origin = ArtPoint(Int(foot.x.rounded()) - g.stack.base.x, Int(foot.y.rounded()) - g.stack.base.y)
         g.node.zPosition = z
-        guard g.shown?.origin != origin || g.shown?.step != step else { return }
-        g.shown = (origin, step)
-        g.node.texture = TextureFactory.texture(image)
+        guard g.shown != origin else { return }
+        if g.shown == nil { g.node.texture = TextureFactory.texture(image) }
+        g.shown = origin
         mat.context.space.place(g.node, at: ArtRect(origin: origin, size: image.size))
     }
 }

@@ -175,11 +175,23 @@ struct ClothRasterTests {
         #expect(showsUnderside)
     }
 
+    /// The front edge peeled up and held (cloth standing over the bare desk it came off).
+    static func lifted() -> ClothScene {
+        var scene = Self.flat()
+        let edge = scene.cloth.index(col: 17, row: 0)
+        let c0 = ClothFixtures.screen(scene.cloth, edge)
+        scene.cloth.beginGrab(particle: edge, cursor: c0)
+        for f in 1...12 {
+            scene.cloth.moveGrab(to: c0 + SIMD2(0, -2 * Float(f)))
+            scene.frames(1)
+        }
+        scene.frames(8)
+        return scene
+    }
+
     @Test("Cloth lifted over the bare desk casts an opaque shadow")
     func shadow() {
-        var scene = Self.flat()
-        scene.cloth.peekUnder(SIMD2(256, 16))
-        scene.frames(20)
+        let scene = Self.lifted()
         let raster = scene.render()
         let shadow = MatPattern.felt.deskShadow.color
         let count = raster.image.pixels.filter { $0 == shadow }.count
@@ -300,9 +312,7 @@ struct ClothRasterTests {
     @Test("A revealed pile under lifted cloth is shaded; billboards need a non-negative id")
     func pileShadowAndIDs() {
         #expect(PileBillboard(id: -1, sprite: ClothFixtures.pileSprite, position: .zero) == nil)
-        var scene = Self.flat()
-        scene.cloth.peekUnder(SIMD2(256, 16))
-        scene.frames(20)
+        let scene = Self.lifted()
         var raster = DeskSurfaceRaster()
         raster.render(cloth: scene.cloth, piles: [
             PileBillboard(id: 1, sprite: ClothFixtures.pileSprite, position: SIMD3(256, 12, 0))!,

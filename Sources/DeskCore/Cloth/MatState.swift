@@ -87,14 +87,16 @@ extension ClothSim {
     }
 
     /// Restores the cloth alone (asleep) from its persisted form over `bumps`, which must already hold the bumps of
-    /// the piles it covers (prefer `restore(state:piles:)`); nil when the state is malformed or has no particles yet. Positions are clamped
-    /// to the desk bounds.
+    /// the piles it covers (prefer `restore(state:piles:)`); nil when the state is malformed or has no particles yet.
+    /// Positions are clamped to the desk bounds. Particles no saved mat could have (`isPlausible`: far off the desk,
+    /// or a mesh torn apart or collapsed) are malformed too, so a damaged file lays a fresh mat, never a wreck.
     public init?(state: MatState, bumps: BumpField? = nil, params: ClothParams = .standard) {
         guard state.grid.count == 2, let particles = state.particles else { return nil }
         let cols = state.grid[0], rows = state.grid[1]
         guard cols >= 3, rows >= 3, cols * rows <= 4096,
               state.size[0].isFinite, state.size[1].isFinite, state.size[0] > 0, state.size[1] > 0,
-              var pos = MatState.decodeParticles(particles, count: cols * rows)
+              var pos = MatState.decodeParticles(particles, count: cols * rows),
+              Self.isPlausible(pos, cols: cols, rows: rows, size: SIMD2(state.size[0], state.size[1]), params: params)
         else { return nil }
         for i in pos.indices {
             pos[i].x = min(max(pos[i].x, params.xRange.lowerBound), params.xRange.upperBound)
@@ -103,5 +105,33 @@ extension ClothSim {
         }
         self.init(positions: pos, cols: cols, rows: rows, size: SIMD2(state.size[0], state.size[1]), bumps: bumps,
                   params: params)
+    }
+
+    /// Whether saved particle positions can be a mat: every one within 24 px of the desk bounds (z within the
+    /// height limit), no grid edge stretched past 1.5× its rest length, and at most a quarter of them squeezed below
+    /// half of it (folds and wrinkles squeeze a few; a collapsed mesh squeezes them all).
+    static func isPlausible(_ pos: [SIMD3<Float>], cols: Int, rows: Int, size: SIMD2<Float>,
+                            params: ClothParams) -> Bool {
+        let slack: Float = 24, xr = params.xRange, dr = params.dRange
+        for p in pos {
+            guard p.x >= xr.lowerBound - slack, p.x <= xr.upperBound + slack, p.y >= dr.lowerBound - slack,
+                  p.y <= dr.upperBound + slack, p.z >= -slack, p.z <= params.zMax + slack else { return false }
+        }
+        let su = size.x / Float(cols - 1), sv = size.y / Float(rows - 1)
+        var squeezed = 0, edges = 0
+        func check(_ a: Int, _ b: Int, _ rest: Float) -> Bool {
+            let l = length3(pos[a] - pos[b])
+            if l < rest / 2 { squeezed += 1 }
+            edges += 1
+            return l <= rest * 1.5 + 1
+        }
+        for r in 0..<rows {
+            for c in 0..<cols {
+                let i = r * cols + c
+                if c + 1 < cols, !check(i, i + 1, su) { return false }
+                if r + 1 < rows, !check(i, i + cols, sv) { return false }
+            }
+        }
+        return squeezed * 4 <= edges
     }
 }

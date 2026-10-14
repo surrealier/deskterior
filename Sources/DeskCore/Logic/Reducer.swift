@@ -212,7 +212,7 @@ public enum Reducer {
         case .dropOnDesk, .dropOnFloor, .tipOver, .standUp:
             return reducePhysics(&s, a, env)
         // MARK: mat
-        case .mat, .brushSettled:
+        case .mat, .brushSettled, .tuckUnderMat:
             return reduceMat(&s, a, env)
         }
     }

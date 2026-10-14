@@ -384,9 +384,14 @@ final class PhysicsHub {
         let live = unmoved(keys, since: origins)
         guard !live.isEmpty else { return }
         // MARK: mat
+        // Joining a covered pile slides it in as far as its taller bump needs, in the same journaled move.
         let tuck = matLanding(aim, live.count)
-        if let id = tuck?.pile, let at = s.piles[id] {
-            commitDesk(live, pile: id, at: at, journaled: journaled)
+        if let tuck, let id = tuck.pile, let at = s.piles[id] {
+            if journaled && tuck.at != at {
+                dispatch(.tuckUnderMat(Array(live.reversed()), pile: id, at: tuck.at))
+            } else {
+                commitDesk(live, pile: id, at: tuck.at, journaled: journaled)
+            }
             return
         }
         let point = tuck?.at ?? aim

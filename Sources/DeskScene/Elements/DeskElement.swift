@@ -65,6 +65,10 @@ public protocol DeskElement: AnyObject {
     func step(_ dt: Double)
     /// Hard sleep: jump every animation to its final frame.
     func settle()
+    // MARK: mat
+    /// Modifier keys went down or up (or the hover moved on) while the pointer rests on `hit` (⌥ over the mat shows
+    /// its handles). True when something visible changed.
+    func modifiersChanged(_ mods: InputEvent.Modifiers, _ hit: Hit) -> Bool
 }
 
 extension DeskElement {
@@ -78,6 +82,8 @@ extension DeskElement {
     public var shownTokens: Set<TokenKey> { [] }
     public func accessibilityItems() -> [AXItem] { [] }
     public var needsFrames: Bool { false }
+    // MARK: mat
+    public func modifiersChanged(_ mods: InputEvent.Modifiers, _ hit: Hit) -> Bool { false }
     public func step(_ dt: Double) {}
     public func settle() {}
 }

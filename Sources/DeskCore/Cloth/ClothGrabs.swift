@@ -115,6 +115,20 @@ struct GrabState {
     var carryGain: [Float] = []
     var carryActivity: Float = 1
     var lastCarryTarget: SIMD2<Float>?
+    /// Where the carried patch is now: it chases the pointer at `carrySpeed`, and a released carry finishes the chase
+    /// (`releasing`) before it lets go (`caughtUp`).
+    var carryChase: SIMD2<Float>?
+    var releasing = false
+    var caughtUp = false
+    /// How fast the patch went lately (px/s, decaying), for the crease a fast carry leaves.
+    var recentSpeed: Float = 0
+    /// Underside-up particles when the carry started: one that flipped more lays them back on release.
+    var foldedAtStart = 0
+    /// Modifiers kept for the whole grab whatever later events say (⇧ snapping a transform).
+    var latched: ClothGrabModifiers = []
+    /// Frames the cursor has held still, and where it was last frame (a peel let go after holding still stays propped).
+    var stillFrames = 0
+    var lastCursorSeen: SIMD2<Float>?
     var transform: TransformGrab?
 }
 
@@ -164,8 +178,12 @@ extension FoldSpec {
 
 enum ScriptState {
     case smooth(frame: Int, corners: [Int32], starts: [SIMD3<Float>], outward: [SIMD2<Float>])
-    /// Turns a held fold to `toAngle` (π: folded flat; 0: laid back) over `frames`, then lets go.
-    case layFold(frame: Int, frames: Int, spec: FoldSpec, toAngle: Float, pins: [Int32])
+    /// Holds a fold as it is for `hold` frames (a propped peel), then turns it to `toAngle` (π: folded flat; 0: laid
+    /// back) over `frames`, then lets go.
+    case layFold(frame: Int, frames: Int, spec: FoldSpec, toAngle: Float, pins: [Int32], hold: Int)
+    /// Peek Under: a tongue of the edge turns up about `spec`'s curved line to `angle` over `rise` frames, stays for
+    /// `hold`, and turns back down to lie flat over `rise` more; `pins` (its edge) are held to the fold.
+    case peekFold(frame: Int, rise: Int, hold: Int, spec: FoldSpec, angle: Float, pins: [Int32])
     case path(frame: Int, frames: Int, holdFrames: Int, indices: [Int32], from: [SIMD3<Float>], to: [SIMD3<Float>],
               arc: [Float])
 }
@@ -241,6 +259,7 @@ extension ClothSim {
         if modifiers.contains(.option) {
             if case .corner(let k) = region {
                 g.mode = .transform
+                g.latched = modifiers.intersection([.option, .shift])
                 let anchorCorner = (k + 2) % 4
                 let a = parts[cornerIndices[anchorCorner]].x, h = parts[particle].x
                 g.transform = TransformGrab(
@@ -265,24 +284,37 @@ extension ClothSim {
         wake()
         g.cursor = cursor
         g.maxTravel = max(g.maxTravel, length2(cursor - g.startCursor))
-        g.modifiers = modifiers.union(g.modifiers.intersection(.option))
+        g.modifiers = modifiers.union(g.modifiers.intersection(.option)).union(g.latched)
         grab = g
         if g.mode == .pending { decideMode() }
         if grab?.mode == .transform { updateTransformTarget() }
     }
 
-    /// Ends the grab. Carry keeps `releaseKeep` of the velocity; a tug's corner falls where it is. A guided peel is
-    /// finished over `layDownFrames`: a deliberate fold (turned past `foldKeepDegrees` with the held point carried
-    /// past the middle of the mat) is laid down folded, straight, and stays folded; anything less lays back flat
-    /// (O7: lifting part of the mat to reach a pile never leaves it dog-eared). An unpeel
+    /// Ends the grab. A carry first lets its patch catch up with where the pointer let go (it chases at
+    /// `carrySpeed`; `immediately` skips that), then keeps `releaseKeep` of the velocity, and lays back any part of
+    /// the mat that flipped over while carried (a deliberate fold is a peel's, never a carry's). A tug's corner falls
+    /// where it is. A guided peel is finished: a deliberate fold (turned past `foldKeepDegrees` with the held point
+    /// carried past the middle of the mat) is laid down folded over `layDownFrames`, straight, and stays folded;
+    /// anything less lays back flat over `layBackFrames` (O7: lifting part of the mat to reach a pile never leaves it
+    /// dog-eared), after staying propped for `proppedFrames` when it was held still before letting go. An unpeel
     /// finishes whichever way it is nearer: open past vertical lays flat, otherwise it folds back down.
-    public mutating func endGrab() {
-        guard let g = grab else { return }
+    public mutating func endGrab(immediately: Bool = false) {
+        guard var g = grab else { return }
         wake()
-        var lay: (FoldSpec, Float)?
+        if g.mode == .carry, !immediately, !g.releasing, !g.caughtUp, let chase = g.carryChase,
+           length2(carryGoal(g) - chase) > 1 {
+            g.releasing = true
+            grab = g
+            return
+        }
+        var lay: (spec: FoldSpec, to: Float, frames: Int, hold: Int)?
+        var unflip = false
         switch g.mode {
         case .carry:
             for i in parts.indices { parts[i].v *= params.releaseKeep }
+            unflip = g.foldedAtStart == 0 && ClothMetrics.foldedCount(self) > 0
+            if g.foldedAtStart == 0 { postCarry = (params.unflipFrames, 0) }
+            crease(after: g)
         case .peel:
             for pin in pins { parts[Int(pin.index)].v = .zero }
             if var fold = g.lastFold, let target = g.lastTarget {
@@ -290,11 +322,16 @@ extension ClothSim {
                     && pastMiddle(SIMD2(target.x, target.y), frame: fold.frame, region: g.region)
                 // A kept fold settles with a straight crease (a tapered one cannot lie flat without stretching).
                 if keep { fold.spread = .infinity }
-                lay = (fold, keep ? .pi : 0)
+                let propped = !keep && g.stillFrames >= params.propStillFrames
+                lay = (fold, keep ? .pi : 0, keep ? params.layDownFrames : params.layBackFrames,
+                       propped ? params.proppedFrames : 0)
             }
         case .unpeel:
             for pin in pins { parts[Int(pin.index)].v = .zero }
-            if let fold = g.lastFold { lay = (fold, fold.angle > .pi / 2 ? .pi : 0) }
+            if let fold = g.lastFold {
+                let folds = fold.angle > .pi / 2
+                lay = (fold, folds ? .pi : 0, folds ? params.layDownFrames : params.layBackFrames, 0)
+            }
         case .tug:
             for pin in pins { parts[Int(pin.index)].v = .zero }
         default:
@@ -305,9 +342,85 @@ extension ClothSim {
         carry = nil
         clearGuide()
         grab = nil
-        if let (spec, to) = lay {
-            script = .layFold(frame: 0, frames: params.layDownFrames, spec: spec, toAngle: to, pins: held)
+        if let lay {
+            script = .layFold(frame: 0, frames: max(1, lay.frames), spec: lay.spec, toAngle: lay.to, pins: held,
+                              hold: lay.hold)
+        } else if unflip {
+            unflipFolds()
         }
+    }
+
+    /// A fast carry leaves a crease (O10): felt dragged against friction keeps a ridge across its trailing end, as
+    /// high as the carry was fast (`creaseHeight` at `carrySpeed`, nothing at `creaseSpeed`), with the material it
+    /// takes drawn in behind it so it stays (a slow carry leaves the mat flat). Not in `flatMode`.
+    mutating func crease(after g: GrabState) {
+        guard !params.flatMode, g.recentSpeed > params.creaseSpeed else { return }
+        let travel = carryGoal(g) - SIMD2(g.hitStart.x, g.hitStart.y)
+        let l = length2(travel)
+        guard l > 4 else { return }
+        let m = travel / l, hit = SIMD2(g.hitStart.x, g.hitStart.y) + travel
+        let span = max(1, params.carrySpeed - params.creaseSpeed)
+        let h = params.creaseHeight * min(1, (g.recentSpeed - params.creaseSpeed) / span)
+        let half: Float = 6, take = 2 * (half * half + h * h).squareRoot() - 2 * half
+        var behind: Float = 0
+        for p in parts { behind = min(behind, dot2(SIMD2(p.x.x, p.x.y) - hit, m)) }
+        guard behind < -30 else { return }
+        let ridge = behind + max(14, -behind * 0.3)
+        for i in parts.indices where !parts[i].weighted {
+            let at = dot2(SIMD2(parts[i].x.x, parts[i].x.y) - hit, m)
+            guard at < ridge + half else { continue }
+            let pull = at <= ridge - half ? take : take * (ridge + half - at) / (2 * half)
+            let lift = h * max(0, 1 - abs(at - ridge) / half)
+            parts[i].x.x += m.x * pull
+            parts[i].x.y += m.y * pull
+            parts[i].x.z = max(parts[i].x.z, parts[i].floorOffset + lift)
+            parts[i].p = parts[i].x
+        }
+        wake()
+    }
+
+    /// Where a carry's patch is headed: the grab-start pose moved by the drag, kept on the desk.
+    func carryGoal(_ g: GrabState) -> SIMD2<Float> {
+        let proj = params.projection
+        let move = g.cursor - g.startCursor
+        var delta = SIMD2(move.x, -move.y / proj.k)
+        delta.x = min(max(delta.x, min(params.xRange.lowerBound - g.carryLo.x, 0)),
+                      max(params.xRange.upperBound - g.carryHi.x, 0))
+        delta.y = min(max(delta.y, min(params.dRange.lowerBound - g.carryLo.y, 0)),
+                      max(params.dRange.upperBound - g.carryHi.y, 0))
+        return SIMD2(g.hitStart.x, g.hitStart.y) + delta
+    }
+
+    /// Lays back what a carry flipped: every underside-up particle and its neighbours swing to their flat place
+    /// in the face-up layer's frame (as Unfold does, over `unfoldSeconds`), leaving the carry's wrinkles elsewhere.
+    mutating func unflipFolds() {
+        updateLayering()
+        let up = (0..<count).filter { !isFolded($0) }
+        guard up.count >= 3 else { return }
+        let frame = fitFrame(up)
+        var near = Set<Int>()
+        for i in 0..<count where isFolded(i) {
+            let c = i % cols, r = i / cols
+            for dr in -1...1 {
+                for dc in -1...1 {
+                    let cc = c + dc, rr = r + dr
+                    if cc >= 0, cc < cols, rr >= 0, rr < rows { near.insert(rr * cols + cc) }
+                }
+            }
+        }
+        guard !near.isEmpty else { return }
+        var indices: [Int32] = [], from: [SIMD3<Float>] = [], to: [SIMD3<Float>] = [], arc: [Float] = []
+        for i in near.sorted() where !parts[i].weighted {
+            let target = frame.point(uv[i]), cur = parts[i].x
+            indices.append(Int32(i))
+            from.append(cur)
+            to.append(SIMD3(target.x, target.y, params.thickness))
+            arc.append(length2(SIMD2(cur.x, cur.y) - target) / 2)
+        }
+        guard !indices.isEmpty else { return }
+        wake()
+        let frames = max(1, Int((params.unfoldSeconds * 60).rounded()))
+        script = .path(frame: 0, frames: frames, holdFrames: 0, indices: indices, from: from, to: to, arc: arc)
     }
 
     /// Whether desk point `p` lies past the mat's middle as seen from the grabbed edge or corner (O8): beyond
@@ -372,6 +485,8 @@ extension ClothSim {
 
     private mutating func startCarry() {
         guard var g = grab else { return }
+        g.foldedAtStart = ClothMetrics.foldedCount(self)
+        g.carryChase = SIMD2(g.hitStart.x, g.hitStart.y)
         g.carryRest = parts.map { SIMD2($0.x.x, $0.x.y) }
         g.carryCentroid = g.carryRest.reduce(SIMD2<Float>.zero, +) / Float(count)
         g.carryLo = g.carryRest.reduce(SIMD2(repeating: .infinity)) { pointwiseMin($0, $1) }
@@ -536,7 +651,9 @@ extension ClothSim {
     public func canTransform(size: SIMD2<Float>, angle: Float) -> Bool {
         let fit = fittedTransform(size: size, angle: angle)
         let current = transformRun.map { ($0.toSize, $0.toAngle) } ?? (restSize, matFrame().angle)
-        return abs(wrapAngle(fit.angle - current.1)) > 0.25 * .pi / 180 || abs(fit.size.x - current.0.x) >= 1
+        // A turn counts when it moves a corner at least `visibleTurn` px (a hair of a degree does not).
+        let radius = length2(fit.size) / 2
+        return abs(wrapAngle(fit.angle - current.1)) * radius >= Self.visibleTurn || abs(fit.size.x - current.0.x) >= 1
             || abs(fit.size.y - current.0.y) >= 1
     }
 
@@ -563,6 +680,9 @@ extension ClothSim {
         }
         return (lo, hi)
     }
+
+    /// How far (px) a turn must move the mat's corners to count as one (`canTransform`).
+    static let visibleTurn: Float = 2
 
     /// A mat this close to square (radians) counts as lying square when an anchored resize is fitted.
     static let squareSlack: Float = 2 * .pi / 180
@@ -774,12 +894,14 @@ extension ClothSim {
         script = .path(frame: 0, frames: frames, holdFrames: 0, indices: indices, from: from, to: to, arc: arc)
     }
 
-    /// Peek Under: lifts the edge nearest desk point `point` back over it for `peekSeconds`, then lays it back where
-    /// it was.
-    /// Off in `flatMode`.
-    public mutating func peekUnder(_ point: SIMD2<Float>) {
+    /// Peek Under: the edge nearest desk point `point` turns up as a tongue that reaches `peekBeyond` past it (a
+    /// rounded flap about a crease that curves back into the edge, its rubber underside showing), stays up for
+    /// `seconds` (default `peekSeconds`), and turns back down to lie flat where it lay. A flap that would reach the
+    /// keyboard's weighted particles reaches less far. Off in `flatMode`.
+    public mutating func peekUnder(_ point: SIMD2<Float>, seconds: Float? = nil) {
         guard !params.flatMode, point.x.isFinite, point.y.isFinite else { return }
-        if grab != nil { endGrab() }
+        if grab != nil { endGrab(immediately: true) }
+        cancelScript()
         let frame = matFrame()
         let q = frame.material(point)
         let w = restSize.x, dd = restSize.y
@@ -789,30 +911,128 @@ extension ClothSim {
         let c = Float(cos(Double(frame.angle))), s = Float(sin(Double(frame.angle)))
         let inwardUV: SIMD2<Float> = [SIMD2(1, 0), SIMD2(-1, 0), SIMD2(0, 1), SIMD2(0, -1)][edge]
         let inward = SIMD2(inwardUV.x * c - inwardUV.y * s, inwardUV.x * s + inwardUV.y * c)
-        var indices: [Int32] = [], from: [SIMD3<Float>] = [], to: [SIMD3<Float>] = []
-        for i in 0..<count {
-            let m = uv[i]
-            let onEdge: Bool, along: Float
-            switch edge {
-            case 0: onEdge = m.x < 1e-3; along = m.y - q.y
-            case 1: onEdge = m.x > w - 1e-3; along = m.y - q.y
-            case 2: onEdge = m.y < 1e-3; along = m.x - q.x
-            default: onEdge = m.y > dd - 1e-3; along = m.x - q.x
+        let onEdgeUV: SIMD2<Float> = [SIMD2(0, q.y), SIMD2(w, q.y), SIMD2(q.x, 0), SIMD2(q.x, dd)][edge]
+        let clampedUV = SIMD2(min(max(onEdgeUV.x, 0), w), min(max(onEdgeUV.y, 0), dd))
+        let p0 = frame.point(clampedUV)
+        let angle = edge == 3 ? params.peekBackAngle : params.peekAngle
+        var reach = min(depthIn + params.peekBeyond, (edge < 2 ? w : dd) * 0.75)
+        var spec: FoldSpec?
+        while reach >= 6 {
+            // The tongue is wide enough to clear a pile's card either side of the point, no wider.
+            let candidate = FoldSpec(frame: frame, normal: inward, line: dot2(p0, inward) + reach, angle: angle,
+                                     focus: p0, spread: 12 + reach / 3)
+            if applyGuide(candidate) {
+                spec = candidate
+                break
             }
-            guard onEdge, abs(along) <= params.peekReach, !parts[i].weighted else { continue }
-            let fall = 0.5 + 0.5 * Float(cos(Double(along / params.peekReach) * .pi))
+            reach -= 6
+        }
+        // The tongue's edge is held to the fold.
+        let along = edge < 2 ? 1 : 0, at = clampedUV[along]
+        let held = guideIndices.filter { i in
+            let m = uv[Int(i)]
+            let onEdge = edge < 2 ? abs(m.x - onEdgeUV.x) < 1e-3 : abs(m.y - onEdgeUV.y) < 1e-3
+            return onEdge && abs(m[along] - at) <= params.peekReach
+        }
+        clearGuide()
+        guard let spec else { return }
+        wake()
+        let rise = 15, total = max(rise + 1, Int(((seconds ?? params.peekSeconds) * 60).rounded()))
+        script = .peekFold(frame: 0, rise: rise, hold: total - rise, spec: spec, angle: angle, pins: held)
+    }
+
+    /// The pass that lays a peek's edge flat where it lay: every particle near the peeked edge (the tongue's reach and
+    /// 12 px more) still off its flat place or off the desk eases there over 8 frames. Nil when nothing is.
+    func smoothing(after spec: FoldSpec) -> ScriptState? {
+        let c = Float(cos(Double(spec.frame.angle))), s = Float(sin(Double(spec.frame.angle)))
+        let o = spec.frame.origin, n = spec.normal
+        var indices: [Int32] = [], from: [SIMD3<Float>] = [], to: [SIMD3<Float>] = []
+        for i in 0..<count where !parts[i].weighted && !isFolded(i) {
+            let q = uv[i], flat = SIMD2(o.x + q.x * c - q.y * s, o.y + q.x * s + q.y * c)
+            guard dot2(flat, n) < spec.line + 12 else { continue }
             let cur = parts[i].x
-            let reach = (depthIn + params.peekBeyond) * fall
+            guard length2(SIMD2(cur.x, cur.y) - flat) > 0.3 || cur.z - parts[i].floorOffset > 0.3 else { continue }
             indices.append(Int32(i))
             from.append(cur)
-            to.append(SIMD3(cur.x + inward.x * reach, cur.y + inward.y * reach,
-                            cur.z + (params.peekHeight + depthIn * 0.4) * fall))
+            to.append(SIMD3(flat.x, flat.y, params.thickness))
         }
-        guard !indices.isEmpty else { return }
+        guard !indices.isEmpty else { return nil }
+        return .path(frame: 0, frames: 8, holdFrames: 0, indices: indices, from: from, to: to,
+                     arc: Array(repeating: 0, count: indices.count))
+    }
+
+    /// How far up a peek's flap is at `frame` (0…1): it eases up over `rise` frames, holds, eases back down.
+    static func peekProfile(frame: Int, rise: Int, hold: Int) -> Float {
+        let t: Float
+        if frame <= rise {
+            t = Float(frame) / Float(rise)
+        } else if frame <= rise + hold {
+            t = 1
+        } else {
+            t = max(0, 1 - Float(frame - rise - hold) / Float(rise))
+        }
+        return t * t * (3 - 2 * t)
+    }
+
+    /// Hard sleep or quit mid-motion: whatever moves the cloth ends where it would come to rest, never in the air. A
+    /// grab lets go at once; whatever a script holds up (a peek, a propped peel) skips its hold and goes down the way it
+    /// would; a resize or turn jumps to its end; then the cloth steps, unrendered, until its script ends and it sleeps
+    /// (at most `maxFrames`, after which it accepts its pose).
+    public mutating func settleNow(bumps: BumpField? = nil, maxFrames: Int = 240) {
+        if grab != nil { endGrab(immediately: true) }
+        switch script {
+        case let .peekFold(frame, rise, hold, spec, angle, pins):
+            // The same height on the way down.
+            let down = frame <= rise ? rise + hold + (rise - frame) : max(frame, rise + hold)
+            script = .peekFold(frame: down, rise: rise, hold: hold, spec: spec, angle: angle, pins: pins)
+        case let .layFold(frame, frames, spec, toAngle, pins, hold):
+            script = .layFold(frame: max(frame, hold), frames: frames, spec: spec, toAngle: toAngle, pins: pins, hold: hold)
+        case let .path(frame, frames, hold, indices, from, to, arc) where hold > 0:
+            let back = frame <= frames ? frames + hold + (frames - frame) : max(frame, frames + hold)
+            script = .path(frame: back, frames: frames, holdFrames: hold, indices: indices, from: from, to: to, arc: arc)
+        default:
+            break
+        }
+        if var run = transformRun {
+            run.progress = 1 - 1e-6
+            transformRun = run
+            advanceTransform(dt: 1)
+            transformRun = nil
+        }
+        updateLayering()
         wake()
-        let rise = 15, total = max(rise + 1, Int((params.peekSeconds * 60).rounded()))
-        script = .path(frame: 0, frames: rise, holdFrames: total - rise, indices: indices, from: from, to: to,
-                       arc: Array(repeating: 0, count: indices.count))
+        var n = 0
+        while (!isAsleep || script != nil) && n < maxFrames {
+            step(bumps: bumps)
+            n += 1
+        }
+        cancelScript()
+        if !isAsleep { forceSleep() }
+    }
+
+    /// A pile sliding in under the edge near desk point `point`: the hem there lifts up to `height` px (a raised
+    /// cosine 14 px each way, the outer row most) and falls back on its own, so the edge visibly rides over the pile
+    /// (M9 review). Not during a grab or a script, nor in `flatMode`.
+    public mutating func liftHem(near point: SIMD2<Float>, height: Float = 3) {
+        guard grab == nil, script == nil, !params.flatMode, point.x.isFinite, point.y.isFinite, height > 0 else {
+            return
+        }
+        let radius: Float = 14, band: Float = 12
+        var lifted = false
+        for i in parts.indices where !parts[i].weighted {
+            let q = uv[i]
+            let fromEdge = min(q.x, restSize.x - q.x, q.y, restSize.y - q.y)
+            let dist = length2(SIMD2(parts[i].x.x, parts[i].x.y) - point)
+            guard fromEdge < band, dist < radius else { continue }
+            let fall = (0.5 + 0.5 * Float(cos(Double(dist / radius) * .pi))) * (1 - fromEdge / band)
+            let z = parts[i].floorOffset + height * fall
+            guard parts[i].x.z < z else { continue }
+            parts[i].x.z = z
+            parts[i].p.z = z
+            parts[i].v.z = 0
+            lifted = true
+        }
+        if lifted { wake() }
     }
 
     /// Stops a running script and lets its pinned particles fall.
@@ -971,14 +1191,14 @@ extension ClothSim {
             let delta = g.cursor - g.appliedCursor
             slide(by: SIMD2(delta.x, -delta.y / proj.k))
         case .carry:
-            // The drag moves the grab-start pose; it stops at the desk bounds instead of crumpling into them.
-            let move = g.cursor - g.startCursor
-            var delta = SIMD2(move.x, -move.y / proj.k)
-            delta.x = min(max(delta.x, min(params.xRange.lowerBound - g.carryLo.x, 0)),
-                          max(params.xRange.upperBound - g.carryHi.x, 0))
-            delta.y = min(max(delta.y, min(params.dRange.lowerBound - g.carryLo.y, 0)),
-                          max(params.dRange.upperBound - g.carryHi.y, 0))
-            let target = SIMD2(g.hitStart.x, g.hitStart.y) + delta
+            // The drag moves the grab-start pose; it stops at the desk bounds instead of crumpling into them. The
+            // patch chases the pointer at `carrySpeed` at most, so a flick drags heavy felt instead of whipping it.
+            let goal = carryGoal(g), from = g.carryChase ?? SIMD2(g.hitStart.x, g.hitStart.y)
+            let gap = goal - from, gapLength = length2(gap), maxStep = params.carrySpeed * dt
+            let target = gapLength > maxStep ? from + gap * (maxStep / gapLength) : goal
+            g.carryChase = target
+            g.recentSpeed = max(g.recentSpeed * 0.92, min(gapLength, maxStep) / max(dt, 1e-4))
+            if g.releasing && gapLength <= maxStep { g.caughtUp = true }
             if let last = g.lastCarryTarget, length2(target - last) < 0.05 {
                 g.carryActivity *= Float(exp(Double(-dt / max(params.carryStillFade, 1e-3))))
             } else {
@@ -1008,6 +1228,8 @@ extension ClothSim {
             // never lurching toward the viewer) until `peelHeight`; sideways motion also lifts it, half as fast,
             // showing just above the cursor. Tug keeps it on the desk.
             let peel = g.mode == .peel
+            if let seen = g.lastCursorSeen, length2(g.cursor - seen) < 0.5 { g.stillFrames += 1 } else { g.stillFrames = 0 }
+            g.lastCursorSeen = g.cursor
             let m = g.cursor - g.startCursor, z0 = g.hitStart.z
             let room = max(0, params.peelHeight - z0)
             let rise = peel ? min(max(0, -m.y), room) : 0
@@ -1058,14 +1280,16 @@ extension ClothSim {
 
     private mutating func runScript(_ s: ScriptState) {
         switch s {
-        case .layFold(let frame, let frames, let spec, let toAngle, let held):
-            guard frame < frames else {
+        case .layFold(let frame, let frames, let spec, let toAngle, let held, let hold):
+            guard frame < hold + frames else {
                 script = nil
                 return
             }
-            let t = Float(frame + 1) / Float(frames)
             var now = spec
-            now.angle += (toAngle - spec.angle) * t * t * (3 - 2 * t)
+            if frame >= hold {
+                let t = Float(frame - hold + 1) / Float(frames)
+                now.angle += (toAngle - spec.angle) * t * t * (3 - 2 * t)
+            }
             guard applyGuide(now) else {
                 script = nil
                 return
@@ -1073,7 +1297,23 @@ extension ClothSim {
             for index in held {
                 if let to = guideTarget(index) { addPin(index, from: parts[Int(index)].x, to: to) }
             }
-            script = .layFold(frame: frame + 1, frames: frames, spec: spec, toAngle: toAngle, pins: held)
+            script = .layFold(frame: frame + 1, frames: frames, spec: spec, toAngle: toAngle, pins: held, hold: hold)
+        case .peekFold(let frame, let rise, let hold, let spec, let angle, let held):
+            guard frame < 2 * rise + hold else {
+                // A short smoothing pass lays the edge it lifted exactly flat again: no steps, no notches.
+                script = smoothing(after: spec)
+                return
+            }
+            var now = spec
+            now.angle = angle * Self.peekProfile(frame: frame + 1, rise: rise, hold: hold)
+            guard applyGuide(now) else {
+                script = nil
+                return
+            }
+            for index in held {
+                if let to = guideTarget(index) { addPin(index, from: parts[Int(index)].x, to: to) }
+            }
+            script = .peekFold(frame: frame + 1, rise: rise, hold: hold, spec: spec, angle: angle, pins: held)
         case .smooth(let frame, let corners, let starts, let outward):
             let total = params.smoothFrames
             guard frame < total else {

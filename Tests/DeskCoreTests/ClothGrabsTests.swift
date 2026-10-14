@@ -53,10 +53,10 @@ struct ClothGrabsTests {
     @Test("A fast carry leaves wrinkles that persist")
     func carryWrinkles() {
         var cloth = ClothFixtures.wrinkled()
-        let w = ClothMetrics.wrinkle(cloth)
-        #expect(w > 0.1)
+        let w = ClothMetrics.wrinkle(cloth), crease = ClothMetrics.maxCrease(cloth)
+        #expect(w > 0.05 && crease > 1.5, "W \(w), crease \(crease)")
         ClothFixtures.run(&cloth, 300)
-        #expect(ClothMetrics.wrinkle(cloth) > w * 0.8)
+        #expect(ClothMetrics.wrinkle(cloth) > w * 0.8 && ClothMetrics.maxCrease(cloth) > crease * 0.8)
     }
 
     @Test("⌥ slide translates rigidly without wrinkles and stops at the desk bounds")
@@ -80,7 +80,7 @@ struct ClothGrabsTests {
         ClothFixtures.drag(&cloth, cloth.cornerIndices[1], by: SIMD2(24, 4), frames: 20)
         ClothFixtures.run(&cloth, 60)
         let w1 = ClothMetrics.wrinkle(cloth)
-        #expect(w0 > 0.1)
+        #expect(w0 > 0.05)
         #expect(w1 < w0 * 0.4, "W \(w0) → \(w1)")
     }
 

@@ -145,7 +145,7 @@ struct DeskMatTests {
         #expect(stage.actions.contains { if case .dropOnDesk = $0 { true } else { false } }, "a journaled drop")
     }
 
-    @Test("Peek Under lifts the edge off a covered pile: it stands under the cloth and can be carried out")
+    @Test("Peek Under lifts the edge off a covered pile: it stands under the cloth and its front token can be taken")
     func peekAndTakeOut() throws {
         let stage = try PhysicsStage(matDesk([[320, 26]], counts: [2]), physics: true, mat: true)
         stage.frames(3)
@@ -158,10 +158,11 @@ struct DeskMatTests {
         // Under the lifted cloth the mat draws it (behind the flap); clear of it, the desk's piles do.
         let rect = try #require(stage.scene.matTokenRect(F.key(1)) ?? stage.scene.deskTokenRect(F.key(1)))
         #expect(stage.scene.hitTest(ArtPoint(rect.midX, rect.midY))?.part == "pile.P1")
+        // As from under a rug, the front token comes out alone; the rest goes back under as the edge lies down.
         stage.drag(stage.centre(rect), stage.centre(stage.scene.screen!.cellRect(8, 4)), steps: 10)
         stage.settleMat()
-        #expect(stage.location(F.key(1))?.isScreen == true && stage.location(F.key(2))?.isScreen == true)
-        #expect(stage.mat.billboards.isEmpty && stage.scene.matExpectation("underMat") == "0")
+        #expect(stage.location(F.key(2))?.isScreen == true && stage.location(F.key(1))?.pile == "P1")
+        #expect(stage.mat.billboards.isEmpty && stage.scene.matExpectation("underMat") == "1")
     }
 
     @Test("A pile the cloth lifts off pops up over two frames (DESIGN §2.2 E9 hiding)")

@@ -44,14 +44,30 @@ public final class KeyboardElement: DeskElement {
     public func handle(_ gesture: Gesture, _ hit: Hit) -> GestureResponse {
         switch gesture {
         case .press, .cancelPress:
+            _ = matGesture?(gesture, hit)
             return .handled
         case let .click(p, _, _):
             pressKey(at: ArtPoint(Int(p.x.rounded(.down)), Int(p.y.rounded(.down))))
             return .handled
-        case .dragBegan, .scroll:
+        case .dragBegan:
+            return matGesture?(gesture, hit) ?? .pass
+        case .scroll:
             return .pass
         }
     }
+
+    // MARK: mat
+    /// The desk mat the keyboard lies on (M9): a drag on the keyboard carries the mat (⌥ slides it), and its context
+    /// menu is the mat's.
+    var matGesture: ((Gesture, Hit) -> GestureResponse)?
+    var matMenu: ((Hit) -> MenuSpec?)?
+    var matModifiers: ((InputEvent.Modifiers) -> Bool)?
+
+    public func menu(_ hit: Hit) -> MenuSpec? { matMenu?(hit) }
+
+    public func modifiersChanged(_ mods: InputEvent.Modifiers, _ hit: Hit) -> Bool { matModifiers?(mods) ?? false }
+
+    public func hover(_ hit: Hit?) -> Bool { hit == nil ? matModifiers?([]) ?? false : false }
 
     /// Presses the key under canvas pixel `p`; false between keys or off the keyboard.
     @discardableResult

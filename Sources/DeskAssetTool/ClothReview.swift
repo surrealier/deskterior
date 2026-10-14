@@ -143,6 +143,12 @@ enum ClothReview {
         try FileManager.default.createDirectory(at: outDir, withIntermediateDirectories: true)
         var shots: [Shot] = []
         shots += flatAndBumps()
+        // DESKTERIOR_CLOTH_ONLY=bumps writes the bump shots alone (a quick look while tuning their drawing).
+        if ProcessInfo.processInfo.environment["DESKTERIOR_CLOTH_ONLY"] == "bumps" {
+            shots += bumpSizes()
+            for (name, b) in shots { try write(b, "\(name).png", in: outDir, scale: 4) }
+            return
+        }
         let (carryShots, carrySeq) = carry()
         shots += carryShots
         let (peelShots, peelSeq) = peel()
@@ -188,6 +194,17 @@ enum ClothReview {
         bumps.coverAll()
         bumps.frames(120)
         return [shot("01-flat", &flat), shot("02-bumps-1-3-7", &bumps)]
+    }
+
+    /// Lone stacks of 1, 2, 3, 4 and 6 tokens, and two piles sharing a bump.
+    static func bumpSizes() -> [Shot] {
+        var s = stage(piles: [
+            (0, SIMD2(180, 40), 1), (1, SIMD2(214, 40), 2), (2, SIMD2(250, 40), 3), (3, SIMD2(290, 40), 4),
+            (4, SIMD2(334, 44), 6), (5, SIMD2(200, 70), 2), (6, SIMD2(208, 74), 1),
+        ])
+        s.coverAll()
+        s.frames(120)
+        return [shot("02b-bump-sizes", &s)]
     }
 
     /// Carry: grab left of centre, drag right and toward the viewer, hold, release; mid-drag and settled shots.

@@ -99,6 +99,12 @@ final class DeskView: NSView {
     override func mouseUp(with event: NSEvent) { send(.up, event) }
     override func mouseDragged(with event: NSEvent) { send(.drag, event) }
     override func mouseMoved(with event: NSEvent) { send(.move, event) }
+    // MARK: mat
+    /// A modifier key went down or up: a move at the pointer, so ⌥ over the mat shows its handles without a move.
+    override func flagsChanged(with event: NSEvent) {
+        send(.move, event)
+        super.flagsChanged(with: event)
+    }
 
     override func rightMouseDown(with event: NSEvent) {
         // The scene answers with a `SceneRequest.menu`, which the app shows through `showMenu`.
@@ -218,7 +224,9 @@ final class DeskView: NSView {
     private func send(_ kind: InputEvent.Kind, _ event: NSEvent, scroll: SIMD2<Float> = .zero) -> InputEvent? {
         guard let host else { return nil }
         let isKey = kind == .key
-        let inWindow = isKey ? (window?.mouseLocationOutsideOfEventStream ?? .zero) : event.locationInWindow
+        // Key and modifier events carry no pointer location of their own.
+        let fromStream = isKey || event.type == .flagsChanged
+        let inWindow = fromStream ? (window?.mouseLocationOutsideOfEventStream ?? .zero) : event.locationInWindow
         let local = convert(inWindow, from: nil)
         let viewPoint = SIMD2(Double(local.x), Double(bounds.height - local.y))
         let e = InputEvent(

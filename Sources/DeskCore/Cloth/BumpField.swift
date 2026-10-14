@@ -103,12 +103,12 @@ public struct BumpField: Sendable {
         return r / 2 + skirt(height: bumpHeight(count: n), radius: r)
     }
 
-    /// Max over groups of a rounded box: full height within `r/2` of the members' bounding box, smoothstep to 0 over
-    /// the skirt beyond it (`r` for low stacks, wider for tall ones).
+    /// Max over groups of a rounded box: full height (times the group's `scale`) within `r/2` of the members'
+    /// bounding box, smoothstep to 0 over the skirt beyond it (`r` for low stacks, wider for tall ones).
     static func stamp(_ groups: [PileGroup], into out: inout [Float]) {
         out.withUnsafeMutableBufferPointer { o in for i in 0..<o.count { o[i] = 0 } }
-        for g in groups {
-            let h = bumpHeight(count: g.count), plateau = bumpRadius(count: g.count) / 2
+        for g in groups where g.scale > 0 {
+            let h = bumpHeight(count: g.count) * g.scale, plateau = bumpRadius(count: g.count) / 2
             let r = plateau + skirt(height: h, radius: 2 * plateau)
             let lo = g.minPosition - SIMD2(repeating: r), hi = g.maxPosition + SIMD2(repeating: r)
             let i0 = max(0, Int(((lo.x - origin.x) / cell).rounded(.down)))

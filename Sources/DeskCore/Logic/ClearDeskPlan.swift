@@ -255,6 +255,24 @@ public struct ClearDeskPlan: Sendable, Equatable {
         return (from - dir * reach, edge - dir * reach)
     }
 
+    /// Where a stack of `count` tokens set down (or slid under) at desk point `p` rests under `mat`: `inset(count:)`
+    /// inside its edges, where the cloth covers a whole pile footprint, clear of the keyboard (`keyboardClearance`), or
+    /// the nearest such spot. The scene's landings and tucks use the rule Clear the Desk plans with, so a pile is never
+    /// moved again after the move that sent it under. Nil when the mat has no such spot.
+    public static func tuckSpot(near p: SIMD2<Float>, count: Int, mat: MatFootprint, keyboard: DeskPlaneRect)
+        -> SIMD2<Float>?
+    {
+        guard p.isFinite else { return nil }
+        var targets = Targets(mat: mat, keyboard: keyboard)
+        return targets.take(near: p, count: count)
+    }
+
+    /// The part of the desk a pile keeps out of around the keyboard's `footprint`: a pile's footprint radius and a
+    /// little more, so no pile ever lies under the keyboard, where no peek could reach it.
+    public static func keyboardClearance(_ footprint: DeskPlaneRect) -> DeskPlaneRect {
+        DeskPlaneRect(x: footprint.x - 10, d: footprint.d - 8, width: footprint.width + 20, depth: footprint.depth + 16)
+    }
+
     /// Resting spots under the mat, handed out nearest first: inside the mat's edges by `tuckInset`, where the cloth
     /// covers a whole pile footprint, clear of the keyboard. Spots already taken nudge later ones along the mat, so
     /// piles swept to one place stand close enough to share a bump (DESIGN O6) without overlapping exactly.
@@ -267,9 +285,7 @@ public struct ClearDeskPlan: Sendable, Equatable {
 
         init(mat: MatFootprint, keyboard: DeskPlaneRect) {
             self.mat = mat
-            // A pile keeps a footprint's radius plus a little from the keyboard.
-            self.keyboard = DeskPlaneRect(x: keyboard.x - 10, d: keyboard.d - 8, width: keyboard.width + 20,
-                                          depth: keyboard.depth + 16)
+            self.keyboard = ClearDeskPlan.keyboardClearance(keyboard)
         }
 
         func fits(_ q: SIMD2<Float>) -> Bool {
@@ -277,10 +293,14 @@ public struct ClearDeskPlan: Sendable, Equatable {
         }
 
         mutating func take(near p: SIMD2<Float>, count: Int) -> SIMD2<Float>? {
-            var spot = mat.clampedInside(p, inset: ClearDeskPlan.inset(count: count))
+            let inset = ClearDeskPlan.inset(count: count)
+            var spot = mat.clampedInside(p, inset: inset)
             if !fits(spot) {
                 if grid == nil { grid = candidates() }
-                guard let best = grid!.min(by: { length2($0 - p) < length2($1 - p) }) else { return nil }
+                // The nearest spot as deep inside as this stack needs, else any (a small mat).
+                let deep = grid!.filter { mat.isInside($0, inset: inset - 0.01) }
+                guard let best = (deep.isEmpty ? grid! : deep).min(by: { length2($0 - p) < length2($1 - p) })
+                else { return nil }
                 spot = best
             }
             // Spread spots that coincide along the mat's width, staying within one bump.

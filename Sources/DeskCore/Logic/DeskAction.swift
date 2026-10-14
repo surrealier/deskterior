@@ -89,6 +89,9 @@ public enum DeskAction: Sendable {
     case mat(MatCommand)
     /// The desk brush came to rest at desk-plane point `(x, d)` (E10). Not journaled.
     case brushSettled(SIMD2<Float>)
+    /// Tokens set down on the mat join the covered `pile`, which slides in to `at` so its taller bump still clears the
+    /// edge (`ClearDeskPlan.tuckSpot`): one move and one undo. Journaled.
+    case tuckUnderMat([TokenKey], pile: PileID, at: SIMD2<Float>)
 
     /// Explicit user requests. Only these may produce file effects (`Effect.touchesFiles`).
     public var isRequest: Bool {

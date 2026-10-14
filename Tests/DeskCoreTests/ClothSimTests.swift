@@ -26,7 +26,7 @@ enum ClothFixtures {
         if release { cloth.endGrab() }
     }
 
-    /// A quick carry to the left leaves a ridge across the mat (W ≈ 0.27).
+    /// A quick carry to the left leaves a crease across the mat (W ≈ 0.09, about 2 px high).
     static func wrinkled() -> ClothSim {
         var cloth = ClothSim()
         run(&cloth, 10)

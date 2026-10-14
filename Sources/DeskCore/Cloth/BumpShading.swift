@@ -1,94 +1,210 @@
-/// Per-pixel light for felt lying on the bumps (M9): the 6-px cloth mesh is far coarser than a small stack's bump
-/// (a lone token's mound is 16 px across), so felt resting on a bump takes its shading from the bump field's own
-/// slope instead of the mesh's. A grid of shading levels (the raster's `light`, levels · 1024, flat = 2048) over the
-/// `BumpField` nodes, filled only where the field is raised and sampled bilinearly in integers, so the raster stays
-/// bit-exact.
+/// The bumps as the 2:1 view sees them (M9 review): the 6-px cloth mesh is far coarser than a small stack's bump (a
+/// lone token's mound is 16 px across), so where felt rests on a bump the raster draws the bump itself. Each screen
+/// column is marched front to back over the `BumpField` (felt at `H + 1`), which finds the desk point every pixel shows
+/// and where the bump hides the felt behind it. Each bump then reads as one mound:
+///
+/// - the crest (the plateau) lit a level up, the left flank lit, the front slope felt-coloured and only the right flank
+///   dark — whole levels, dithered only in a narrow band where one turns into the next;
+/// - an unbroken 1-px outline along the back rim, where the mound stands against the felt behind it;
+/// - a 1-px contact line along its front base.
+///
+/// Every pixel within a bump's reach is flagged (`region`): there the bump's light wins over the mesh's and the mesh
+/// draws no creases, so the coarse triangles never show through as smudges, dashes or stalks. Rebuilt only when the
+/// field changes (`revision`); pure and deterministic.
 struct BumpShading {
     static let flat: Int32 = 2048
+    /// Pixel flags: within a bump's reach; the back rim's outline; the front base's contact line.
+    static let region: UInt8 = 1
+    static let rim: UInt8 = 2
+    static let contact: UInt8 = 4
 
-    /// Shading level per bump node (`BumpField.cols × rows`); flat outside `box`.
-    private(set) var light: [Int32]
-    /// The nodes filled by the last update (inclusive), nil when the field is flat.
-    private(set) var box: (i0: Int, i1: Int, j0: Int, j1: Int)?
+    /// The felt counts as raised from this height (px).
+    static let present: Float = 0.5
+    /// The crest: at least this high, and flatter than `crestSlope`.
+    static let crestHeight: Float = 1.5
+    static let crestSlope: Float = 0.35
+    /// Depth step of the column march (px).
+    static let step: Float = 0.25
+    /// The flagged region reaches this far (px) past the raised area: the mesh cell next to a bump still tilts.
+    static let margin = 6
+    /// Half-width of the dither band between two levels (levels · 1024 around the half-way point).
+    static let ditherBand = 72
 
-    init() {
-        light = Array(repeating: Self.flat, count: BumpField.cols * BumpField.rows)
+    /// Buffer rect the arrays cover (empty: no bumps).
+    private(set) var rect = ArtRect.zero
+    /// Whole shading level · 1024 per pixel of `rect` (row-major).
+    private(set) var level: [Int32] = []
+    private(set) var flags: [UInt8] = []
+    private var revision: UInt64?
+
+    init() {}
+
+    /// The level and flags at buffer pixel `(x, y)`, nil outside every bump's reach.
+    @inline(__always)
+    func at(_ x: Int, _ y: Int) -> (level: Int32, flags: UInt8)? {
+        guard x >= rect.minX, x < rect.maxX, y >= rect.minY, y < rect.maxY else { return nil }
+        let i = (y - rect.minY) * rect.w + (x - rect.minX)
+        let f = flags[i]
+        return f == 0 ? nil : (level[i], f)
     }
 
-    /// Recomputes the grid from `bumps` (eased heights included); nil or a flat field turns it off.
-    mutating func update(_ bumps: BumpField?) {
-        let cols = BumpField.cols, rows = BumpField.rows
-        if let b = box {
-            light.withUnsafeMutableBufferPointer { L in
-                for j in b.j0...b.j1 { for i in b.i0...b.i1 { L[j * cols + i] = Self.flat } }
-            }
-            box = nil
+    /// Recomputes from `bumps` (eased heights included) when the field changed; nil turns it off.
+    mutating func update(_ bumps: BumpField?, projection proj: DeskProjection) {
+        guard let bumps else {
+            rect = .zero
+            revision = nil
+            return
         }
-        guard let bumps else { return }
-        // Settled, the raised nodes lie within the groups' reach; while a change eases in or out, anywhere.
-        var s0 = 0, s1 = cols - 1, t0 = 0, t1 = rows - 1
-        if !bumps.isEasing {
-            (s0, s1, t0, t1) = (Int.max, Int.min, Int.max, Int.min)
-            let cell = BumpField.cell, o = BumpField.origin
-            func node(_ v: Float, _ n: Int) -> Int { Int(min(max(v, -1), Float(n))) }
-            for g in bumps.groups {
-                let r = BumpField.extent(count: g.count) + cell
-                s0 = min(s0, node(((g.minPosition.x - r - o.x) / cell).rounded(.down), cols))
-                s1 = max(s1, node(((g.maxPosition.x + r - o.x) / cell).rounded(.up), cols))
-                t0 = min(t0, node(((g.minPosition.y - r - o.y) / cell).rounded(.down), rows))
-                t1 = max(t1, node(((g.maxPosition.y + r - o.y) / cell).rounded(.up), rows))
-            }
-        }
-        s0 = max(s0, 0)
-        s1 = min(s1, cols - 1)
-        t0 = max(t0, 0)
-        t1 = min(t1, rows - 1)
-        guard s0 <= s1, t0 <= t1 else { return }
-        var i0 = Int.max, i1 = Int.min, j0 = Int.max, j1 = Int.min
+        guard bumps.revision != revision else { return }
+        revision = bumps.revision
+        let cols = BumpField.cols, rows = BumpField.rows, cell = BumpField.cell, o = BumpField.origin
+        // Per node column, the raised node rows.
+        var spans = [(lo: Int, hi: Int)?](repeating: nil, count: cols)
         bumps.heights.withUnsafeBufferPointer { H in
-            for j in t0...t1 {
-                for i in s0...s1 where H[j * cols + i] > 0 {
-                    i0 = min(i0, i)
-                    i1 = max(i1, i)
-                    j0 = min(j0, j)
-                    j1 = max(j1, j)
+            for i in 0..<cols {
+                var lo = Int.max, hi = Int.min
+                for j in 0..<rows where H[j * cols + i] > 0.05 {
+                    lo = min(lo, j)
+                    hi = max(hi, j)
                 }
+                if lo <= hi { spans[i] = (lo, hi) }
             }
         }
-        guard i0 <= i1 else { return }
-        // One node of margin: the slope is felt a node beyond the last raised one.
-        let b = (i0: max(i0 - 1, 0), i1: min(i1 + 1, cols - 1), j0: max(j0 - 1, 0), j1: min(j1 + 1, rows - 1))
-        let inv = 1 / (2 * BumpField.cell)
-        bumps.heights.withUnsafeBufferPointer { H in
-            light.withUnsafeMutableBufferPointer { L in
-                for j in b.j0...b.j1 {
-                    let jm = max(j - 1, 0) * cols, jp = min(j + 1, rows - 1) * cols, row = j * cols
-                    for i in b.i0...b.i1 {
-                        let hx = (H[row + min(i + 1, cols - 1)] - H[row + max(i - 1, 0)]) * inv
-                        let hd = (H[jp + i] - H[jm + i]) * inv
-                        // The surface z = H(x, d) has normal (−∂H/∂x, −∂H/∂d, 1).
-                        let len = (hx * hx + hd * hd + 1).squareRoot()
-                        L[row + i] = DeskSurfaceRaster.shadeLevel(-hx / len, -hd / len, 1 / len)
+        // Buffer columns and rows the raised area can reach on screen.
+        let ox = DeskSurfaceRaster.origin.x, oy = Float(DeskSurfaceRaster.origin.y)
+        let w = DeskSurfaceRaster.width, h = DeskSurfaceRaster.height
+        var x0 = Int.max, x1 = Int.min, y0 = Int.max, y1 = Int.min
+        var maxH: Float = 0
+        bumps.heights.withUnsafeBufferPointer { H in for v in H where v > maxH { maxH = v } }
+        let m = Self.margin, mf = Float(Self.margin)
+        for (i, s) in spans.enumerated() {
+            guard let s else { continue }
+            let x = o.x + Float(i) * cell
+            x0 = min(x0, Int((x - mf).rounded(.down)) - ox)
+            x1 = max(x1, Int((x + mf).rounded(.up)) - ox)
+            let dLo = o.y + Float(s.lo) * cell - mf, dHi = o.y + Float(s.hi) * cell + mf
+            y0 = min(y0, Int((proj.frontY - dHi * proj.k - 1 - maxH - oy).rounded(.down)) - 1)
+            y1 = max(y1, Int((proj.frontY - dLo * proj.k - 1 - oy).rounded(.up)) + 1)
+        }
+        x0 = max(x0, 0)
+        x1 = min(x1, w - 1)
+        y0 = max(y0, 0)
+        y1 = min(y1, h - 1)
+        guard x0 <= x1, y0 <= y1 else {
+            rect = .zero
+            return
+        }
+        rect = ArtRect(x0, y0, x1 - x0 + 1, y1 - y0 + 1)
+        let rw = rect.w, n = rw * rect.h
+        if level.count < n {
+            level = Array(repeating: Self.flat, count: n)
+            flags = Array(repeating: 0, count: n)
+        }
+        // What each pixel shows: its height, slope and whether it lies just behind a bump that hides felt.
+        var height = [Float](repeating: 0, count: n)
+        var behind = [Bool](repeating: false, count: n)
+        var seen = [Bool](repeating: false, count: n)
+        bumps.withSampler { S in
+            level.withUnsafeMutableBufferPointer { L in
+                flags.withUnsafeMutableBufferPointer { F in
+                    for k in 0..<n {
+                        L[k] = Self.flat
+                        F[k] = 0
+                    }
+                    for bx in x0...x1 {
+                        let x = Float(bx + ox) + 0.5
+                        // The raised span under this column (the two node columns around it), with a margin.
+                        let gi = Int(((x - o.x) / cell).rounded(.down)), reach = m / Int(cell)
+                        var lo = Int.max, hi = Int.min
+                        for i in (gi - reach)...(gi + 1 + reach) where i >= 0 && i < cols {
+                            if let s = spans[i] {
+                                lo = min(lo, s.lo)
+                                hi = max(hi, s.hi)
+                            }
+                        }
+                        guard lo <= hi else { continue }
+                        let dStart = o.y + Float(lo) * cell - mf, dEnd = o.y + Float(hi) * cell + mf
+                        func screenY(_ d: Float, _ z: Float) -> Float { proj.frontY - d * proj.k - 1 - z - oy }
+                        var next = Int((screenY(dStart, S.height(x, dStart)) - 0.5).rounded(.up)) - 1
+                        var horizon = Float.infinity
+                        var hidden = false
+                        var d = dStart
+                        while d <= dEnd && next >= y0 {
+                            let z = S.height(x, d)
+                            let y = screenY(d, z)
+                            if y > horizon + 0.01 { hidden = true }
+                            horizon = min(horizon, y)
+                            while next >= y0 && Float(next) + 0.5 >= y {
+                                if next <= y1 {
+                                    let k = (next - y0) * rw + (bx - x0)
+                                    height[k] = z
+                                    behind[k] = hidden
+                                    seen[k] = true
+                                    F[k] = Self.region
+                                    // The slope at what this pixel shows (central differences over 1 px).
+                                    let hx = (S.height(x + 1, d) - S.height(x - 1, d)) / 2
+                                    let hd = (S.height(x, d + 1) - S.height(x, d - 1)) / 2
+                                    L[k] = z < Self.present ? Self.flat
+                                        : Self.shade(z, hx, hd, x: bx + ox, y: next + Int(oy))
+                                }
+                                hidden = false
+                                next -= 1
+                            }
+                            d += Self.step
+                        }
+                    }
+                    // Outlines: the back rim (raised, under a pixel that is not, or that shows felt the bump hides
+                    // behind it), joined up column to column; the contact line under the front base.
+                    let present = Self.present
+                    var rimRow = [Int](repeating: -1, count: rw)
+                    for c in 0..<rw {
+                        for r in 0..<rect.h {
+                            let k = r * rw + c
+                            guard seen[k], height[k] >= present else { continue }
+                            let up = r > 0 ? k - rw : -1
+                            if up < 0 || !seen[up] || height[up] < present || behind[up] {
+                                F[k] |= Self.rim
+                                if rimRow[c] < 0 { rimRow[c] = r }
+                            }
+                            let down = r + 1 < rect.h ? k + rw : -1
+                            if down >= 0, seen[down], height[down] < present, !behind[k] {
+                                F[down] |= Self.contact
+                                L[down] = 1024
+                            }
+                        }
+                    }
+                    // Steps of more than a pixel between neighbouring columns' rims are closed down the higher column.
+                    for c in 0..<rw where rimRow[c] >= 0 {
+                        var bottom = rimRow[c]
+                        for nc in [c - 1, c + 1] where nc >= 0 && nc < rw && rimRow[nc] >= 0 {
+                            bottom = max(bottom, rimRow[nc] - 1)
+                        }
+                        guard bottom > rimRow[c] else { continue }
+                        for r in (rimRow[c] + 1)...bottom {
+                            let k = r * rw + c
+                            guard seen[k], height[k] >= present else { break }
+                            F[k] |= Self.rim
+                        }
                     }
                 }
             }
         }
-        box = b
     }
 
-    /// The level at desk point `(x, d)` given in 1/16 px, or nil off the filled nodes.
+    /// The whole level (· 1024) of felt at height `z` with slope `(hx, hd)`, at absolute art pixel `(x, y)`: lit by
+    /// the raster's light, a level up on the crest, rounded to a whole level except in a narrow Bayer band.
     @inline(__always)
-    func sample(x16: Int, d16: Int) -> Int32? {
-        guard let b = box else { return nil }
-        // Node coordinates in 1/16 node (2 px per node, so halve; origin x 12, d 0).
-        let gx = (x16 - Int(BumpField.origin.x) * 16) >> 1
-        let gd = (d16 - Int(BumpField.origin.y) * 16) >> 1
-        let i = gx >> 4, j = gd >> 4
-        guard i >= b.i0, i < b.i1, j >= b.j0, j < b.j1 else { return nil }
-        let fx = gx & 15, fd = gd & 15, cols = BumpField.cols
-        let k = j * cols + i
-        let l00 = Int(light[k]), l10 = Int(light[k + 1]), l01 = Int(light[k + cols]), l11 = Int(light[k + cols + 1])
-        let top = l00 * (16 - fx) + l10 * fx, bottom = l01 * (16 - fx) + l11 * fx
-        return Int32((top * (16 - fd) + bottom * fd) >> 8)
+    static func shade(_ z: Float, _ hx: Float, _ hd: Float, x: Int, y: Int) -> Int32 {
+        let len = (hx * hx + hd * hd + 1).squareRoot()
+        var l = Int(DeskSurfaceRaster.shadeLevel(-hx / len, -hd / len, 1 / len))
+        if z >= crestHeight && hx * hx + hd * hd < crestSlope * crestSlope { l += 1024 }
+        l = min(max(l, 0), 4 * 1024 + 1023)
+        let whole = l >> 10, frac = (l & 1023) - 512
+        var up = frac >= 0
+        if abs(frac) < ditherBand {
+            let ramp16 = (frac + ditherBand) * 16 / (2 * ditherBand)
+            up = Dither.bayer4(x: x, y: y) < ramp16
+        }
+        return Int32((whole + (up ? 1 : 0)) << 10)
     }
 }

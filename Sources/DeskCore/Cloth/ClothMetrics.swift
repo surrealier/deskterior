@@ -11,6 +11,13 @@ public enum ClothMetrics {
         return n > 0 ? sum / Float(n) : 0
     }
 
+    /// The highest crease: the most any face-up particle stands off its floor (px; folds and bumps excluded).
+    public static func maxCrease(_ cloth: ClothSim) -> Float {
+        var top: Float = 0
+        for p in cloth.parts where p.floorOffset == cloth.params.thickness && p.w > 0 { top = max(top, p.x.z - p.floorOffset) }
+        return top
+    }
+
     /// Area covered in the desk plane: sum of the absolute xy areas of every triangle (folded layers count twice).
     public static func area(_ cloth: ClothSim) -> Float {
         var total: Float = 0

@@ -63,6 +63,9 @@ final class InputRouter {
     /// Where the pointer last moved (for re-hovering after the content changes under it).
     private var lastPoint: ArtPoint?
     private var lastArt: SIMD2<Float>?
+    // MARK: mat
+    /// The modifier keys of the last pointer move (a change re-tells the hovered element: `modifiersChanged`).
+    private var hoverMods: InputEvent.Modifiers = []
 
     init(target: any GestureTarget) {
         self.target = target
@@ -90,7 +93,14 @@ final class InputRouter {
         switch e.kind {
         case .move:
             tooltipHeld = false
-            return updateHover(e)
+            // MARK: mat
+            let wasHovered = hovered, modsChanged = e.mods != hoverMods
+            hoverMods = e.mods
+            var changed = updateHover(e)
+            if press == nil, drag == nil, let el = hoveredElement, let h = hovered, modsChanged || h != wasHovered {
+                changed = el.modifiersChanged(e.mods, h) || changed
+            }
+            return changed
         case .down:
             // A drag or press whose mouse-up never came (focus lost mid-gesture) ends here, springing back.
             var changed = cancelAll()

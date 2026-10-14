@@ -123,7 +123,7 @@ final class BrushElement: DeskElement {
     }
 
     func tooltip(_ hit: Hit) -> TooltipSpec? {
-        var spec = TooltipSpec(title: "Desk Brush", detail: "Drag to sweep piles", anchor: hit.rect)
+        var spec = TooltipSpec(title: "Desk Brush", detail: "Drag to sweep piles · or scroll sideways", anchor: hit.rect)
         spec.prefersAbove = true
         return spec
     }
@@ -197,10 +197,26 @@ final class BrushElement: DeskElement {
             return
         }
         guard !hub.world.hasProp else { return }
-        let start = Self.onDesk(hub.plane(p), size: Self.broomSize)
+        let start = Self.broomStart(Self.onDesk(hub.plane(p), size: Self.broomSize), dx: dx,
+                                    piles: Array(hub.bodies.positions.values))
         hub.world.beginProp(at: start, size: Self.broomSize)
         hub.world.attach(to: hub.world.root.scene)
         broomRun = (Self.onDesk(start + SIMD2(dx * Self.broomGain, 0), size: Self.broomSize), 0)
+    }
+
+    /// Where the broom starts for a scroll of `dx` at desk point `p`: there, or just behind every pile it would
+    /// overlap (on the side the scroll comes from), so it pushes them on instead of springing up inside one.
+    static func broomStart(_ p: SIMD2<Float>, dx: Float, piles: [SIMD2<Float>]) -> SIMD2<Float> {
+        let half = (broomSize + DeskPlanePhysics.pileSize) / 2 + 1
+        let back: Float = dx >= 0 ? -1 : 1
+        var start = p
+        for _ in 0..<4 {
+            let hits = piles.filter { abs($0.x - start.x) < half.x && abs($0.y - start.y) < half.y }
+            guard !hits.isEmpty else { break }
+            let x = back < 0 ? hits.map(\.x).min()! - half.x : hits.map(\.x).max()! + half.x
+            start = onDesk(SIMD2(x, start.y), size: broomSize)
+        }
+        return start
     }
 
     private func endBroom() {
