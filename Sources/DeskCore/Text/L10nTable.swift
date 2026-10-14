@@ -1,0 +1,263 @@
+/// Every string the app shows in English and Korean (`L10n`). Menu, toast, card and undo keys carry exactly the
+/// English that `MenuSpec`, `ToastKey`, the monitor cards and `UndoJournal` produce, so `L10n.tr` can translate it;
+/// the rest are the app's own windows (Settings, Safe Mode, About, onboarding, notes, VoiceOver). `L10nTests` check
+/// that every key has both languages and matching placeholders.
+///
+/// The in-scene wastebasket is 쓰레기통 and the system Trash 휴지통, as on a Korean Mac.
+public enum L10nKey: String, CaseIterable, Sendable {
+    // MARK: Desk and status menus
+    case monitorPower, lights, lightsAuto, lightsDay, lightsNight, lightsLampOnly, lightsRoom, lightsDeskLamp
+    case findItem, takeEverythingOut, clearDesk, peekDesk, emptyWastebasket, emptyWastebasketCount
+    case undo, redo, undoLabel, redoLabel, pauseDesk, resumeDesk, openDesktopFolder, settingsItem, aboutItem, quit
+
+    // MARK: Token menu
+    case open, quickLook, quickLookNamed, showInFinder, copy, moveTo, moveToTrash, monitor, hdmi, hdmiNew
+    case riserLeft, riserRight, riserCubby, cabinetTop, cabinetMiddle, cabinetFile, penCup, phone, wastebasket
+
+    // MARK: Monitor and container menus
+    case displayOff, displayOn, connectDesktop, input, hdmiCount, av, cleanUpBy, sortName, sortKind, sortDateAdded
+    case closeDrawer, openDrawer, faceUp, faceDown, listMore, listContents, moveContentsTo, takeAllOut, tipOver, standUp
+
+    // MARK: Undo labels
+    case undoMove, undoMoveItems, undoCleanUp
+
+    // MARK: Toasts
+    case toastContainerFull, toastAccessDenied, toastNotYetAvailable, toastDrivesReadOnly, toastWidgetsOverlap
+
+    // MARK: Monitor cards
+    case cardPress, cardToConnect, cardDesktop, cardShowsFiles, cardConnecting, cardCannotRead, cardAllowOrChoose
+    case cardOpenSettings, cardChooseFolder, cardDesktopHidden, cardFinderHides, cardShowAnyway, cardShow, cardKeepHidden
+
+    // MARK: Peek
+    case peekDone, peekDoneAX
+
+    // MARK: Settings
+    case settingsTitle, settingsDesk, settingsLook, settingsSystem, lightsMode, reduceMotion, reduceMotionFollow
+    case reduceMotionOn, reduceMotionOff, matMode, matCloth, matFlat, pixelSize, pixelChunky, pixelNormal, pixelFine
+    case peekHotkey, peekHotkeyNote, launchAtLogin, loginAdded, loginRemoved, loginNeedsApproval, loginFailed
+    case mirroredFolder, useDesktop, folderSetByFlag, folderUnavailable, language, languageSystem, languageEnglish
+    case languageKorean, deskDisplay, mainDisplay, coverDisplays, pauseOnBattery, aboutCredits
+
+    // MARK: About
+    case aboutTitle, version, aboutTagline, aboutInspired, aboutIndependent, aboutFont, aboutPalette, aboutLicense
+    case aboutSafety, ok, close
+
+    // MARK: Safe Mode
+    case safeModeTitle, safeModeBody, startNormally, resetLayout, resetConfirm, reset, cancel, resetDone, resetNothing
+    case openStateFolder, quitButton
+
+    // MARK: Onboarding and notes
+    case welcomeTitle, welcomeMonitor, welcomeHide, welcomeSafe, welcomeConnect, welcomeFind, welcomeDisplays, start
+    case translocationTitle, translocationBody
+
+    // MARK: VoiceOver
+    case axDesk, axWall, axWallHelp, axMoveToMonitor, axShowDeskMenu
+
+    public var en: String { Self.table[self]?.en ?? rawValue }
+    public var ko: String { Self.table[self]?.ko ?? rawValue }
+
+    private struct Pair: Sendable {
+        let en: String
+        let ko: String
+    }
+
+    private static func p(_ en: String, _ ko: String) -> Pair { Pair(en: en, ko: ko) }
+
+    private static let table: [L10nKey: Pair] = [
+        // Desk and status menus
+        .monitorPower: p("Monitor Power", "모니터 전원"),
+        .lights: p("Lights", "조명"),
+        .lightsAuto: p("Auto", "자동"),
+        .lightsDay: p("Day", "낮"),
+        .lightsNight: p("Night", "밤"),
+        .lightsLampOnly: p("Lamp Only", "스탠드만"),
+        .lightsRoom: p("Room Light", "방 조명"),
+        .lightsDeskLamp: p("Desk Lamp", "책상 스탠드"),
+        .findItem: p("Find Item…", "항목 찾기…"),
+        .takeEverythingOut: p("Take Everything Out", "모든 파일 꺼내기"),
+        .clearDesk: p("Clear the Desk", "책상 치우기"),
+        .peekDesk: p("Peek Desk", "책상 엿보기"),
+        .emptyWastebasket: p("Empty Wastebasket…", "쓰레기통 비우기…"),
+        .emptyWastebasketCount: p("Empty Wastebasket… (%d)", "쓰레기통 비우기… (%d)"),
+        .undo: p("Undo", "실행 취소"),
+        .redo: p("Redo", "실행 복귀"),
+        .undoLabel: p("Undo %T", "실행 취소: %T"),
+        .redoLabel: p("Redo %T", "실행 복귀: %T"),
+        .pauseDesk: p("Pause Desk", "책상 일시 정지"),
+        .resumeDesk: p("Resume Desk", "책상 다시 켜기"),
+        .openDesktopFolder: p("Open Desktop Folder in Finder", "Finder에서 바탕화면 폴더 열기"),
+        .settingsItem: p("Settings…", "설정…"),
+        .aboutItem: p("About Deskterior", "Deskterior에 관하여"),
+        .quit: p("Quit Deskterior", "Deskterior 종료"),
+
+        // Token menu
+        .open: p("Open", "열기"),
+        .quickLook: p("Quick Look", "훑어보기"),
+        .quickLookNamed: p("Quick Look “%@”", "“%@” 훑어보기"),
+        .showInFinder: p("Show in Finder", "Finder에서 보기"),
+        .copy: p("Copy", "복사"),
+        .moveTo: p("Move to", "옮기기"),
+        .moveToTrash: p("Move to Trash", "휴지통으로 이동"),
+        .monitor: p("Monitor", "모니터"),
+        .hdmi: p("HDMI %d", "HDMI %d"),
+        .hdmiNew: p("HDMI %d (New)", "HDMI %d (새 입력)"),
+        .riserLeft: p("Left Riser Drawer", "받침대 왼쪽 서랍"),
+        .riserRight: p("Right Riser Drawer", "받침대 오른쪽 서랍"),
+        .riserCubby: p("Riser Cubby", "받침대 칸"),
+        .cabinetTop: p("Top Cabinet Drawer", "서랍장 위 칸"),
+        .cabinetMiddle: p("Middle Cabinet Drawer", "서랍장 가운데 칸"),
+        .cabinetFile: p("File Drawer", "서랍장 서류 칸"),
+        .penCup: p("Pen Cup", "펜꽂이"),
+        .phone: p("Phone", "휴대폰"),
+        .wastebasket: p("Wastebasket", "쓰레기통"),
+
+        // Monitor and container menus
+        .displayOff: p("Turn Display Off", "화면 끄기"),
+        .displayOn: p("Turn Display On", "화면 켜기"),
+        .connectDesktop: p("Connect Desktop", "바탕화면 연결"),
+        .input: p("Input", "입력"),
+        .hdmiCount: p("HDMI %d · %d", "HDMI %d · %d"),
+        .av: p("AV", "AV"),
+        .cleanUpBy: p("Clean Up By", "정리 기준"),
+        .sortName: p("Name", "이름"),
+        .sortKind: p("Kind", "종류"),
+        .sortDateAdded: p("Date Added", "추가된 날짜"),
+        .closeDrawer: p("Close Drawer", "서랍 닫기"),
+        .openDrawer: p("Open Drawer", "서랍 열기"),
+        .faceUp: p("Turn Face Up", "화면이 위로 뒤집기"),
+        .faceDown: p("Turn Face Down", "화면이 아래로 뒤집기"),
+        .listMore: p("%d More…", "%d개 더…"),
+        .listContents: p("List Contents", "내용 보기"),
+        .moveContentsTo: p("Move Contents to", "내용물 옮기기"),
+        .takeAllOut: p("Take All Out", "전부 꺼내기"),
+        .tipOver: p("Tip Over", "넘어뜨리기"),
+        .standUp: p("Stand Up", "세우기"),
+
+        // Undo labels
+        .undoMove: p("Move", "이동"),
+        .undoMoveItems: p("Move %d Items", "항목 %d개 이동"),
+        .undoCleanUp: p("Clean Up", "정리"),
+
+        // Toasts
+        .toastContainerFull: p("That's full.", "가득 찼어요."),
+        .toastAccessDenied: p("No access to the Desktop folder.", "바탕화면 폴더에 접근할 수 없어요."),
+        .toastNotYetAvailable: p("Not available yet.", "아직 쓸 수 없어요."),
+        .toastDrivesReadOnly: p("Use Finder to copy to drives.", "드라이브로 복사는 Finder에서 하세요."),
+        .toastWidgetsOverlap: p("Widgets cover part of the desk.", "위젯이 책상 일부를 가려요."),
+
+        // Monitor cards ("PRESS ⏻ TO CONNECT / DESKTOP": the glyph sits between the first two)
+        .cardPress: p("PRESS", "전원"),
+        .cardToConnect: p("TO CONNECT", "버튼을 눌러"),
+        .cardDesktop: p("DESKTOP", "바탕화면 연결"),
+        .cardShowsFiles: p("Shows your Desktop files here.", "바탕화면 파일이 여기 보여요."),
+        .cardConnecting: p("CONNECTING…", "연결 중…"),
+        .cardCannotRead: p("Can't read the Desktop folder.", "바탕화면 폴더를 읽을 수 없어요."),
+        .cardAllowOrChoose: p("Allow access, or choose it:", "접근을 허용하거나 직접 고르세요:"),
+        .cardOpenSettings: p("Open Settings", "설정 열기"),
+        .cardChooseFolder: p("Choose Folder…", "폴더 선택…"),
+        .cardDesktopHidden: p("DESKTOP HIDDEN", "바탕화면 숨김"),
+        .cardFinderHides: p("Finder hides desktop items.", "Finder가 바탕화면 항목을 숨겨요."),
+        .cardShowAnyway: p("Show them on the desk anyway?", "그래도 책상에 보여 줄까요?"),
+        .cardShow: p("Show", "보이기"),
+        .cardKeepHidden: p("Keep Hidden", "숨겨 두기"),
+
+        // Peek
+        .peekDone: p("× Done", "× 완료"),
+        .peekDoneAX: p("Done Peeking", "엿보기 끝내기"),
+
+        // Settings
+        .settingsTitle: p("Deskterior Settings", "Deskterior 설정"),
+        .settingsDesk: p("Desk", "책상"),
+        .settingsLook: p("Look", "모양"),
+        .settingsSystem: p("System", "시스템"),
+        .lightsMode: p("Lights", "조명"),
+        .reduceMotion: p("Reduce motion", "동작 줄이기"),
+        .reduceMotionFollow: p("Follow System", "시스템 설정 따르기"),
+        .reduceMotionOn: p("Always", "항상"),
+        .reduceMotionOff: p("Never", "안 함"),
+        .matMode: p("Desk mat", "책상 매트"),
+        .matCloth: p("Cloth", "천"),
+        .matFlat: p("Flat", "평평하게"),
+        .pixelSize: p("Pixel size", "픽셀 크기"),
+        .pixelChunky: p("Chunky", "큼직하게"),
+        .pixelNormal: p("Normal", "보통"),
+        .pixelFine: p("Fine", "촘촘하게"),
+        .peekHotkey: p("Peek Desk shortcut ⌃⌥⌘D", "책상 엿보기 단축키 ⌃⌥⌘D"),
+        .peekHotkeyNote: p("Off unless you turn it on. Needs no Accessibility permission.",
+                           "켜기 전에는 꺼져 있어요. 손쉬운 사용 권한이 필요 없어요."),
+        .launchAtLogin: p("Launch at login", "로그인 시 실행"),
+        .loginAdded: p("Login item added.", "로그인 항목에 추가했어요."),
+        .loginRemoved: p("Login item removed.", "로그인 항목에서 뺐어요."),
+        .loginNeedsApproval: p("Approve it in System Settings ▸ General ▸ Login Items.",
+                               "시스템 설정 ▸ 일반 ▸ 로그인 항목에서 승인해 주세요."),
+        .loginFailed: p("Could not change the login item.", "로그인 항목을 바꾸지 못했어요."),
+        .mirroredFolder: p("Mirrored folder", "보여 줄 폴더"),
+        .useDesktop: p("Use Desktop", "바탕화면 쓰기"),
+        .folderSetByFlag: p("Set by --desktop-folder for this run.", "이번 실행에서는 --desktop-folder로 정해졌어요."),
+        .folderUnavailable: p("That folder can't be mirrored.", "그 폴더는 보여 줄 수 없어요."),
+        .language: p("Language", "언어"),
+        .languageSystem: p("System", "시스템"),
+        .languageEnglish: p("English", "English"),
+        .languageKorean: p("한국어", "한국어"),
+        .deskDisplay: p("Desk display", "책상 디스플레이"),
+        .mainDisplay: p("Menu bar display", "메뉴 막대 디스플레이"),
+        .coverDisplays: p("Cover other displays with a wall", "다른 디스플레이를 벽으로 덮기"),
+        .pauseOnBattery: p("Pause the desk on battery power", "배터리 사용 중에는 책상 멈추기"),
+        .aboutCredits: p("About & Credits…", "정보 및 크레딧…"),
+
+        // About
+        .aboutTitle: p("About Deskterior", "Deskterior에 관하여"),
+        .version: p("Version %@", "버전 %@"),
+        .aboutTagline: p("A pixel-art desk for your desktop.", "바탕화면을 위한 픽셀 아트 책상."),
+        .aboutInspired: p("Inspired by Terkel Gjervig's “Desktop Cleaning” prototype (desktop.cleaning).",
+                          "Terkel Gjervig의 “Desktop Cleaning” 프로토타입(desktop.cleaning)에서 영감을 받았어요."),
+        .aboutIndependent: p("Deskterior is an independent project: not affiliated with or endorsed by him, and it uses none of its code, name, art or branding.",
+                             "Deskterior는 독립 프로젝트예요. 원작자와 제휴하거나 보증받지 않았고, 원작의 코드·이름·그림·브랜딩을 전혀 쓰지 않아요."),
+        .aboutFont: p("Galmuri9 font by Lee Minseo, SIL Open Font License 1.1.", "갈무리9 글꼴: 이민서, SIL Open Font License 1.1."),
+        .aboutPalette: p("Apollo palette by AdamCYounis.", "Apollo 팔레트: AdamCYounis."),
+        .aboutLicense: p("Code under the MIT License. No network, no telemetry.", "코드는 MIT 라이선스. 네트워크도, 원격 수집도 없어요."),
+        .aboutSafety: p("Deskterior never moves, renames or deletes your files on its own.",
+                        "Deskterior는 요청하지 않으면 파일을 옮기거나 이름을 바꾸거나 지우지 않아요."),
+        .ok: p("OK", "확인"),
+        .close: p("Close", "닫기"),
+
+        // Safe Mode
+        .safeModeTitle: p("Deskterior Safe Mode", "Deskterior 안전 모드"),
+        .safeModeBody: p("Deskterior started in Safe Mode (⌥ held at launch). The desk has not started and no file has been touched.",
+                         "실행할 때 ⌥ 키를 눌러 안전 모드로 시작했어요. 책상은 아직 시작하지 않았고 파일은 건드리지 않았어요."),
+        .startNormally: p("Start Normally", "평소대로 시작"),
+        .resetLayout: p("Reset Layout…", "배치 초기화…"),
+        .resetConfirm: p("Every file goes back to the monitor. The current layout is kept as a backup in the state folder. No file is deleted.",
+                         "모든 파일이 모니터로 돌아가요. 지금 배치는 상태 폴더에 백업으로 남고, 파일은 지우지 않아요."),
+        .reset: p("Reset", "초기화"),
+        .cancel: p("Cancel", "취소"),
+        .resetDone: p("Layout reset. Backup: %@", "배치를 초기화했어요. 백업: %@"),
+        .resetNothing: p("There was no saved layout to reset.", "초기화할 저장된 배치가 없어요."),
+        .openStateFolder: p("Open State Folder", "상태 폴더 열기"),
+        .quitButton: p("Quit", "종료"),
+
+        // Onboarding and notes
+        .welcomeTitle: p("Welcome to Deskterior", "Deskterior에 오신 걸 환영해요"),
+        .welcomeMonitor: p("Your Desktop files show up as icons on the monitor of a little pixel desk.",
+                           "바탕화면 파일이 작은 픽셀 책상의 모니터에 아이콘으로 나타나요."),
+        .welcomeHide: p("Hide them in drawers, the phone, the pen cup, the wastebasket or under the desk mat, or switch the monitor off.",
+                        "서랍, 휴대폰, 펜꽂이, 쓰레기통, 책상 매트 밑에 숨기거나 모니터를 꺼 보세요."),
+        .welcomeSafe: p("Hiding only changes the layout. Files change only when you ask, like Move to Trash.",
+                        "숨기기는 배치만 바꿔요. 파일은 ‘휴지통으로 이동’처럼 직접 요청할 때만 바뀌어요."),
+        .welcomeConnect: p("Press ⏻ on the monitor to connect your Desktop folder.", "모니터의 ⏻ 버튼을 눌러 바탕화면 폴더를 연결하세요."),
+        .welcomeFind: p("Lost something? Find Item… lists every file and where it is.",
+                        "뭔가 안 보이면 ‘항목 찾기…’에서 모든 파일과 위치를 볼 수 있어요."),
+        .welcomeDisplays: p("You have more than one display.", "디스플레이가 여러 대예요."),
+        .start: p("Start", "시작"),
+        .translocationTitle: p("Move Deskterior to Applications", "Deskterior를 응용 프로그램 폴더로 옮겨 주세요"),
+        .translocationBody: p("macOS is running Deskterior from a temporary read-only copy (App Translocation), so it can forget its permissions and its login item. Quit, drag Deskterior.app into the Applications folder in Finder, and open it from there.",
+                              "macOS가 Deskterior를 임시 읽기 전용 사본(App Translocation)에서 실행하고 있어 권한과 로그인 항목을 잊을 수 있어요. 종료한 뒤 Finder에서 Deskterior.app을 응용 프로그램 폴더로 옮기고 거기서 여세요."),
+
+        // VoiceOver
+        .axDesk: p("Deskterior desk", "Deskterior 책상"),
+        .axWall: p("Deskterior wall", "Deskterior 벽"),
+        .axWallHelp: p("Drop files here to put them on the monitor.", "파일을 여기 놓으면 모니터에 올라가요."),
+        .axMoveToMonitor: p("Move to Monitor", "모니터로 옮기기"),
+        .axShowDeskMenu: p("Show Desk Menu", "책상 메뉴 보기"),
+    ]
+}

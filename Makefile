@@ -1,6 +1,6 @@
 # Deskterior developer tasks. Scripts live in scripts/; every target works with Command Line Tools only.
 # `make app VERSION=0.1.0` sets the bundle version (default: latest git tag, else 0.0.0-dev).
-.PHONY: build release test lint check app universal install icon run clean
+.PHONY: build release test lint check app universal install icon run soak clean
 
 APP_ARGS = $(if $(VERSION),--version $(VERSION))
 
@@ -33,6 +33,9 @@ icon:
 
 run:
 	swift run Deskterior --windowed
+
+soak:
+	scripts/soak.sh --release
 
 clean:
 	rm -rf .build .build-* build

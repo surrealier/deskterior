@@ -165,6 +165,34 @@ public struct StateStore: Sendable {
         if let kept = loadAside(rootPath: rootPath) { state.adoptLayout(of: kept.makeState()) }
     }
 
+    // MARK: system (M12)
+
+    /// Safe Mode's Reset Layout: keeps the saved layout (the one a load finds, `desk.json` or a backup) as
+    /// `desk.reset-<UTC date>.json`, then saves a fresh desk that keeps only the mirrored folder and the lights, so every
+    /// file returns to the monitor at the next scan. Only our own state files are written; nothing is deleted. Returns
+    /// the kept copy, or nil when there was no saved layout.
+    public func resetLayout(now: Date = Date()) throws -> URL? {
+        guard let document = load(now: now).document else { return nil }
+        let c = Calendar(identifier: .gregorian).dateComponents(in: TimeZone(identifier: "UTC")!, from: now)
+        let stamp = String(
+            format: "%04d%02d%02d-%02d%02d%02d", c.year ?? 0, c.month ?? 0, c.day ?? 0, c.hour ?? 0, c.minute ?? 0,
+            c.second ?? 0
+        )
+        var kept = directory.appendingPathComponent("desk.reset-\(stamp).json", isDirectory: false)
+        var n = 2
+        while FileManager.default.fileExists(atPath: kept.path) {
+            kept = directory.appendingPathComponent("desk.reset-\(stamp)-\(n).json", isDirectory: false)
+            n += 1
+        }
+        try write(document.encoded(), to: kept)
+        let old = document.makeState()
+        var fresh = DeskState()
+        fresh.root = old.root
+        fresh.lights = old.lights
+        try save(fresh, now: now)
+        return kept
+    }
+
     // MARK: Private
 
     /// Shifts due generations down (`.bak3` ← `.bak2` ← `.bak1` ← `desk.json`), oldest first. A generation's

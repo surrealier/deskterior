@@ -201,8 +201,8 @@ extension MenuSpec {
     }
 
     /// Commands whose milestone has not landed yet: shown, but disabled (each track removes its own).
-    /// Peek Desk and Settings… need their windows (M12).
-    public static let pending: Set<String> = ["peekDesk", "settings"]
+    /// Every milestone has landed: nothing waits.
+    public static let pending: Set<String> = []
 
     /// Right-click on tokens (the selection): open, look, reveal, copy, move to another page or a hiding place,
     /// trash.

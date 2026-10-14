@@ -188,6 +188,8 @@ final class DeskView: NSView {
                 return DeskAccessibilityElement(item: item, parent: self, press: { [weak self] in self?.accessibilityPress(item) },
                                                 open: open)
             }
+            // M12: more custom actions (Quick Look, Show in Finder, Move to Monitor).
+            DeskAccessibility.decorate?(axElements)
         }
         for e in axElements { e.setAccessibilityFrameInParentSpace(viewRect(fromArt: e.item.frame)) }
         return axElements

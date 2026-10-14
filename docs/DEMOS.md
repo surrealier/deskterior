@@ -37,6 +37,8 @@ explicit file actions (M11, below), on the fixture and its drop source, trashing
 | `seed` | Reducer randomness (`--seed` wins). |
 | `firstRun` | Start like a first launch: the connect prompt instead of an immediate scan. |
 | `finderHidden` | With `firstRun`: Finder hides desktop items (the DESKTOP HIDDEN card). |
+| `language` | `en` (default), `ko` or `system`: the language of cards, toasts and menus (M12). |
+| `fixtureCount` | Visible items in the fixture `run-demo.sh` makes (`--count` wins; e.g. 500 for `11-overflow-500`). |
 
 ## Steps
 
@@ -60,6 +62,9 @@ Every step is an object with one key.
 | `expect` | `{"expect": {"token:a.txt": "cell:0,3,2", "selection": 1}}` | Checks now; every failure is reported (exit 1). |
 | `waitFor` | `{"waitFor": {"expect": {"token:new.txt": "screen"}, "within": 1}}` | Runs until the expectations hold, failing after `within` s (default 3). |
 | `comment` | `{"comment": "…"}` | Printed. |
+| `display` | `{"display": "1920x1080@1"}` | Switches the emulated display (points, `WxH` or `WxH@scale`): a new grid and layout, as when a display changes (M12). |
+| `clock` | `{"clock": "18:00"}` | Sets the room's fixed time (`HH:MM` or ISO 8601). |
+| `wall` | `{"wall": "01-wall"}` | Writes the wall another display of this size would show now (`WallArt`; checked for Apollo colours like a snapshot). |
 
 ### Targets
 
@@ -111,6 +116,8 @@ Every step is an object with one key.
 | `mat.folded` / `mat.asleep` / `mat.saved` / `mat.wrinkled` / `mat.handles` | `true`/`false`: a flap lies folded; the cloth sleeps; the model holds its resting pose (it survives a relaunch); wrinkle metric W > 0.25 px, or one crease at least 1 px high; the ⌥ transform handles show. |
 | `mat.grab` / `mat.size` / `mat.angle` / `mat.keyboard` / `mat.mode` | The grab mode (`carry`, `peel`, `tug`, `transform`, `slide`, `unpeel`, `pending` or `none`); rest size `WxD`; angle in degrees; the keyboard's plane centre `x,d`; `cloth` or `flat`. |
 | `brush` / `brush.home` / `clearDesk` | The brush's plane position `x,d`; whether it is at its rest spot; Clear the Desk's pass `running` or `idle`. |
+| `grid.scale` / `grid.canvas` | The emulated display's integer scale `S` and canvas (`588x383`). |
+| `budget.frameMs` / `budget.peakRssMB` | Budgets (pass at or under the number): the average wall-clock ms of a frame (a fixed step and an offscreen render) over 60 frames run now, and the process's peak resident memory (`getrusage`). The measured values are printed. |
 
 ## The demos
 
@@ -127,6 +134,8 @@ Every step is an object with one key.
 | `08-phone` | Drops become 5×5 app minis with a sparkle; six fill it and a seventh bonks; hover and select a mini; a click on the stand flips it face down (three edge frames; the minis hide and drops bonk), Turn Face Up from its menu, and a mini carried back to the screen. |
 | `09-fs-events` | Finder-side changes within a second: a new file prints in, a rename keeps its cell, a removal poofs, a new folder. |
 | `10-clear-desk` | A busy desk (piles beside the mat, files on the floor, an open drawer, an app on the phone, the monitor on) cleared with one menu pick: the monitor's CRT collapses, the phone turns over, the drawer shuts, the brush goes round the mat pushing each pile under an edge (the edge slides over it, the hem rides up and its bump grows in), the floor files hop onto the mat's edge and tuck under (frames), "TIDY!" over the dark monitor; nothing is left on show. One ⌘Z puts every token, the drawer, the phone and the monitor back exactly. |
+| `11-overflow-500` | A 500-file fixture: twelve HDMI pages of 45 (the last holding 5), paging by action and from the monitor's Input menu, a page selected with ⌘A bonking off a drawer ("That's full."), a new file landing on the last page, Clean Up By Kind over all 501; frame-time and peak-memory budgets (8 ms, 150 MB). |
+| `12-sizes` | The nine displays of DESIGN §1.2 (scale and canvas checked) by day, at dusk and at night, each with the wall another display of that size would show at night. |
 | `13-file-actions` | M11 for real on the fixture, with `ls -li` of the fixture, the source folder and the FakeTrash in the log: Move to Trash from a token's menu (the poof) and ⌘Z back under the same inode into the same cell ("Put back from the Trash."); three files into the wastebasket, Empty Wastebasket… cancelled at its sheet (picture `02-sheet.png`, captioned with its default button, since an offscreen window draws none), then confirmed, and undone back into the basket; drop-in from a second scratch folder (a same-volume move into a cell, "Move In", `notes.md` arriving as `notes 2.md`, an ⌥ copy chomped into the left drawer, "Copy In", a new pile on the bare desk); a move whose file the harness then removes, so the next ⌘Z only says "Nothing to undo there" and changes no file (`05b-stale-undo.png`); three undos (moved back, the copy trashed, each with its toast); a desk item dropped back only moving; the drive hub with five fake volumes (four drives and "+1", hover, Open, Eject refused in demo mode, Show in Finder from the tag) and a bonk on a drive; drag-outs ending in a copy (nothing happens) and on the Dock Trash (trashed after 1.5 s, undoable). |
 
 ## File actions (M11)

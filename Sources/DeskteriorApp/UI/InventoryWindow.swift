@@ -62,6 +62,13 @@ final class InventoryWindowController: NSObject, NSWindowDelegate {
         model.focusSearch += 1
     }
 
+    // MARK: system (M12)
+    /// Closes the window for good (its store is going away: another folder is mirrored).
+    func close() {
+        window?.close()
+        window = nil
+    }
+
     func windowWillClose(_ notification: Notification) {
         if let observer { store.removeObserver(observer) }
         observer = nil

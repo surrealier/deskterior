@@ -160,16 +160,22 @@ final class MirrorController {
     /// (never the real desktop, inside it, or above it) and default to a temporary state directory so they
     /// cannot disturb the real layout. State and cache folders inside the mirrored folder are refused (they would
     /// show up as tokens, and every save would rescan into another save).
+    ///
+    /// Desk mode mirrors the folder chosen in Settings (`mirroredFolder`) when no `--desktop-folder` is given, unless
+    /// `useSavedFolder` is false (Settings is switching folders right now).
     static func configuration(
         options: LaunchOptions, environment: [String: String] = ProcessInfo.processInfo.environment,
-        bundleID: String = AppIdentity.bundleID
+        bundleID: String = AppIdentity.bundleID, useSavedFolder: Bool = true
     ) throws(SafetyGuard.Refusal) -> Configuration {
         let mode: SafetyGuard.Mode = switch options.mode {
         case .desk: .desk
         case .windowed: .windowed
         case .headless: options.demo == nil ? .headless : .demo
         }
-        let resolution = DesktopLocator.resolve(override: options.desktopFolder, environment: environment)
+        let defaults = UserDefaults(suiteName: bundleID)
+        let saved = useSavedFolder && mode == .desk
+            ? DeskSettings(reading: { defaults?.object(forKey: $0) }).mirroredFolder : nil
+        let resolution = DesktopLocator.resolve(override: options.desktopFolder ?? saved, environment: environment)
         let folder = try SafetyGuard.mirrorFolder(resolution, mode: mode)
         let stateDir: URL
         let cacheDir: URL
@@ -186,7 +192,6 @@ final class MirrorController {
         let realDesktop = DesktopLocator.defaultDesktopURL()
         try SafetyGuard.checkOwnFolder(stateDir, desktop: realDesktop, mirrored: folder)
         try SafetyGuard.checkOwnFolder(cacheDir, desktop: realDesktop, mirrored: folder)
-        let defaults = UserDefaults(suiteName: bundleID)
         return Configuration(
             folder: folder, stateDirectory: stateDir, iconCacheDirectory: cacheDir, connectImmediately: mode != .desk,
             settings: DeskSettings(reading: { defaults?.object(forKey: $0) })

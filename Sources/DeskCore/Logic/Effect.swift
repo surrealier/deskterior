@@ -81,7 +81,7 @@ public enum AnimTarget: Sendable, Equatable {
     case clearDesk(ClearDeskPlan)
 }
 
-/// Pixel toasts. (English strings live in DeskScene's `Toast`; the L10n table takes over in M12.)
+/// Pixel toasts. (English strings live in DeskScene's `Toast`, translated through `L10n.tr`.)
 public enum ToastKey: String, Sendable, CaseIterable {
     case containerFull, accessDenied, notYetAvailable
     /// A token dropped on a drive bonks: copying to drives is Finder's job in v0.1 (E15).
@@ -103,4 +103,7 @@ public enum ToastKey: String, Sendable, CaseIterable {
     case undidTrash, undidMoveIn, undidCopyIn, undidDropIn
     /// An undo of a drop-in that macOS refused (the source folder is protected: SPIKES S12).
     case cantMoveBack
+    // MARK: system (M12)
+    /// Desktop widgets cover a critical part of the desk and no nudge clears them (one-time tip, DESIGN §1.2).
+    case widgetsOverlap
 }

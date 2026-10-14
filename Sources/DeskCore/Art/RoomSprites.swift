@@ -27,7 +27,24 @@ public enum RoomArt {
         let base = layout.wallBaseY
         let desk = layout.rect(CoreLayout.deskTop)
 
-        // Wainscot with a chair rail and raised panels (visible beside and under the desk).
+        drawShell(&c, layout: layout)
+        drawFloor(&c, from: base, layout: layout)
+        drawUnderDeskShade(&c, layout: layout)
+        drawRug(&c, layout: layout)
+        drawFloorShadows(&c, layout: layout)
+
+        // Contact shadow on the wall just above the desk's back edge.
+        for x in desk.minX..<desk.maxX where c.ink(at: x, desk.y - 1) == wall { c.plot(x, desk.y - 1, wallShade) }
+        c.blit(deskSurface, at: desk.origin)
+        drawWallShadows(&c, layout)
+        return c.buffer
+    }
+
+    /// The wainscot with its chair rail and raised panels (visible beside and under the desk), and the baseboard,
+    /// over a canvas filled with the wall colour. The desk's room and the other displays' walls (`WallArt`) share it.
+    static func drawShell(_ c: inout PixelCanvas, layout: SceneLayout) {
+        let w = c.width
+        let base = layout.wallBaseY
         let rail = layout.y(chairRailY)
         c.fill(ArtRect(0, rail, w, base - rail), wainscot)
         c.hline(x: 0, y: rail - 3, length: w, .neutral9)
@@ -47,17 +64,6 @@ public enum RoomArt {
         c.hline(x: 0, y: base - 7, length: w, wainscotLine)
         c.hline(x: 0, y: base - 2, length: w, .neutral8)
         c.hline(x: 0, y: base - 1, length: w, wainscotLine)
-
-        drawFloor(&c, from: base, layout: layout)
-        drawUnderDeskShade(&c, layout: layout)
-        drawRug(&c, layout: layout)
-        drawFloorShadows(&c, layout: layout)
-
-        // Contact shadow on the wall just above the desk's back edge.
-        for x in desk.minX..<desk.maxX where c.ink(at: x, desk.y - 1) == wall { c.plot(x, desk.y - 1, wallShade) }
-        c.blit(deskSurface, at: desk.origin)
-        drawWallShadows(&c, layout)
-        return c.buffer
     }
 
     /// The desk top face in desk-local px, with the contact shadows of the back-strip props (the keyboard's is a

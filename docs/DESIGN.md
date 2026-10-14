@@ -284,6 +284,31 @@
       sheet.
     - A demo's drop source must be a scratch folder strictly inside a temporary folder (never in the home folder), apart
       from the fixture and state folders.
+21. **System integration (M12).** These refine §2.2 E16, §4.5–§4.11, §5 and §6.
+    - **Settings** live in the bundle-id `UserDefaults` suite in desk mode only; `--windowed`, headless and demo runs
+      keep them in memory (English unless `--language`), so a development run never changes the app's settings. New
+      keys: `language` (system/en/ko), `mirroredFolder` (desk mode; `--desktop-folder` wins), `loginItemVersion`,
+      `translocationNoteShown`, `settingsVersion`. `DeskSettings.migrations` upgrades older spellings once. The first-run
+      answers (`onboardingStep`, `coverOtherDisplays`) are settings; `desk.json`'s `flags` are not used.
+    - **Strings.** One English/Korean table in DeskCore (`L10nKey`); `L10n.tr` translates the English that `MenuSpec`,
+      toasts, the monitor cards and undo labels produce (exact text, then templates; file names inside titles are never
+      translated). The scene's wastebasket is 쓰레기통, the system Trash 휴지통. Tooltips and VoiceOver labels from the
+      scene's elements stay English in v0.1. Demos and tests speak English unless a script sets `language`.
+    - **Peek Desk**'s "× Done" is a pixel button the app lays over the desk view (top right of the visible art rect), not
+      a node on the L9 layer; Esc is caught by a local key monitor while peeking. A paused desk resumes to be peeked at.
+    - **Gating** is the pure `SystemGate`: occlusion, display sleep, lock, fast user switching and Pause Desk hold the
+      loop; `pauseOnBattery` holds it on battery (a frozen frame, not ordered out), never while peeking. Low Power Mode
+      or thermal ≥ serious only caps the loop at 30 Hz (the AV logo is not suppressed). Sleep and session resign settle
+      the scene and save; wake and session return regrid and rescan.
+    - **Displays.** The desk's display is chosen in Settings (no "Desk Display ▸" status submenu); walls are `WallArt`
+      rendered on the CPU (the room shell with the window, the margins' decor, a painting where the monitor would stand
+      and a second floor plant), magnified by their layer, re-rendered when their size or light changes (checked every
+      10 minutes while walls exist). Files dropped on a wall become `.importDropped` at the monitor's first free cell
+      (⌥: copy). The welcome window, not an in-scene note, carries the first-run text and the cover prompt.
+    - **Hotkey and login item** reach the system only in desk mode; other modes use recording stand-ins. Safe Mode shows
+      before the desk starts; Reset Layout keeps the saved layout as `desk.reset-<date>.json` and saves a fresh desk that
+      keeps only the mirrored folder and the lights.
+    - **Widgets** are probed at launch, on display changes, on wake and when another app activates (never on a timer).
 
 ---
 

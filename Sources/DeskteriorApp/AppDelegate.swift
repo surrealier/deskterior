@@ -11,12 +11,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let options: LaunchOptions
     private var displays: DisplayManager?
     private var statusMenu: StatusMenu?
-    private var observers: SystemObservers?
     private var session: DeskSession?
     private var inventory: InventoryWindowController?
     private var resignKeyObserver: (any NSObjectProtocol)?
-    private var reduceMotion: ReduceMotionObserver?
     private(set) var isUserPaused = false
+    // MARK: system (M12)
+    private var settingsStore: SettingsStore?
+    private var integration: AppSystem?
+    private var safeMode: SafeModeController?
 
     init(options: LaunchOptions) {
         self.options = options
@@ -24,11 +26,41 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        guard let device = MTLCreateSystemDefaultDevice() else { Self.fail("no Metal device") }
+        // MARK: system (M12): settings and the language first; Safe Mode (⌥ held, or --safe-mode) before the desk.
+        let settings = SettingsStore.forLaunch(options)
+        settingsStore = settings
+        L10n.apply(settings.settings.language)
         installKeyRoutingMenu()
+        if let seconds = options.exitAfter {
+            Task { @MainActor in
+                try? await Task.sleep(for: .seconds(seconds))
+                NSApp.terminate(nil)
+            }
+        }
+        if options.safeMode || NSEvent.modifierFlags.contains(.option) {
+            let configuration = MirrorController.configurationOrExit(options: options)
+            let controller = SafeModeController(stateDirectory: configuration.stateDirectory, mirrored: configuration.folder) {
+                [weak self] in self?.launchDesk()
+            }
+            safeMode = controller
+            controller.show()
+            Log.info("safe mode")
+            WindowShots.schedule(options, windows: { [weak controller] in
+                controller?.shownWindow.map { [("safe-mode", $0)] } ?? []
+            })
+            return
+        }
+        launchDesk()
+    }
+
+    /// Starts the desk: displays, the session, the status item, and the system integration.
+    private func launchDesk() {
+        guard let device = MTLCreateSystemDefaultDevice() else { Self.fail("no Metal device") }
         let configuration = MirrorController.configurationOrExit(options: options)
 
         let displays = DisplayManager(options: options, device: device)
+        // M12: the desk display and walls follow the settings from the start.
+        displays.settings = { [weak self] in self?.settingsStore?.settings ?? DeskSettings() }
         do {
             try displays.start()
         } catch {
@@ -50,7 +82,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         displays.view?.dropIn = session.dropIn
         session.start()
         host.scene.startClock()
-        reduceMotion = ReduceMotionObserver(scene: host.scene, forced: options.reduceMotion)
         host.loop.renderOnce()
         // A dev burst plays only in a window (never on the real desk's layout).
         if options.burst, options.windowed != nil { BurstDriver.start(host: host, store: session.store) }
@@ -59,11 +90,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             spec: { [weak self] in self?.statusSpec() ?? MenuSpec([]) },
             perform: { [weak self] in self?.perform($0) }
         )
+        // MARK: system (M12)
+        let integration = AppSystem(options: options, settings: settingsStore ?? SettingsStore.forLaunch(options),
+                                    displays: displays, session: session)
+        integration.perform = { [weak self] in self?.perform($0) }
+        integration.isUserPaused = { [weak self] in self?.isUserPaused ?? false }
+        integration.setUserPaused = { [weak self] in self?.setUserPaused($0) }
+        integration.switchFolder = { [weak self] in self?.switchFolder($0) ?? false }
+        self.integration = integration
+        integration.start()
+        WindowShots.schedule(options, windows: { [weak integration] in integration?.shownWindows ?? [] })
         if let window = displays.window {
-            observers = SystemObservers(window: window, loop: host.loop) { [weak displays, weak session] in
-                displays?.refreshGrid()
-                session?.mirror.rescan()
-            }
             // A gesture whose mouse-up goes to another window or app must not stay in hand.
             resignKeyObserver = NotificationCenter.default.addObserver(
                 forName: NSWindow.didResignKeyNotification, object: window, queue: .main
@@ -78,12 +115,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             print(window.windowNumber)
             fflush(stdout)
         }
-        if let seconds = options.exitAfter {
-            Task { @MainActor in
-                try? await Task.sleep(for: .seconds(seconds))
-                NSApp.terminate(nil)
-            }
-        }
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
@@ -91,9 +122,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        integration?.invalidate()
         session?.stop()
-        observers?.invalidate()
-        reduceMotion?.invalidate()
         displays?.invalidate()
         if let resignKeyObserver { NotificationCenter.default.removeObserver(resignKeyObserver) }
     }
@@ -110,6 +140,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard paused != isUserPaused else { return }
         isUserPaused = paused
         displays?.setUserPaused(paused)
+        integration?.userPaused(paused)
         session?.sync.refreshMenuContext()
         Log.info(paused ? "desk paused" : "desk resumed")
     }
@@ -134,14 +165,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case .openDesktopFolder:
             if let folder = session?.configuration.folder { NSWorkspace.shared.open(folder) }
         case .about:
-            NSApp.activate()
-            NSApp.orderFrontStandardAboutPanel(nil)
+            integration?.showAbout()
         case .quit:
             NSApp.terminate(nil)
-        case .peekDesk, .settings:
-            // TODO(M12): Peek Desk and the Settings window.
-            session?.host.scene.toast(.notYetAvailable)
-            session?.host.modelChanged()
+        case .peekDesk:
+            integration?.togglePeek()
+        case .settings:
+            integration?.showSettings()
         default:
             break
         }
@@ -159,6 +189,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case let .command(command):
             perform(command)
         }
+    }
+
+    // MARK: system (M12)
+
+    /// Settings ▸ Mirrored folder (desk mode): a new session on the same scene mirrors `path` (nil: the Desktop),
+    /// connecting at once (the user chose it); the old folder's layout is parked by the mirror (Errata 11). False
+    /// when the folder may not be mirrored.
+    private func switchFolder(_ path: String?) -> Bool {
+        guard let old = session else { return false }
+        var o = options
+        o.desktopFolder = path
+        guard var configuration = try? MirrorController.configuration(options: o, useSavedFolder: false) else { return false }
+        configuration.connectImmediately = true
+        old.stop()
+        let new = DeskSession(host: old.host, options: options, configuration: configuration, dryRun: false)
+        new.isPaused = { [weak self] in self?.isUserPaused ?? false }
+        session = new
+        inventory?.close()
+        inventory = nil
+        new.start()
+        integration?.adopt(new)
+        Log.info("mirroring \(configuration.folder.path)")
+        return true
     }
 
     private func showInventory() {

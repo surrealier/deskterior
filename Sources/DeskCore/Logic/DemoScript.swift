@@ -15,6 +15,11 @@ public struct DemoScript: Codable, Sendable, Equatable {
     public var firstRun: Bool?
     /// With `firstRun`: pretend Finder hides desktop items (the DESKTOP HIDDEN card).
     public var finderHidden: Bool?
+    // MARK: system (M12)
+    /// The language of menus, cards and toasts (`en` by default, so snapshots stay stable).
+    public var language: LanguageSetting?
+    /// Visible items in the fixture `scripts/run-demo.sh` makes (default: the ~40-item fixture).
+    public var fixtureCount: Int?
     public var steps: [DemoStep]
 
     public init(name: String, steps: [DemoStep]) {
@@ -305,10 +310,19 @@ public enum DemoStep: Codable, Sendable, Equatable {
     /// A token dragged out to another app that ended the drag (`DemoDragOut`).
     case dragOut(DemoDragOut)
 
+    // MARK: system (M12)
+    /// Switches the emulated display (`WxH` or `WxH@scale`, points): a new grid, as when the display changes.
+    case display(String)
+    /// Sets the room's fixed time (`HH:MM` or ISO 8601).
+    case clock(String)
+    /// A snapshot of the wall another display of this size would show at this time (`WallArt`).
+    case wall(String)
+
     private enum Key: String, CodingKey, CaseIterable {
         case waitIdle, wait, snapshot, click, hover, drag, release, scroll, key, menu, fs, action, expect, waitFor, comment
         case move
         case dropIn, volumes, dragOut // MARK: files
+        case display, clock, wall
     }
 
     public init(from decoder: Decoder) throws {
@@ -339,6 +353,9 @@ public enum DemoStep: Codable, Sendable, Equatable {
         case .dropIn: self = .dropIn(try c.decode(DemoDropIn.self, forKey: key))
         case .volumes: self = .volumes(try c.decode([VolumeEntry].self, forKey: key))
         case .dragOut: self = .dragOut(try c.decode(DemoDragOut.self, forKey: key))
+        case .display: self = .display(try c.decode(String.self, forKey: key))
+        case .clock: self = .clock(try c.decode(String.self, forKey: key))
+        case .wall: self = .wall(try c.decode(String.self, forKey: key))
         }
     }
 
@@ -364,6 +381,9 @@ public enum DemoStep: Codable, Sendable, Equatable {
         case let .dropIn(d): try c.encode(d, forKey: .dropIn)
         case let .volumes(v): try c.encode(v, forKey: .volumes)
         case let .dragOut(d): try c.encode(d, forKey: .dragOut)
+        case let .display(d): try c.encode(d, forKey: .display)
+        case let .clock(t): try c.encode(t, forKey: .clock)
+        case let .wall(n): try c.encode(n, forKey: .wall)
         }
     }
 

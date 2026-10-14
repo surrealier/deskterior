@@ -27,10 +27,10 @@ enum ScreenCard {
     /// "PRESS ⏻ TO CONNECT DESKTOP" on a panel over the dimmed wallpaper, with an arrow toward the power button.
     static func connectPrompt(_ wallpaper: PixelBuffer, _ font: PixelFont) -> Rendered {
         var c = PixelCanvas(dimmed(wallpaper, steps: 2))
-        let head = PixelText.shadowed("PRESS", .neutral9, shadow: .neutral0, font: font)
-        let tail = PixelText.shadowed("TO CONNECT", .neutral9, shadow: .neutral0, font: font)
-        let second = PixelText.shadowed("DESKTOP", .neutral9, shadow: .neutral0, font: font)
-        let sub = PixelText.line("Shows your Desktop files here.", .neutral7, font: font)
+        let head = PixelText.shadowed(L10n.tr("PRESS"), .neutral9, shadow: .neutral0, font: font)
+        let tail = PixelText.shadowed(L10n.tr("TO CONNECT"), .neutral9, shadow: .neutral0, font: font)
+        let second = PixelText.shadowed(L10n.tr("DESKTOP"), .neutral9, shadow: .neutral0, font: font)
+        let sub = PixelText.line(L10n.tr("Shows your Desktop files here."), .neutral7, font: font)
         let glyph = powerGlyph(Role.ledOn)
         let gap = 4
         let firstW = head.width + gap + glyph.width + gap + tail.width
@@ -57,7 +57,7 @@ enum ScreenCard {
 
     static func connecting(_ wallpaper: PixelBuffer, _ font: PixelFont) -> Rendered {
         var c = PixelCanvas(dimmed(wallpaper, steps: 1))
-        let text = PixelText.shadowed("CONNECTING…", .neutral9, shadow: .neutral0, font: font)
+        let text = PixelText.shadowed(L10n.tr("CONNECTING…"), .neutral9, shadow: .neutral0, font: font)
         let panel = ArtRect((c.width - text.width) / 2 - 6, (c.height - text.height) / 2 - 4, text.width + 12, text.height + 8)
         drawPanel(&c, panel)
         c.blit(text, at: ArtPoint(panel.x + 6, panel.y + 4))
@@ -68,10 +68,10 @@ enum ScreenCard {
     static func noAccess(_ font: PixelFont) -> Rendered {
         var c = PixelCanvas(MonitorArt.noSignalScreen(logo: ArtPoint(-100, -100), input: ""))
         let logo = MonitorArt.noSignalLogo().image
-        let l1 = PixelText.line("Can't read the Desktop folder.", .neutral8, font: font)
-        let l2 = PixelText.line("Allow access, or choose it:", .neutral6, font: font)
-        let settings = button("Open Settings", primary: false, font: font)
-        let choose = button("Choose Folder…", primary: true, font: font)
+        let l1 = PixelText.line(L10n.tr("Can't read the Desktop folder."), .neutral8, font: font)
+        let l2 = PixelText.line(L10n.tr("Allow access, or choose it:"), .neutral6, font: font)
+        let settings = button(L10n.tr("Open Settings"), primary: false, font: font)
+        let choose = button(L10n.tr("Choose Folder…"), primary: true, font: font)
         let rowW = settings.width + 6 + choose.width
         let total = logo.height + 6 + l1.height + 1 + l2.height + 6 + settings.height
         var y = (c.height - total) / 2
@@ -92,11 +92,11 @@ enum ScreenCard {
     /// DESKTOP HIDDEN: Finder hides desktop items; ask before mirroring them.
     static func desktopHidden(_ wallpaper: PixelBuffer, _ font: PixelFont) -> Rendered {
         var c = PixelCanvas(dimmed(wallpaper, steps: 2))
-        let title = PixelText.shadowed("DESKTOP HIDDEN", .walnut5, shadow: .neutral0, font: font)
-        let l1 = PixelText.line("Finder hides desktop items.", .neutral8, font: font)
-        let l2 = PixelText.line("Show them on the desk anyway?", .neutral8, font: font)
-        let show = button("Show", primary: true, font: font)
-        let keep = button("Keep Hidden", primary: false, font: font)
+        let title = PixelText.shadowed(L10n.tr("DESKTOP HIDDEN"), .walnut5, shadow: .neutral0, font: font)
+        let l1 = PixelText.line(L10n.tr("Finder hides desktop items."), .neutral8, font: font)
+        let l2 = PixelText.line(L10n.tr("Show them on the desk anyway?"), .neutral8, font: font)
+        let show = button(L10n.tr("Show"), primary: true, font: font)
+        let keep = button(L10n.tr("Keep Hidden"), primary: false, font: font)
         let rowW = show.width + 6 + keep.width
         let contentW = max(title.width, l1.width, l2.width, rowW)
         let contentH = title.height + 3 + l1.height + 1 + l2.height + 5 + show.height

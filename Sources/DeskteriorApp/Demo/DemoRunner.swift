@@ -89,6 +89,8 @@ final class DemoRunner {
             FileHandle.standardError.write(Data("Deskterior demo: cannot read \(path): \(error)\n".utf8))
             return 2
         }
+        // MARK: system (M12): demos speak English unless the script asks otherwise.
+        L10n.apply(script.language ?? .en)
         var configuration = MirrorController.configurationOrExit(options: options)
         configuration.watchesVolumes = false // MARK: files: demos list their own volumes (`volumes` steps)
         let source: URL?
@@ -232,7 +234,62 @@ final class DemoRunner {
             frame()
         case let .dragOut(d):
             try dragOut(d, index: index)
+        // MARK: system (M12)
+        case let .display(d):
+            guard let display = LaunchOptions.EmulatedDisplay(parsing: d) else {
+                throw ScriptError(description: "step \(index): bad display '\(d)'")
+            }
+            try host.setGrid(PixelGrid(display: display.geometry(), pixelSize: host.grid.pixelSize))
+            let g = host.grid
+            print("demo \(script.name): display \(display), S \(g.scale), canvas \(g.artSize), core \(g.coreRect)")
+            frame()
+        case let .clock(c):
+            guard let t = WallTime(parsing: c, date: SceneClock.live.now()) else {
+                throw ScriptError(description: "step \(index): bad clock '\(c)'")
+            }
+            host.scene.clock = .fixed(t)
+            frame()
+        case let .wall(name):
+            try wallSnapshot(name)
         }
+    }
+
+    // MARK: system (M12)
+
+    /// The wall another display of the current size would show at the room's time and lights (`WallArt`).
+    private func wallSnapshot(_ name: String) throws {
+        guard let state = host.scene.roomState else { throw ScriptError(description: "no room to light a wall") }
+        let image = WallArt.render(grid: host.grid, state: state)
+        let foreign = image.pixels.reduce(0) { $0 + (Apollo.index(of: $1) == nil ? 1 : 0) }
+        if foreign > 0 { failures.append("wall \(name): \(foreign) pixels are not Apollo colours") }
+        guard let writer else { return }
+        for png in Snapshotter.pngs(image, name: name, scale: scale) {
+            print("wrote \(try writer.write(png.data, named: png.name).path)")
+        }
+    }
+
+    /// Average wall-clock milliseconds of one frame (a fixed step and an offscreen render) over `n` frames.
+    private func measureFrameMs(_ n: Int = 60) -> Double {
+        let t0 = DispatchTime.now().uptimeNanoseconds
+        for _ in 0..<n {
+            frame()
+            host.presenter.renderOffscreen(wait: true)
+        }
+        return Double(DispatchTime.now().uptimeNanoseconds - t0) / Double(n) / 1e6
+    }
+
+    /// The process's peak resident memory so far, in MB (`getrusage`: bytes on macOS).
+    static func peakRSSMB() -> Double {
+        var u = rusage()
+        getrusage(RUSAGE_SELF, &u)
+        return Double(u.ru_maxrss) / 1_048_576
+    }
+
+    /// A budget expectation: `actual` must not exceed the expected number.
+    private func budget(_ key: String, _ actual: Double, _ expected: DemoValue) -> String? {
+        guard case let .number(limit) = expected else { return "\(key) takes a number" }
+        print("demo \(script.name): \(key) \(String(format: "%.2f", actual)) (budget \(expected.text))")
+        return actual <= limit ? nil : "\(key) is \(String(format: "%.2f", actual)), over \(expected.text)"
     }
 
     private func drag(_ d: DemoDrag) async throws {
@@ -510,6 +567,11 @@ final class DemoRunner {
             case "carrying": check(key, String(scene.isDragging), value)
             case "bonks": check(key, String(scene.bonkCount), value)
             case "command": check(key, appCommands.last ?? "none", value)
+            // MARK: system (M12)
+            case "grid.scale": check(key, String(host.grid.scale), value)
+            case "grid.canvas": check(key, "\(host.grid.artSize)", value)
+            case "budget.frameMs": if let f = budget(key, measureFrameMs(), value) { out.append(f) }
+            case "budget.peakRssMB": if let f = budget(key, Self.peakRSSMB(), value) { out.append(f) }
             // MARK: containers (M6)
             case let k where k.hasPrefix("drawer:"):
                 guard let id = ContainerID(rawValue: String(k.dropFirst(7))), id.isDrawer else {

@@ -100,6 +100,15 @@ struct LaunchOptions: Equatable {
     var reduceMotion = false
     /// `--burst`: windowed only, a short scripted interaction burst, then idle (`scripts/measure-idle.sh`).
     var burst = false
+    // MARK: system (M12)
+    /// `--safe-mode` (or ⌥ held at launch): the Safe Mode window before the desk starts.
+    var safeMode = false
+    /// `--language system|en|ko`: the language outside desk mode (desk mode follows Settings).
+    var language: LanguageSetting?
+    /// `--show settings,about,onboarding,translocation,peek`: windowed only, open these at launch.
+    var show: Set<String> = []
+    /// `--window-shots DIR`: windowed only, write PNGs of the app's open windows (Settings, About…) here.
+    var windowShots: String?
 
     var mode: Mode { headless || demo != nil ? .headless : (windowed != nil ? .windowed : .desk) }
     /// The scene's time source.
@@ -128,6 +137,10 @@ struct LaunchOptions: Equatable {
           --seed N                   reducer randomness
           --icons kind|live          kind icons only, or pixelated real icons (default live)
           --burst                    windowed: a short scripted interaction burst, then idle (measure-idle.sh)
+          --safe-mode                start with the Safe Mode window (also: hold ⌥ while Deskterior launches)
+          --language system|en|ko    the language outside desk mode (desk mode follows Settings)
+          --show LIST                windowed: open settings,about,onboarding,translocation,peek at launch
+          --window-shots DIR         windowed: write PNGs of the open app windows to DIR (with --show)
           --version, --help
         Every option can also be set as DESKTERIOR_<NAME> in the environment, e.g. DESKTERIOR_SNAPSHOT_DIR.
         """
@@ -260,6 +273,23 @@ struct LaunchOptions: Equatable {
         },
         Spec(names: ["--state-dir"], arity: .value) { o, v in o.stateDir = v },
         Spec(names: ["--burst"], arity: .switch) { o, _ in o.burst = true },
+        // MARK: system (M12)
+        Spec(names: ["--safe-mode"], arity: .switch) { o, _ in o.safeMode = true },
+        Spec(names: ["--language"], arity: .value) { o, v in
+            guard let v, let l = LanguageSetting(rawValue: v) else {
+                throw UsageError(description: "--language expects system, en or ko")
+            }
+            o.language = l
+        },
+        Spec(names: ["--show"], arity: .value) { o, v in
+            let known: Set<String> = ["settings", "about", "onboarding", "translocation", "peek"]
+            let names = Set((v ?? "").split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) })
+            guard !names.isEmpty, names.isSubset(of: known) else {
+                throw UsageError(description: "--show expects a list of \(known.sorted().joined(separator: ", "))")
+            }
+            o.show = names
+        },
+        Spec(names: ["--window-shots"], arity: .value) { o, v in o.windowShots = v },
         Spec(names: ["--help", "-h"], arity: .switch) { o, _ in o.showHelp = true },
         Spec(names: ["--version"], arity: .switch) { o, _ in o.showVersion = true },
     ]

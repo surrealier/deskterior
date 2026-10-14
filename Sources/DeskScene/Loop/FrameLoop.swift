@@ -4,6 +4,9 @@ import QuartzCore
 /// Why the loop must not run at all; any active reason pauses the display link and suppresses rendering.
 public enum PauseReason: String, Hashable, Sendable, CaseIterable {
     case occluded, screensAsleep, sessionInactive, locked, userPaused
+    // MARK: system (M12)
+    /// Running on battery with the "pause on battery" setting (`SystemGate`; the raw values are `LoopHold`'s).
+    case onBattery
 }
 
 /// The pure timing logic of `FrameLoop` (DESIGN §4.6), separate from the display link so it can be tested:

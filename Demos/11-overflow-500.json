@@ -1,0 +1,53 @@
+{
+  "name": "11-overflow-500",
+  "display": "1470x956@2",
+  "clock": "10:00",
+  "seed": 1,
+  "fixtureCount": 500,
+  "steps": [
+    { "comment": "500 files: twelve HDMI pages of 45, the last one partly filled; frame cost and memory with all of them on the desk." },
+    { "waitIdle": 40 },
+    { "expect": { "access": "connected", "tokens": 500, "pages": 12, "monitor.input": "HDMI 1", "screen.tokens": 45 } },
+    { "expect": { "budget.frameMs": 8, "budget.peakRssMB": 150 } },
+    { "snapshot": "01-hdmi1" },
+
+    { "comment": "Paging: HDMI 2, the last page (5 files), and HDMI 7 from the monitor's Input menu." },
+    { "action": "page:2" },
+    { "waitIdle": 3 },
+    { "expect": { "monitor.input": "HDMI 2", "screen.tokens": 45 } },
+    { "snapshot": "02-hdmi2" },
+    { "action": "page:12" },
+    { "waitIdle": 3 },
+    { "expect": { "monitor.input": "HDMI 12", "screen.tokens": 5 } },
+    { "snapshot": "03-hdmi12" },
+    { "menu": { "at": "monitor.chin", "item": "input.hdmi7" } },
+    { "waitIdle": 3 },
+    { "expect": { "monitor.input": "HDMI 7", "screen.tokens": 45 } },
+    { "snapshot": "04-hdmi7" },
+
+    { "comment": "A whole page will not fit in a drawer: select all 45 and drop them on the left riser drawer; it bonks." },
+    { "action": "page:1" },
+    { "waitIdle": 3 },
+    { "key": "cmd+a" },
+    { "expect": { "selection": 45 } },
+    { "drag": { "from": "cell:4,2", "to": "riser.drawerL.front", "duration": 0.5 } },
+    { "wait": 0.2 },
+    { "expect": { "bonks": 1, "toast": "containerFull", "tokens": 500 } },
+    { "snapshot": "05-bonk-full" },
+    { "waitIdle": 4 },
+
+    { "comment": "A new file lands in the first free cell, on the last page; the page dots blink." },
+    { "fs": { "touch": "zz new note.txt" } },
+    { "waitFor": { "expect": { "token:zz new note.txt": "screen:12", "tokens": 501 }, "within": 5 } },
+    { "wait": 0.1 },
+    { "snapshot": "06-new-on-last-page" },
+    { "waitIdle": 4 },
+
+    { "comment": "Clean Up By Kind re-flows all 501 across the pages." },
+    { "action": "cleanUp:kind" },
+    { "waitIdle": 6 },
+    { "expect": { "tokens": 501, "pages": 12, "screen.tokens": 45 } },
+    { "snapshot": "07-clean-up-kind" },
+    { "expect": { "budget.frameMs": 8, "budget.peakRssMB": 150 } }
+  ]
+}

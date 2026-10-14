@@ -4,7 +4,7 @@
 #
 # Usage: scripts/run-demo.sh [--out DIR] [--scale N] [--count N] [--release] NAME|FILE [NAME|FILE ...]
 #   NAME runs Demos/NAME.json. Each demo gets a new mktemp fixture (scripts/make-fixture-desktop.sh, about 40
-#   items; --count N for more) and a new mktemp state folder, then runs
+#   items; --count N, or the script's "fixtureCount", for more) and a new mktemp state folder, then runs
 #     Deskterior --headless --demo FILE --desktop-folder FIXTURE --state-dir STATE --seed 1
 #                --snapshot-dir OUT/NAME --snapshot-scale N
 #   OUT defaults to .build/demo-out. Env: SWIFT_SCRATCH_PATH (build folder, e.g. .build-w4-core), SWIFT_JOBS
@@ -120,8 +120,14 @@ run_one() {
   out="$OUT_ROOT/$name"
   mkdir -p "$state" "$SOURCE" "$out" || return 2
   rm -f "$out"/*.png
-  if [ "$COUNT" -gt 0 ]; then
-    "$ROOT/scripts/make-fixture-desktop.sh" --count "$COUNT" "$DESK" >&2 || return 2
+  # --count wins over the script's own "fixtureCount" (11-overflow-500).
+  local count="$COUNT"
+  if [ "$count" -eq 0 ]; then
+    count="$(sed -n 's/.*"fixtureCount"[[:space:]]*:[[:space:]]*\([0-9][0-9]*\).*/\1/p' "$script" | head -n 1)"
+    [ -n "$count" ] || count=0
+  fi
+  if [ "$count" -gt 0 ]; then
+    "$ROOT/scripts/make-fixture-desktop.sh" --count "$count" "$DESK" >&2 || return 2
   else
     "$ROOT/scripts/make-fixture-desktop.sh" "$DESK" >&2 || return 2
   fi

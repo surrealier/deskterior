@@ -3,8 +3,8 @@ import DeskPixels
 import SpriteKit
 
 extension ToastKey {
-    /// The English toast text (the L10n table takes over in M12).
-    public var text: String {
+    /// The English toast text (shown through `L10n.tr` in the current language).
+    public var english: String {
         switch self {
         case .containerFull: "That's full."
         case .accessDenied: "No access to the Desktop folder."
@@ -33,8 +33,12 @@ extension ToastKey {
         case .undidCopyIn: "Copies moved to the Trash."
         case .undidDropIn: "Sent back; copies moved to the Trash."
         case .cantMoveBack: "macOS would not let it go back."
+        case .widgetsOverlap: "Widgets cover part of the desk."
         }
     }
+
+    /// The toast text in the current language.
+    public var text: String { L10n.tr(english) }
 }
 
 /// Pixel toasts on the L9 ui layer: one short line on a dark tab that drops in from the top of the visible band

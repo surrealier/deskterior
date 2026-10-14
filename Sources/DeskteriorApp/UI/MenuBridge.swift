@@ -35,7 +35,7 @@ final class MenuBridge: NSObject {
             case .separator:
                 menu.addItem(.separator())
             case let .command(command):
-                let ns = NSMenuItem(title: item.title, action: #selector(choose(_:)), keyEquivalent: "")
+                let ns = NSMenuItem(title: Self.title(item), action: #selector(choose(_:)), keyEquivalent: "")
                 ns.target = self
                 ns.tag = commands.count
                 ns.isEnabled = item.isEnabled
@@ -44,7 +44,7 @@ final class MenuBridge: NSObject {
                 commands.append(command)
                 menu.addItem(ns)
             case let .submenu(children):
-                let ns = NSMenuItem(title: item.title, action: nil, keyEquivalent: "")
+                let ns = NSMenuItem(title: Self.title(item), action: nil, keyEquivalent: "")
                 ns.isEnabled = item.isEnabled
                 ns.identifier = NSUserInterfaceItemIdentifier(item.id)
                 let sub = NSMenu(title: item.title)
@@ -53,6 +53,12 @@ final class MenuBridge: NSObject {
                 menu.addItem(ns)
             }
         }
+    }
+
+    // MARK: system (M12)
+    /// The item's title in the current language (`L10n.tr`); List Contents' file names stay as they are.
+    static func title(_ item: MenuItem) -> String {
+        item.id.hasPrefix("list.") && item.id != "list.more" ? item.title : L10n.tr(item.title)
     }
 
     @objc private func choose(_ sender: NSMenuItem) {

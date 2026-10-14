@@ -5,6 +5,8 @@ public struct DeskSettings: Sendable, Equatable {
         case launchAtLogin, deskDisplayUUID, coverOtherDisplays, pixelSize, lights, iconStyle, dragOutMode,
              peekHotkeyEnabled, pauseOnBattery, reduceMotion, windowLevel, matMode, showDespiteFinderHidden,
              onboardingStep
+        // MARK: system (M12)
+        case language, mirroredFolder, loginItemVersion, translocationNoteShown, settingsVersion
     }
 
     public enum IconStyle: String, CaseIterable, Sendable {
@@ -50,6 +52,18 @@ public struct DeskSettings: Sendable, Equatable {
     /// Nil until asked on the DESKTOP HIDDEN card.
     public var showDespiteFinderHidden: Bool?
     public var onboardingStep = 0
+    // MARK: system (M12)
+    /// Settings ▸ Language.
+    public var language: LanguageSetting = .system
+    /// Settings ▸ Mirrored folder (a path); nil mirrors the Desktop. Desk mode only (`--desktop-folder` wins).
+    public var mirroredFolder: String?
+    /// The app version that last registered the login item (it is registered again after an update, and only
+    /// while `launchAtLogin` is on).
+    public var loginItemVersion: String?
+    /// The one-time "move to Applications" note (App Translocation) was shown.
+    public var translocationNoteShown = false
+    /// The settings layout these values were written in (`migrations`).
+    public var settingsVersion = 0
 
     public init() {}
 
@@ -84,6 +98,11 @@ public struct DeskSettings: Sendable, Equatable {
         matMode = raw(.matMode, MatMode.self) ?? .cloth
         showDespiteFinderHidden = bool(.showDespiteFinderHidden)
         onboardingStep = max(0, (value(Key.onboardingStep.rawValue) as? Int) ?? 0)
+        language = raw(.language, LanguageSetting.self) ?? .system
+        mirroredFolder = string(.mirroredFolder).flatMap { $0.isEmpty ? nil : $0 }
+        loginItemVersion = string(.loginItemVersion)
+        translocationNoteShown = bool(.translocationNoteShown) ?? false
+        settingsVersion = max(0, (value(Key.settingsVersion.rawValue) as? Int) ?? 0)
     }
 
     /// Property-list values per key (`nil` = remove the key, i.e. back to "unset").
@@ -103,6 +122,55 @@ public struct DeskSettings: Sendable, Equatable {
             (Key.matMode.rawValue, matMode.rawValue),
             (Key.showDespiteFinderHidden.rawValue, showDespiteFinderHidden),
             (Key.onboardingStep.rawValue, onboardingStep),
+            (Key.language.rawValue, language.rawValue),
+            (Key.mirroredFolder.rawValue, mirroredFolder),
+            (Key.loginItemVersion.rawValue, loginItemVersion),
+            (Key.translocationNoteShown.rawValue, translocationNoteShown),
+            (Key.settingsVersion.rawValue, settingsVersion),
         ]
+    }
+
+    /// The value `propertyList` writes for `key`.
+    public func value(for key: Key) -> (any Sendable)? {
+        propertyList.first { $0.key == key.rawValue }?.value ?? nil
+    }
+
+    // MARK: Migrations (M12)
+
+    /// The settings layout this build writes.
+    public static let currentVersion = 1
+
+    /// The writes that bring settings stored by an older build up to `currentVersion` (`nil` removes a key), read
+    /// through `value` like `init(reading:)`. Running them again finds nothing to do. Version 0 → 1 keeps what the
+    /// user meant where an older spelling would otherwise fall back to the default:
+    /// - `lights` "lampOnly" → "lamp" (Errata 9);
+    /// - `reduceMotion` stored as a switch → "on" / "followSystem";
+    /// - `pixelSize` stored as the target height 320 / 380 / 440 → chunky / normal / fine;
+    /// - `windowLevel` stored by case name ("aboveIcons", "iconPlus3") → "icon+1" / "icon+3";
+    /// - `onboardingStep` and `settingsVersion` stored as text → numbers.
+    /// A newer `settingsVersion` is left alone.
+    public static func migrations(reading value: (String) -> Any?) -> [(key: String, value: (any Sendable)?)] {
+        let version = (value(Key.settingsVersion.rawValue) as? Int)
+            ?? (value(Key.settingsVersion.rawValue) as? String).flatMap { Int($0) } ?? 0
+        guard version < currentVersion else { return [] }
+        var out: [(key: String, value: (any Sendable)?)] = []
+        func put(_ k: Key, _ v: (any Sendable)?) { out.append((k.rawValue, v)) }
+        if (value(Key.lights.rawValue) as? String) == "lampOnly" { put(.lights, LightsMode.lampOnly.rawValue) }
+        if let on = value(Key.reduceMotion.rawValue) as? Bool {
+            put(.reduceMotion, (on ? ReduceMotion.on : .followSystem).rawValue)
+        }
+        if let n = (value(Key.pixelSize.rawValue) as? Int)
+            ?? (value(Key.pixelSize.rawValue) as? String).flatMap({ Int($0) }) {
+            let size = PixelSize.allCases.first { $0.targetArtHeight == n } ?? .normal
+            put(.pixelSize, size.rawValue)
+        }
+        switch value(Key.windowLevel.rawValue) as? String {
+        case "aboveIcons": put(.windowLevel, WindowLevel.aboveIcons.rawValue)
+        case "iconPlus3": put(.windowLevel, WindowLevel.iconPlus3.rawValue)
+        default: break
+        }
+        if let s = value(Key.onboardingStep.rawValue) as? String { put(.onboardingStep, max(0, Int(s) ?? 0)) }
+        put(.settingsVersion, currentVersion)
+        return out
     }
 }

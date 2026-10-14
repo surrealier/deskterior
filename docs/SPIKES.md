@@ -18,3 +18,14 @@ Machine: MacBook Air M2 (Mac14,2), macOS 26.6.2, Swift 6.2.3 (Command Line Tools
 | S10 | Widget frames without Screen Recording | **Pass.** `CGWindowListCopyWindowInfo(.optionAll)` lists two 180×180 widget windows at icon+2 owned by `com.apple.notificationcenterui` (name localized: "알림 센터") at (8,45) and (188,45) pt; Finder icon window at icon+0; a 1470×81 Window Server strip at icon+1 (menu-bar backdrop). | `WidgetProbe` matches by bundle id via PID. Widgets here only overlap the decorative wall window, not interactive rects. |
 | S11 | Undo by renaming out of `~/.Trash` | **M11: in-app undo verified on the FakeTrash only** (demo `13-file-actions`: same inode back in the same cell). The real Trash is never exercised by automation; a human check remains. | Fallback built: a refused put-back toasts "Use Finder's Put Back" and opens the Trash in Finder (desk mode) |
 | S12 | Drop-in move from `~/Downloads` | **M11: pending a human check** (automation never touches `~/Downloads`). `FileOperator.importItems` copies when the move gets EPERM/EACCES/EXDEV; demo `13-file-actions` moves and copies in from a scratch folder. | Fallback built: copy on EPERM |
+
+## M12: how the decisions are applied
+
+| Spike | In the app (M12) | Still for a human |
+|---|---|---|
+| S1 | Desk and wall windows stay at icon+1 (`DeskWindow`, Settings has no level picker; `--level` stays a dev flag). | Clicks, hover and right-click with another app frontmost; the reveal-click; the 81-pt strip (§8.3 items 1–4). |
+| S2 | The activating `DeskWindow` is kept; Peek Desk raises it to `.floating`, makes it key and activates the app. | Keys, Quick Look and ⌘Z after a desk click (§8.3 item 3). |
+| S3 | `SystemGate` holds the loop while the desk window is not `.visible`; rest-pause and hard sleep remain the fallback. | That the notification fires under a full-screen app (§8.3 item 15). |
+| S6 | Unchanged: the first enumeration still follows ⏻; the translocation note asks to move the app to /Applications first. | TCC across two rebuilds of a built .app. |
+| S9 | Unchanged (`FinderPrefs`); the DESKTOP HIDDEN card's text is translated. | — |
+| S10 | `WidgetProbe` matches `com.apple.notificationcenterui` by PID, keeps windows below normal level of widget size, and hands canvas rects to `LayoutSolver`; a one-time toast when no nudge clears them. | Widgets moved onto the monitor or drawers (§8.3 item 1). |
