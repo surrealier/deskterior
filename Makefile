@@ -1,6 +1,8 @@
 # Deskterior developer tasks. Scripts live in scripts/; every target works with Command Line Tools only.
 # `make app VERSION=0.1.0` sets the bundle version (default: latest git tag, else 0.0.0-dev).
 .PHONY: build release test lint check app universal install icon run soak clean
+# MARK: release (M13)
+.PHONY: gif
 
 APP_ARGS = $(if $(VERSION),--version $(VERSION))
 
@@ -36,6 +38,10 @@ run:
 
 soak:
 	scripts/soak.sh --release
+
+# MARK: release (M13): records Demos/hero.json on a mktemp fixture; writes docs/media/hero.gif and the stills (ffmpeg).
+gif:
+	scripts/make-gif.sh
 
 clean:
 	rm -rf .build .build-* build

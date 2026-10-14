@@ -43,6 +43,9 @@ final class DemoRunner {
     /// (`budget.firstFrameMs`; DESIGN §5: ≤ 1 s with 500 files).
     private var firstFilesFrameMs: Double?
     private var firstFilesObserver: Int?
+    // MARK: release (M13)
+    /// `--demo-record`: writes the frames the script steps (with the pointer drawn in).
+    var recorder: FrameRecorder?
 
     /// After an `fs` step, the watcher batch (0.25 s latency + 0.25 s debounce) is waited for this long.
     static let quietPeriod = 1.0
@@ -140,6 +143,13 @@ final class DemoRunner {
             let runner = DemoRunner(script: script, host: host, session: session, writer: writer,
                                     scale: options.snapshotScale, fsBridge: fsBridge)
             runner.dropSource = source
+            // MARK: release (M13): frames for a GIF, from the start unless the script's `record` steps say when.
+            if let dir = options.demoRecord {
+                let records = script.steps.contains { if case .record = $0 { true } else { false } }
+                let url = URL(fileURLWithPath: (dir as NSString).expandingTildeInPath, isDirectory: true)
+                runner.recorder = FrameRecorder(writer: try ArtifactWriter(directory: url, mirrored: configuration.folder),
+                                                every: options.demoRecordEvery, isOn: !records)
+            }
             print("demo \(script.name): \(display), S \(grid.scale), canvas \(grid.artSize)")
             return await runner.run()
         } catch {
@@ -161,6 +171,7 @@ final class DemoRunner {
             print("demo \(script.name): script error: \(error)")
             return 2
         }
+        if let recorder { print("demo \(script.name): recorded \(recorder.written) frames") } // MARK: release (M13)
         if failures.isEmpty {
             print("demo \(script.name): pass")
             return 0
@@ -258,6 +269,17 @@ final class DemoRunner {
             frame()
         case let .wall(name):
             try wallSnapshot(name)
+        // MARK: release (M13)
+        case let .record(on):
+            recorder?.isOn = on
+        case let .glide(m):
+            let from = pointer, to = try point(m.to), mods = try modifiers(m.mods ?? [])
+            let n = max(1, Int(((m.duration ?? 0.3) * 60).rounded()))
+            for k in 1...n {
+                let t = Float(k) / Float(n)
+                send(.move, from + (to - from) * (t * t * (3 - 2 * t)), mods: mods)
+                frame()
+            }
         }
     }
 
@@ -382,6 +404,13 @@ final class DemoRunner {
         host.frameLoopStep(FrameClock.step)
         time += FrameClock.step
         host.scene.advanceInput(to: time)
+        // MARK: release (M13)
+        do {
+            try recorder?.frameStepped(host)
+        } catch {
+            failures.append("recording: \(error)")
+            recorder = nil
+        }
     }
 
     private func frames(_ seconds: Double) async {
@@ -443,6 +472,7 @@ final class DemoRunner {
     private func send(_ kind: InputEvent.Kind, _ p: SIMD2<Float>, mods: InputEvent.Modifiers = [], count: Int = 0,
                       scroll: SIMD2<Float> = .zero) {
         pointer = p
+        recorder?.pointerEvent(kind, at: p) // MARK: release (M13)
         host.scene.handle(InputEvent(kind, art: p, mods: mods, clickCount: count, scroll: scroll, t: time))
     }
 

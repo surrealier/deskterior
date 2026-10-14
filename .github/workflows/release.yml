@@ -24,6 +24,9 @@ jobs:
         run: swift build
       - name: Test
         run: scripts/swift-test.sh
+        env:
+          # As in ci.yml: the desk-plane physics tests need a Metal device; fail rather than skip them.
+          DESKTERIOR_REQUIRE_METAL: "1"
       - name: File-safety lint
         run: scripts/check-file-safety.sh
 
@@ -50,6 +53,8 @@ jobs:
         run: scripts/ci-import-identity.sh
 
       - name: Build universal app
+        # Tag vX.Y.Z → version X.Y.Z; the bundle id is io.github.<owner>.deskterior (origin remote, else
+        # GITHUB_REPOSITORY_OWNER).
         run: ARCHS="arm64 x86_64" ZIP=1 scripts/build-app.sh --version "${GITHUB_REF_NAME#v}"
 
       - name: Verify
@@ -73,9 +78,14 @@ jobs:
       - name: Create GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: >-
-          gh release create "$GITHUB_REF_NAME" build/Deskterior-*
-          --notes-file "$RUNNER_TEMP/release-notes.md" --generate-notes --verify-tag
+        # The notes file comes first; GitHub's generated notes (changes since the last tag) follow it. A tag with a
+        # pre-release suffix (v0.2.0-rc.1) makes a pre-release.
+        run: |
+          prerelease=()
+          case "$GITHUB_REF_NAME" in *-*) prerelease=(--prerelease) ;; esac
+          gh release create "$GITHUB_REF_NAME" build/Deskterior-*.zip build/Deskterior-*.zip.sha256 \
+            --title "Deskterior ${GITHUB_REF_NAME#v}" --notes-file "$RUNNER_TEMP/release-notes.md" --generate-notes \
+            --verify-tag ${prerelease[@]+"${prerelease[@]}"}
 
       - name: Delete signing keychain
         if: always()

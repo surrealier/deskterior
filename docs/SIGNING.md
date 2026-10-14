@@ -27,6 +27,22 @@ Keep the same certificate for the life of the app. A new or renewed certificate 
 is asked for Desktop access once more. `codesign` refuses an expired certificate, so pick a long validity and
 back up the `.p12`.
 
+## The bundle identifier
+
+macOS keys permissions, settings (`~/Library/Preferences/<id>.plist`), the state folder
+(`~/Library/Application Support/<id>`) and the login item to the bundle identifier, and the self-signed DR names it
+too. `scripts/build-app.sh` picks it:
+
+| Build | Bundle identifier |
+|---|---|
+| GitHub Actions (CI and releases) | `io.github.<owner>.deskterior`, `<owner>` lowercased from the checkout's `origin` remote, else `GITHUB_REPOSITORY_OWNER` |
+| A local clone of the GitHub repository | the same, from its `origin` remote |
+| A copy with no GitHub remote | `io.github.deskterior.dev`, a development id (the one unbundled `swift run` builds use), so a development build never shares settings or state with a released app |
+| `BUNDLE_ID=…` set | that value |
+
+The id is frozen at the first release. If the repository ever moves to another account, set `BUNDLE_ID` to the old
+id in `release.yml` so users keep their permissions, settings and layout.
+
 ## 1. Create the certificate (Keychain Access)
 
 1. Open **Keychain Access**. On macOS 15 and later it is no longer in Utilities: use Spotlight, or run

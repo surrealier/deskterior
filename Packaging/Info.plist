@@ -52,5 +52,13 @@
 	<string>© 2026 __COPYRIGHT_OWNER__. MIT License.</string>
 	<key>NSDesktopFolderUsageDescription</key>
 	<string>Deskterior shows the files on your Desktop as objects on a pixel-art desk. It only reads the folder; files are moved or trashed only when you explicitly ask.</string>
+	<key>NSDownloadsFolderUsageDescription</key>
+	<string>Files you drop onto the desk from your Downloads folder are moved into the folder the desk shows (or copied, with Option). Deskterior does nothing else there.</string>
+	<key>NSDocumentsFolderUsageDescription</key>
+	<string>Files you drop onto the desk from your Documents folder are moved into the folder the desk shows (or copied, with Option). Deskterior does nothing else there.</string>
+	<key>NSRemovableVolumesUsageDescription</key>
+	<string>Files you drop onto the desk from a removable drive are copied into the folder the desk shows. Deskterior does nothing else on the drive.</string>
+	<key>NSNetworkVolumesUsageDescription</key>
+	<string>Files you drop onto the desk from a network volume are copied into the folder the desk shows. Deskterior does nothing else on the volume.</string>
 </dict>
 </plist>

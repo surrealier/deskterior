@@ -29,3 +29,11 @@ Machine: MacBook Air M2 (Mac14,2), macOS 26.6.2, Swift 6.2.3 (Command Line Tools
 | S6 | Unchanged: the first enumeration still follows ⏻; the translocation note asks to move the app to /Applications first. | TCC across two rebuilds of a built .app. |
 | S9 | Unchanged (`FinderPrefs`); the DESKTOP HIDDEN card's text is translated. | — |
 | S10 | `WidgetProbe` matches `com.apple.notificationcenterui` by PID, keeps windows below normal level of widget size, and hands canvas rects to `LayoutSolver`; a one-time toast when no nudge clears them. | Widgets moved onto the monitor or drawers (§8.3 item 1). |
+
+## M13: packaging checks (local, Command Line Tools only)
+
+| Spike | Result | Still for a human |
+|---|---|---|
+| S7 | `ARCHS="arm64 x86_64" ZIP=1 scripts/build-app.sh --version 0.1.0` builds both triples and `lipo`s them (4 min 23 s at `-j 2`): `Mach-O universal (x86_64 arm64)`, ad-hoc signed, `codesign --verify --strict` passes, the zip's `.sha256` checks. The app was not opened. | Running the Intel slice on an Intel Mac. |
+| S6 | Unchanged. The bundle id of a build with no GitHub owner is now the development id `io.github.deskterior.dev` (Errata 24), so local test builds never touch a released app's permissions. | TCC across two rebuilds; the Safari-downloaded zip through Open Anyway (§8.3 item 20). |
+| S12 | Info.plist now explains a Downloads, Documents, removable or network volume prompt, should macOS show one for a drop-in. | Whether a drop from Downloads prompts at all. |

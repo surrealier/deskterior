@@ -317,12 +317,20 @@ public enum DemoStep: Codable, Sendable, Equatable {
     case clock(String)
     /// A snapshot of the wall another display of this size would show at this time (`WallArt`).
     case wall(String)
+    // MARK: release (M13)
+    /// `true` starts, `false` stops writing frames for `--demo-record` (a script without `record` steps records
+    /// from its start); nothing without that flag.
+    case record(Bool)
+    /// Moves the pointer (no button held) to `to` over `duration` seconds, easing in and out, one move per frame: the
+    /// pointer travels between gestures in a recording instead of jumping.
+    case glide(DemoMove)
 
     private enum Key: String, CodingKey, CaseIterable {
         case waitIdle, wait, snapshot, click, hover, drag, release, scroll, key, menu, fs, action, expect, waitFor, comment
         case move
         case dropIn, volumes, dragOut // MARK: files
         case display, clock, wall
+        case record, glide // MARK: release (M13)
     }
 
     public init(from decoder: Decoder) throws {
@@ -356,6 +364,8 @@ public enum DemoStep: Codable, Sendable, Equatable {
         case .display: self = .display(try c.decode(String.self, forKey: key))
         case .clock: self = .clock(try c.decode(String.self, forKey: key))
         case .wall: self = .wall(try c.decode(String.self, forKey: key))
+        case .record: self = .record(try c.decode(Bool.self, forKey: key)) // MARK: release (M13)
+        case .glide: self = .glide(try c.decode(DemoMove.self, forKey: key))
         }
     }
 
@@ -384,6 +394,8 @@ public enum DemoStep: Codable, Sendable, Equatable {
         case let .display(d): try c.encode(d, forKey: .display)
         case let .clock(t): try c.encode(t, forKey: .clock)
         case let .wall(n): try c.encode(n, forKey: .wall)
+        case let .record(on): try c.encode(on, forKey: .record) // MARK: release (M13)
+        case let .glide(m): try c.encode(m, forKey: .glide)
         }
     }
 

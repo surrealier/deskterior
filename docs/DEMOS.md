@@ -172,3 +172,28 @@ folder (`SafetyGuard.scratchSource`), since demos move files in from it. File re
 | `held` | Count: tokens hidden while a drag-out waits for their files to leave. |
 | `toast` | Also the file toasts: `undidTrash`, `undidMoveIn`, `undidCopyIn`, `nothingToUndo`, `fileBusy`… A toast lasts 2.4 s of scene time, and a `waitFor` steps frames as fast as it can while one is up, so check a toast right after its step, before waiting on the mirror. |
 | `undo` | Also the file entries: `Move to Trash`, `Empty Wastebasket`, `Move In`, `Copy In`, `Drop In` (both). |
+
+## Recording and the README's tour (M13)
+
+`Demos/hero.json` is the README's tour, outside the numbered set: files on the monitor; a photo chomped into the left
+riser drawer; three files ⌘-clicked along a row, set down beside the mat as one pile and brushed under its edge (the
+brush double-clicked home); the mat's front edge peeled back and held, the pile standing where it lay, its front file
+carried back to the monitor while the edge stays up; the power button's CRT collapse; 21:00 and the wall switch (Lamp
+Only), then the monitor back on. Unrecorded steps after it set up the hiding places by day for a still. Its snapshots
+are the README's stills.
+
+```sh
+SWIFT_SCRATCH_PATH=.build-mine scripts/run-demo.sh --record 3 --scale 2 hero   # frames in .build/demo-out/hero/frames
+make gif                                                                    # docs/media/hero.gif and the stills (ffmpeg)
+```
+
+`run-demo.sh --record N` passes `--demo-record <out>/<name>/frames --demo-record-every N`: the app writes every Nth
+scene frame it steps as `frame-NNNNN.png` (art px, the lit frame) with the demo's pointer drawn in (an arrow, grey while
+a button is down, a ring after a press; snapshots never show it). Real-time waits write nothing, so the frames play at
+60/N fps of scene time. `scripts/make-gif.sh` records with `DESKTERIOR_ICONS=kind`, so the media are the same on every
+Mac, and assembles a ×2 nearest-neighbour, undithered, looping GIF (20 fps, at most 4 MB).
+
+| Step | Example | Does |
+|---|---|---|
+| `record` | `{"record": true}`, `{"record": false}` | Starts or stops writing frames for `--demo-record` (a script without `record` steps records throughout). Nothing without the flag. |
+| `glide` | `{"glide": {"to": "monitor.power", "duration": 0.35}}` | Moves the pointer with no button held to a target over `duration` s (default 0.3), eased in and out, one move per frame: it travels between gestures instead of jumping. Hover tooltips come and go on the way, and a bottom-row icon's label (drawn above it) wins the hit test, so pick paths that do not cross one. |

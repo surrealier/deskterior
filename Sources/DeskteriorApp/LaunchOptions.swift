@@ -112,6 +112,10 @@ struct LaunchOptions: Equatable {
     /// `--pixel-size` / `--level` were given: they win over Settings ▸ Pixel size and the `windowLevel` setting.
     var pixelSizeGiven = false
     var levelGiven = false
+    // MARK: release (M13)
+    /// `--demo-record DIR`: a demo also writes every `demoRecordEvery`-th scene frame here (`FrameRecorder`).
+    var demoRecord: String?
+    var demoRecordEvery = 3
 
     var mode: Mode { headless || demo != nil ? .headless : (windowed != nil ? .windowed : .desk) }
     /// The scene's time source.
@@ -144,6 +148,8 @@ struct LaunchOptions: Equatable {
           --language system|en|ko    the language outside desk mode (desk mode follows Settings)
           --show LIST                windowed: open settings,about,onboarding,translocation,peek,inventory
           --window-shots DIR         windowed: write PNGs of the open app windows to DIR (with --show)
+          --demo-record DIR          with --demo: write frame-NNNNN.png (art px, pointer drawn) to DIR
+          --demo-record-every N      with --demo-record: every Nth scene frame (default 3, 20 fps)
           --version, --help
         Every option can also be set as DESKTERIOR_<NAME> in the environment, e.g. DESKTERIOR_SNAPSHOT_DIR.
         """
@@ -295,6 +301,11 @@ struct LaunchOptions: Equatable {
             o.show = names
         },
         Spec(names: ["--window-shots"], arity: .value) { o, v in o.windowShots = v },
+        // MARK: release (M13)
+        Spec(names: ["--demo-record"], arity: .value) { o, v in o.demoRecord = v },
+        Spec(names: ["--demo-record-every"], arity: .value) { o, v in
+            o.demoRecordEvery = try int(v, "--demo-record-every", min: 1)
+        },
         Spec(names: ["--help", "-h"], arity: .switch) { o, _ in o.showHelp = true },
         Spec(names: ["--version"], arity: .switch) { o, _ in o.showVersion = true },
     ]

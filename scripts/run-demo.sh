@@ -2,13 +2,15 @@
 # Runs scripted demos headless against a fresh fixture desktop (docs/DESIGN.md §8.2, docs/DEMOS.md). Portable to
 # macOS's bash 3.2.
 #
-# Usage: scripts/run-demo.sh [--out DIR] [--scale N] [--count N] [--release] NAME|FILE [NAME|FILE ...]
+# Usage: scripts/run-demo.sh [--out DIR] [--scale N] [--count N] [--record N] [--release] NAME|FILE [NAME|FILE ...]
 #   NAME runs Demos/NAME.json. Each demo gets a new mktemp fixture (scripts/make-fixture-desktop.sh, about 40
 #   items; --count N, or the script's "fixtureCount", for more) and a new mktemp state folder, then runs
 #     Deskterior --headless --demo FILE --desktop-folder FIXTURE --state-dir STATE --seed 1
 #                --snapshot-dir OUT/NAME --snapshot-scale N
 #   OUT defaults to .build/demo-out. Env: SWIFT_SCRATCH_PATH (build folder, e.g. .build-w4-core), SWIFT_JOBS
 #   (default 3), DESKTERIOR_BIN (a built Deskterior; skips the build), DESKTERIOR_RESOURCES (default Resources/).
+#   --record N also writes every Nth scene frame (art px, the pointer drawn in) to OUT/NAME/frames/frame-NNNNN.png
+#   (--demo-record; a script's "record" steps say when), for scripts/make-gif.sh.
 #
 # The real desktop is never used: fixture and state folders come from mktemp, make-fixture-desktop.sh refuses
 # targets inside the real desktop, this script refuses an --out folder inside (or containing) it before touching
@@ -28,16 +30,18 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 OUT_ROOT="$ROOT/.build/demo-out"
 SCALE=3
 COUNT=0
+RECORD=0
 CONFIG=debug
 NAMES=()
 
-usage() { sed -n '2,24p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//' >&2; exit 2; }
+usage() { sed -n '2,26p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//' >&2; exit 2; }
 
 while [ $# -gt 0 ]; do
   case "$1" in
     --out) [ $# -ge 2 ] || usage; OUT_ROOT="$2"; shift 2 ;;
     --scale) [ $# -ge 2 ] || usage; SCALE="$2"; shift 2 ;;
     --count) [ $# -ge 2 ] || usage; COUNT="$2"; shift 2 ;;
+    --record) [ $# -ge 2 ] || usage; RECORD="$2"; shift 2 ;;
     --release) CONFIG=release; shift ;;
     -h|--help) usage ;;
     -*) echo "run-demo: unknown option $1" >&2; usage ;;
@@ -45,6 +49,7 @@ while [ $# -gt 0 ]; do
   esac
 done
 [ "${#NAMES[@]}" -gt 0 ] || usage
+case "$RECORD" in ''|*[!0-9]*) echo "run-demo: --record needs a number" >&2; exit 2 ;; esac
 
 # Snapshots go under --out (old PNGs there are deleted): never inside, or above, the real desktop.
 "$ROOT/scripts/make-fixture-desktop.sh" --check "$OUT_ROOT" || exit $?
@@ -120,6 +125,12 @@ run_one() {
   out="$OUT_ROOT/$name"
   mkdir -p "$state" "$SOURCE" "$out" || return 2
   rm -f "$out"/*.png
+  local record=()
+  if [ "$RECORD" -gt 0 ]; then
+    mkdir -p "$out/frames" || return 2
+    rm -f "$out/frames"/*.png
+    record=(--demo-record "$out/frames" --demo-record-every "$RECORD")
+  fi
   # --count wins over the script's own "fixtureCount" (11-overflow-500).
   local count="$COUNT"
   if [ "$count" -eq 0 ]; then
@@ -134,7 +145,7 @@ run_one() {
   mkfifo "$tmp/to-app" "$tmp/from-app" || return 2
   echo "run-demo: $name (fixture $DESK)" >&2
   DESKTERIOR_DEMO_FS=stdio DESKTERIOR_DEMO_SOURCE="$SOURCE" "$APP" --headless --demo "$script" --desktop-folder "$DESK" --state-dir "$state" \
-    --seed 1 --snapshot-dir "$out" --snapshot-scale "$SCALE" <"$tmp/to-app" >"$tmp/from-app" &
+    --seed 1 --snapshot-dir "$out" --snapshot-scale "$SCALE" ${record[@]+"${record[@]}"} <"$tmp/to-app" >"$tmp/from-app" &
   local pid=$!
   exec 3>"$tmp/to-app"
   exec 4<"$tmp/from-app"

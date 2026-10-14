@@ -348,6 +348,31 @@
     - **Strings.** The mat's menu, the drive menu's Eject, the file actions' toasts and undo labels, Empty
       Wastebasket's sheet and the copy progress line are in the English/Korean table; the scene's tooltips and
       "TIDY!" stay English in v0.1, as Errata 21 says of tooltips.
+24. **Release readiness (M13).** These refine §4.11, §6, §8.2, §10, §11 and §14 M13.
+    - **Recording.** `--demo-record DIR` (`DESKTERIOR_DEMO_RECORD`) and `--demo-record-every N` (default 3) make a demo
+      write every Nth scene frame it steps as `frame-NNNNN.png`: the lit frame at art px with a pointer drawn in
+      (`DemoCursorArt`: an arrow, grey while a button is down, a ring after a press). Snapshots never show it.
+      Real-time waits write nothing, so the frames play at 60/N fps of scene time. `record: true|false` steps bound
+      it (a script without them records throughout); `glide` moves the pointer without a button, eased, one move per
+      frame. `run-demo.sh --record N` writes to `<out>/<name>/frames`. This replaces §4.11's `--frames-dir`.
+    - **Hero demo.** `Demos/hero.json` stands outside the numbered set. `scripts/make-gif.sh` (`make gif`) runs it on a
+      mktemp fixture with the kind icons (`DESKTERIOR_ICONS=kind`), so the media are the same on every Mac and show no
+      other apps' document icons. It writes `docs/media/hero.gif` (×2 nearest, a palette of the frames' own colours,
+      no dither, 20 fps, looping, at most 4 MB) and the stills `desk`, `hiding`, `lamp-only` (×2) and `mat-peel` (a
+      ×3 crop). A bottom-row icon's label flips above it and wins the hit test, so the tour's pointer never crosses one
+      on its way to a target.
+    - **Bundle id.** With no GitHub owner (no github.com `origin`, no `GITHUB_REPOSITORY_OWNER`), `build-app.sh`
+      names the app `io.github.deskterior.dev`, the unbundled id (Errata 22), not `io.github.deskterior.deskterior`:
+      a development build never shares settings, state or permissions with a released app. CI and releases get
+      `io.github.<owner>.deskterior`.
+    - **Info.plist** gains EN/KO purpose strings for Downloads, Documents, removable and network volumes, for drop-in
+      from them (S12), superseding §11's "no other usage-description keys". They only explain a prompt macOS shows.
+    - **Workflows.** CI uploads the ditto zip (an uploaded `.app` folder loses its executable bit and signature). The
+      release test job requires Metal as CI does. A release is titled "Deskterior X.Y.Z", carries only the zip and its
+      `.sha256`, and a tag with a `-` suffix makes a pre-release. The notes cover macOS 14's Control-click ▸ Open and
+      15's Open Anyway, the checksum and `gh attestation verify`.
+    - **Docs.** README.md and README.ko.md link releases relatively (`../../releases/latest`), so no owner is
+      hard-coded; CHANGELOG.md follows Keep a Changelog.
 
 ---
 

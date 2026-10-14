@@ -9,8 +9,9 @@
 # Environment:
 #   ARCHS              architectures to build, space-separated (default "arm64")
 #   BUNDLE_ID          default io.github.<owner>.deskterior, where <owner> is the lowercased GitHub owner of
-#                      the `origin` remote, else $GITHUB_REPOSITORY_OWNER, else "deskterior"
-#   COPYRIGHT_OWNER    default: the holder named in LICENSE, else <owner>
+#                      the `origin` remote, else $GITHUB_REPOSITORY_OWNER (set on GitHub Actions); with neither, the
+#                      development id io.github.deskterior.dev (the id unbundled `swift run` builds use)
+#   COPYRIGHT_OWNER    default: the holder named in LICENSE, else <owner>, else "the Deskterior authors"
 #   SIGN_IDENTITY      codesign identity (default "-", ad-hoc; see docs/SIGNING.md)
 #   ZIP=1              also write build/Deskterior-<version>.zip and build/Deskterior-<version>.zip.sha256
 #   SWIFT_BUILD_FLAGS  extra `swift build` flags, e.g. "-j 2"
@@ -57,20 +58,27 @@ github_owner() {
     printf '%s' "${BASH_REMATCH[2]}"
   elif [ -n "${GITHUB_REPOSITORY_OWNER:-}" ]; then
     printf '%s' "$GITHUB_REPOSITORY_OWNER"
-  else
-    printf 'deskterior'
   fi
 }
 
 OWNER="$(github_owner | tr '[:upper:]' '[:lower:]')"
-BUNDLE_ID="${BUNDLE_ID:-io.github.$OWNER.deskterior}"
+if [ -z "${BUNDLE_ID:-}" ]; then
+  if [ -n "$OWNER" ]; then
+    BUNDLE_ID="io.github.$OWNER.deskterior"
+  else
+    # No GitHub owner to name the app after: a development build, kept apart from released apps' settings and state.
+    BUNDLE_ID="io.github.deskterior.dev"
+    echo "build-app: no GitHub owner (no origin remote on github.com, no GITHUB_REPOSITORY_OWNER):" \
+      "development bundle id $BUNDLE_ID" >&2
+  fi
+fi
 case "$BUNDLE_ID" in
   *[!A-Za-z0-9.-]* | .* | *. | *..*) die "invalid bundle id: '$BUNDLE_ID'" ;;
 esac
 
 if [ -z "${COPYRIGHT_OWNER:-}" ]; then
   COPYRIGHT_OWNER="$(sed -n 's/^Copyright (c) [0-9][0-9]*\(-[0-9][0-9]*\)\{0,1\} //p' LICENSE 2>/dev/null | head -n 1)"
-  [ -n "$COPYRIGHT_OWNER" ] || COPYRIGHT_OWNER="$OWNER"
+  [ -n "$COPYRIGHT_OWNER" ] || COPYRIGHT_OWNER="${OWNER:-the Deskterior authors}"
 fi
 
 if [ -z "$VERSION" ]; then
