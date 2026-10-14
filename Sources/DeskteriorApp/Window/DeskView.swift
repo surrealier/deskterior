@@ -246,9 +246,10 @@ final class DeskView: NSView {
 
     private func dropInUpdate(_ sender: any NSDraggingInfo) -> NSDragOperation {
         guard let dropIn else { return [] }
-        let count = DropInController.fileURLs(sender.draggingPasteboard).count
+        let urls = DropInController.fileURLs(sender.draggingPasteboard)
         let copy = DropInController.wantsCopy(sender.draggingSourceOperationMask, modifiers: NSEvent.modifierFlags)
-        return dropIn.dragged(count: count, at: artPoint(windowPoint: sender.draggingLocation), copy: copy)
+        return dropIn.dragged(urls, at: artPoint(windowPoint: sender.draggingLocation), copy: copy,
+                              drag: sender.draggingSequenceNumber)
     }
 
     /// The canvas art point under a window point.

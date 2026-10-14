@@ -122,9 +122,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return MenuSpec.status(store.state, MenuSpec.Context(paused: isUserPaused, undo: store.undoLabel, redo: store.redoLabel))
     }
 
-    /// Runs a menu command: model commands go to the store, the rest are the app's.
-    func perform(_ command: MenuCommand) {
-        if session?.perform(command) == true { return }
+    /// Runs a menu command: model commands go to the store (as picked from a menu, or `origin`), the rest are the
+    /// app's.
+    func perform(_ command: MenuCommand, from origin: ExplicitIntent.Origin = .menuItem) {
+        if session?.perform(command, from: origin) == true { return }
         switch command {
         case .inventory:
             showInventory()
@@ -163,7 +164,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func showInventory() {
         guard let session else { return }
         if inventory == nil {
-            let controller = InventoryWindowController(store: session.store) { [weak self] in self?.perform($0) }
+            let controller = InventoryWindowController(store: session.store) { [weak self] in self?.perform($0, from: .inventory) }
             controller.monitorFrame = { [weak self] in self?.monitorScreenFrame() }
             controller.coveredPiles = { [weak self] in self?.session?.host.scene.matCoverage.coveredPiles ?? [] }  // MARK: mat
             // MARK: files
@@ -296,14 +297,23 @@ final class DeskSession {
         }
         let bundleID = AppIdentity.bundleID
         store.effects = { [weak self] in self?.effects.run($0) }
-        files?.dispatch = { [weak self] in self?.store.dispatch($0) } // MARK: files
+        // MARK: files
+        files?.dispatch = { [weak self] in self?.store.dispatch($0) }
+        files?.showProgress = { [weak host] line in
+            host?.scene.showProgress(line)
+            host?.modelChanged()
+        }
         store.willDispatch = { action, state in
             // "Show them on the desk anyway" is remembered (DESIGN §4.8 showDespiteFinderHidden).
             if case .requestConnect = action, state.access == .finderHidden, !dryRun {
                 UserDefaults(suiteName: bundleID)?.set(true, forKey: DeskSettings.Key.showDespiteFinderHidden.rawValue)
             }
         }
-        host.scene.onAction = { [weak self] in self?.store.dispatch($0) }
+        host.scene.onAction = { [weak self] action in
+            guard let self else { return }
+            // MARK: files: the scene's only file request is ⌘Z (its key or the hidden Edit menu's Undo).
+            if case .undo = action { effects.withOrigin(.undo) { store.dispatch(action) } } else { store.dispatch(action) }
+        }
     }
 
     func start() {
@@ -336,7 +346,7 @@ final class DeskSession {
 
     // MARK: files
 
-    /// Runs a model menu command as requested from `origin` (the Inventory's Move to Trash).
+    /// Runs a model menu command as requested from `origin`: a menu item, the Inventory.
     @discardableResult
     func perform(_ command: MenuCommand, from origin: ExplicitIntent.Origin) -> Bool {
         var done = false

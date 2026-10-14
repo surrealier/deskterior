@@ -11,10 +11,12 @@ import QuickLookUI
 ///
 /// File changes (Move to Trash, Empty Wastebasket, drop-in imports, their undo, Eject) go to `FileOperator` through
 /// `FileActions`, each with one `ExplicitIntent` minted here — the only place intents are minted (Errata 14) —
-/// right before its one call: a trash with the origin it was requested from (`withOrigin`: a token menu by default,
-/// the Inventory, the Dock Trash), or `sheetConfirm` once Empty Wastebasket's sheet was confirmed; an import with
-/// `drop`, an undo with `undo` (its record from the journal, redeemed on the operator that issued it), an eject from
-/// a menu. Demos run them for real, on the fixture with the FakeTrash (`FileActionScope`).
+/// right before its one call, from the gesture the request came from (`withOrigin`; a request dispatched with no
+/// gesture named mints nothing and only toasts): a trash with the origin it was requested from (a menu, the
+/// Inventory, the Dock Trash), or `sheetConfirm` once Empty Wastebasket's sheet, asked for from a menu, was
+/// confirmed; an import with `drop`; an undo with `undo` from ⌘Z or a menu's Undo (its record from the journal,
+/// redeemed on the operator that issued it); an eject from a menu. Demos run them for real, on the fixture with the
+/// FakeTrash (`FileActionScope`).
 final class EffectRunner {
     let host: SceneHost
     weak var mirror: MirrorController?
@@ -35,8 +37,9 @@ final class EffectRunner {
     }
     /// The last confirmation asked for (`emptyWastebasket:<count>`; demo expectations).
     private(set) var lastSheet: String?
-    /// Where the request being dispatched came from (`withOrigin`); a menu item unless said otherwise.
-    private(set) var requestOrigin: ExplicitIntent.Origin = .menuItem
+    /// The gesture the request being dispatched came from (`withOrigin`); nil when none was named, and then no file
+    /// changes.
+    private(set) var requestOrigin: ExplicitIntent.Origin?
 
     init(host: SceneHost, folder: URL, dryRun: Bool) {
         self.host = host
@@ -64,6 +67,8 @@ final class EffectRunner {
             }
         case .trash, .importFiles, .eject, .undoFiles:
             runFileEffect(effect)
+        case let .cancelFiles(ref):
+            files?.cancel(ref)
         case .connectDesktop:
             mirror?.connect()
         case let .play(id, target):
@@ -87,7 +92,8 @@ final class EffectRunner {
         }
     }
 
-    /// Dispatches inside `body` count as requested from `origin` (the Inventory, the Dock Trash).
+    /// Dispatches inside `body` count as requested from `origin`: a menu, the Inventory, the Dock Trash, a drop, ⌘Z.
+    /// Only gesture handlers call this (the file-safety lint holds the list).
     func withOrigin(_ origin: ExplicitIntent.Origin, _ body: () -> Void) {
         let outer = requestOrigin
         requestOrigin = origin
@@ -134,12 +140,15 @@ extension EffectRunner {
         switch effect {
         case let .trash(urls, keys, confirm?):
             if case let .emptyWastebasket(names, more) = confirm { lastSheet = "emptyWastebasket:\(names.count + more)" }
+            // The sheet is asked for from a menu; its confirmation is the gesture that mints.
+            let requested = requestOrigin
+            guard mintable(effect, confirmed: true) != nil else { return }
             self.confirm(confirm, urls.count) { [weak self] go in
-                guard go, let self, let origin = ExplicitIntent.Origin.minted(for: effect, requestedVia: .sheetConfirm,
+                guard go, let self, let origin = ExplicitIntent.Origin.minted(for: effect, requestedVia: requested,
                                                                                confirmed: true) else { return }
                 record("emptyWastebasket")
                 let intent = ExplicitIntent(origin: origin)
-                files.run({ await $0.trash(urls, expecting: keys, intent) }) {
+                files.run(.emptyWastebasket, { op, _ in await op.trash(urls, expecting: keys, intent) }) {
                     FileReport(trash: $0, keys: keys, kind: .emptyWastebasket, undo: $1)
                 }
             }
@@ -147,23 +156,24 @@ extension EffectRunner {
             guard let origin = mintable(effect) else { return }
             record("trash")
             let intent = ExplicitIntent(origin: origin)
-            files.run({ await $0.trash(urls, expecting: keys, intent) }) {
+            files.run(.trash, { op, _ in await op.trash(urls, expecting: keys, intent) }) {
                 FileReport(trash: $0, keys: keys, kind: .trash, undo: $1)
             }
         case let .importFiles(urls, op, _):
             guard let origin = mintable(effect) else { return }
             record("import")
             let intent = ExplicitIntent(origin: origin)
-            files.run({ await $0.importItems(urls, op: op, intent) }) { FileReport(import: $0, undo: $1) }
+            files.run(.importItems, op: op, { await $0.importItems(urls, op: op, intent, progress: $1) }) {
+                FileReport(import: $0, undo: $1)
+            }
         case let .undoFiles(ref):
-            guard let origin = mintable(effect) else { return }
-            guard let undo = files.take(ref) else {
-                toast(.fileFailed)
+            guard let origin = mintable(effect) else {
+                files.undoNotRun(ref)
                 return
             }
             record("undo")
             let intent = ExplicitIntent(origin: origin)
-            files.run({ await $0.undo(undo, intent) }) { result, _ in FileReport(undo: result) }
+            files.runUndo(ref) { await $0.undo($1, intent) }
         case let .eject(path):
             guard let origin = mintable(effect) else { return }
             record("eject")
@@ -175,10 +185,11 @@ extension EffectRunner {
         }
     }
 
-    /// The origin to mint for `effect`, or nil (with a toast) when the request's origin does not fit it.
-    private func mintable(_ effect: Effect) -> ExplicitIntent.Origin? {
-        guard let origin = ExplicitIntent.Origin.minted(for: effect, requestedVia: requestOrigin) else {
-            FileHandle.standardError.write(Data("Deskterior: no intent for \(effect) from \(requestOrigin)\n".utf8))
+    /// The origin to mint for `effect`, or nil (with a toast) when the request's gesture does not fit it.
+    private func mintable(_ effect: Effect, confirmed: Bool = false) -> ExplicitIntent.Origin? {
+        guard let origin = ExplicitIntent.Origin.minted(for: effect, requestedVia: requestOrigin, confirmed: confirmed) else {
+            let from = requestOrigin.map(\.rawValue) ?? "no gesture"
+            FileHandle.standardError.write(Data("Deskterior: no intent for \(effect) from \(from)\n".utf8))
             toast(.fileFailed)
             return nil
         }

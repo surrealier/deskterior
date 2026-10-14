@@ -13,10 +13,17 @@ public struct PlacementHint: Sendable, Equatable {
     public var size: Int64?
     /// Where a new pile the file starts stands on the desk plane (a drop on the bare desk; DESIGN §3.6).
     public var pilePos: SIMD2<Float>?
+    /// A drop's hint while its operation runs (M11): the dropped item's path where it came from, which its result
+    /// names (`FileReport.Placed.source`).
+    public var source: String?
+    /// False for a drop whose name is taken already (on the desk, or earlier in the drop): the item lands under
+    /// another name (" 2"), so a file appearing under this one is someone else's (a safe-save) and never takes it;
+    /// the result places the item by its identity.
+    public var matchesName: Bool
 
     public init(
         name: String, location: Location, expires: Date, key: TokenKey? = nil, size: Int64? = nil,
-        pilePos: SIMD2<Float>? = nil
+        pilePos: SIMD2<Float>? = nil, source: String? = nil, matchesName: Bool = true
     ) {
         self.name = TextLayout.nfc(name)
         self.location = location
@@ -24,10 +31,13 @@ public struct PlacementHint: Sendable, Equatable {
         self.key = key
         self.size = size
         self.pilePos = pilePos
+        self.source = source
+        self.matchesName = matchesName
     }
 
     /// Whether `entry` may take this hint.
     public func accepts(_ entry: DesktopEntry) -> Bool {
+        guard matchesName else { return false }
         if let key, key != entry.key { return false }
         if let size, size != entry.meta.size { return false }
         return location.container != .wastebasket || key != nil || size != nil

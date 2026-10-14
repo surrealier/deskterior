@@ -24,8 +24,10 @@ public enum FileProblem: String, Sendable, Equatable, CaseIterable {
     case notInTrash
     /// "name", "name 2" … "name 100" are all taken.
     case noFreeName
-    /// A drop of the desk folder itself, a folder holding it, or a whole volume.
+    /// A drop of the desk folder itself or a folder holding it.
     case holdsDesk
+    /// A drop of a whole drive (a volume's root).
+    case wholeVolume
     /// Outside the desk folder or (demo and test modes) the sandbox, or not an ejectable volume.
     case outside
     /// The request came too late, twice, or was cancelled (a stale or spent intent, a cancelled copy).
@@ -36,7 +38,8 @@ public enum FileProblem: String, Sendable, Equatable, CaseIterable {
 /// What one file effect did, item by item, in model terms (DESIGN §3.5–§3.6). The app's `FileActions` builds it
 /// from `FileOperator`'s result and dispatches `.fileResult`: trashed tokens leave at once with a poof and a
 /// tombstone (so undo brings them back to the same place), dropped files' placement hints follow the names they
-/// landed under, refusals become one toast, and `undo` joins the journal.
+/// landed under, refusals become one toast, and `undo` fills the journal entry `ticket` names (the place the action
+/// took in the journal when it was asked for, `.fileStarted`).
 public struct FileReport: Sendable, Equatable {
     public enum Kind: String, Sendable, CaseIterable {
         /// Move to Trash from a token menu, the Inventory, or the Dock Trash (drag-out `.delete`).
@@ -49,29 +52,33 @@ public struct FileReport: Sendable, Equatable {
         case undo
         case eject
 
-        /// "Undo <label>" in the menus.
-        public var undoLabel: String {
+        /// "Undo <label>" in the menus while the action runs: a drop-in by what it asks for ("Copy In" for a copy,
+        /// else "Move In"; its result may say "Drop In" when it did both).
+        public func undoLabel(op: ImportOp? = nil) -> String {
             switch self {
             case .trash: "Move to Trash"
             case .emptyWastebasket: "Empty Wastebasket"
-            case .importItems: "Drop In"
+            case .importItems: op == .copy ? "Copy In" : "Move In"
             case .undo: "Undo"
             case .eject: "Eject"
             }
         }
     }
 
-    /// One dropped item now on the desk: its name where it came from, its name on the desk (" 2" after a clash),
-    /// and its identity there when known.
+    /// One dropped item now on the desk: its path where it came from (as the request named it), its name on the
+    /// desk (" 2" after a clash), its identity there when known, and whether it came as a copy.
     public struct Placed: Sendable, Equatable {
         public var source: String
         public var name: String
         public var key: TokenKey?
+        /// Copied in (another volume, ⌥, or a move macOS refused); else moved.
+        public var copied: Bool
 
-        public init(source: String, name: String, key: TokenKey? = nil) {
+        public init(source: String, name: String, key: TokenKey? = nil, copied: Bool = false) {
             self.source = source
             self.name = name
             self.key = key
+            self.copied = copied
         }
     }
 
@@ -82,39 +89,72 @@ public struct FileReport: Sendable, Equatable {
     public var trashed: [TokenKey]
     /// Import: the items that came in.
     public var placed: [Placed]
-    /// Import: names (where they came from) of the items that did not.
-    public var refusedNames: [String]
+    /// Import: paths (as the request named them) of the items that did not.
+    public var refused: [String]
     /// One per item that did not happen, in request order.
     public var problems: [FileProblem]
-    /// Set when something changed that undo can take back.
+    /// Set when something changed that undo can take back (the same ref as `ticket`).
     public var undo: FileUndoRef?
+    /// The journal entry this result fills: the ref `.fileStarted` named for an action, or the entry being undone
+    /// for an undo.
+    public var ticket: FileUndoRef?
+    /// Undo: the kind of action it took back (its toasts differ: a drop-in has no Put Back).
+    public var undoOf: Kind?
+    /// Undo: refused before anything ran (a stale or spent intent, no origin): the record is kept, the journal entry
+    /// is ready again, and ⌘Z can try once more.
+    public var kept: Bool
+    /// The toast when everything went (an undo says what it did).
+    public var done: ToastKey?
 
     public init(
-        kind: Kind, count: Int, trashed: [TokenKey] = [], placed: [Placed] = [], refusedNames: [String] = [],
-        problems: [FileProblem] = [], undo: FileUndoRef? = nil
+        kind: Kind, count: Int, trashed: [TokenKey] = [], placed: [Placed] = [], refused: [String] = [],
+        problems: [FileProblem] = [], undo: FileUndoRef? = nil, ticket: FileUndoRef? = nil, undoOf: Kind? = nil,
+        kept: Bool = false, done: ToastKey? = nil
     ) {
         self.kind = kind
         self.count = count
         self.trashed = trashed
         self.placed = placed
-        self.refusedNames = refusedNames
+        self.refused = refused
         self.problems = problems
         self.undo = undo
+        self.ticket = ticket ?? undo
+        self.undoOf = undoOf
+        self.kept = kept
+        self.done = done
     }
 
-    /// The toast for what did not happen, if anything did not: the first problem's, or "some items stayed" when
-    /// others went through. A refused undo of a trash points at Finder's Put Back (SPIKES S11).
+    /// "Undo <label>" once the result is in: a drop-in by how its items came ("Move In", "Copy In", or "Drop In"
+    /// when it did both).
+    public var undoLabel: String {
+        guard kind == .importItems, !placed.isEmpty else { return kind.undoLabel() }
+        if placed.allSatisfy(\.copied) { return "Copy In" }
+        return placed.contains(where: \.copied) ? "Drop In" : "Move In"
+    }
+
+    /// The toast: what did not happen, if anything did not (the first problem's; with others through, "some
+    /// stayed" and why), else `done`. A refused undo of a trash points at Finder's Put Back (SPIKES S11); one of a
+    /// drop-in says it could not go back.
     public var toast: ToastKey? {
-        guard let first = problems.first else { return nil }
+        guard let first = problems.first else { return done }
         switch kind {
         case .eject:
             return first == .notPermitted ? .fileNotPermitted : .ejectFailed
-        case .undo where first == .notPermitted || first == .notInTrash:
-            return .usePutBack
+        case .undo where undoOf == .importItems:
+            if first == .notPermitted { return .cantMoveBack }
+        case .undo:
+            if first == .notPermitted || first == .notInTrash { return .usePutBack }
         default:
             break
         }
-        if problems.count < count { return .someNotDone }
+        if problems.count < count {
+            switch first {
+            case .changed: return .someChanged
+            case .gone: return .someGone
+            case .notPermitted: return .someNotPermitted
+            default: return .someNotDone
+            }
+        }
         switch first {
         case .changed: return .fileChanged
         case .gone: return .fileGone
@@ -122,6 +162,7 @@ public struct FileReport: Sendable, Equatable {
         case .notInTrash: return .usePutBack
         case .noFreeName: return .nameTaken
         case .holdsDesk: return .dropHoldsDesk
+        case .wholeVolume: return .dropWholeDrive
         case .outside, .expired, .failed: return .fileFailed
         }
     }
@@ -141,6 +182,14 @@ public struct DropIn: Sendable, Equatable {
         self.location = location
         self.pilePos = pilePos
         self.op = op
+    }
+
+    /// What a drag of files over the desk is told (DESIGN §3.6): nothing where the drop would bonk (a full container,
+    /// a drive, the monitor off); a copy when one is forced (⌥, or a source that offers no move) or when an item lies
+    /// on another volume than the desk, since we copy it and the source must keep its original; else a move.
+    public static func dragOperation(bonks: Bool, forcedCopy: Bool, crossesVolumes: Bool) -> ImportOp? {
+        if bonks { return nil }
+        return forcedCopy || crossesVolumes ? .copy : .move
     }
 }
 
@@ -167,6 +216,16 @@ public enum DragOutRule {
     /// How long a `.delete` waits before trashing the file itself.
     public static let deleteWait = 1.5
 
+    /// The outcome of the operation a drag ended with, as its bits: exactly `delete` over the Dock is the Dock Trash;
+    /// a `delete` from anything else only waits like a move (it asks us to delete the file, which we never do);
+    /// several bits at once are read as the least consequential (copy, link, generic, then move), so the tokens go
+    /// home.
+    public static func outcome(_ bits: Set<Outcome>, overDock: Bool) -> Outcome {
+        let ops = bits.subtracting([.none])
+        if ops == [.delete] { return overDock ? .delete : .move }
+        return [Outcome.copy, .link, .generic, .move].first(where: ops.contains) ?? .none
+    }
+
     public static func plan(_ outcome: Outcome) -> Plan {
         switch outcome {
         case .none, .copy, .link: .returnHome
@@ -181,9 +240,10 @@ public enum DragOutRule {
         alwaysCopy ? [.copy] : [.copy, .move, .link, .generic, .delete]
     }
 
-    /// After the wait: the tokens to trash (with `thenTrash`, those still on the desk).
-    public static func toTrash(_ plan: Plan, stillThere: [TokenKey]) -> [TokenKey] {
-        if case .waitForRemoval(_, true) = plan { return stillThere }
+    /// After the wait: the tokens to trash (with `thenTrash`, those still on the desk), none when Finder took over
+    /// meanwhile (it came to the front: a dialog of its own about these files, which the user may cancel).
+    public static func toTrash(_ plan: Plan, stillThere: [TokenKey], finderTookOver: Bool = false) -> [TokenKey] {
+        if case .waitForRemoval(_, true) = plan, !finderTookOver { return stillThere }
         return []
     }
 }

@@ -24,6 +24,9 @@ public enum Effect: Sendable, Equatable {
     // MARK: files
     /// Undo a file action: the app replays the `FileUndoRecord` this names, on the operator that issued it.
     case undoFiles(FileUndoRef)
+    /// ⌘Z on a drop-in still running: stop its copy (items not started stay where they are; what landed can be
+    /// undone once its result is in). Changes no file itself.
+    case cancelFiles(FileUndoRef)
 
     /// Effects that open, read, hand off or change user files.
     public var touchesFiles: Bool {
@@ -89,4 +92,15 @@ public enum ToastKey: String, Sendable, CaseIterable {
     /// numbered name was taken.
     case fileChanged, fileGone, fileNotPermitted, usePutBack, someNotDone, fileFailed, dropHoldsDesk, ejectFailed
     case nameTaken
+    /// Only some items went, and why the others stayed: they changed on disk, they were gone, macOS said no.
+    case someChanged, someGone, someNotPermitted
+    /// A drop of a whole drive; the desk folder is not connected (Move to Trash, Empty Wastebasket, a drop).
+    case dropWholeDrive, filesUnavailable
+    /// ⌘Z: the step on top can no longer change anything (its items are gone), so the file action under it waits
+    /// for the next ⌘Z; a file action is still running; a drop-in's copy is stopping.
+    case nothingToUndo, fileBusy, stoppingCopy
+    /// A file undo went through: back from the Trash; dropped items moved back out; dropped copies trashed; both.
+    case undidTrash, undidMoveIn, undidCopyIn, undidDropIn
+    /// An undo of a drop-in that macOS refused (the source folder is protected: SPIKES S12).
+    case cantMoveBack
 }

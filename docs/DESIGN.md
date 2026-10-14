@@ -258,6 +258,32 @@
     - The drive hub shows four drives in its slots (USB stick, disk or server by `VolumeEntry.Kind`). The rest sit
       behind a "+n" tag right of the hub, which lists them on a click or a right-click.
     - A refused undo of a trash toasts "Use Finder's Put Back" and, in desk mode, opens the Trash (S11).
+20. **File actions after review (M11).** These refine Errata 19 and win where they differ.
+    - A file entry takes its place in the journal when it is asked for (`.fileStarted`, as `FileActions` starts the
+      call) and runs; its result fills it (ready, or gone when nothing changed) without clearing redo. Labels: "Move to
+      Trash", "Empty Wastebasket", "Move In", "Copy In", or "Drop In" for a drop that did both.
+    - ⌘Z replays a file entry only while it is the top entry, the one the menus name. A ⌘Z that drops stale layout
+      steps stops at a file entry and toasts "Nothing to undo there"; on a running drop-in it stops the copy
+      (`Effect.cancelFiles`); on a running trash, or an undo under way, it says "Still working on that." Every file undo
+      toasts what it did. A refused drop-in undo says it could not go back (no Put Back, no Trash window). An undo refused
+      before it ran (a stale intent) keeps its record and its entry for another ⌘Z.
+    - Intents need a named gesture. `EffectRunner.requestOrigin` is nil unless a gesture handler sets it (`withOrigin`):
+      menus, the Inventory, a drop, the Dock Trash, ⌘Z (`undo`). An import needs `drop`; an undo needs ⌘Z or a menu's
+      Undo; Empty Wastebasket's sheet must be asked for from a menu. The lint holds where file requests are built (the
+      reducer, the menus, the drop-in and drag-out controllers) and where gestures are named.
+    - Drop-in tells the source `.copy` when any item lies on another volume (or with ⌥), and nothing where the drop
+      would bonk. Drop hints are keyed by source path. A name already taken (on the desk, by another waiting drop, or
+      earlier in the same drop; compared case-insensitively) never matches by name: the result places that item by
+      identity, moving it off the monitor if the mirror saw it first. A copy running longer than 0.5 s shows "Copying N
+      items… ⌘Z stops".
+    - Drag-out trashes only on exactly `.delete` over a Dock window (by owner process), and never when Finder came to the
+      front during the wait. Several operation bits count as the least consequential one. Each token comes back when its
+      own trash reports.
+    - Eject unmounts off the operator's actor. Move to Trash, Empty Wastebasket and drops toast while the folder is not
+      connected. A dropped drive says "Drag files from the drive, not the drive." Escape cancels Empty Wastebasket's
+      sheet.
+    - A demo's drop source must be a scratch folder strictly inside a temporary folder (never in the home folder), apart
+      from the fixture and state folders.
 
 ---
 

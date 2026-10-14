@@ -9,8 +9,10 @@ import DeskScene
 /// the carry is handed to an `NSDraggingSession` carrying the real file URLs with the pixel icon, and the tokens are
 /// home again, as in Finder. The receiving app does the work; how the drag ended decides the rest (`DragOutRule`):
 /// nothing, a copy or a link change nothing; a move hides the tokens until the mirror sees the files leave (5 s at
-/// most, then whatever is still there comes back); the Dock Trash's delete waits 1.5 s and then, if the file is
-/// still there, trashes it itself (`dragToTrash`, undoable). We never delete anything.
+/// most, then whatever is still there comes back); the Dock Trash's delete (exactly `.delete`, over a Dock window)
+/// waits 1.5 s and then, if the file is still there and Finder did not come forward meanwhile (a dialog of its own
+/// about it), trashes it itself (`dragToTrash`, undoable); the tokens stay hidden until that trash reports. Several
+/// operation bits at once count as the least consequential. We never delete anything.
 final class DragOutController: NSObject, NSDraggingSource {
     let host: SceneHost
     unowned let store: Store
@@ -24,6 +26,12 @@ final class DragOutController: NSObject, NSDraggingSource {
     private weak var deskWindow: NSWindow?
     /// Tokens hidden while their files are expected to leave.
     private(set) var held: Set<TokenKey> = []
+    /// Finder came to the front since `since` (a dialog of its own about the files: we leave them to it). Demos
+    /// answer for themselves.
+    var finderCameForward: (_ since: String?) -> Bool = { before in
+        let front = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
+        return front == "com.apple.finder" && before != front
+    }
 
     init(host: SceneHost, store: Store, effects: EffectRunner) {
         self.host = host
@@ -87,8 +95,18 @@ final class DragOutController: NSObject, NSDraggingSource {
         guard let keys = outbound else { return }
         outbound = nil
         // Dropped back on the desk itself: its drop-in moved the tokens (a layout move); nothing is leaving.
-        let home = deskWindow.map { NSWindow.windowNumber(at: screenPoint, belowWindowWithWindowNumber: 0) == $0.windowNumber }
-        ended(keys, home == true ? .none : Self.outcome(operation))
+        let under = NSWindow.windowNumber(at: screenPoint, belowWindowWithWindowNumber: 0)
+        let home = deskWindow.map { under == $0.windowNumber } == true
+        ended(keys, home ? .none : DragOutRule.outcome(Self.outcomes(operation), overDock: Self.isDockWindow(under)))
+    }
+
+    /// Whether the window numbered `number` belongs to the Dock (its owner's process; no window titles are read).
+    static func isDockWindow(_ number: Int) -> Bool {
+        guard number > 0,
+              let list = CGWindowListCopyWindowInfo([.optionIncludingWindow], CGWindowID(number)) as? [[String: Any]],
+              let pid = list.first?[kCGWindowOwnerPID as String] as? Int32
+        else { return false }
+        return NSRunningApplication(processIdentifier: pid)?.bundleIdentifier == "com.apple.dock"
     }
 
     static func mask(_ outcomes: [DragOutRule.Outcome]) -> NSDragOperation {
@@ -104,14 +122,12 @@ final class DragOutController: NSObject, NSDraggingSource {
         }
     }
 
-    /// The operation the receiver chose, most consequential first.
-    static func outcome(_ op: NSDragOperation) -> DragOutRule.Outcome {
-        if op.contains(.delete) { return .delete }
-        if op.contains(.move) { return .move }
-        if op.contains(.generic) { return .generic }
-        if op.contains(.copy) { return .copy }
-        if op.contains(.link) { return .link }
-        return .none
+    /// The operation bits the drag ended with (`DragOutRule.outcome` reads them).
+    static func outcomes(_ op: NSDragOperation) -> Set<DragOutRule.Outcome> {
+        let bits: [(NSDragOperation, DragOutRule.Outcome)] = [
+            (.copy, .copy), (.link, .link), (.generic, .generic), (.move, .move), (.delete, .delete),
+        ]
+        return Set(bits.filter { op.contains($0.0) }.map(\.1))
     }
 
     // MARK: After the drag
@@ -124,19 +140,20 @@ final class DragOutController: NSObject, NSDraggingSource {
         held.formUnion(hold)
         host.scene.holdForDragOut(hold)
         host.modelChanged()
+        let front = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
         DispatchQueue.main.asyncAfter(deadline: .now() + seconds) { [weak self] in
-            self?.waited(keys, plan)
+            self?.waited(keys, plan, frontAtEnd: front)
         }
     }
 
-    /// The wait is over: files still on the desk come back, or (the Dock Trash) go to the trash now.
-    private func waited(_ keys: [TokenKey], _ plan: DragOutRule.Plan) {
+    /// The wait is over: files still on the desk come back, or (the Dock Trash) go to the trash now, unless Finder
+    /// came forward meanwhile.
+    private func waited(_ keys: [TokenKey], _ plan: DragOutRule.Plan, frontAtEnd: String?) {
         let s = store.state
         let still = keys.map(s.currentKey).filter { k in
             s.tokens.contains(k) && s.url(of: k).flatMap(FileReport.identity(of:)) == k
         }
-        let trash = DragOutRule.toTrash(plan, stillThere: still)
-        if !trash.isEmpty { effects.withOrigin(.dragToTrash) { store.dispatch(.requestTrash(trash)) } }
+        let trash = DragOutRule.toTrash(plan, stillThere: still, finderTookOver: finderCameForward(frontAtEnd))
         let release = { [weak self] in
             guard let self else { return }
             let hold = Set(keys)
@@ -144,7 +161,14 @@ final class DragOutController: NSObject, NSDraggingSource {
             host.scene.revealDragOut(hold)
             host.modelChanged()
         }
-        // Tokens on their way to the trash stay hidden until it is done (refused ones come back then).
-        if trash.isEmpty { release() } else if let files = effects.files { files.afterPending(release) } else { release() }
+        guard !trash.isEmpty else { return release() }
+        let before = effects.files?.lastStarted
+        effects.withOrigin(.dragToTrash) { store.dispatch(.requestTrash(trash)) }
+        // Tokens on their way to the trash stay hidden until that trash reports (refused ones come back then).
+        if let files = effects.files, let ref = files.lastStarted, ref != before {
+            files.whenFinished(ref, release)
+        } else {
+            release()
+        }
     }
 }

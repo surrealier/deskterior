@@ -127,15 +127,17 @@ Every step is an object with one key.
 | `08-phone` | Drops become 5×5 app minis with a sparkle; six fill it and a seventh bonks; hover and select a mini; a click on the stand flips it face down (three edge frames; the minis hide and drops bonk), Turn Face Up from its menu, and a mini carried back to the screen. |
 | `09-fs-events` | Finder-side changes within a second: a new file prints in, a rename keeps its cell, a removal poofs, a new folder. |
 | `10-clear-desk` | A busy desk (piles beside the mat, files on the floor, an open drawer, an app on the phone, the monitor on) cleared with one menu pick: the monitor's CRT collapses, the phone turns over, the drawer shuts, the brush goes round the mat pushing each pile under an edge (the edge slides over it, the hem rides up and its bump grows in), the floor files hop onto the mat's edge and tuck under (frames), "TIDY!" over the dark monitor; nothing is left on show. One ⌘Z puts every token, the drawer, the phone and the monitor back exactly. |
-| `13-file-actions` | M11 for real on the fixture, with `ls -li` of the fixture, the source folder and the FakeTrash in the log: Move to Trash from a token's menu (the poof) and ⌘Z back under the same inode into the same cell; three files into the wastebasket, Empty Wastebasket… cancelled at its sheet (picture `02-sheet.png`), then confirmed, and undone back into the basket; drop-in from a second scratch folder (a same-volume move into a cell, `notes.md` arriving as `notes 2.md`, an ⌥ copy chomped into the left drawer, a new pile on the bare desk) and three undos (moved back, the copy trashed); a desk item dropped back only moving; the drive hub with five fake volumes (four drives and "+1", hover, Open, Eject refused in demo mode, Show in Finder from the tag) and a bonk on a drive; drag-outs ending in a copy (nothing happens) and on the Dock Trash (trashed after 1.5 s, undoable). |
+| `13-file-actions` | M11 for real on the fixture, with `ls -li` of the fixture, the source folder and the FakeTrash in the log: Move to Trash from a token's menu (the poof) and ⌘Z back under the same inode into the same cell ("Put back from the Trash."); three files into the wastebasket, Empty Wastebasket… cancelled at its sheet (picture `02-sheet.png`, captioned with its default button, since an offscreen window draws none), then confirmed, and undone back into the basket; drop-in from a second scratch folder (a same-volume move into a cell, "Move In", `notes.md` arriving as `notes 2.md`, an ⌥ copy chomped into the left drawer, "Copy In", a new pile on the bare desk); a move whose file the harness then removes, so the next ⌘Z only says "Nothing to undo there" and changes no file (`05b-stale-undo.png`); three undos (moved back, the copy trashed, each with its toast); a desk item dropped back only moving; the drive hub with five fake volumes (four drives and "+1", hover, Open, Eject refused in demo mode, Show in Finder from the tag) and a bonk on a drive; drag-outs ending in a copy (nothing happens) and on the Dock Trash (trashed after 1.5 s, undoable). |
 
 ## File actions (M11)
 
 Demos run the explicit file actions for real on the fixture: `FileOperator` with the FakeTrash in the demo's state
 folder, confined to the fixture, the state folder and the drop source (`FileActionScope`); ejects are always refused
 and Open/Show in Finder are only recorded. `run-demo.sh` makes an empty mktemp `source` folder beside the fixture for
-each demo (`DESKTERIOR_DEMO_SOURCE`); the app refuses one that is (or holds, or lies in) the real desktop, Downloads,
-home, the fixture or the state folder.
+each demo (`DESKTERIOR_DEMO_SOURCE`); the app takes only a scratch folder strictly inside a temporary folder
+(`TMPDIR`, `/private/tmp`, `/private/var/folders`; never one in the home folder) apart from the fixture and the state
+folder (`SafetyGuard.scratchSource`), since demos move files in from it. File requests in a demo come from its `menu`,
+`key` (⌘Z), `dropIn` and `dragOut` steps, each with its gesture; an `action` step names none, so it changes no file.
 
 | Step | Example | Does |
 |---|---|---|
@@ -158,4 +160,5 @@ home, the fixture or the state folder.
 | `key:<name>` | `same` while the token has the identity (volume and inode) it had when the script first named it; `changed`, `missing`. |
 | `drives` / `drives.more` | Drives standing in the hub; volumes behind its "+n" tag. |
 | `held` | Count: tokens hidden while a drag-out waits for their files to leave. |
-
+| `toast` | Also the file toasts: `undidTrash`, `undidMoveIn`, `undidCopyIn`, `nothingToUndo`, `fileBusy`… A toast lasts 2.4 s of scene time, and a `waitFor` steps frames as fast as it can while one is up, so check a toast right after its step, before waiting on the mirror. |
+| `undo` | Also the file entries: `Move to Trash`, `Empty Wastebasket`, `Move In`, `Copy In`, `Drop In` (both). |

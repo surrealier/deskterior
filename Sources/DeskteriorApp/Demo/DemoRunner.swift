@@ -61,6 +61,7 @@ final class DemoRunner {
             guard let self else { return done(false) }
             answerSheet(kind, count, done)
         }
+        session.dragOut.finderCameForward = { _ in false } // Finder's place on this Mac is not the demo's
     }
 
     // MARK: Entry
@@ -271,7 +272,7 @@ final class DemoRunner {
             pendingConfirm = nil
             pendingSheetName = nil
         }
-        if !session.perform(command) { appCommands.append("\(command)") }
+        if !session.perform(command, from: .menuItem) { appCommands.append("\(command)") } // MARK: files: a menu pick
         frame()
     }
 
@@ -581,18 +582,12 @@ final class DemoRunner {
 // MARK: - files
 
 extension DemoRunner {
-    /// The harness's drop source folder (`DESKTERIOR_DEMO_SOURCE`), if any: an existing scratch folder that is not
-    /// the real desktop, Downloads or home (nor inside or around them), nor the mirrored folder's relative.
+    /// The harness's drop source folder (`DESKTERIOR_DEMO_SOURCE`), if any: a scratch folder of its own strictly
+    /// inside a temporary folder, apart from the fixture and the state folder (`SafetyGuard.scratchSource`), since
+    /// demos move files in from it. Never anything in the home folder (Documents, Downloads…).
     static func dropSource(_ configuration: MirrorController.Configuration) throws -> URL? {
         guard let path = ProcessInfo.processInfo.environment["DESKTERIOR_DEMO_SOURCE"], !path.isEmpty else { return nil }
-        let url = try SafetyGuard.mirrorFolder(DesktopLocator.resolve(override: path), mode: .demo)
-        let home = FileManager.default.homeDirectoryForCurrentUser
-        let guarded = [home.appendingPathComponent("Downloads", isDirectory: true), configuration.folder,
-                       configuration.stateDirectory]
-        for other in guarded where DesktopLocator.relation(of: url, to: other) != .unrelated {
-            throw ScriptError(description: "refusing the drop source \(url.path): it overlaps \(other.path)")
-        }
-        return URL(fileURLWithPath: DesktopLocator.canonicalPath(url), isDirectory: true)
+        return try SafetyGuard.scratchSource(path, guarded: [configuration.folder, configuration.stateDirectory])
     }
 
     /// Answers a confirmation sheet as the current `menu` step says, writing its picture first when asked.

@@ -215,7 +215,7 @@ public enum Reducer {
         case .mat, .brushSettled, .tuckUnderMat:
             return reduceMat(&s, a, env)
         // MARK: files
-        case .fileResult, .requestDropIn, .requestOpenVolume, .requestRevealVolume:
+        case .fileResult, .requestDropIn, .requestOpenVolume, .requestRevealVolume, .fileStarted:
             return reduceFiles(&s, a, env)
         }
     }

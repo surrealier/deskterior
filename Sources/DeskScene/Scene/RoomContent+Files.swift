@@ -24,6 +24,16 @@ extension RoomContent {
         return false
     }
 
+    /// A progress line over the monitor (a long drop-in copy), renewed in place; nil takes a progress line down (a
+    /// keyed toast stays).
+    func showProgress(_ line: String?) {
+        if let line {
+            toast.show(progress: line, font: context.font, layout: layout, space: context.space)
+        } else if toast.key == nil {
+            toast.hide()
+        }
+    }
+
     /// Where `count` files dropped from outside at canvas `p` land (DESIGN §3.6): whatever a carry of that many
     /// tokens released there would get (a screen cell, a hiding place, a pile — a new one at the desk-plane point
     /// under `p` — or a bonk), the floor below the desk, else the monitor's first free cell.
@@ -122,6 +132,14 @@ extension DeskScene {
         guard let room, let s = deskState, let key = keys.first, let meta = s.tokens.meta(of: key) else { return nil }
         return TokenArt.icon(key, meta, room.context)
     }
+
+    /// A progress line over the monitor (a long drop-in copy: "Copying 37 files…"), nil to take it down.
+    public func showProgress(_ line: String?) {
+        room?.showProgress(line) // The next frame re-pushes the lit rects.
+    }
+
+    /// The line the toast shows now (a keyed toast's text or a progress line), else nil.
+    public var toastText: String? { room?.toast.text }
 
     /// The drive hub's live anchors (`hub.drive.<i>`, `hub.more`), else nil.
     public func fileAnchor(_ name: String) -> ArtRect? {

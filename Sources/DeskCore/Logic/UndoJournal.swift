@@ -32,6 +32,11 @@ public struct LayoutSnapshot: Sendable, Equatable {
 /// change the same way. File actions (M11) join as entries that name a `FileUndoRef`: undoing one asks the app to
 /// replay the file record (`Effect.undoFiles`), and the mirror brings the layout along (a trashed file returns to
 /// its tombstone's place). They are not redone.
+///
+/// A file entry takes its place when the action is asked for (`.fileStarted`), not when it finishes, so a long copy
+/// never jumps over moves made meanwhile, and its result clears no redo. ⌘Z replays a file entry only while it is
+/// the entry on top, the one the menus name: it never steps past a stale layout step into one (that ⌘Z only drops
+/// the stale steps and says so).
 public struct UndoJournal: Sendable, Equatable {
     public struct Entry: Sendable, Equatable {
         /// "Move", "Take Everything Out"… (menus show "Undo <label>").
@@ -39,8 +44,26 @@ public struct UndoJournal: Sendable, Equatable {
         public var before: LayoutSnapshot
         public var after: LayoutSnapshot
         // MARK: files
-        /// A file action's record (the snapshots are then unused).
-        public var file: FileUndoRef? = nil
+        /// A file action's entry (the snapshots are then unused).
+        public var file: FileEntry? = nil
+    }
+
+    // MARK: files
+
+    /// A file action in the journal: its ref (the app keeps the record), its kind, and how far it is.
+    public struct FileEntry: Sendable, Equatable {
+        public enum Phase: Sendable, Equatable {
+            /// Asked for and still running (a long copy): ⌘Z stops a drop-in's copy.
+            case running
+            /// Done, with something ⌘Z can take back.
+            case ready
+            /// ⌘Z asked for its undo, which is running.
+            case undoing
+        }
+
+        public var ref: FileUndoRef
+        public var kind: FileReport.Kind
+        public var phase: Phase
     }
 
     public static let capacity = 20
@@ -78,23 +101,63 @@ public struct UndoJournal: Sendable, Equatable {
 
     // MARK: files
 
-    /// Records a file action that `ref` can take back (clearing redo).
-    public mutating func recordFile(_ label: String, _ ref: FileUndoRef, state s: DeskState) {
+    /// A file action was asked for: it takes its place on top now (a new action: redo clears), running.
+    public mutating func startFile(_ ref: FileUndoRef, _ kind: FileReport.Kind, op: ImportOp?, state s: DeskState) {
         let snapshot = LayoutSnapshot(s)
-        undoStack.append(Entry(label: label, before: snapshot, after: snapshot, file: ref))
+        let file = FileEntry(ref: ref, kind: kind, phase: .running)
+        undoStack.append(Entry(label: kind.undoLabel(op: op), before: snapshot, after: snapshot, file: file))
         if undoStack.count > Self.capacity { undoStack.removeFirst(undoStack.count - Self.capacity) }
         redoStack.removeAll()
     }
 
-    /// Undoes the latest entry that still changes something; entries whose tokens are all gone are dropped on
-    /// the way, so one ⌘Z always does something visible or nothing at all. A file entry always acts: it asks the
-    /// app to replay its record, and is not redone.
+    /// A file result fills the entry its `ticket` names, where it stands: an action that changed something becomes
+    /// ready (its label now says what it did), one that changed nothing goes; an undo that went (or was refused for
+    /// good) spends its entry, one refused before it ran (`kept`) leaves it ready for another ⌘Z. Redo is untouched.
+    public mutating func finishFile(_ report: FileReport) {
+        guard let ticket = report.ticket, let i = undoStack.lastIndex(where: { $0.file?.ref == ticket }),
+              let file = undoStack[i].file else { return }
+        switch (report.kind, file.phase) {
+        case (.undo, .undoing):
+            if report.kept { undoStack[i].file?.phase = .ready } else { undoStack.remove(at: i) }
+        case (.trash, .running), (.emptyWastebasket, .running), (.importItems, .running):
+            if report.undo != nil {
+                undoStack[i].file?.phase = .ready
+                undoStack[i].label = report.undoLabel
+            } else {
+                undoStack.remove(at: i)
+            }
+        default:
+            break
+        }
+    }
+
+    /// Undoes the latest entry that still changes something; layout entries whose tokens are all gone are dropped
+    /// on the way, so one ⌘Z always does something visible or nothing at all. A file entry acts only when it is the
+    /// top entry (the one the menus name): a ⌘Z that had to drop stale steps to reach it stops there and says so.
+    /// A ready one asks the app to replay its record (and is not redone); a running drop-in stops its copy.
     public mutating func undo(_ s: inout DeskState, grid: ScreenGrid = .standard) -> [Effect] {
-        while let entry = undoStack.popLast() {
-            if let ref = entry.file { return [.undoFiles(ref)] } // MARK: files
+        var skipped = false
+        while let entry = undoStack.last {
+            // MARK: files
+            if let file = entry.file {
+                if skipped { return [.toast(.nothingToUndo)] }
+                switch file.phase {
+                case .ready:
+                    undoStack[undoStack.count - 1].file?.phase = .undoing
+                    return [.undoFiles(file.ref)]
+                case .running where file.kind == .importItems:
+                    return [.cancelFiles(file.ref), .toast(.stoppingCopy)]
+                case .running, .undoing:
+                    return [.toast(.fileBusy)]
+                }
+            }
+            undoStack.removeLast()
             let before = s
             Self.apply(from: entry.after, to: entry.before, onto: &s, grid: grid)
-            guard s != before else { continue }
+            guard s != before else {
+                skipped = true
+                continue
+            }
             redoStack.append(entry)
             return [.persist, .wakeLoop]
         }
@@ -183,9 +246,12 @@ extension Reducer {
         case .redo:
             return journal.redo(&s, grid: env.grid)
         // MARK: files
+        case let .fileStarted(ref, kind, op):
+            journal.startFile(ref, kind, op: op, state: s)
+            return reduce(&s, a, env)
         case let .fileResult(report):
             let effects = reduce(&s, a, env)
-            if let ref = report.undo { journal.recordFile(report.kind.undoLabel, ref, state: s) }
+            journal.finishFile(report)
             return effects
         default:
             guard let label = UndoJournal.label(for: a) else { return reduce(&s, a, env) }

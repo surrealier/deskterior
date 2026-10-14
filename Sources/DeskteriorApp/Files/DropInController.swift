@@ -4,11 +4,14 @@ import DeskFiles
 import DeskScene
 
 /// Files dragged onto the desk from Finder or another app (DESIGN §3.6 Drop-in). While the drag is over the desk,
-/// the screen brackets the cell it would land in. On the drop, the scene says where they land (a screen cell, a
-/// hiding place, a desk pile at that spot, the floor), or bonks (the screen is off, a container is full, a drive);
-/// the store gets one `requestDropIn`. Items already in the desk folder only move on the desk; the others are moved
-/// in (same volume, `RENAME_EXCL`, " 2" on a clash) or copied (another volume, or ⌥), by `FileOperator`, undoably,
-/// and land where they were dropped. The demo runner's `dropIn` step comes through `drop` too.
+/// the screen brackets the cell it would land in, and the drag source is told what will happen
+/// (`DropIn.dragOperation`): nothing where the drop would bonk, a copy when any item lies on another volume (or with
+/// ⌥), else a move, so a source that removes its own item after a move never does so for one we only copied. On the
+/// drop, the scene says where they land (a screen cell, a hiding place, a desk pile at that spot, the floor), or
+/// bonks (the screen is off, a container is full, a drive); the store gets one `requestDropIn`. Items already in
+/// the desk folder only move on the desk; the others are moved in (same volume, `RENAME_EXCL`, " 2" on a clash) or
+/// copied (another volume, or ⌥), by `FileOperator`, undoably, and land where they were dropped. The demo runner's
+/// `dropIn` step comes through `drop` too.
 final class DropInController {
     let host: SceneHost
     unowned let store: Store
@@ -22,13 +25,36 @@ final class DropInController {
 
     // MARK: Dragging over the desk
 
-    /// The operation a drag of `count` files at canvas `p` would get (copy with ⌥ or when the source allows only
-    /// copying); the landing cell is bracketed.
-    func dragged(count: Int, at p: SIMD2<Float>, copy: Bool) -> NSDragOperation {
-        guard count > 0, store.state.access == .connected else { return [] }
-        host.scene.showFileDropTarget(count: count, at: p)
+    /// The drag the volume answer below belongs to (`NSDraggingInfo.draggingSequenceNumber`).
+    private var volumesChecked: (drag: Int, crosses: Bool)?
+
+    /// The operation a drag of `urls` at canvas `p` would get (`DropIn.dragOperation`; `copy`: ⌥, or a source that
+    /// offers no move); the landing cell is bracketed. `drag` names the dragging session: its items' volumes are
+    /// read once per drag.
+    func dragged(_ urls: [URL], at p: SIMD2<Float>, copy: Bool, drag: Int) -> NSDragOperation {
+        let s = store.state
+        guard !urls.isEmpty, s.access == .connected, let root = s.root else {
+            dragEnded()
+            return []
+        }
+        if volumesChecked?.drag != drag {
+            volumesChecked = (drag, Self.crossesVolumes(urls, desk: URL(fileURLWithPath: root.path, isDirectory: true)))
+        }
+        let bonks: Bool = if case .bonk = host.scene.fileDropVerdict(count: urls.count, at: p) { true } else { false }
+        host.scene.showFileDropTarget(count: bonks ? 0 : urls.count, at: bonks ? nil : p)
         host.modelChanged()
-        return copy ? .copy : .move
+        switch DropIn.dragOperation(bonks: bonks, forcedCopy: copy, crossesVolumes: volumesChecked?.crosses ?? true) {
+        case .move?: return .move
+        case .copy?: return .copy
+        case nil: return []
+        }
+    }
+
+    /// Whether any of `urls` lies on another volume than the desk folder (or its volume cannot be read): that item
+    /// is copied in.
+    static func crossesVolumes(_ urls: [URL], desk: URL) -> Bool {
+        guard let deskVolume = FileOperator.volumeUUID(desk) else { return true }
+        return urls.contains { FileOperator.volumeUUID($0) != deskVolume }
     }
 
     func dragEnded() {

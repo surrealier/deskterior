@@ -21,6 +21,8 @@ public enum SafetyGuard {
         public enum Reason: String, Sendable {
             case noFolderGiven, missingFolder, notADirectory, realDesktop, insideRealDesktop, enclosesRealDesktop
             case enclosesHome, volumeRoot, insideMirroredFolder, outsideOwnRoot
+            /// A demo's drop source that is not a scratch folder of its own inside a temporary folder.
+            case notScratch
         }
 
         public let reason: Reason
@@ -39,6 +41,7 @@ public enum SafetyGuard {
             case .volumeRoot: "refusing a whole volume or the volumes folder: \(path)"
             case .insideMirroredFolder: "refusing to keep our own files inside the mirrored folder: \(path)"
             case .outsideOwnRoot: "refusing to write outside our own folder: \(path)"
+            case .notScratch: "refusing a drop source that is not a scratch folder inside the temporary folders: \(path)"
             }
         }
     }
@@ -73,6 +76,31 @@ public enum SafetyGuard {
         }
         guard isDir.boolValue else { throw Refusal(reason: .notADirectory, path: url.path) }
         return url
+    }
+
+    /// A demo's drop source (`DESKTERIOR_DEMO_SOURCE`, M11): demos move files in from it, so it must be a scratch
+    /// folder of its own. It must pass `mirrorFolder` in demo mode (it exists; not the real desktop, home or a
+    /// volume, nor around them), lie strictly inside one of `temporaryRoots` (a root that is, holds or lies inside
+    /// the home folder does not count), and not overlap the `guarded` folders (the mirrored and state folders).
+    /// Returns its realpath.
+    public static func scratchSource(
+        _ path: String, guarded: [URL], temporaryRoots: [URL] = SafetyGuard.temporaryRoots(),
+        realDesktop: URL = DesktopLocator.defaultDesktopURL(), home: URL = FileManager.default.homeDirectoryForCurrentUser
+    ) throws(Refusal) -> URL {
+        let url = try mirrorFolder(
+            DesktopLocator.resolve(override: path), mode: .demo, realDesktop: realDesktop, home: home
+        )
+        let roots = temporaryRoots.filter { DesktopLocator.relation(of: $0, to: home) == .unrelated }
+        guard roots.contains(where: { DesktopLocator.relation(of: url, to: $0) == .inside }),
+              guarded.allSatisfy({ DesktopLocator.relation(of: url, to: $0) == .unrelated })
+        else { throw Refusal(reason: .notScratch, path: url.path) }
+        return URL(fileURLWithPath: DesktopLocator.canonicalPath(url), isDirectory: true)
+    }
+
+    /// The temporary folders: this process's `TMPDIR`, `/private/tmp` and `/private/var/folders`.
+    public static func temporaryRoots() -> [URL] {
+        [FileManager.default.temporaryDirectory, URL(fileURLWithPath: "/private/tmp", isDirectory: true),
+         URL(fileURLWithPath: "/private/var/folders", isDirectory: true)]
     }
 
     /// A mount point (`/`, `/Volumes/X`) or a folder of mount points.

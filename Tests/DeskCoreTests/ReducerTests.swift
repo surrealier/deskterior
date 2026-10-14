@@ -400,6 +400,7 @@ struct ReducerTests {
             .requestDropIn(DropIn(urls: [URL(fileURLWithPath: "/tmp/y")], location: .container(.phone, order: 0), op: .move)),
             .requestOpenVolume("V"), .requestRevealVolume("V"),
             .fileResult(FileReport(kind: .trash, count: 1, trashed: [F.key(1)], undo: FileUndoRef(1))),
+            .fileStarted(FileUndoRef(2), .importItems, op: .copy),
         ]
     }
 

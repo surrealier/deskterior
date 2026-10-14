@@ -103,6 +103,10 @@ public enum DeskAction: Sendable {
     /// The drive hub (E15): open the volume with this `VolumeEntry.id` in Finder, or show it there.
     case requestOpenVolume(String)
     case requestRevealVolume(String)
+    /// The app started a file action ⌘Z can take back (a trash, Empty Wastebasket, a drop-in; `op` for a drop-in):
+    /// the journal keeps its place from now, and its `.fileResult` (the same ref as `FileReport.ticket`) fills it.
+    /// Changes nothing else; never a file effect.
+    case fileStarted(FileUndoRef, FileReport.Kind, op: ImportOp?)
 
     /// Explicit user requests. Only these may produce file effects (`Effect.touchesFiles`).
     public var isRequest: Bool {

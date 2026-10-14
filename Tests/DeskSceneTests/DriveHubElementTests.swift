@@ -77,6 +77,37 @@ struct DriveHubElementTests {
         #expect(items.map(\.label) == ["Drive Drive 0", "Drive Drive 1", "Drive Drive 2", "Drive Drive 3", "1 more drives"])
     }
 
+    @Test("A long copy's progress line shows over the monitor and updates in place; nil takes only it down")
+    func progressLine() throws {
+        let store = Self.store(volumes: 0)
+        let scene = store.scene
+        let p = Pointer(scene: scene)
+        scene.showProgress("Copying 3 items… ⌘Z stops")
+        p.frames(30)
+        #expect(scene.toastText == "Copying 3 items… ⌘Z stops" && scene.toastShown == nil)
+        let shown = try #require(scene.room?.toast.rect)
+        scene.showProgress("Copying 40 items… ⌘Z stops")
+        #expect(scene.toastText == "Copying 40 items… ⌘Z stops")
+        #expect(scene.room?.toast.rect?.minY == shown.minY, "replaced in place, not sliding in again")
+        scene.showProgress(nil)
+        #expect(scene.toastText == nil)
+        scene.toast(.fileBusy)
+        scene.showProgress(nil)
+        #expect(scene.toastShown == .fileBusy, "a keyed toast is not a progress line")
+    }
+
+    @Test("Every toast fits the visible band of the smallest room")
+    func toastsFit() throws {
+        let store = Self.store(volumes: 0)
+        let scene = store.scene
+        let visible = try #require(scene.layout).visible
+        for key in ToastKey.allCases {
+            scene.toast(key)
+            let r = try #require(scene.room?.toast.rect, "\(key)")
+            #expect(r.w <= min(visible.w, CoreLayout.size.w) - 8, "\(key) is \(r.w) px wide")
+        }
+    }
+
     @Test("Tokens and files dropped on the hub or a drive bonk: copying to drives is Finder's job")
     func drivesBonk() throws {
         let store = Self.store(volumes: 2)

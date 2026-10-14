@@ -219,6 +219,9 @@ public actor FileOperator {
         var beforeCheck: (@Sendable (URL) -> Void)?
         /// Runs right after a copy finishes, with the staged copy.
         var afterCopy: (@Sendable (URL) -> Void)?
+        /// Stand-ins for the volume checks and the unmount itself (an eject in tests, which never reach a volume).
+        var ejectable: (@Sendable (URL) -> Bool)?
+        var unmount: (@Sendable (URL) throws -> Void)?
     }
 
     /// `sandboxRoots` is non-nil in demo, headless and test modes: then every path touched (the desktop folder,
@@ -603,18 +606,19 @@ public actor FileOperator {
     // MARK: Eject
 
     /// Unmounts and ejects the volume mounted at `volume`. Takes a `.menuItem` or `.inventory` intent. Never in
-    /// demo and test modes.
+    /// demo and test modes. The unmount (seconds for a slow server) runs on a GCD thread, so the actor serves other
+    /// requests meanwhile and their intents do not go stale waiting.
     public func eject(_ volume: URL, _ intent: ExplicitIntent) async -> FileOutcome {
         let outcome: FileOutcome
         if let r = refusal(for: intent, .eject) {
             outcome = .refused(volume, r)
-        } else if sandboxRoots != nil {
+        } else if sandboxRoots != nil, hooks.unmount == nil {
             outcome = .refused(volume, .outsideSandbox)
-        } else if !Self.isEjectableVolume(volume) {
+        } else if !(hooks.ejectable ?? Self.isEjectableVolume)(volume) {
             outcome = .refused(volume, .notEjectable)
         } else {
             do {
-                try NSWorkspace.shared.unmountAndEjectDevice(at: volume)
+                try await Self.unmount(volume, hooks.unmount)
                 outcome = .ejected(volume)
             } catch {
                 outcome = .refused(volume, FileRefusal.from(error))
@@ -622,6 +626,17 @@ public actor FileOperator {
         }
         record(.eject, outcome, inodes: [], intent: intent)
         return outcome
+    }
+
+    /// `NSWorkspace.unmountAndEjectDevice(at:)` (or the test seam) off the actor.
+    private nonisolated static func unmount(_ volume: URL, _ seam: (@Sendable (URL) throws -> Void)?) async throws {
+        try await withCheckedThrowingContinuation { (done: CheckedContinuation<Void, any Error>) in
+            DispatchQueue.global(qos: .userInitiated).async {
+                done.resume(with: Result {
+                    if let seam { try seam(volume) } else { try NSWorkspace.shared.unmountAndEjectDevice(at: volume) }
+                })
+            }
+        }
     }
 
     /// A mount point the drive hub would offer to eject (`isEjectable`). The system's own volumes under

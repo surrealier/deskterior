@@ -12,9 +12,11 @@ extension Reducer {
     static func reduceFiles(_ s: inout DeskState, _ a: DeskAction, _ env: ReduceEnv) -> [Effect] {
         switch a {
         case let .requestTrash(keys):
+            if let toast = unavailable(s), !keys.isEmpty { return [.toast(toast)] }
             let t = trashTargets(s, keys)
             return t.urls.isEmpty ? [] : [.trash(t.urls, expected: t.keys, confirm: nil)]
         case .requestEmptyWastebasket:
+            if let toast = unavailable(s), s.tokens.count(in: .wastebasket) > 0 { return [.toast(toast)] }
             return emptyWastebasket(s)
         case let .requestEject(id):
             guard let v = s.volumes.first(where: { $0.id == id }), v.isEjectable else { return [] }
@@ -29,8 +31,19 @@ extension Reducer {
             return dropIn(&s, d, env)
         case let .fileResult(report):
             return applyFileResult(&s, report, env)
+        case .fileStarted:
+            return [] // The journal's (`Reducer.reduce(_:journal:_:_:)`).
         default:
             return []
+        }
+    }
+
+    /// Why no file can change now (the desk folder is not connected), as a toast; nil when connected.
+    static func unavailable(_ s: DeskState) -> ToastKey? {
+        switch s.access {
+        case .connected: nil
+        case .denied: .accessDenied
+        case .notConnected, .finderHidden, .connecting: .filesUnavailable
         }
     }
 
@@ -60,10 +73,15 @@ extension Reducer {
     }
 
     /// A drop onto a desk spot (DESIGN §3.6): items whose folder is the desk folder are tokens already and only move
-    /// there (journaled as a move); the others are announced by name hints (with a new pile's spot) and moved or
-    /// copied in. The app passes desk items spelled under the model's root.
+    /// there (journaled as a move); the others are announced by hints (with a new pile's spot), one per item by
+    /// its path, and moved or copied in. A hint whose name is taken already (by a desk item, another drop still
+    /// waiting, or an item earlier in this drop; compared as the desk's case-insensitive volume does) is never
+    /// taken by name: that item lands as " 2", and a file appearing under the old name is someone else's (an
+    /// editor's safe-save); its result places it by identity. The app passes desk items spelled under the model's
+    /// root.
     static func dropIn(_ s: inout DeskState, _ d: DropIn, _ env: ReduceEnv) -> [Effect] {
-        guard s.access == .connected, let root = s.root, !d.urls.isEmpty else { return [] }
+        if let toast = unavailable(s), !d.urls.isEmpty { return [.toast(toast)] }
+        guard let root = s.root, !d.urls.isEmpty else { return [] }
         let rootPath = URL(fileURLWithPath: root.path, isDirectory: true).standardizedFileURL.path
         var byName: [String: TokenKey] = [:]
         for key in s.tokens.sortedKeys {
@@ -88,9 +106,17 @@ extension Reducer {
         if !onDesk.isEmpty { effects += placeDropped(&s, onDesk, d, env) }
         if !outside.isEmpty {
             let expires = env.now.addingTimeInterval(dropHintLifetime)
-            Placement.register(outside.map {
-                PlacementHint(name: $0.lastPathComponent, location: d.location, expires: expires, pilePos: d.pilePos)
-            }, into: &s.hints)
+            var taken = Set(s.tokens.sortedKeys.compactMap { s.tokens.meta(of: $0).map { folded($0.displayName) } })
+            taken.formUnion(s.hints.filter { $0.source != nil && $0.matchesName }.map { folded($0.name) })
+            for url in outside {
+                let path = url.standardizedFileURL.path
+                let name = TextLayout.nfc(url.lastPathComponent)
+                s.hints.removeAll { $0.source == path }
+                s.hints.append(PlacementHint(
+                    name: name, location: d.location, expires: expires, pilePos: d.pilePos, source: path,
+                    matchesName: taken.insert(folded(name)).inserted
+                ))
+            }
             var hints: [String: Location] = [:]
             for url in outside { hints[TextLayout.nfc(url.lastPathComponent)] = d.location }
             effects.append(.importFiles(outside, op: d.op, hints: hints))
@@ -113,15 +139,19 @@ extension Reducer {
 
     // MARK: Results
 
+    /// A file name as the desk's volume compares it: NFC, case folded.
+    static func folded(_ name: String) -> String { TextLayout.nfc(name).lowercased() }
+
     /// Applies what a file effect did: trashed tokens leave now; dropped files' hints follow the names they landed
-    /// under (with their identity, so a hint may even place one in the wastebasket); a toast says what did not happen.
+    /// under (with their identity, so a hint may even place one in the wastebasket); a toast says what did not happen,
+    /// or what an undo did.
     static func applyFileResult(_ s: inout DeskState, _ r: FileReport, _ env: ReduceEnv) -> [Effect] {
         var effects: [Effect] = []
         switch r.kind {
         case .trash, .emptyWastebasket:
             effects += removeTrashed(&s, r.trashed, now: env.now, grid: env.grid)
         case .importItems:
-            followDropped(&s, r, now: env.now)
+            effects += followDropped(&s, r, env)
         case .undo, .eject:
             break
         }
@@ -154,24 +184,30 @@ extension Reducer {
         return effects + [.persist, .wakeLoop]
     }
 
-    /// Re-aims the drop's name hints at what actually landed: an item renamed on arrival (" 2") takes the hint
-    /// under its new name, every landed item's hint learns its identity, and refused items' hints go.
-    static func followDropped(_ s: inout DeskState, _ r: FileReport, now: Date) {
-        let expires = now.addingTimeInterval(Placement.hintLifetime)
-        var moved: [PlacementHint] = []
+    /// Re-aims the drop's hints (found by each item's source path) at what actually landed: an item renamed on
+    /// arrival (" 2") takes its hint under its new name, with its identity, for `Placement.hintLifetime`; refused
+    /// items' hints go. An item the mirror placed already without its hint (its name was taken, or a name-only hint
+    /// never fills the wastebasket) moves from the monitor to its drop spot now, by identity.
+    static func followDropped(_ s: inout DeskState, _ r: FileReport, _ env: ReduceEnv) -> [Effect] {
+        let expires = env.now.addingTimeInterval(Placement.hintLifetime)
+        var effects: [Effect] = []
         for p in r.placed {
-            let source = TextLayout.nfc(p.source)
-            guard let hint = s.hints.last(where: { $0.name == source }) else { continue } // the mirror was faster
-            s.hints.removeAll { $0.name == source }
-            moved.append(PlacementHint(
-                name: p.name, location: hint.location, expires: expires, key: p.key, size: hint.size,
-                pilePos: hint.pilePos
+            guard let i = s.hints.lastIndex(where: { $0.source == p.source }) else { continue } // taken by name already
+            let hint = s.hints.remove(at: i)
+            if let key = p.key, s.tokens.contains(key) {
+                if s.tokens.location(of: key)?.isScreen == true {
+                    let spot = DropIn(urls: [], location: hint.location, pilePos: hint.pilePos, op: .move)
+                    effects += placeDropped(&s, [key], spot, env)
+                }
+                continue
+            }
+            let name = TextLayout.nfc(p.name)
+            s.hints.removeAll { $0.name == name && $0.source == nil }
+            s.hints.append(PlacementHint(
+                name: name, location: hint.location, expires: expires, key: p.key, size: hint.size, pilePos: hint.pilePos
             ))
         }
-        for name in r.refusedNames {
-            let nfc = TextLayout.nfc(name)
-            s.hints.removeAll { $0.name == nfc }
-        }
-        Placement.register(moved, into: &s.hints)
+        for path in r.refused { s.hints.removeAll { $0.source == path } }
+        return effects
     }
 }
