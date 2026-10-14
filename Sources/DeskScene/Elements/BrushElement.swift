@@ -128,6 +128,11 @@ final class BrushElement: DeskElement {
         return spec
     }
 
+    func accessibilityItems() -> [AXItem] {
+        guard isLive else { return [] }
+        return [AXItem(id: "brush", label: "Desk Brush", role: .button, frame: rect)]
+    }
+
     func handle(_ gesture: Gesture, _ hit: Hit) -> GestureResponse {
         guard isLive, let hub else { return .pass }
         switch gesture {

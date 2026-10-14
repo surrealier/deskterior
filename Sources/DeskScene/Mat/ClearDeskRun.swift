@@ -83,6 +83,28 @@ final class ClearDeskRun {
         tidy()
     }
 
+    /// The model moved on (an undo while the pass plays): the stand-ins go without a word.
+    func cancel() {
+        guard !isDone else { return }
+        for id in pending { mat.arrived(id) }
+        pending.removeAll()
+        tidied = true
+        isDone = true
+        mat.brush?.scripted = nil
+    }
+
+    /// Whether the model still holds the plan's result: every pending swept pile where it was sent and every pending
+    /// floor stack in its new pile.
+    func stillApplies(to s: DeskState) -> Bool {
+        for sweep in plan.sweeps where pending.contains(sweep.pile) {
+            if !s.tokens.members(of: sweep.pile).isEmpty && s.piles[sweep.pile] != sweep.to { return false }
+        }
+        for tuck in plan.tucks where pending.contains(tuck.pile) {
+            if tuck.keys.contains(where: { s.tokens.location(of: $0)?.pile != tuck.pile }) { return false }
+        }
+        return true
+    }
+
     /// Removes what is left on screen.
     func tearDown() {
         for g in ghosts.values { g.node.removeFromParent() }

@@ -59,7 +59,7 @@ final class PhysicsHub {
     /// spot it rests at, and the covered pile within reach it joins).
     var isUnderMat: (PileID) -> Bool = { _ in false }
     var drawnByMat: (PileID) -> Bool = { _ in false }
-    var matLanding: (SIMD2<Float>) -> (pile: PileID?, at: SIMD2<Float>)? = { _ in nil }
+    var matLanding: (SIMD2<Float>, Int) -> (pile: PileID?, at: SIMD2<Float>)? = { _, _ in nil }
 
     /// Within this distance (plane px) a landing joins a pile instead of starting one: about a pile's width, so two
     /// stacks never stand half over each other.
@@ -382,7 +382,7 @@ final class PhysicsHub {
         let live = unmoved(keys, since: origins)
         guard !live.isEmpty else { return }
         // MARK: mat
-        let tuck = matLanding(aim)
+        let tuck = matLanding(aim, live.count)
         if let id = tuck?.pile, let at = s.piles[id] {
             commitDesk(live, pile: id, at: at, journaled: journaled)
             return

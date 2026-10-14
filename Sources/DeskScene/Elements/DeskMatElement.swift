@@ -127,8 +127,9 @@ final class DeskMatElement: DeskElement, Knockable {
     static let landingReach: Float = 18
     /// The surface draws just above the desk top and below what stands on it (flight shadows, piles, props).
     static let surfaceZ = CGFloat(RoomLayer.deskSurface.rawValue * 1000 + 300)
-    /// An awake cloth with nothing driving it is put to sleep after this many steps (it never wakes the loop forever).
-    static let maxIdleAwakeSteps = 600
+    /// An awake cloth with nothing driving it accepts its pose after this many steps (4 s): a settled mat whose last
+    /// creases still creep never keeps the loop awake.
+    static let maxIdleAwakeSteps = 240
 
     init(context: SceneContext, placed: @escaping (String) -> PlacedElement?) {
         self.context = context
@@ -184,6 +185,10 @@ final class DeskMatElement: DeskElement, Knockable {
             placeSurface()
         }
         updateFlat()
+        if let run = clearRun, !run.stillApplies(to: s) {
+            run.cancel()
+            endClearRun()
+        }
         if s.mat != knownMat { adopt(s.mat, s) }
         // Piles the model dropped are forgotten; moved ones are judged again when asked (`coversPile`).
         for id in judged.keys where s.piles[id] == nil { judged[id] = nil }
@@ -282,20 +287,20 @@ final class DeskMatElement: DeskElement, Knockable {
         rasterDirty = true
     }
 
-    /// A landing at desk point `p` on the mat tucks under it (DESIGN §2.1 DropResolver, mat footprint): it rests
-    /// `ClearDeskPlan.tuckInset` px inside the cloth's edge (far enough that its bump does not hold the edge up) and
-    /// joins a covered pile within 10 px. A set-down lands where the stack's base was, a
-    /// little in front of the pointer, so a landing just off the front edge (`landingReach`) counts as on the mat. Nil
-    /// off the mat, or where the cloth is lifted off the desk (it lands under the lifted cloth, and the cloth covers
-    /// it as it lays back).
-    func landing(at p: SIMD2<Float>) -> (pile: PileID?, at: SIMD2<Float>)? {
+    /// A landing of `count` tokens at desk point `p` on the mat tucks under it (DESIGN §2.1 DropResolver, mat
+    /// footprint): it rests `ClearDeskPlan.inset(count:)` inside the cloth's edge (far enough that its bump does not
+    /// hold the edge up) and joins a covered pile within 10 px. A set-down lands where the stack's base was, a little in
+    /// front of the pointer, so a landing just off the front edge (`landingReach`) counts as on the mat. Nil off the
+    /// mat, or where the cloth is lifted off the desk (it lands under the lifted cloth, which covers it as it lays back).
+    func landing(at p: SIMD2<Float>, count: Int = 1) -> (pile: PileID?, at: SIMD2<Float>)? {
         guard isLive, p.isFinite, let s = context.state else { return nil }
-        let frame = cloth.baseFrame(), size = cloth.restSize, inset = ClearDeskPlan.tuckInset
+        let frame = cloth.baseFrame(), size = cloth.restSize, inset = ClearDeskPlan.inset(count: count)
         let q = frame.material(p)
         guard q.x >= -4, q.x <= size.x + 4, q.y >= -Self.landingReach, q.y <= size.y + 4 else { return nil }
         refreshIndex()
         if let c = index.clearance(at: p), c >= CoverageTracker.zMargin { return nil }
-        let spot = frame.point(SIMD2(min(max(q.x, inset), size.x - inset), min(max(q.y, inset), size.y - inset)))
+        let i = SIMD2(min(inset, size.x / 2), min(inset, size.y / 2))
+        let spot = frame.point(SIMD2(min(max(q.x, i.x), size.x - i.x), min(max(q.y, i.y), size.y - i.y)))
         guard coveredSamples(at: spot) >= 3 else { return nil }
         var join: (id: PileID, d: Float)?
         for id in s.tokens.piles.sorted() where coverage.isCovered(number(id)) && clearRun?.holds(id) != true {
@@ -363,8 +368,8 @@ final class DeskMatElement: DeskElement, Knockable {
     /// there.
     func tucked(_ p: SIMD2<Float>, count: Int = 1) -> SIMD2<Float> {
         let frame = cloth.baseFrame(), size = cloth.restSize, inset = ClearDeskPlan.inset(count: count)
-        let q = frame.material(p)
-        let spot = frame.point(SIMD2(min(max(q.x, inset), size.x - inset), min(max(q.y, inset), size.y - inset)))
+        let q = frame.material(p), i = SIMD2(min(inset, size.x / 2), min(inset, size.y / 2))
+        let spot = frame.point(SIMD2(min(max(q.x, i.x), size.x - i.x), min(max(q.y, i.y), size.y - i.y)))
         return spot != p && coveredSamples(at: spot) >= 3 ? spot : p
     }
 

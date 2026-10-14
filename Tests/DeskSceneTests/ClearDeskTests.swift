@@ -2,6 +2,7 @@ import DeskCore
 import Foundation
 import Metal
 import simd
+import SpriteKit
 import Testing
 @testable import DeskScene
 
@@ -65,6 +66,20 @@ struct ClearDeskTests {
         stage.dispatch(.redo)
         stage.frames(2)
         #expect(stage.hub.bodies.ids.isEmpty && stage.scene.matExpectation("visible") == "0")
+    }
+
+    @Test("An undo while the pass plays stops it: the piles are back on show where they were, no stand-ins left")
+    func undoMidPass() throws {
+        let stage = try PhysicsStage(Self.busy(), physics: true, mat: true)
+        stage.frames(3)
+        stage.dispatch(.clearDesk)
+        stage.frames(20)
+        stage.dispatch(.undo)
+        stage.frames(2)
+        let mat = stage.mat
+        #expect(mat.clearRun == nil && stage.scene.room?.brushElement?.scripted == nil)
+        #expect(Set(stage.hub.bodies.ids) == ["P1", "P2"] && mat.coveredPiles.isEmpty)
+        #expect(mat.root.children.filter { $0 is SKSpriteNode && !$0.isHidden }.count <= 2, "only the surface (and handles)")
     }
 
     @Test("With Reduce Motion everything is under at once (a puff each)")

@@ -253,3 +253,39 @@ struct DeskMatTests {
         #expect(ClothMetrics.wrinkle(stage.mat.cloth) <= wrinkled)
     }
 }
+
+/// Release benchmark of the mat's whole awake frame in the scene (`scripts/swift-test.sh -c release --filter
+/// MatFramePerf`): cloth step, coverage, bumps, raster and upload. Asserted only in optimized builds.
+@Suite("MatFramePerf", .enabled(if: MTLCreateSystemDefaultDevice() != nil))
+@MainActor
+struct MatFramePerfTests {
+    #if DEBUG
+    static let optimized = false
+    #else
+    static let optimized = true
+    #endif
+
+    @Test("An awake mat frame (carried over covered piles) fits its share of the frame budget")
+    func frame() throws {
+        let stage = try PhysicsStage(matDesk([[190, 40], [252, 52], [318, 44], [420, 30]], counts: [1, 3, 7, 1]),
+                                     physics: true, mat: true)
+        stage.frames(3)
+        let mat = stage.mat
+        let grip = stage.point(plane: [200, 30])
+        stage.event(.move, grip)
+        stage.event(.down, grip, count: 1)
+        stage.frames(1)
+        var samples: [Double] = []
+        for k in 0..<121 {
+            stage.event(.drag, grip + SIMD2(20 * Float(sin(Double(k) * 0.1)), 0))
+            let t0 = DispatchTime.now().uptimeNanoseconds
+            mat.step(1.0 / 60)
+            samples.append(Double(DispatchTime.now().uptimeNanoseconds - t0) / 1e6)
+        }
+        samples.sort()
+        let median = samples[samples.count / 2]
+        print(String(format: "MatFramePerf (%@): awake mat frame %.3f ms (median of 121)",
+                     Self.optimized ? "release" : "debug", median))
+        if Self.optimized { #expect(median <= 1.6) }
+    }
+}
