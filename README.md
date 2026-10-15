@@ -265,8 +265,9 @@ The [Where things hide](#where-things-hide) and [Gestures](#gestures) tables bel
   clean pass, rim bounces, misses land on the floor), dig the top ball out, or drag the rim sideways to tip it over
   (the balls uncrumple onto the floor). It never deletes: Empty Wastebasket… moves the contents to the macOS
   Trash after a confirmation that lists them.
-- **Menus.** The drawers, the cubby and the phone have Open or Close (Turn Face Up or Down for the phone), List
-  Contents (pick a name to send it to the monitor), Move Contents to and Take All Out; the pen cup and the wastebasket
+- **Menus.** The drawers have Open Drawer or Close Drawer and the phone Turn Face Up or Down; the drawers, the cubby
+  and the phone all have List Contents (pick a name to send it to the monitor), Move Contents to and Take All Out; the
+  pen cup and the wastebasket
   have Tip Over and Stand Up. Any file's Move to ▸ sends it straight to a hiding place.
 - **Nothing comes out by itself.** Knocks, slams and overfilling never empty a container; overfilling bonks.
 

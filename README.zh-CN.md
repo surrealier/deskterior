@@ -237,7 +237,7 @@ Pause Desk · 其他显示器可铺上配套的墙 · 全屏应用、睡眠时�
 - **手机**。最多放 6 个文件，显示为迷你应用图标。点击可把它屏幕朝下扣过去（内容隐藏，再往上放会 BONK）；屏幕朝上时，夜里会发光。
 - **笔筒**。最多 6 支笔，笔帽颜色代表文件种类（第 7 支会 BONK）；可以把最后一支笔拔出来。在桌上拖动笔筒，它会把文件堆推开。里面有三支或以上的笔时甩一下（或选择 Tip Over），它就会倒下，笔撒成一堆堆；点击可把它扶起来。
 - **垃圾桶**。最多 24 个纸团，从第 11 个起会堆得高出桶沿。把文件放进去或扔进去（空心入桶时 SWISH!，碰到桶沿会弹开，没扔准就落到地板上），可以把最上面的纸团掏出来，也可以横向拖动桶沿把它碰倒（纸团会展开，散落在地板上）。它从不删除：Empty Wastebasket…（清空垃圾桶）会先列出内容请你确认，然后才把它们移到 macOS 废纸篓。
-- **菜单**。抽屉、置物格和手机有 Open Drawer 或 Close Drawer（手机为 Turn Face Up 或 Turn Face Down）、List Contents（选择一个名称即可把它送回显示器）、Move Contents to 和 Take All Out；笔筒和垃圾桶有 Tip Over 和 Stand Up。任何文件的 Move to ▸ 都能把它直接送到某个藏身处。
+- **菜单**。抽屉有 Open Drawer 或 Close Drawer，手机有 Turn Face Up 或 Turn Face Down；抽屉、置物格和手机都有 List Contents（选择一个名称即可把它送回显示器）、Move Contents to 和 Take All Out；笔筒和垃圾桶有 Tip Over 和 Stand Up。任何文件的 Move to ▸ 都能把它直接送到某个藏身处。
 - **不会有东西自己跑出来**。敲桌子、砰地关抽屉、塞得太满，都不会让容器清空；塞得太满只会 BONK。
 
 ### 桌垫

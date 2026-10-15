@@ -280,8 +280,8 @@ usar cada parte.
   la bola de arriba o arrastra el borde hacia un lado para volcarlo (las bolas se desarrugan en el suelo). Nunca borra
   nada: Empty Wastebasket… (vaciar el cesto) mueve el contenido a la Papelera de macOS tras una confirmación que lo
   enumera.
-- **Menús.** Los cajones, el hueco y el teléfono tienen Open o Close (Turn Face Up o Turn Face Down en el teléfono),
-  List Contents (elige un nombre para enviarlo al monitor), Move Contents to y Take All Out; el portalápices y el cesto
+- **Menús.** Los cajones tienen Open Drawer o Close Drawer, y el teléfono Turn Face Up o Turn Face Down; los cajones, el
+  hueco y el teléfono tienen List Contents (elige un nombre para enviarlo al monitor), Move Contents to y Take All Out; el portalápices y el cesto
   tienen Tip Over y Stand Up. El Move to ▸ de cualquier archivo lo envía directamente a un escondite.
 - **Nada sale solo.** Los golpes, los cierres de golpe y llenar de más nunca vacían un contenedor; si lo llenas de más,
   hace bonk.
