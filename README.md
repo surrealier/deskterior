@@ -373,8 +373,9 @@ The [Where things hide](#where-things-hide) and [Gestures](#gestures) tables bel
 - **Everyday commands.** Open (double-click, ⌘O), Quick Look (Space), Show in Finder, Copy (⌘C), Open Desktop Folder
   in Finder.
 - **File actions, only when asked.** Move to Trash (from the menu; no keyboard shortcut), Empty Wastebasket…,
-  dropping files in from Finder (moved into the folder, or copied from another disk or with ⌥; a name that is taken
-  gets " 2"), dragging files out to other apps, Mail or the Dock's Trash, and Eject. Locked files are never moved in.
+  dropping files in from Finder (moved into the folder, or copied from another disk or with ⌥; an app becomes an alias
+  and stays where it is; a name that is taken gets " 2"), dragging files out to other apps, Mail or the Dock's Trash,
+  and Eject. Locked files are never moved in.
 - **Undo.** ⌘Z undoes the last 20 steps (⌘⇧Z redoes layout steps), Deskterior's own file actions included: trashed
   files come back to the same spot, dropped files go back where they came from. Eject and drags out to other apps
   cannot be undone. Every file action is written to `operations.log`.
@@ -445,6 +446,7 @@ a menu, Find Item…, Show on Desk or Take Everything Out.
 | **Click** | Selects a file (⌘-click adds or removes one; drag on the empty screen to select several; ⌘A selects the page). Also flips switches and presses buttons: the power button, INPUT, the lamp, the room light switch, a drawer handle, the phone. |
 | **Double-click** | Opens a file. On the desk's front edge (the apron): **knocks the desk**: things wobble, but no file changes place. On the mat's edge: smooths it. On a folded flap: unfolds it. On the brush: sends it home. |
 | **Drag** | Carries files (several at once if several are selected) to the monitor, a hiding place, the desk or the floor. Hovering a carried file over a closed drawer for a moment opens it. Drags the brush, the chair (it rolls), the pen cup, drawer handles, the clock's minute hand (previews another time of day). |
+| **Drop from Finder** | Files dragged onto the desk from Finder land where you drop them: moved into your Desktop folder, or copied when they come from another disk. An **app** becomes an alias (its own icon with an arrow; double-click opens it) and stays where it is; one from the Trash or a disk image comes in like any file. Hold ⌥ to copy, ⌘ to move (apps too), ⌘⌥ to make an alias of anything. Files dropped on another display go to the monitor. |
 | **Flick / toss** | Let go of a carried file while moving fast and it flies: off the desk's edge onto the floor, or into the wastebasket (SWISH!). A fast flick of the pen cup (with three or more pens in it) tips it over. |
 | **Drag the mat** | Carries the whole mat (and the keyboard on it); fast carries leave creases. |
 | **Peel** | Drag an edge or corner of the mat inward: it lifts and the piles under it stand up so you can take one. Hold still a moment before letting go and it stays up briefly; pull it past the middle and it stays folded. |
@@ -468,7 +470,7 @@ Deskterior has no Dock icon. Its menu is the small pixel icon in the menu bar, o
   - **Move to Trash** from a file's right-click menu (no keyboard shortcut);
   - **Empty Wastebasket…**, after a confirmation that lists the names;
   - dropping files from Finder onto the desk (moved into your Desktop folder; copied when they come from another
-    disk, or when you hold ⌥);
+    disk, or when you hold ⌥; an app becomes an alias and stays where it is, as does anything with ⌘⌥);
   - dragging a file out to another app (that app does what it would do with a drag from Finder; dropped on the
     Dock's Trash, Deskterior moves it to the Trash itself if the Dock has not);
   - **Eject** from a drive's menu;
@@ -482,7 +484,7 @@ Deskterior has no Dock icon. Its menu is the small pixel icon in the menu bar, o
   Finder, Move to Trash), but never removes it by itself.
 - **Undo.** ⌘Z undoes layout changes and Deskterior's own file actions (Move to Trash, Empty Wastebasket…, drops
   onto the desk): trashed files come back to the same spot on the desk, dropped files go back where they came from
-  (copies go to the Trash). Eject and drags out to other apps cannot be undone, except a drag onto the Dock's Trash
+  (copies and aliases go to the Trash). Eject and drags out to other apps cannot be undone, except a drag onto the Dock's Trash
   that Deskterior carried out. If macOS will not let Deskterior reach the Trash, it says so and you can use Finder's
   Put Back.
 - **Finder is left alone.** The desk is a window just above Finder's desktop icons: it covers them, it does not hide

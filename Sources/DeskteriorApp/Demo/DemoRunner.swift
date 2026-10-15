@@ -663,6 +663,24 @@ final class DemoRunner {
                 let name = TextLayout.nfc(String(k.dropFirst(4)))
                 let now = tokenKey(named: name)
                 check(key, now == nil ? "missing" : (now == firstKeys[name] ? "same" : "changed"), value)
+            // MARK: alias (Erratum 29)
+            case let k where k.hasPrefix("alias:"):
+                // Whether the token is an alias (`true`, `false`, or `missing`).
+                let meta = tokenKey(named: String(k.dropFirst(6))).flatMap { s.tokens.meta(of: $0) }
+                check(key, meta.map { String($0.isAlias) } ?? "missing", value)
+            case let k where k.hasPrefix("icon:"):
+                // `real`: the token's pixelated Finder icon has arrived (for an alias, its target's); `kind`: not yet.
+                let token = tokenKey(named: String(k.dropFirst(5)))
+                check(key, token.map { scene.hasRealIcon($0) ? "real" : "kind" } ?? "missing", value)
+            case let k where k.hasPrefix("source:"):
+                // Whether the drop source still holds an item of that name (`present` or `missing`); read only.
+                let name = String(k.dropFirst(7))
+                guard DeskState.isPlainName(name), let folder = dropSource else {
+                    throw ScriptError(description: "\(key): needs a plain name and the harness's source folder")
+                }
+                var st = stat()
+                let there = lstat(folder.appendingPathComponent(name, isDirectory: false).path, &st) == 0
+                check(key, there ? "present" : "missing", value)
             default:
                 guard let actual = scene.physicsExpectation(key) ?? scene.matExpectation(key) else {  // MARK: mat
                     throw ScriptError(description: "unknown expectation '\(key)'")
@@ -746,7 +764,9 @@ extension DemoRunner {
         let mods = try modifiers(d.mods ?? [])
         let p = try point(d.at)
         send(.move, p)
-        session.dropIn.drop(urls, at: p, copy: mods.contains(.option))
+        // Erratum 29: `opt` copies, `cmd` moves, both make aliases; with none an app becomes an alias.
+        let keys = DropKeys(mode: DropMode(option: mods.contains(.option), command: mods.contains(.command)))
+        session.dropIn.drop(urls, at: p, copy: mods.contains(.option), keys: keys)
         frame()
     }
 

@@ -13,11 +13,14 @@ public struct FileUndoRecord: Sendable, Equatable {
         case moveBack(current: URL, source: URL, key: TokenKey)
         /// Undo a drop-in copy: trash our copy.
         case trashCopy(URL, key: TokenKey)
+        // MARK: alias (Erratum 29)
+        /// Undo a drop-in alias: trash our alias file (what it points to is never touched).
+        case trashAlias(URL, key: TokenKey)
 
         /// The identity the item must still have when the step runs.
         var key: TokenKey {
             switch self {
-            case let .putBack(_, _, key), let .moveBack(_, _, key), let .trashCopy(_, key): key
+            case let .putBack(_, _, key), let .moveBack(_, _, key), let .trashCopy(_, key), let .trashAlias(_, key): key
             }
         }
     }
@@ -34,5 +37,10 @@ public struct FileUndoRecord: Sendable, Equatable {
     init(kind: Kind, steps: [Step]) {
         self.kind = kind
         self.steps = steps
+    }
+
+    /// Where the aliases this record takes back lie (the undo's report tells them from copies by it).
+    var aliases: Set<URL> {
+        Set(steps.compactMap { if case let .trashAlias(url, _) = $0 { url } else { nil } })
     }
 }

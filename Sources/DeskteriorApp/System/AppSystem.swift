@@ -85,9 +85,9 @@ final class AppSystem {
             self.widgets?.probe()
             self.peek.relayout()
         }
-        displays.onWallDrop = { [weak self] urls, copy in self?.wallDrop(urls, copy: copy) }
-        displays.wallOperation = { [weak self] urls, copy, drag in
-            self?.session.dropIn.wallOperation(urls, copy: copy, drag: drag) ?? []
+        displays.onWallDrop = { [weak self] urls, copy, keys in self?.wallDrop(urls, copy: copy, keys: keys) }
+        displays.wallOperation = { [weak self] urls, copy, drag, keys in
+            self?.session.dropIn.wallOperation(urls, copy: copy, drag: drag, keys: keys) ?? []
         }
         displays.onWallMenu = { [weak self] view, p in self?.wallMenu(view, at: p) }
         displays.settingsChanged()
@@ -184,8 +184,8 @@ final class AppSystem {
     // MARK: Walls
 
     /// Files dropped on a wall go to the monitor, like a drop on its glass (DESIGN §4.10).
-    private func wallDrop(_ urls: [URL], copy: Bool) {
-        session.dropIn.dropOnWall(urls, copy: copy)
+    private func wallDrop(_ urls: [URL], copy: Bool, keys: DropKeys) {
+        session.dropIn.dropOnWall(urls, copy: copy, keys: keys)
         session.host.modelChanged()
     }
 

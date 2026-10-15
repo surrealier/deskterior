@@ -108,8 +108,11 @@ public enum FileOutcome: Sendable, Equatable {
     case moved(URL, to: URL)
     /// Copied to `to` under the name asked for (a cross-volume or ⌥ drop, or a move the system refused).
     case copied(URL, to: URL)
-    /// Moved or copied to `to` under a free Finder-style name ("name 2") because the name asked for was taken.
+    /// Moved, copied or aliased to `to` under a free Finder-style name ("name 2") because the name asked for was taken.
     case renamed(URL, to: URL, op: ImportOp)
+    // MARK: alias (Erratum 29)
+    /// A Finder alias of the item was made at `to` (an app's under its name without ".app"); the item is untouched.
+    case aliased(URL, to: URL)
     /// Already a direct child of the desktop folder: placement only, no file change.
     case unchanged(URL)
     case ejected(URL)
@@ -119,7 +122,7 @@ public enum FileOutcome: Sendable, Equatable {
     public var source: URL {
         switch self {
         case let .trashed(u, _), let .moved(u, _), let .copied(u, _), let .renamed(u, _, _), let .unchanged(u),
-             let .ejected(u), let .refused(u, _):
+             let .ejected(u), let .refused(u, _), let .aliased(u, _):
             u
         }
     }
@@ -128,7 +131,7 @@ public enum FileOutcome: Sendable, Equatable {
     public var destination: URL? {
         switch self {
         case let .trashed(_, to): to
-        case let .moved(_, to), let .copied(_, to), let .renamed(_, to, _): to
+        case let .moved(_, to), let .copied(_, to), let .renamed(_, to, _), let .aliased(_, to): to
         case .unchanged, .ejected, .refused: nil
         }
     }
@@ -143,7 +146,7 @@ public enum FileOutcome: Sendable, Equatable {
         case .renamed: "renamed"
         case .unchanged: "unchanged"
         case let .refused(_, r): "refused: \(r)"
-        case .trashed, .moved, .copied, .ejected: "ok"
+        case .trashed, .moved, .copied, .ejected, .aliased: "ok"
         }
     }
 }
@@ -171,7 +174,8 @@ public struct FileResult: Sendable, Equatable {
 /// - re-stats the item right before acting and refuses when its volume or inode is not the expected one, and
 ///   checks again right after: an item swapped in between is put straight back and refused;
 /// - renames with `renamex_np(RENAME_EXCL)`, so nothing is ever replaced: a taken name becomes "name 2" … "name 100";
-/// - trashes, never deletes. The only removal is of its own staging folders for copies;
+/// - trashes, never deletes. The only removal is of its own staging folders for copies and aliases;
+/// - never changes a drop's source when it makes an alias of it (Erratum 29): it only reads it;
 /// - logs the outcome to `OperationLog`.
 /// Undo replays only records this operator issued, once each.
 public actor FileOperator {
@@ -228,7 +232,7 @@ public actor FileOperator {
         var beforeRename: (@Sendable (URL) -> Void)?
         /// Runs right before the time-of-check re-stat of an item.
         var beforeCheck: (@Sendable (URL) -> Void)?
-        /// Runs right after a copy finishes, with the staged copy.
+        /// Runs right after a copy finishes (or an alias file is written), with the staged copy or alias.
         var afterCopy: (@Sendable (URL) -> Void)?
         // MARK: harden
         /// Runs right after a copy's final rename, with where it landed.
@@ -324,33 +328,53 @@ public actor FileOperator {
 
     // MARK: Import
 
-    /// Brings dropped items into the desktop folder. Takes a `.drop` intent. Same volume and `.move`: renamed in.
-    /// Otherwise (another volume, `.copy`, or a move the system refuses): copied into a staging folder on the
-    /// desk's volume, off the actor so other requests go on meanwhile, then renamed into place. A source is never
-    /// deleted. Folders and packages go as one unit. `progress` hears of each item a copy starts; cancelling the
-    /// calling task stops a copy and refuses what is left as `.cancelled`.
+    /// Brings dropped items into the desktop folder, each with `op`. Takes a `.drop` intent. Same volume and
+    /// `.move`: renamed in. Otherwise (another volume, `.copy`, or a move the system refuses): copied into a staging
+    /// folder on the desk's volume, off the actor so other requests go on meanwhile, then renamed into place.
+    /// `.alias`: a Finder alias of the item is written there instead and renamed into place (Erratum 29); the item
+    /// itself is only read. A source is never deleted. Folders and packages go as one unit. `progress` hears of each
+    /// item a copy starts; cancelling the calling task stops a copy and refuses what is left as `.cancelled`.
     public func importItems(
         _ urls: [URL], op: ImportOp, _ intent: ExplicitIntent, progress: (@Sendable (CopyProgress) -> Void)? = nil
     ) async -> FileResult {
-        if let r = refusal(for: intent, .importItems) ?? rootRefusal() {
-            return refuseAll(urls, r, op: op == .move ? .importMove : .importCopy, intent: intent)
+        await importItems(urls, ops: Array(repeating: op, count: urls.count), intent, progress: progress)
+    }
+
+    /// `importItems(_:op:_:progress:)` with an op per item (`ops[i]` for `urls[i]`; a drop of an app beside
+    /// documents aliases the app and moves the rest, Erratum 29). A request whose counts differ is refused.
+    public func importItems(
+        _ urls: [URL], ops: [ImportOp], _ intent: ExplicitIntent, progress: (@Sendable (CopyProgress) -> Void)? = nil
+    ) async -> FileResult {
+        let mismatch: FileRefusal? = urls.count == ops.count ? nil : .mismatchedRequest
+        if let r = refusal(for: intent, .importItems) ?? rootRefusal() ?? mismatch {
+            return refuseAll(urls, r, op: Self.logOp(ImportOp.headline(ops)), intent: intent)
         }
         var outcomes: [FileOutcome] = []
         var steps: [FileUndoRecord.Step] = []
-        for url in urls {
+        for (url, op) in zip(urls, ops) {
             let (outcome, step, inodes) = Task.isCancelled
                 ? (.refused(url, .cancelled), nil, [])
                 : await importOne(url, op: op, progress: progress)
             outcomes.append(outcome)
             if let step { steps.append(step) }
-            let copied: Bool = switch outcome {
-            case .copied, .renamed(_, _, .copy): true
-            case .refused, .unchanged: op == .copy
-            default: false
+            let done: ImportOp = switch outcome {
+            case .copied, .renamed(_, _, .copy): .copy
+            case .aliased, .renamed(_, _, .alias): .alias
+            case .refused, .unchanged: op
+            default: .move
             }
-            record(copied ? .importCopy : .importMove, outcome, inodes: inodes, intent: intent)
+            record(Self.logOp(done), outcome, inodes: inodes, intent: intent)
         }
         return FileResult(outcomes: outcomes, undo: issue(.importItems, steps))
+    }
+
+    /// The log's name for an import done as `op`.
+    private static func logOp(_ op: ImportOp) -> OperationLog.Entry.Op {
+        switch op {
+        case .move: .importMove
+        case .copy: .importCopy
+        case .alias: .importAlias
+        }
     }
 
     private func importOne(
@@ -376,6 +400,13 @@ public actor FileOperator {
         }
         let name = source.lastPathComponent
         let splits = FileMoves.splitsExtension(source)
+        // MARK: alias (Erratum 29): the item stays where it is; only an alias file of it comes in.
+        if op == .alias {
+            // An app's alias has no extension left to keep apart ("Foo.Bar" from "Foo.Bar.app" numbers as "Foo.Bar 2").
+            let aliasName = DropIn.aliasName(name)
+            return aliasIn(url, from: source, name: aliasName, splitsExtension: aliasName == name && splits,
+                           sourceKey: key)
+        }
         let sourceVolume = volumeID(source)
         if op == .move, let sourceVolume, sourceVolume == volumeID(root) {
             switch FileMoves.renameToFreeName(source, in: root, name: name, splitsExtension: splits, before: hooks.beforeRename) {
@@ -451,6 +482,54 @@ public actor FileOperator {
             return (outcome, .trashCopy(placed.url, key: key), [sourceInode, key.inode])
         case let .failure(f):
             return (.refused(url, f.refusal), nil, [sourceInode])
+        }
+    }
+
+    // MARK: alias (Erratum 29)
+
+    /// Writes a Finder alias of `source` (bookmark data `suitableForBookmarkFile`) into a fresh staging folder, then
+    /// renames it into place as `name`, or "name 2", "name 3"… on a clash (`RENAME_EXCL`), exactly like a copy. The
+    /// source is only read: the alias names the item that was checked (one swapped in meanwhile is refused), and its
+    /// landing is checked like a copy's (`landed`). The undo step trashes the alias, never what it points to.
+    private func aliasIn(
+        _ url: URL, from source: URL, name: String, splitsExtension: Bool, sourceKey: TokenKey
+    ) -> (FileOutcome, FileUndoRecord.Step?, [UInt64]) {
+        let staging: URL
+        do {
+            staging = try makeStaging()
+        } catch {
+            return (.refused(url, FileRefusal.from(error)), nil, [sourceKey.inode])
+        }
+        defer { removeStaging(staging) }
+        let staged = staging.appendingPathComponent(name, isDirectory: false)
+        do {
+            let bookmark = try source.bookmarkData(
+                options: .suitableForBookmarkFile, includingResourceValuesForKeys: nil, relativeTo: nil
+            )
+            try URL.writeBookmarkData(bookmark, to: staged)
+        } catch {
+            return (.refused(url, FileRefusal.from(error)), nil, [sourceKey.inode])
+        }
+        hooks.afterCopy?(staged)
+        guard case let .success(now) = identity(of: source), now == sourceKey else {
+            return (.refused(url, .identityChanged), nil, [sourceKey.inode])
+        }
+        let key: TokenKey
+        switch identity(of: staged) {
+        case let .success(k): key = k
+        case let .failure(r): return (.refused(url, r), nil, [sourceKey.inode])
+        }
+        switch FileMoves.renameToFreeName(
+            staged, in: root, name: name, splitsExtension: splitsExtension, before: hooks.beforeRename
+        ) {
+        case let .success(placed):
+            hooks.afterPlace?(placed.url)
+            if let r = landed(placed.url, is: key) { return (.refused(url, r), nil, [sourceKey.inode]) }
+            let outcome: FileOutcome = placed.renamed
+                ? .renamed(url, to: placed.url, op: .alias) : .aliased(url, to: placed.url)
+            return (outcome, .trashAlias(placed.url, key: key), [sourceKey.inode, key.inode])
+        case let .failure(f):
+            return (.refused(url, f.refusal), nil, [sourceKey.inode])
         }
     }
 
@@ -560,7 +639,7 @@ public actor FileOperator {
     // MARK: Undo
 
     /// Takes back a trash or an import, newest step first: renames out of the trash or back to the drop source
-    /// (`RENAME_EXCL`; a taken name becomes "name 2"), or trashes our copy. Takes an `.undo` intent and a record
+    /// (`RENAME_EXCL`; a taken name becomes "name 2"), or trashes our copy or our alias (never what it points to). Takes an `.undo` intent and a record
     /// this operator issued and has not replayed yet (a refused intent leaves the record usable). Every step
     /// re-checks the item's identity first. A step the system refuses (the real Trash under privacy protection,
     /// S11) is refused with `.notPermitted`; Finder's Put Back still works then.
@@ -597,7 +676,7 @@ public actor FileOperator {
             guard let item = deskChild(current) else { return .refused(current, .outsideRoot) }
             if let r = check(item, is: key) { return .refused(current, r) }
             return place(item, in: back.deletingLastPathComponent(), name: back.lastPathComponent, expecting: key)
-        case let .trashCopy(url, key):
+        case let .trashCopy(url, key), let .trashAlias(url, key):
             if let r = trashRefusal() { return .refused(url, r) }
             guard let item = deskChild(url) else { return .refused(url, .outsideRoot) }
             if let r = check(item, is: key) { return .refused(url, r) }
@@ -641,7 +720,7 @@ public actor FileOperator {
         switch step {
         case let .putBack(trashed, original, _): trashed ?? original
         case let .moveBack(current, _, _): current
-        case let .trashCopy(url, _): url
+        case let .trashCopy(url, _), let .trashAlias(url, _): url
         }
     }
 
@@ -650,6 +729,7 @@ public actor FileOperator {
         case .putBack: .putBack
         case .moveBack: .moveBack
         case .trashCopy: .trashCopy
+        case .trashAlias: .trashAlias
         }
     }
 

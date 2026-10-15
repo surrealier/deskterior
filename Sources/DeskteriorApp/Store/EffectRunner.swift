@@ -9,9 +9,9 @@ import QuickLookUI
 /// mirror connects on ⏻. In dry runs (`--demo`, `--headless`) none of those reaches the system: they are only
 /// recorded.
 ///
-/// File changes (Move to Trash, Empty Wastebasket, drop-in imports, their undo, Eject) go to `FileOperator` through
-/// `FileActions`, each with one `ExplicitIntent` minted here — the only place intents are minted (Errata 14) —
-/// right before its one call, from the gesture the request came from (`withOrigin`; a request dispatched with no
+/// File changes (Move to Trash, Empty Wastebasket, drop-in imports and aliases, their undo, Eject) go to
+/// `FileOperator` through `FileActions`, each with one `ExplicitIntent` minted here — the only place intents are
+/// minted (Errata 14) — right before its one call, from the gesture the request came from (`withOrigin`; a request dispatched with no
 /// gesture named mints nothing and only toasts): a trash with the origin it was requested from (a menu, the
 /// Inventory, the Dock Trash), or `sheetConfirm` once Empty Wastebasket's sheet, asked for from a menu, was
 /// confirmed; an import with `drop`; an undo with `undo` from ⌘Z or a menu's Undo (its record from the journal,
@@ -159,12 +159,14 @@ extension EffectRunner {
             files.run(.trash, { op, _ in await op.trash(urls, expecting: keys, intent) }) {
                 FileReport(trash: $0, keys: keys, kind: .trash, undo: $1)
             }
-        case let .importFiles(urls, op, _):
+        case let .importFiles(urls, ops, _):
             guard let origin = mintable(effect) else { return }
             record("import")
             let intent = ExplicitIntent(origin: origin)
-            files.run(.importItems, op: op, { await $0.importItems(urls, op: op, intent, progress: $1) }) {
-                FileReport(import: $0, undo: $1, requested: op)
+            // Each item with its own op (Erratum 29: an app dropped beside documents becomes an alias).
+            let headline = ImportOp.headline(ops)
+            files.run(.importItems, op: headline, { await $0.importItems(urls, ops: ops, intent, progress: $1) }) {
+                FileReport(import: $0, undo: $1, ops: ops)
             }
         case let .undoFiles(ref):
             guard let origin = mintable(effect) else {

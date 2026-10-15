@@ -88,7 +88,7 @@ final class FileActions {
             let result = await call(op, kept.record)
             let again = FileReport.recordKept(result)
             if again { self?.records[ref.id] = kept }
-            return FileReport(undo: result, of: kept.kind, ticket: ref, kept: again)
+            return FileReport(undo: result, of: kept.kind, record: kept.record, ticket: ref, kept: again)
         }
     }
 

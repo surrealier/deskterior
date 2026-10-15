@@ -131,7 +131,8 @@ public struct DemoDropIn: Codable, Sendable, Equatable {
     public var from: String?
     /// Where they are dropped (a pointer target).
     public var at: String
-    /// `opt` forces a copy.
+    /// The keys held at the drop (Erratum 29): `opt` copies every item, `cmd` moves every item (apps too), both make
+    /// aliases of every item; with none an app becomes an alias.
     public var mods: [String]?
 
     public init(files: [String], from: String? = nil, at: String, mods: [String]? = nil) {
@@ -166,11 +167,15 @@ public enum DemoFS: Codable, Sendable, Equatable {
     case sourceFile(String)
     /// `{"sourceDir": name}`: a folder (with one file in it) in the drop source folder.
     case sourceFolder(String)
+    // MARK: alias (Erratum 29)
+    /// `{"sourceApp": "Calculator.app"}`: a copy of that app of `/System/Applications` (ditto) in the drop source
+    /// folder, so a drop never takes an app from where it is installed.
+    case sourceApp(String)
     /// `{"ls": "desk" | "source" | "trash"}`: the harness prints `ls -li` of the fixture, the drop source folder or
     /// the FakeTrash into the demo log.
     case list(String)
 
-    private enum Key: String, CodingKey { case touch, newFolder = "mkdir", mv, rm, source, sourceDir, ls }
+    private enum Key: String, CodingKey { case touch, newFolder = "mkdir", mv, rm, source, sourceDir, sourceApp, ls }
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: Key.self)
@@ -183,6 +188,12 @@ public enum DemoFS: Codable, Sendable, Equatable {
         case .rm: self = .rm(try c.decode(String.self, forKey: .rm))
         case .source: self = .sourceFile(try c.decode(String.self, forKey: .source))
         case .sourceDir: self = .sourceFolder(try c.decode(String.self, forKey: .sourceDir))
+        case .sourceApp:
+            let name = try c.decode(String.self, forKey: .sourceApp)
+            guard (name as NSString).pathExtension == "app" else {
+                throw DecodingError.dataCorruptedError(forKey: .sourceApp, in: c, debugDescription: "sourceApp takes an app's name")
+            }
+            self = .sourceApp(name)
         case .ls:
             let what = try c.decode(String.self, forKey: .ls)
             guard ["desk", "source", "trash"].contains(what) else {
@@ -207,6 +218,7 @@ public enum DemoFS: Codable, Sendable, Equatable {
         case let .mv(a, b): try c.encode([a, b], forKey: .mv)
         case let .sourceFile(n): try c.encode(n, forKey: .source)
         case let .sourceFolder(n): try c.encode(n, forKey: .sourceDir)
+        case let .sourceApp(n): try c.encode(n, forKey: .sourceApp)
         case let .list(what): try c.encode(what, forKey: .ls)
         }
     }
@@ -220,6 +232,7 @@ public enum DemoFS: Codable, Sendable, Equatable {
         case let .mv(a, b): ["mv", a, b]
         case let .sourceFile(n): ["source", n]
         case let .sourceFolder(n): ["sourceDir", n]
+        case let .sourceApp(n): ["sourceApp", n]
         case let .list(what): ["ls", what]
         }
     }

@@ -161,7 +161,7 @@ struct FileOperatorGuardTests {
     // MARK: Identity, not spelling
 
     @Test("A drop of the desk folder or a folder holding it is refused under any spelling (case, firmlink)",
-          arguments: [ImportOp.copy, .move])
+          arguments: [ImportOp.copy, .move, .alias])
     func containsDesktopByIdentity(op: ImportOp) async throws {
         let rig = try FileRig()
         let outer = URL(fileURLWithPath: DesktopLocator.canonicalPath(try rig.temp.mkdir("Outer")), isDirectory: true)

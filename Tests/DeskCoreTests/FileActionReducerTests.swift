@@ -70,7 +70,7 @@ struct FileActionReducerTests {
         let d = DropIn(urls: outside + [url("a.txt")], location: .desk(pile: pile, order: 0), pilePos: [120, 40], op: .move)
         var journal = UndoJournal()
         let effects = Reducer.reduce(&s, journal: &journal, .requestDropIn(d), env)
-        #expect(effects.contains(.importFiles(outside, op: .move, hints: ["new.txt": d.location, "b.txt": d.location])))
+        #expect(effects.contains(.importFiles(outside, ops: [.move, .move], hints: ["new.txt": d.location, "b.txt": d.location])))
         #expect(s.tokens.location(of: F.key(1))?.pile == pile && s.piles[pile] == [120, 40], "a.txt is a desk item: it moves")
         #expect(journal.undoLabel == "Move")
         #expect(s.hints.map(\.name).sorted() == ["b.txt", "new.txt"] && s.hints.allSatisfy { $0.pilePos == [120, 40] })
@@ -78,7 +78,7 @@ struct FileActionReducerTests {
         // `importDropped` is the same request without a pile spot.
         var t = F.mirrored(["a.txt"])
         #expect(reduce(&t, .importDropped(outside, at: .floor(x: 40), op: .copy), env)
-            == [.importFiles(outside, op: .copy, hints: ["new.txt": .floor(x: 40), "b.txt": .floor(x: 40)])])
+            == [.importFiles(outside, ops: [.copy, .copy], hints: ["new.txt": .floor(x: 40), "b.txt": .floor(x: 40)])])
         // Nothing comes in while the mirror is not current: a toast says why.
         t.access = .denied
         #expect(reduce(&t, .requestDropIn(d), env) == [.toast(.accessDenied)])

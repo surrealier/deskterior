@@ -168,9 +168,12 @@ final class InventoryModel {
         perform(.moveTo(keys, ScreenGrid.standard.firstFree(state.tokens.occupiedCells).location))
     }
 
-    /// "PDF document", "Folder"… as the desk's tooltips say it, in the window's language.
+    /// "PDF document", "Folder"… as the desk's tooltips say it, in the window's language ("Alias" for an alias, as
+    /// its tooltip says; Erratum 29).
     func kindName(_ item: InventoryItem) -> String {
-        L10n.tr(TokenArt.kindName(item.kind, package: state.tokens.meta(of: item.key)?.isPackage ?? false))
+        let meta = state.tokens.meta(of: item.key)
+        if meta?.isAlias == true { return L10n.text(.kindAlias) }
+        return L10n.tr(TokenArt.kindName(item.kind, package: meta?.isPackage ?? false))
     }
 }
 

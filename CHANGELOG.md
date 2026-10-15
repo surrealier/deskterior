@@ -8,11 +8,25 @@ All notable changes to Deskterior are listed here. The format follows
 
 ### Added
 
+- **Apps become aliases.** An app dragged from Finder onto the desk now becomes a Finder alias named without ".app"
+  ("Safari"), showing the app's own icon with the alias mark; double-click opens the app, and the app stays where it
+  is. An app dragged out of the Trash or off a disk image, a USB stick or a card still comes in like any file. ⌘⌥
+  makes an alias of anything (Finder's convention). The alias lands where it was dropped, gets " 2" on a clash, and
+  ⌘Z ("Undo Make Alias") moves it to the Trash without touching the app. Toasts say what happened in English and
+  Korean ("Made an alias; the app stayed put.").
 - **README in five languages.** English, 한국어, 简体中文, 日本語 and Español editions with a language selector, a
   gallery of 18 real screen recordings (one per feature) and a complete feature list. The hero GIF is a real screen
   recording too.
 - **Capture tooling** in `scripts/capture/` for those recordings: an input director that drives scenes with real
   mouse and keyboard events, art-aligned ffmpeg recording, and a GIF cutter that keeps the pixel art exact.
+
+### Changed
+
+- **Drop-in keys.** ⌘ alone now moves every dropped item, apps too (across disks it stays a copy); ⌥ still copies
+  everything. Over the desk or a wall, a drag that will only make aliases shows the link cursor, and one that aliases
+  an app beside other files shows the copy cursor. A drag whose source allows only a link (⌃) makes aliases. Walls
+  now take ⌘ and ⌃ drags as the desk does.
+- **Find Item…** lists aliases under the kind "Alias".
 
 ## [0.1.0] - 2026-10-15
 

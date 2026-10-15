@@ -5,7 +5,8 @@
 # promise mechanical:
 #   - destructive file APIs (trash, move, rename, delete, link, attributes, tags, flags, times, iCloud
 #     eviction, icons), including C functions passed or bound as values, appear only in the file-operation
-#     files; writing APIs only there and in our own writers (state, cache, artifacts, tools);
+#     files; writing APIs only there and in our own writers (state, cache, artifacts, tools); Finder alias
+#     (bookmark) files are written only by FileOperator (a drop-in alias, Erratum 29);
 #   - nothing shells out, calls by name (@_silgen_name, @_extern, dlsym, string selectors), writes other apps'
 #     preferences (`defaults write`, `killall`) or talks to the network, and Sources hold no C/ObjC files;
 #   - ExplicitIntent's initializer is SPI: `@_spi(IntentMinting) import DeskFiles` is allowed only in
@@ -68,6 +69,8 @@ _ = utimes("/x", &times)
 _ = setattrlist("/x", &attrs, &buf, 8, 0)
 NSWorkspace.shared.setIcon(img, forFile: "/x", options: [])
 NSWorkspace.shared.duplicate([u]) { _, _ in }
+try URL.writeBookmarkData(data, to: u)
+_ = CFURLWriteBookmarkDataToFile(data as CFData, u as CFURL, 0, nil)
 #selector(FileManager.removeItem(at:))
 let s = Selector(("removeItemAtPath:error:"))
 func renameAll(_ a: String, _ b: String) -> Int32 { rename(a, b) }
@@ -223,6 +226,8 @@ SRC="$(cd "$SRC" && pwd)"
 
 # Allowlists: space-separated paths relative to the checked directory. A trailing "/" allows a whole directory.
 DESTRUCTIVE_ALLOW="DeskFiles/FileOperator.swift DeskFiles/Trasher.swift DeskFiles/OperationLog.swift"
+# Finder alias files: only the file operator writes one (Erratum 29).
+BOOKMARK_ALLOW="DeskFiles/FileOperator.swift"
 WRITE_ALLOW="$DESTRUCTIVE_ALLOW DeskFiles/StateStore.swift DeskFiles/IconCache.swift DeskFiles/ArtifactWriter.swift DeskAssetTool/"
 INTENT_ALLOW="DeskteriorApp/Store/EffectRunner.swift"
 # The SPI also appears where the initializer is declared.
@@ -306,7 +311,13 @@ WRITE_PATTERNS='\bwrite[[:space:]]*\([[:space:]]*(to|toFile|toURL)[[:space:]]*:
 \barchiveRootObject\b
 \bCGImageDestinationCreateWithURL\b
 \bCGPDFContextCreateWithURL\b
-\bCGDataConsumer[[:space:]]*\([[:space:]]*url:'
+\bCGDataConsumer[[:space:]]*\([[:space:]]*url:
+\bwriteBookmarkData\b
+\bCFURLWriteBookmarkDataToFile\b'
+# Bookmark (alias) files written: a write as above, and allowed only in the file operator.
+BOOKMARK_PATTERNS='\bwriteBookmarkData\b
+\bCFURLWriteBookmarkDataToFile\b
+\bFS(New|Update)Alias'
 SHELL_PATTERNS='\bProcess[[:space:]]*(\(|\.|\?|!|>|\)|,|\]|$)
 (:|=|<|\bas[!?]?|\bis)[[:space:]]*\[?Process\b
 \bNSTask\b
@@ -434,6 +445,7 @@ EOF
 
 check "destructive" "$SRC" '*.swift' "$DESTRUCTIVE_PATTERNS" "$DESTRUCTIVE_ALLOW"
 check "write" "$SRC" '*.swift' "$WRITE_PATTERNS" "$WRITE_ALLOW"
+check "bookmark" "$SRC" '*.swift' "$BOOKMARK_PATTERNS" "$BOOKMARK_ALLOW"
 check "shell" "$SRC" '*.swift' "$SHELL_PATTERNS" "$NOWHERE"
 check "dynamic" "$SRC" '*.swift' "$DYNAMIC_PATTERNS" "$NOWHERE"
 check "network" "$SRC" '*.swift' "$NETWORK_PATTERNS" "$NOWHERE"

@@ -112,7 +112,7 @@ struct L10nTests {
         }
         for t in UndoJournal.l10nCoverageLabels { titles.insert("Undo \(t)") }
         // File entries' labels (`FileReport`).
-        for t in ["Move to Trash", "Empty Wastebasket", "Move In", "Copy In", "Drop In"] { titles.insert("Undo \(t)") }
+        for t in ["Move to Trash", "Empty Wastebasket", "Move In", "Copy In", "Drop In", "Make Alias"] { titles.insert("Undo \(t)") }
         let missing = titles.filter { !L10n.knows($0) }.sorted()
         #expect(missing.isEmpty, "untranslated menu titles: \(missing)")
     }

@@ -199,6 +199,9 @@ public final class DeskScene: SKScene {
         room?.showIcon(key, icon)
     }
 
+    /// Whether the token's pixelated real icon has arrived (demo expectations).
+    public func hasRealIcon(_ key: TokenKey) -> Bool { icons[key] != nil }
+
     /// Drops icons of tokens that are gone.
     public func pruneIcons(keeping live: Set<TokenKey>) {
         for k in icons.keys where !live.contains(k) {

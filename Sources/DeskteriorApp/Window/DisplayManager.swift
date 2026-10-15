@@ -24,9 +24,9 @@ final class DisplayManager {
     /// Called after the desk moved to another display or the screens changed (re-probe widgets, re-watch occlusion).
     var onScreensChanged: (() -> Void)?
     /// Wall drops and right-clicks.
-    var onWallDrop: (([URL], Bool) -> Void)?
-    /// What a wall answers a file drag with (`DropInController.wallOperation`: copy, move or nothing).
-    var wallOperation: (([URL], _ copy: Bool, _ drag: Int) -> NSDragOperation)?
+    var onWallDrop: (([URL], Bool, DropKeys) -> Void)?
+    /// What a wall answers a file drag with (`DropInController.wallOperation`: copy, move, link or nothing).
+    var wallOperation: (([URL], _ copy: Bool, _ drag: Int, _ keys: DropKeys) -> NSDragOperation)?
     var onWallMenu: ((WallView, NSPoint) -> Void)?
     /// Walls take file drags (only once dropped files are imported; until then a drag over a wall is refused).
     var wallsAcceptFiles = false {
@@ -280,8 +280,10 @@ final class DisplayManager {
             } else {
                 let w = WallController(display: display, level: level, pixelSize: pixelSize)
                 w.view.acceptsFiles = wallsAcceptFiles
-                w.view.onDrop = { [weak self] urls, copy in self?.onWallDrop?(urls, copy) }
-                w.view.operationFor = { [weak self] urls, copy, drag in self?.wallOperation?(urls, copy, drag) ?? [] }
+                w.view.onDrop = { [weak self] urls, copy, keys in self?.onWallDrop?(urls, copy, keys) }
+                w.view.operationFor = { [weak self] urls, copy, drag, keys in
+                    self?.wallOperation?(urls, copy, drag, keys) ?? []
+                }
                 w.view.onMenu = { [weak self, weak w] p in
                     guard let self, let view = w?.view else { return }
                     self.onWallMenu?(view, p)

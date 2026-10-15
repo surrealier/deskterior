@@ -54,13 +54,15 @@ final class WallController {
 /// The wall's content: one layer with the art-resolution image, magnified ×S (nearest) and cropped like the desk's
 /// canvas (`PixelGrid`), a drop target for files and a source of the desk menu.
 final class WallView: NSView {
-    /// Files dropped here (copy when ⌥ was held or the source only copies).
-    var onDrop: (([URL], _ copy: Bool) -> Void)?
+    /// Files dropped here (copy when ⌥ was held or the source only copies), with the keys held and the source's
+    /// operations, which pick each item's op (an app with no key becomes an alias; Erratum 29).
+    var onDrop: (([URL], _ copy: Bool, _ keys: DropKeys) -> Void)?
     /// File drags are taken at all.
     var acceptsFiles = false
-    /// The operation the desk's drop-in gives these files (copy when one lies on another volume; nothing while the
-    /// desk folder is not connected), given the copy the source's operations and ⌥ ask for.
-    var operationFor: (([URL], _ copy: Bool, _ drag: Int) -> NSDragOperation)?
+    /// The operation the desk's drop-in gives these files (copy when one lies on another volume, link when every one
+    /// becomes an alias; nothing while the desk folder is not connected), given the copy the source's operations and
+    /// ⌥ ask for, and the keys.
+    var operationFor: (([URL], _ copy: Bool, _ drag: Int, _ keys: DropKeys) -> NSDragOperation)?
     /// A right-click (or VoiceOver's Show Desk Menu) at a view point.
     var onMenu: ((NSPoint) -> Void)?
     private var image: CGImage?
@@ -128,23 +130,31 @@ final class WallView: NSView {
     override func performDragOperation(_ sender: any NSDraggingInfo) -> Bool {
         let urls = Self.fileURLs(sender.draggingPasteboard)
         guard !urls.isEmpty, let op = importOp(sender), let onDrop else { return false }
-        onDrop(urls, op == .copy)
+        onDrop(urls, op == .copy, keys(sender))
         return true
     }
 
     private func operation(_ sender: any NSDraggingInfo) -> NSDragOperation {
         let urls = Self.fileURLs(sender.draggingPasteboard)
         guard !urls.isEmpty, let op = importOp(sender) else { return [] }
-        if let operationFor { return operationFor(urls, op == .copy, sender.draggingSequenceNumber) }
-        return op == .copy ? .copy : .move
+        if let operationFor { return operationFor(urls, op == .copy, sender.draggingSequenceNumber, keys(sender)) }
+        return op == .copy ? .copy : op == .alias ? .link : .move
     }
 
-    /// What dropping now would do: the source's allowed operations and ⌥ (`ImportOp.forDrop`), nil when refused.
+    /// What dropping now would do: the source's allowed operations and ⌥ (`ImportOp.forDrop`), nil when refused;
+    /// with ⌘⌥ an alias whenever the source allows a link (Erratum 29).
     private func importOp(_ sender: any NSDraggingInfo) -> ImportOp? {
         guard acceptsFiles, onDrop != nil else { return nil }
         let mask = sender.draggingSourceOperationMask
+        let keys = keys(sender)
+        if keys.mode == .alias, mask.contains(.link) { return .alias }
         return ImportOp.forDrop(copyHeld: NSEvent.modifierFlags.contains(.option), canMove: mask.contains(.move),
                                 canCopy: mask.contains(.copy))
+    }
+
+    /// The keys held over the drag and what its source allows (`DropKeys`).
+    private func keys(_ sender: any NSDraggingInfo) -> DropKeys {
+        DropKeys(modifiers: NSEvent.modifierFlags, mask: sender.draggingSourceOperationMask)
     }
 
     static func fileURLs(_ pasteboard: NSPasteboard) -> [URL] {

@@ -74,7 +74,8 @@ extension Reducer {
 
     /// A drop onto a desk spot (DESIGN §3.6): items whose folder is the desk folder are tokens already and only move
     /// there (journaled as a move); the others are announced by hints (with a new pile's spot), one per item by
-    /// its path, and moved or copied in. A hint whose name is taken already (by a desk item, another drop still
+    /// its path (an app's alias by its name without ".app", Erratum 29), and moved, copied or aliased in, each with
+    /// its own op (`DropIn.ops`). A hint whose name is taken already (by a desk item, another drop still
     /// waiting, or an item earlier in this drop; compared as the desk's case-insensitive volume does) is never
     /// taken by name: that item lands as " 2", and a file appearing under the old name is someone else's (an
     /// editor's safe-save); its result places it by identity. The app passes desk items spelled under the model's
@@ -89,10 +90,12 @@ extension Reducer {
         }
         var onDesk: [TokenKey] = []
         var outside: [URL] = []
-        for url in d.urls {
+        var ops: [ImportOp] = []
+        for (i, url) in d.urls.enumerated() {
             let u = url.standardizedFileURL
             guard u.deletingLastPathComponent().path == rootPath else {
                 outside.append(url)
+                ops.append(d.op(at: i))
                 continue
             }
             // A desk item the mirror has not seen yet is left to it.
@@ -108,18 +111,19 @@ extension Reducer {
             let expires = env.now.addingTimeInterval(dropHintLifetime)
             var taken = Set(s.tokens.sortedKeys.compactMap { s.tokens.meta(of: $0).map { folded($0.displayName) } })
             taken.formUnion(s.hints.filter { $0.source != nil && $0.matchesName }.map { folded($0.name) })
-            for url in outside {
+            var hints: [String: Location] = [:]
+            for (url, op) in zip(outside, ops) {
                 let path = url.standardizedFileURL.path
-                let name = TextLayout.nfc(url.lastPathComponent)
+                // An app's alias lands without ".app" (Erratum 29).
+                let name = TextLayout.nfc(DropIn.landingName(url.lastPathComponent, op: op))
                 s.hints.removeAll { $0.source == path }
                 s.hints.append(PlacementHint(
                     name: name, location: d.location, expires: expires, pilePos: d.pilePos, source: path,
                     matchesName: taken.insert(folded(name)).inserted
                 ))
+                hints[name] = d.location
             }
-            var hints: [String: Location] = [:]
-            for url in outside { hints[TextLayout.nfc(url.lastPathComponent)] = d.location }
-            effects.append(.importFiles(outside, op: d.op, hints: hints))
+            effects.append(.importFiles(outside, ops: ops, hints: hints))
         }
         return effects
     }

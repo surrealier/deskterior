@@ -5,7 +5,8 @@ import DeskPixels
 import QuickLookThumbnailing
 
 /// Real icons for tokens (DESIGN §3.4): Quick Look thumbnails (`.thumbnail`, 64 px) for images, video and
-/// PDF; `NSWorkspace.icon(forFile:)` for everything else; then `IconPixelator` at 16 and 12 px, cached in
+/// PDF; `NSWorkspace.icon(forFile:)` for everything else (an alias shows its target's icon, without Finder's arrow:
+/// the desk draws its own alias mark; Erratum 29); then `IconPixelator` at 16 and 12 px, cached in
 /// `IconCache`. At most `maxInFlight` requests run at once, visible tokens first. Dataless iCloud items get
 /// `.kindOnly` without touching the file, so nothing is ever downloaded. A file that was renamed or replaced
 /// while its icon rendered comes back `.stale` (nothing is cached for it); request it again at its new URL.
@@ -17,6 +18,8 @@ final class IconProvider {
         var modified: Date?
         var size: Int64?
         var isDataless: Bool
+        /// A Finder alias (or a symbolic link): its target's icon is drawn.
+        var isAlias: Bool
 
         init(key: TokenKey, url: URL, meta: TokenMeta) {
             self.key = key
@@ -25,6 +28,7 @@ final class IconProvider {
             modified = meta.modified
             size = meta.size
             isDataless = meta.isDataless
+            isAlias = meta.isAlias
         }
     }
 
@@ -109,17 +113,20 @@ final class IconProvider {
                 Self.deliver(self, r, cached)
                 return
             }
+            // An alias's target is looked up here, off the main thread (it reads the alias file).
+            let target = r.isAlias ? Self.aliasTarget(r.url) : nil
             DispatchQueue.main.async {
-                MainActor.assumeIsolated { self.render(r) }
+                MainActor.assumeIsolated { self.render(r, iconOf: target) }
             }
         }
     }
 
-    /// Quick Look for pictures and pages, the workspace icon otherwise (or when Quick Look has nothing).
-    private func render(_ r: Request) {
+    /// Quick Look for pictures and pages, the workspace icon otherwise (or when Quick Look has nothing). An alias
+    /// whose target was found shows the target's workspace icon (`iconOf`).
+    private func render(_ r: Request, iconOf target: URL? = nil) {
         let cache = cache
-        guard Self.usesThumbnail(r.kind) else {
-            finishWithWorkspaceIcon(r)
+        guard Self.usesThumbnail(r.kind), !r.isAlias else {
+            finishWithWorkspaceIcon(r, iconOf: target)
             return
         }
         let request = QLThumbnailGenerator.Request(
@@ -137,14 +144,14 @@ final class IconProvider {
         }
     }
 
-    private func finishWithWorkspaceIcon(_ r: Request) {
+    private func finishWithWorkspaceIcon(_ r: Request, iconOf target: URL? = nil) {
         let cache = cache
         // `icon(forFile:)` draws a generic icon for a missing path; never cache that under the token's key.
         guard Self.isStillAt(r) else {
             finish(r, .stale)
             return
         }
-        let image = NSWorkspace.shared.icon(forFile: r.url.path)
+        let image = NSWorkspace.shared.icon(forFile: (target ?? r.url).path)
         var rect = CGRect(x: 0, y: 0, width: Self.sourcePixels, height: Self.sourcePixels)
         guard let cg = image.cgImage(forProposedRect: &rect, context: nil, hints: nil),
               let source = PixelBuffer(cgImage: cg)
@@ -161,6 +168,20 @@ final class IconProvider {
     nonisolated private static func isStillAt(_ r: Request) -> Bool {
         var st = stat()
         return lstat(r.url.path, &st) == 0 && UInt64(st.st_ino) == r.key.inode
+    }
+
+    // MARK: alias (Erratum 29)
+
+    /// Where the Finder alias at `url` points, by the path its bookmark data stored, when an item is there: read from
+    /// the alias file without resolving it (no search, no mounting, no UI). Nil for a symbolic link, a broken alias
+    /// or one whose target moved: then the alias file's own workspace icon is drawn (the target's, with Finder's
+    /// arrow; the desk's mark covers the arrow's corner).
+    nonisolated static func aliasTarget(_ url: URL) -> URL? {
+        guard let data = try? URL.bookmarkData(withContentsOf: url),
+              let path = URL.resourceValues(forKeys: [.pathKey], fromBookmarkData: data)?.path
+        else { return nil }
+        var st = stat()
+        return lstat(path, &st) == 0 ? URL(fileURLWithPath: path) : nil
     }
 
     /// Images, video and PDF show their content; everything else its Finder icon.

@@ -249,16 +249,20 @@ final class DeskView: NSView {
     override func performDragOperation(_ sender: any NSDraggingInfo) -> Bool {
         guard let dropIn else { return false }
         let urls = DropInController.fileURLs(sender.draggingPasteboard)
-        let copy = DropInController.wantsCopy(sender.draggingSourceOperationMask, modifiers: NSEvent.modifierFlags)
-        return dropIn.drop(urls, at: artPoint(windowPoint: sender.draggingLocation), copy: copy)
+        let mask = sender.draggingSourceOperationMask, modifiers = NSEvent.modifierFlags
+        let copy = DropInController.wantsCopy(mask, modifiers: modifiers)
+        // Erratum 29: the keys held pick each item's op (an app with no key becomes an alias).
+        return dropIn.drop(urls, at: artPoint(windowPoint: sender.draggingLocation), copy: copy,
+                           keys: DropKeys(modifiers: modifiers, mask: mask))
     }
 
     private func dropInUpdate(_ sender: any NSDraggingInfo) -> NSDragOperation {
         guard let dropIn else { return [] }
         let urls = DropInController.fileURLs(sender.draggingPasteboard)
-        let copy = DropInController.wantsCopy(sender.draggingSourceOperationMask, modifiers: NSEvent.modifierFlags)
+        let mask = sender.draggingSourceOperationMask, modifiers = NSEvent.modifierFlags
+        let copy = DropInController.wantsCopy(mask, modifiers: modifiers)
         return dropIn.dragged(urls, at: artPoint(windowPoint: sender.draggingLocation), copy: copy,
-                              drag: sender.draggingSequenceNumber)
+                              drag: sender.draggingSequenceNumber, keys: DropKeys(modifiers: modifiers, mask: mask))
     }
 
     /// The canvas art point under a window point.

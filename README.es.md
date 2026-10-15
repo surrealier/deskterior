@@ -399,8 +399,8 @@ usar cada parte.
   Folder in Finder.
 - **Acciones sobre archivos, solo cuando las pides.** Move to Trash (desde el menú; sin atajo de teclado), Empty
   Wastebasket…, soltar archivos desde el Finder (se mueven a la carpeta, o se copian si vienen de otro disco o si usas
-  ⌥; si el nombre ya existe, se le añade « 2»), arrastrar archivos a otras apps, a Mail o a la Papelera del Dock, y
-  Eject. Los archivos bloqueados nunca se mueven a la carpeta.
+  ⌥; una app se convierte en un alias y se queda donde está; si el nombre ya existe, se le añade « 2»), arrastrar
+  archivos a otras apps, a Mail o a la Papelera del Dock, y Eject. Los archivos bloqueados nunca se mueven a la carpeta.
 - **Deshacer.** ⌘Z deshace los últimos 20 pasos (⌘⇧Z rehace los pasos de disposición), incluidas las propias acciones de
   Deskterior sobre archivos: los archivos enviados a la Papelera vuelven al mismo sitio y los que soltaste vuelven de
   donde vinieron. Expulsar y arrastrar a otras apps no se puede deshacer. Cada acción sobre archivos se anota en
@@ -476,6 +476,7 @@ Everything Out.
 | **Clic** | Selecciona un archivo (⌘-clic añade o quita uno; arrastra sobre la pantalla vacía para seleccionar varios; ⌘A selecciona la página). También acciona interruptores y pulsa botones: el de encendido, INPUT, la lámpara, el interruptor de la luz de la habitación, el tirador de un cajón, el teléfono. |
 | **Doble clic** | Abre un archivo. En el borde frontal de la mesa (el faldón), **da un golpe a la mesa**: las cosas se tambalean, pero ningún archivo cambia de sitio. En el borde de la alfombrilla, la alisa. En una solapa doblada, la desdobla. En el cepillo, lo devuelve a su sitio. |
 | **Arrastrar** | Lleva archivos (varios a la vez si hay varios seleccionados) al monitor, a un escondite, a la mesa o al suelo. Si mantienes un momento un archivo sobre un cajón cerrado, se abre. Arrastra el cepillo, la silla (rueda), el portalápices, los tiradores de los cajones y el minutero del reloj (muestra otra hora del día). |
+| **Soltar desde el Finder** | Los archivos que arrastras desde el Finder a la mesa caen donde los sueltas: se mueven a tu carpeta Escritorio, o se copian si vienen de otro disco. Una **app** se convierte en un alias (su propio icono con una flecha; doble clic la abre) y se queda donde está; una que sacas de la Papelera o de una imagen de disco entra como cualquier archivo. Mantén pulsada ⌥ para copiar, ⌘ para mover (también las apps) y ⌘⌥ para crear un alias de cualquier cosa. Los archivos que sueltas en otra pantalla van al monitor. |
 | **Lanzar** | Suelta un archivo que llevas mientras lo mueves rápido y sale volando: por el borde de la mesa hasta el suelo, o dentro del cesto (SWISH!). Si sueltas el portalápices mientras lo arrastras rápido (con tres o más bolígrafos dentro), se vuelca. |
 | **Arrastrar la alfombrilla** | Lleva toda la alfombrilla (y el teclado que tiene encima); si la mueves rápido deja arrugas. |
 | **Levantar** | Arrastra un borde o una esquina de la alfombrilla hacia dentro: se levanta y los montones de debajo se ponen de pie para que puedas llevarte uno. Si te detienes un momento antes de soltar, se queda levantada un rato; si tiras más allá de la mitad, se queda doblada. |
@@ -499,7 +500,7 @@ sobre la pared vacía (práctico si ocultas ítems de la barra de menús).
   - **Move to Trash** desde el menú de clic derecho de un archivo (sin atajo de teclado);
   - **Empty Wastebasket…**, tras una confirmación que enumera los nombres;
   - soltar archivos desde el Finder sobre la mesa (se mueven a tu carpeta Escritorio; se copian si vienen de otro disco
-    o si mantienes pulsada ⌥);
+    o si mantienes pulsada ⌥; una app se convierte en un alias y se queda donde está, igual que cualquier cosa con ⌘⌥);
   - arrastrar un archivo a otra app (esa app hace lo mismo que con un arrastre desde el Finder; si lo sueltas en la
     Papelera del Dock, Deskterior lo mueve él mismo a la Papelera si el Dock no lo ha hecho);
   - **Eject** desde el menú de una unidad;
@@ -513,7 +514,7 @@ sobre la pared vacía (práctico si ocultas ítems de la barra de menús).
   ahí y la muestra en Settings ▸ Leftover copies (Show in Finder, Move to Trash), pero nunca la elimina por su cuenta.
 - **Deshacer.** ⌘Z deshace los cambios de disposición y las propias acciones de Deskterior sobre archivos (Move to
   Trash, Empty Wastebasket…, soltar archivos en la mesa): los archivos enviados a la Papelera vuelven al mismo sitio de
-  la mesa y los que soltaste vuelven de donde vinieron (las copias van a la Papelera). Expulsar y arrastrar a otras apps
+  la mesa y los que soltaste vuelven de donde vinieron (las copias y los alias van a la Papelera). Expulsar y arrastrar a otras apps
   no se puede deshacer, salvo un arrastre a la Papelera del Dock que haya completado Deskterior. Si macOS no deja que
   Deskterior llegue a la Papelera, te lo dice y puedes usar Devolver en el Finder.
 - **El Finder no se toca.** La mesa es una ventana justo por encima de los iconos del escritorio del Finder: los tapa,

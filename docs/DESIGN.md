@@ -563,6 +563,61 @@
       (`ReleaseDocsTests.noShellComments` reads SPIKES too) and reads Finder's keys as `unset` when they are not set,
       so the before and after files can match. After a repository move, `BUNDLE_ID` set in the release job's `env:`
       is what both the build and the Verify step use. The CHANGELOG heading carries the day the tag is pushed.
+29. **Apps become aliases on drop-in (0.2.0).** These refine §3.4, §3.6 Drop-in, §3.7 items 1 and 6, and Errata 19,
+    20 and 25. Users who drag an app onto their desk mean "put a shortcut to it there", never "take it out of
+    Applications".
+    - **The op of each dropped item** (`DropIn.ops`, from `DropMode` and whether the item is an app): ⌥ copies every
+      item, as before. ⌘⌥ makes an alias of every item (Finder's convention). ⌘ alone moves every item, apps too, on
+      the same volume; across volumes it stays a copy, since a source is never deleted. With no key an application
+      bundle (a folder whose `UTType` conforms to `.application`, or a `.app` package; a symbolic link to one is not
+      one) becomes an alias and every other item keeps today's rule (moved on the same volume, else copied). A source
+      that offers no move turns what would move into a copy, as before; one that allows no answer leaving its item
+      where it is (a link, a copy or a generic drop) gets no alias: an app then moves with no key, and ⌘⌥ copies.
+      Items already in the mirrored folder only move on the desk, whatever the keys. Drops of the desk folder, a
+      folder holding it, a whole volume, or anything outside the sandbox are refused for aliases too.
+    - **What the drag is told** (`DropIn.dragOperation(bonks:ops:crosses:)`, over the desk and over walls): `.link` when
+      every item will be aliased (else the copy, or the generic drop, the source allows: each leaves its item where it
+      is); otherwise today's answer, from the items that are not aliases (a copy when one is copied or lies on another
+      volume, else a move; `.generic` when the source allows no `.move`, as AppKit narrows the mask while ⌘ is held).
+      A wall also takes a ⌘⌥ drag whose source allows only a link. `DropInController.dragged`, `drop`, `wallOperation`
+      and `dropOnWall` keep their call shapes; `keys: DropKeys` (the mode and the source's mask) is optional, and
+      without it `copy` means ⌥ and no key otherwise (so an app is aliased). The demo's `dropIn` step takes `cmd`,
+      `opt` or both.
+    - **The alias** (`FileOperator.importItems(_:ops:)`, op `.alias`): the operator writes a Finder alias of the source
+      (`bookmarkData(options: .suitableForBookmarkFile)` and `URL.writeBookmarkData`) into a staging folder of its own
+      (as a copy's), re-checks that the source is still the item it checked (else `identityChanged`, and nothing
+      lands), and renames it into place with `renamex_np(RENAME_EXCL)` under the source's name without ".app"
+      ("Safari"; a folder or a document keeps its full name), " 2", " 3"… on a clash, exactly like a copy. Its landing
+      is checked like a copy's (`landedUnverified`, reported as `FileProblem.aliasUnverified`: "Made an alias, but it
+      can't be undone."). The source is only read: its inode, times, flags and extended attributes never change, and
+      a locked app, or one in a locked folder, is aliased (a move of it is still refused as locked). The log names it
+      `import-alias`; across volumes it is still an alias, never a copy.
+    - **Undo** (`FileUndoRecord.Step.trashAlias`, logged `trash-alias`) trashes the alias after its identity check,
+      like undoing a copy, and never touches what it points to. A drop that did several things takes its steps back
+      newest first, as before.
+    - **Words.** The undo label is "Make Alias" ("별칭 만들기") while the drop runs and once it is in, "Drop In" beside
+      moves or copies. Toasts (`FileReport(import:undo:ops:)`): "Made an alias; the app stayed put." (one app), "Made
+      aliases; the apps stayed put.", "Made an alias; the original stayed put." (⌘⌥ of something else), "Made aliases;
+      the originals stayed put.", "The app became an alias; the rest came in." / "Apps became aliases; the rest came
+      in." (beside moves or copies). A move that came in as a copy is still said first (Errata 25), and refusals say
+      some stayed, as before. Undo (`FileReport(undo:of:record:)`, which tells aliases from copies by the record):
+      "The alias went to the Trash.", "The aliases went to the Trash.", or "Undone; the alias(es) went to the Trash."
+      beside items sent back or trashed. Every one has natural Korean and fits the toast band (`KoreanFitTests`).
+    - **The alias token.** The scanner reads `isAliasFileKey` as before; the token's name is the alias's (no ".app").
+      `IconProvider` draws an alias with its target's workspace icon, found from the path its bookmark data stored
+      (read from the alias file, never resolved: no search, no mounting, no UI), so Finder's own arrow is not drawn
+      under the desk's alias mark; a broken or moved alias falls back to the alias file's workspace icon. Open,
+      double-click, Quick Look and Show in Finder hand the alias file itself to the system (`NSWorkspace.open` opens
+      the app). Find Item's Kind column says "Alias" ("별칭"), as the tooltip does.
+    - **Lint.** `writeBookmarkData` and `CFURLWriteBookmarkDataToFile` (and the old `FSNewAlias`/`FSUpdateAlias`) are
+      write patterns, and a `bookmark` check allows them only in `DeskFiles/FileOperator.swift` (self-test lines in the
+      script's Bypass fixture).
+    - **Demo.** `13-file-actions` drops a scratch copy of Calculator (`{"fs": {"sourceApp": "Calculator.app"}}`: the
+      harness copies `/System/Applications/<name>.app` into the drop source with `ditto`, or `cp -R` where ditto stops
+      on the system's `restricted` flag; never a drop from where an app is installed) with no key (an alias, "Make
+      Alias", the app still in the source, its icon on the token, Open), makes an alias of a text file with ⌘⌥, moves
+      the app in with ⌘, and undoes all three. New expectations: `alias:<name>`, `icon:<name>` (`real` once the
+      pixelated icon arrived) and `source:<name>` (`present` or `missing` in the drop source).
 
 ---
 

@@ -10,7 +10,8 @@ public enum Effect: Sendable, Equatable {
     /// Eject the volume mounted at this path (`VolumeEntry.path`).
     case eject(String)
     case trash([URL], expected: [TokenKey], confirm: ConfirmKind?)
-    case importFiles([URL], op: ImportOp, hints: [String: Location])
+    /// Bring dropped items in, `ops[i]` for `urls[i]` (Erratum 29: a move, a copy or an alias).
+    case importFiles([URL], ops: [ImportOp], hints: [String: Location])
     /// Start mirroring the folder (the first enumeration shows the TCC prompt).
     case connectDesktop
     case play(AnimationID, AnimTarget)
@@ -47,9 +48,19 @@ public enum Effect: Sendable, Equatable {
     }
 }
 
-/// Drop-in: move (same volume) or copy.
-public enum ImportOp: String, Codable, Sendable {
-    case move, copy
+/// How one dropped item comes in: moved (same volume; across volumes it is copied, since a source is never deleted),
+/// copied, or as a Finder alias of it, the item itself untouched (Erratum 29).
+public enum ImportOp: String, Codable, Sendable, CaseIterable {
+    case move, copy, alias
+
+    /// The op a drop of items with `ops` is labelled by while it runs ("Undo Make Alias", "Undo Copy In", "Undo Move
+    /// In"): the items' op when they agree, else that of the items that are not aliases (a copy when any is). Its
+    /// result names the mix ("Drop In").
+    public static func headline(_ ops: [ImportOp]) -> ImportOp {
+        guard let first = ops.first else { return .move }
+        if ops.allSatisfy({ $0 == first }) { return first }
+        return ops.contains(.copy) ? .copy : .move
+    }
 }
 
 /// Confirmation sheets before a file effect.
@@ -113,4 +124,13 @@ public enum ToastKey: String, Sendable, CaseIterable {
     /// Only some items went: the rest were locked; some came in as copies (a move macOS refused) and the rest stayed;
     /// a copy landed but the item at its name is not provably the one written, so it has no undo step.
     case someLocked, someCopiedInstead, copiedNoUndo
+    // MARK: alias (Erratum 29)
+    /// A drop made aliases and nothing else: of one app, of several apps, of one item that is not an app (⌘⌥), of
+    /// several items not all apps; one app or several became aliases beside items that came in; an alias landed but
+    /// the item at its name is not provably the one written, so it has no undo step.
+    case aliasMade, aliasesMade, aliasMadeOriginal, aliasesMadeOriginals, appAliasedRestIn, appsAliasedRestIn
+    case aliasNoUndo
+    /// An undo of a drop that made aliases: one alias trashed, several; one alias or several beside items sent back
+    /// or trashed.
+    case undidAlias, undidAliases, undidAliasMix, undidAliasesMix
 }

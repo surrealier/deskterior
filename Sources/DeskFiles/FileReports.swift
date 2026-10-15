@@ -94,9 +94,25 @@ extension FileReport {
         import result: FileResult, undo: FileUndoRef?, requested: ImportOp? = nil,
         identity: (URL) -> TokenKey? = FileReport.identity(of:)
     ) {
+        let ops = requested.map { Array(repeating: $0, count: result.outcomes.count) } ?? []
+        self.init(import: result, undo: undo, ops: ops, identity: identity)
+    }
+
+    /// A drop-in result whose items asked for `ops` (one per item, in request order; Erratum 29). Aliases are placed
+    /// like any item (under their own names: an app's without ".app"); when the drop made aliases, its toast says the
+    /// originals stayed put, or which items became aliases beside those that came in. A move that came in as a copy
+    /// still says so first; an alias that landed unverified has no undo step and says so (`aliasUnverified`).
+    public init(
+        import result: FileResult, undo: FileUndoRef?, ops: [ImportOp],
+        identity: (URL) -> TokenKey? = FileReport.identity(of:)
+    ) {
         var placed: [Placed] = []
         var refused: [String] = []
-        for outcome in result.outcomes {
+        var problems: [FileProblem] = []
+        var copiedInstead = false
+        var aliasedApps = 0
+        for (i, outcome) in result.outcomes.enumerated() {
+            let asked = ops.indices.contains(i) ? ops[i] : nil
             switch outcome {
             case let .moved(source, to), let .renamed(source, to, .move):
                 placed.append(Placed(source: source.standardizedFileURL.path, name: to.lastPathComponent, key: identity(to)))
@@ -104,35 +120,64 @@ extension FileReport {
                 placed.append(Placed(
                     source: source.standardizedFileURL.path, name: to.lastPathComponent, key: identity(to), copied: true
                 ))
-            case let .refused(source, _):
+                if asked == .move { copiedInstead = true }
+            case let .aliased(source, to), let .renamed(source, to, .alias):
+                placed.append(Placed(
+                    source: source.standardizedFileURL.path, name: to.lastPathComponent, key: identity(to), aliased: true
+                ))
+                if DropIn.isAppName(source.lastPathComponent) { aliasedApps += 1 }
+            case let .refused(source, r):
                 refused.append(source.standardizedFileURL.path)
+                problems.append(r == .landedUnverified && asked == .alias ? .aliasUnverified : FileProblem(r))
             case .trashed, .unchanged, .ejected:
                 break
             }
         }
+        let aliases = placed.filter(\.aliased).count
+        var done: ToastKey?
+        if copiedInstead {
+            done = .copiedInstead
+        } else if aliases > 0 {
+            if aliases < placed.count {
+                done = aliases == 1 ? .appAliasedRestIn : .appsAliasedRestIn
+            } else if aliasedApps == aliases {
+                done = aliases == 1 ? .aliasMade : .aliasesMade
+            } else {
+                done = aliases == 1 ? .aliasMadeOriginal : .aliasesMadeOriginals
+            }
+        }
         self.init(
-            kind: .importItems, count: result.outcomes.count, placed: placed, refused: refused,
-            problems: result.refusals.map(FileProblem.init), undo: undo,
-            done: requested == .move && placed.contains(where: \.copied) ? .copiedInstead : nil
+            kind: .importItems, count: result.outcomes.count, placed: placed, refused: refused, problems: problems,
+            undo: undo, done: done
         )
     }
 
     /// An undo result of an action of `kind` (whatever it renamed or trashed, the mirror brings the layout along).
     /// When everything went, its toast says what happened: back from the Trash; dropped items moved back out;
-    /// dropped copies trashed. `kept`: refused before anything ran, so the app kept the record (`recordKept`).
-    public init(undo result: FileResult, of kind: Kind, ticket: FileUndoRef? = nil, kept: Bool = false) {
+    /// dropped copies trashed; dropped aliases trashed (`record`, the record undone, tells them from copies;
+    /// Erratum 29). `kept`: refused before anything ran, so the app kept the record (`recordKept`).
+    public init(
+        undo result: FileResult, of kind: Kind, record: FileUndoRecord? = nil, ticket: FileUndoRef? = nil,
+        kept: Bool = false
+    ) {
         var done: ToastKey?
         switch kind {
         case .importItems:
-            var trashed = false, moved = false
+            let aliases = record?.aliases ?? []
+            var trashed = false, moved = false, trashedAliases = 0
             for outcome in result.outcomes {
                 switch outcome {
-                case .trashed: trashed = true
+                case let .trashed(url, _): if aliases.contains(url) { trashedAliases += 1 } else { trashed = true }
                 case .moved, .renamed: moved = true
                 default: break
                 }
             }
-            done = trashed && moved ? .undidDropIn : trashed ? .undidCopyIn : .undidMoveIn
+            if trashedAliases > 0 {
+                let mixed = trashed || moved
+                done = trashedAliases == 1 ? (mixed ? .undidAliasMix : .undidAlias) : (mixed ? .undidAliasesMix : .undidAliases)
+            } else {
+                done = trashed && moved ? .undidDropIn : trashed ? .undidCopyIn : .undidMoveIn
+            }
         default:
             done = .undidTrash
         }

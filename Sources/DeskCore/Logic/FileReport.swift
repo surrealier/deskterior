@@ -39,6 +39,9 @@ public enum FileProblem: String, Sendable, Equatable, CaseIterable {
     /// A copy landed, but the item now at its name is not provably the one written: it stays there, untouched,
     /// with no undo step.
     case landedUnverified
+    // MARK: alias (Erratum 29)
+    /// The same for an alias: it stays there, untouched, with no undo step.
+    case aliasUnverified
 }
 
 /// What one file effect did, item by item, in model terms (DESIGN §3.5–§3.6). The app's `FileActions` builds it
@@ -52,19 +55,19 @@ public struct FileReport: Sendable, Equatable {
         case trash
         /// Empty Wastebasket… after its sheet.
         case emptyWastebasket
-        /// A drop from outside: moved or copied in.
+        /// A drop from outside: moved or copied in, or aliased (Erratum 29).
         case importItems
         /// Undo of one of the above.
         case undo
         case eject
 
         /// "Undo <label>" in the menus while the action runs: a drop-in by what it asks for ("Copy In" for a copy,
-        /// else "Move In"; its result may say "Drop In" when it did both).
+        /// "Make Alias" for aliases, else "Move In"; its result may say "Drop In" when it did several).
         public func undoLabel(op: ImportOp? = nil) -> String {
             switch self {
             case .trash: "Move to Trash"
             case .emptyWastebasket: "Empty Wastebasket"
-            case .importItems: op == .copy ? "Copy In" : "Move In"
+            case .importItems: op == .copy ? "Copy In" : op == .alias ? "Make Alias" : "Move In"
             case .undo: "Undo"
             case .eject: "Eject"
             }
@@ -72,19 +75,23 @@ public struct FileReport: Sendable, Equatable {
     }
 
     /// One dropped item now on the desk: its path where it came from (as the request named it), its name on the
-    /// desk (" 2" after a clash), its identity there when known, and whether it came as a copy.
+    /// desk (" 2" after a clash; an app's alias without ".app"), its identity there when known, and whether it came
+    /// as a copy or as an alias.
     public struct Placed: Sendable, Equatable {
         public var source: String
         public var name: String
         public var key: TokenKey?
-        /// Copied in (another volume, ⌥, or a move macOS refused); else moved.
+        /// Copied in (another volume, ⌥, or a move macOS refused); else moved, or aliased.
         public var copied: Bool
+        /// An alias of the item came in; the item itself stayed where it was (Erratum 29).
+        public var aliased: Bool
 
-        public init(source: String, name: String, key: TokenKey? = nil, copied: Bool = false) {
+        public init(source: String, name: String, key: TokenKey? = nil, copied: Bool = false, aliased: Bool = false) {
             self.source = source
             self.name = name
             self.key = key
             self.copied = copied
+            self.aliased = aliased
         }
     }
 
@@ -130,12 +137,13 @@ public struct FileReport: Sendable, Equatable {
         self.done = done
     }
 
-    /// "Undo <label>" once the result is in: a drop-in by how its items came ("Move In", "Copy In", or "Drop In"
-    /// when it did both).
+    /// "Undo <label>" once the result is in: a drop-in by how its items came ("Move In", "Copy In", "Make Alias", or
+    /// "Drop In" when it did more than one of these).
     public var undoLabel: String {
         guard kind == .importItems, !placed.isEmpty else { return kind.undoLabel() }
-        if placed.allSatisfy(\.copied) { return "Copy In" }
-        return placed.contains(where: \.copied) ? "Drop In" : "Move In"
+        if placed.allSatisfy(\.aliased) { return "Make Alias" }
+        if placed.allSatisfy({ $0.copied && !$0.aliased }) { return "Copy In" }
+        return placed.contains(where: { $0.copied || $0.aliased }) ? "Drop In" : "Move In"
     }
 
     /// The toast: what did not happen, if anything did not (the first problem's; with others through, "some
@@ -146,6 +154,7 @@ public struct FileReport: Sendable, Equatable {
         guard let first = problems.first else { return done }
         // MARK: harden
         if problems.contains(.landedUnverified) { return .copiedNoUndo }
+        if problems.contains(.aliasUnverified) { return .aliasNoUndo }
         if done == .copiedInstead { return .someCopiedInstead }
         switch kind {
         case .eject:
@@ -172,6 +181,7 @@ public struct FileReport: Sendable, Equatable {
         case .notPermitted: return .fileNotPermitted
         case .locked: return .fileLocked
         case .landedUnverified: return .copiedNoUndo
+        case .aliasUnverified: return .aliasNoUndo
         case .notInTrash: return .usePutBack
         case .noFreeName: return .nameTaken
         case .holdsDesk: return .dropHoldsDesk
@@ -182,20 +192,32 @@ public struct FileReport: Sendable, Equatable {
 }
 
 /// A drop of files onto the desk (DESIGN §3.6 Drop-in): what was dropped, where it should land and how. Items
-/// already in the desk folder only move on the desk; the others come in through `FileOperator.importItems`.
+/// already in the desk folder only move on the desk; the others come in through `FileOperator.importItems`, each
+/// with its own op (Erratum 29: `DropIn.ops`).
 public struct DropIn: Sendable, Equatable {
     public var urls: [URL]
     public var location: Location
     /// The desk-plane spot of a new pile the drop starts (`location` is then `.desk` with a pile id not in use).
     public var pilePos: SIMD2<Float>?
-    public var op: ImportOp
+    /// How each item comes in, one per URL (a missing one moves).
+    public var ops: [ImportOp]
 
     public init(urls: [URL], location: Location, pilePos: SIMD2<Float>? = nil, op: ImportOp) {
+        self.init(urls: urls, location: location, pilePos: pilePos, ops: Array(repeating: op, count: urls.count))
+    }
+
+    public init(urls: [URL], location: Location, pilePos: SIMD2<Float>? = nil, ops: [ImportOp]) {
         self.urls = urls
         self.location = location
         self.pilePos = pilePos
-        self.op = op
+        self.ops = ops
     }
+
+    /// The drop's op as one (`ImportOp.headline`).
+    public var op: ImportOp { ImportOp.headline(ops) }
+
+    /// The op of the item at `index` (a missing one moves).
+    public func op(at index: Int) -> ImportOp { ops.indices.contains(index) ? ops[index] : .move }
 
     /// What a drag of files over the desk is told (DESIGN §3.6): nothing where the drop would bonk (a full container,
     /// a drive, the monitor off); a copy when one is forced (⌥, or a source that offers no move) or when an item lies
@@ -203,6 +225,82 @@ public struct DropIn: Sendable, Equatable {
     public static func dragOperation(bonks: Bool, forcedCopy: Bool, crossesVolumes: Bool) -> ImportOp? {
         if bonks { return nil }
         return forcedCopy || crossesVolumes ? .copy : .move
+    }
+
+    // MARK: alias (Erratum 29)
+
+    /// What a drag of items with `ops` (`DropIn.ops`) is told: nothing where the drop would bonk; a link when every
+    /// item becomes an alias; else, as before, a copy when an item is copied or would move across volumes
+    /// (`crosses[i]`: item `i` lies on another volume than the desk, or its volume cannot be read; a missing entry
+    /// counts as crossing), else a move. Aliases beside other items do not change that answer.
+    public static func dragOperation(bonks: Bool, ops: [ImportOp], crosses: [Bool]) -> ImportOp? {
+        if bonks { return nil }
+        if !ops.isEmpty, ops.allSatisfy({ $0 == .alias }) { return .alias }
+        for (i, op) in ops.enumerated() where op == .copy || (op == .move && (i < crosses.count ? crosses[i] : true)) {
+            return .copy
+        }
+        return .move
+    }
+
+    /// The op each dropped item asks for (Erratum 29), one per item: ⌥ copies every item; ⌘⌥ makes an alias of
+    /// every item (Finder's convention); ⌘ alone moves every item, applications too (across volumes still a copy: a
+    /// source is never deleted); with no key an application becomes an alias and every other item moves (or is copied
+    /// across volumes), as before. `canMove`: the drag's source lets the item be moved (else what would move is
+    /// copied, as before); `canAlias`: it allows an answer that leaves its item where it is (a link, or a copy), else
+    /// an app with no key moves as before and ⌘⌥ copies.
+    public static func ops(_ mode: DropMode, isApp: [Bool], canMove: Bool = true, canAlias: Bool = true) -> [ImportOp] {
+        isApp.map { op(mode, isApp: $0, canMove: canMove, canAlias: canAlias) }
+    }
+
+    /// One item's op (`ops`).
+    public static func op(_ mode: DropMode, isApp: Bool, canMove: Bool = true, canAlias: Bool = true) -> ImportOp {
+        let move: ImportOp = canMove ? .move : .copy
+        switch mode {
+        case .copy: return .copy
+        case .alias: return canAlias ? .alias : .copy
+        case .move: return move
+        case .standard: return isApp && canAlias ? .alias : move
+        }
+    }
+
+    /// The name an alias of an item named `name` takes on the desk: an app's without its ".app" ("Safari"), any
+    /// other item's as it is (a folder or a document keeps its full name). A taken name gets " 2", " 3"… as a copy's.
+    public static func aliasName(_ name: String) -> String {
+        guard (name as NSString).pathExtension.lowercased() == "app" else { return name }
+        let stem = (name as NSString).deletingPathExtension
+        return stem.isEmpty ? name : stem
+    }
+
+    /// The name an item named `name` lands under with `op` (`aliasName` for an alias).
+    public static func landingName(_ name: String, op: ImportOp) -> String {
+        op == .alias ? aliasName(name) : name
+    }
+
+    /// Whether an item named `name` is an application by its name (an ".app" bundle): its alias is named without the
+    /// extension, and the toasts call it an app.
+    public static func isAppName(_ name: String) -> Bool {
+        aliasName(name) != name
+    }
+}
+
+/// The keys held over a drop (Erratum 29): none, ⌥ (copy), ⌘ (move) or ⌘⌥ (alias).
+public enum DropMode: String, Sendable, CaseIterable {
+    /// No key: an application becomes an alias; every other item moves (same volume) or is copied.
+    case standard
+    /// ⌥: every item is copied.
+    case copy
+    /// ⌘: every item moves (same volume) or is copied, applications too.
+    case move
+    /// ⌘⌥: every item becomes an alias.
+    case alias
+
+    public init(option: Bool, command: Bool) {
+        switch (option, command) {
+        case (true, true): self = .alias
+        case (true, false): self = .copy
+        case (false, true): self = .move
+        case (false, false): self = .standard
+        }
     }
 }
 

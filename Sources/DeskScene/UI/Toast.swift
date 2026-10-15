@@ -41,6 +41,18 @@ extension ToastKey {
         case .someLocked: "Some were locked, so they stayed."
         case .someCopiedInstead: "Some came in as copies; the rest stayed."
         case .copiedNoUndo: "Copied in, but it can't be undone."
+        // MARK: alias (Erratum 29)
+        case .aliasMade: "Made an alias; the app stayed put."
+        case .aliasesMade: "Made aliases; the apps stayed put."
+        case .aliasMadeOriginal: "Made an alias; the original stayed put."
+        case .aliasesMadeOriginals: "Made aliases; the originals stayed put."
+        case .appAliasedRestIn: "The app became an alias; the rest came in."
+        case .appsAliasedRestIn: "Apps became aliases; the rest came in."
+        case .aliasNoUndo: "Made an alias, but it can't be undone."
+        case .undidAlias: "The alias went to the Trash."
+        case .undidAliases: "The aliases went to the Trash."
+        case .undidAliasMix: "Undone; the alias went to the Trash."
+        case .undidAliasesMix: "Undone; the aliases went to the Trash."
         }
     }
 

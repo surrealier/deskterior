@@ -13,7 +13,7 @@ struct FileReportsTests {
         let k = [TokenKey(volume: "V", inode: 1)]
         let plain = Effect.trash(u, expected: k, confirm: nil)
         let sheet = Effect.trash(u, expected: k, confirm: .emptyWastebasket(names: ["a.txt"], more: 0))
-        let drop = Effect.importFiles(u, op: .move, hints: [:])
+        let drop = Effect.importFiles(u, ops: [.move], hints: [:])
         let undo = Effect.undoFiles(FileUndoRef(1))
         typealias O = ExplicitIntent.Origin
         for o in [O.menuItem, .inventory, .dragToTrash] { #expect(O.minted(for: plain, requestedVia: o) == o) }

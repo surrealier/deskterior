@@ -80,6 +80,10 @@ public enum L10nKey: String, CaseIterable, Sendable {
     case leftoversExplain, leftoversTrashed, toastSomeLocked, toastSomeCopiedInstead, toastCopiedNoUndo, leftoversNone
     // MARK: w6-polish
     case cardNoSignal
+    // MARK: alias: apps dropped in become aliases, and ⌘⌥ makes one of anything (Erratum 29)
+    case undoMakeAlias, toastAliasMade, toastAliasesMade, toastAliasMadeOriginal, toastAliasesMadeOriginals
+    case toastAppAliasedRestIn, toastAppsAliasedRestIn, toastAliasNoUndo, toastUndidAlias, toastUndidAliases
+    case toastUndidAliasMix, toastUndidAliasesMix, kindAlias
 
     public var en: String { Self.table[self]?.en ?? rawValue }
     public var ko: String { Self.table[self]?.ko ?? rawValue }
@@ -402,5 +406,22 @@ public enum L10nKey: String, CaseIterable, Sendable {
         // MARK: w6-polish
         // The badge over the NO SIGNAL card's text (the bouncing logo of an empty input stays the monitor's own).
         .cardNoSignal: p("NO SIGNAL", "신호 없음"),
+        // MARK: alias (Erratum 29)
+        // The undo label of a drop that made aliases ("Undo Make Alias"), Finder's own wording.
+        .undoMakeAlias: p("Make Alias", "별칭 만들기"),
+        .toastAliasMade: p("Made an alias; the app stayed put.", "별칭을 만들었어요. 앱은 그대로예요."),
+        .toastAliasesMade: p("Made aliases; the apps stayed put.", "별칭을 만들었어요. 앱은 모두 그대로예요."),
+        .toastAliasMadeOriginal: p("Made an alias; the original stayed put.", "별칭을 만들었어요. 원본은 그대로예요."),
+        .toastAliasesMadeOriginals: p("Made aliases; the originals stayed put.", "별칭을 만들었어요. 원본은 모두 그대로예요."),
+        // Korean says it once for one app or several: the apps got aliases only, the other items came in.
+        .toastAppAliasedRestIn: p("The app became an alias; the rest came in.", "앱은 별칭만 만들고 나머지는 가져왔어요."),
+        .toastAppsAliasedRestIn: p("Apps became aliases; the rest came in.", "앱은 별칭만 만들고 나머지는 가져왔어요."),
+        .toastAliasNoUndo: p("Made an alias, but it can't be undone.", "별칭을 만들었지만 실행 취소할 수 없어요."),
+        .toastUndidAlias: p("The alias went to the Trash.", "별칭을 휴지통으로 옮겼어요."),
+        .toastUndidAliases: p("The aliases went to the Trash.", "별칭을 모두 휴지통으로 옮겼어요."),
+        .toastUndidAliasMix: p("Undone; the alias went to the Trash.", "되돌리고 별칭은 휴지통으로 옮겼어요."),
+        .toastUndidAliasesMix: p("Undone; the aliases went to the Trash.", "되돌리고 별칭은 모두 휴지통으로 옮겼어요."),
+        // Find Item's Kind column for an alias (a Finder alias or a symbolic link).
+        .kindAlias: p("Alias", "별칭"),
     ]
 }

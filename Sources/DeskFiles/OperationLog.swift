@@ -22,6 +22,11 @@ public final class OperationLog: @unchecked Sendable {
             case moveBack = "move-back"
             /// Undo of a drop-in copy.
             case trashCopy = "trash-copy"
+            // MARK: alias (Erratum 29)
+            /// A drop-in that made an alias of the item (the item itself only read).
+            case importAlias = "import-alias"
+            /// Undo of a drop-in alias.
+            case trashAlias = "trash-alias"
             case eject
         }
 
