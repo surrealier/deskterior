@@ -2,7 +2,7 @@
 
 **English** · [한국어](README.ko.md)
 
-<img src="docs/media/hero.gif" width="588" alt="Deskterior: files on a pixel-art monitor; one dropped into a riser drawer, a pile brushed under the desk mat, the mat's edge peeled back to take a file out, the monitor switched off, the clock's minute hand turned on to night, the room light switched off with only the desk lamp on, then the monitor back on">
+<img src="docs/media/hero.gif" width="588" alt="A real screen recording of Deskterior on a Mac: Music and Notes are dragged from a Finder window onto the pixel-art monitor, where Claude, ChatGPT, Safari, Books and Weather already sit, and turn into pixel icons; three files are dropped on the desk mat and slide under it; the mat is peeled back, turned and carried; files go into the riser drawers; one is flicked into the wastebasket (SWISH!), which is then tipped over; the lights are set to Night, the room light is switched off so only the desk lamp shines, and the lamp is clicked off and on">
 
 <sub>The pictures use the desk's built-in file icons. On your Mac each file shows its own icon or thumbnail, in pixels.</sub>
 

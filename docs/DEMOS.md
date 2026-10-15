@@ -183,8 +183,9 @@ four turns from 16:00 into the night (the real clock is set to 20:00 before the 
 switch (Lamp Only), then the monitor back on, held 1.6 s. The tooltips that linger are English names. Unrecorded steps
 after it set up the hiding places by day for a still. Its snapshots are the README's stills.
 
-The first line writes frames to `.build/demo-out/hero/frames`; `make gif` writes `docs/media/hero.gif` and the stills
-(ffmpeg).
+The first line writes frames to `.build/demo-out/hero/frames`; `make gif` writes the tour to `build/tour.gif` and the README's stills
+(ffmpeg). The README's own `docs/media/hero.gif` is a real screen recording of the app in desk mode on a
+showcase folder, not this tour.
 
 ```sh
 SWIFT_SCRATCH_PATH=.build-mine scripts/run-demo.sh --record 3 --scale 2 hero

@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
-# Records the README's tour (Demos/hero.json) headless on a fresh mktemp fixture and assembles docs/media/hero.gif
-# and the README's stills (docs/DESIGN.md §6, docs/DEMOS.md). Needs ffmpeg. Portable to macOS's bash 3.2.
+# Records the scripted tour (Demos/hero.json) headless on a fresh mktemp fixture, assembles it as build/tour.gif and
+# writes the README's stills (docs/DESIGN.md §6, docs/DEMOS.md). The README's docs/media/hero.gif is a real screen
+# recording, not this tour. Needs ffmpeg. Portable to macOS's bash 3.2.
 #
 # Usage: scripts/make-gif.sh [--out DIR] [--every N] [--keep]
-#   --out DIR    where hero.gif and the stills go (default docs/media)
+#   --out DIR    where the stills go (default docs/media)
 #   --every N    record every Nth scene frame (default 3: 20 fps; 60 must divide by N)
 #   --keep       keep the recorded frames and snapshots (their folder is printed)
 # Env: SWIFT_SCRATCH_PATH, SWIFT_JOBS, DESKTERIOR_BIN as for scripts/run-demo.sh; GIF_MAX_BYTES (default 4 MiB).
@@ -52,7 +53,8 @@ COUNT="$(find "$FRAMES" -name 'frame-*.png' | wc -l | tr -d ' ')"
 [ "$COUNT" -gt 0 ] || { echo "make-gif: the demo recorded no frames" >&2; exit 1; }
 
 mkdir -p "$OUT"
-GIF="$OUT/hero.gif"
+mkdir -p "$ROOT/build"
+GIF="$ROOT/build/tour.gif"
 ffmpeg -v error -y -framerate "60/$EVERY" -i "$FRAMES/frame-%05d.png" \
   -vf "scale=iw*2:ih*2:flags=neighbor,split[a][b];[a]palettegen=max_colors=64:stats_mode=full:reserve_transparent=0[p];[b][p]paletteuse=dither=none:diff_mode=rectangle" \
   -loop 0 "$GIF"
