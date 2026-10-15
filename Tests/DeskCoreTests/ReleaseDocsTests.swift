@@ -80,23 +80,40 @@ struct ReleaseDocsTests {
         return blocks
     }
 
-    @Test("Both READMEs show the same media, link releases relatively and credit the inspiration")
+    /// The README in every language, English first.
+    static let readmeFiles = ["README.md", "README.ko.md", "README.zh-CN.md", "README.ja.md", "README.es.md"]
+
+    @Test("Every README shows the same media, offers every language, links releases relatively and credits the inspiration")
     func readmes() throws {
-        let en = try Self.text("README.md"), ko = try Self.text("README.ko.md")
-        #expect(try Self.images(en) == Self.images(ko))
-        // scripts/make-gif.sh writes these.
-        #expect(Set(try Self.images(en).keys) == ["hero.gif", "desk.png", "mat-peel.png", "hiding.png", "lamp-only.png"])
-        for (file, width) in try Self.images(en) {
+        let docs = try Self.readmeFiles.map { try Self.text($0) }
+        let en = docs[0], ko = docs[1]
+        let media = try Self.images(en)
+        for (path, doc) in zip(Self.readmeFiles, docs) {
+            #expect(try Self.images(doc) == media, "\(path) shows other media")
+        }
+        // scripts/make-gif.sh writes the stills; the hero and the feature GIFs are real screen recordings.
+        let stills: Set<String> = ["hero.gif", "desk.png", "mat-peel.png", "hiding.png", "lamp-only.png"]
+        #expect(stills.isSubset(of: Set(media.keys)))
+        #expect(media.keys.filter { $0.hasPrefix("feat-") }.count >= 10, "the feature gallery")
+        for (file, width) in media {
             // Half the pixels: each art pixel covers whole screen pixels on 1x and 2x screens (no resampling blur).
             #expect(try Self.pixelWidth(file) == 2 * width, "\(file)")
         }
-        #expect(!en.contains("](docs/media/") && !ko.contains("](docs/media/"))
         func flat(_ s: String) -> String { s.split(whereSeparator: \.isWhitespace).joined(separator: " ") }
-        for doc in [en, ko] {
-            #expect(doc.contains("](../../releases/latest)"))
-            #expect(doc.contains("README.md") || doc.contains("README.ko.md"))
-            #expect(doc.contains("Galmuri") || doc.contains("갈무리"))
-            #expect(doc.contains("AdamCYounis"))
+        let names = ["English", "한국어", "简体中文", "日本語", "Español"]
+        for (i, (path, doc)) in zip(Self.readmeFiles, docs).enumerated() {
+            #expect(!doc.contains("](docs/media/"), "\(path)")
+            #expect(doc.contains("](../../releases/latest)"), "\(path)")
+            #expect(doc.contains("Galmuri") || doc.contains("갈무리"), "\(path)")
+            #expect(doc.contains("AdamCYounis"), "\(path)")
+            // The language selector: this language in bold, every other one linked.
+            let selector = doc.components(separatedBy: "\n").first ?? ""
+            for (j, (other, name)) in zip(Self.readmeFiles, names).enumerated() {
+                #expect(selector.contains(i == j ? "**\(name)**" : "[\(name)](\(other))"), "\(path): \(name)")
+            }
+            // Every edition credits the original and its author.
+            #expect(doc.contains("Terkel Gjervig") && doc.contains("*Desktop Cleaning*") && doc.contains("desktop.cleaning"),
+                    "\(path) credits the inspiration")
         }
         // The credit as DESIGN §6 item 10, the About window and THIRD_PARTY_NOTICES word it.
         #expect(flat(en).contains("inspired by Terkel Gjervig's desktop-rug prototype *Desktop Cleaning* (desktop.cleaning)"))
@@ -105,7 +122,7 @@ struct ReleaseDocsTests {
         // The mat's list is a submenu, named as the menu names it.
         #expect(en.contains("\(L10nKey.listItemsUnderMat.en) ▸") && ko.contains("\(L10nKey.listItemsUnderMat.ko)’ ▸"))
         // Never the name of the original's product line.
-        for path in ["README.md", "README.ko.md", "CHANGELOG.md", "THIRD_PARTY_NOTICES.md", ".github/release-notes.md"] {
+        for path in Self.readmeFiles + ["CHANGELOG.md", "THIRD_PARTY_NOTICES.md", ".github/release-notes.md"] {
             #expect(!(try Self.text(path)).contains("Rugs"), "\(path)")
         }
         #expect(try Self.text("CHANGELOG.md").contains("## [0.1.0]"))
@@ -125,7 +142,7 @@ struct ReleaseDocsTests {
 
     @Test("Pasted shell blocks have no # comments (interactive zsh passes them on as arguments)")
     func noShellComments() throws {
-        for path in ["README.md", "README.ko.md", ".github/release-notes.md", "docs/SIGNING.md", "docs/SPIKES.md"] {
+        for path in Self.readmeFiles + [".github/release-notes.md", "docs/SIGNING.md", "docs/SPIKES.md"] {
             for line in Self.shellBlocks(try Self.text(path)).joined() {
                 #expect(!line.hasPrefix("#") && !line.contains(" #"), "\(path): \(line)")
             }
@@ -145,7 +162,7 @@ struct ReleaseDocsTests {
     @Test("The uninstall block removes nothing unless it read Deskterior's own bundle id")
     func uninstallGuard() throws {
         var blocks: [[String]] = []
-        for path in ["README.md", "README.ko.md"] {
+        for path in Self.readmeFiles {
             let block = try #require(Self.shellBlocks(try Self.text(path)).first { $0.contains { $0.hasPrefix("rm -rf") } })
             blocks.append(block)
             let read = try #require(block.firstIndex { $0.contains("defaults read /Applications/Deskterior.app") })
@@ -159,14 +176,14 @@ struct ReleaseDocsTests {
             }
             #expect(block.filter { $0.contains("$ID") }.count == 4)
         }
-        #expect(blocks[0] == blocks[1])
+        #expect(blocks.allSatisfy { $0 == blocks[0] }, "the uninstall block is the same in every README")
     }
 
     @Test("Bold text in the docs closes (CommonMark's flanking rules), Korean particles included")
     func boldFlanking() throws {
         func punctuation(_ c: Character?) -> Bool { c.map { $0.isPunctuation || $0.isSymbol } ?? false }
         func alphanumeric(_ c: Character?) -> Bool { c.map { $0.isLetter || $0.isNumber } ?? false }
-        for path in ["README.md", "README.ko.md", "CHANGELOG.md", ".github/release-notes.md", "docs/SIGNING.md"] {
+        for path in Self.readmeFiles + ["CHANGELOG.md", ".github/release-notes.md", "docs/SIGNING.md"] {
             // Paragraphs outside code fences, code spans blanked.
             var paragraphs: [String] = [], current = "", fenced = false
             for line in try Self.text(path).components(separatedBy: "\n") {
