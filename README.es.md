@@ -57,19 +57,19 @@ Suelta apps o archivos del Finder en el monitor: sus iconos reales se convierten
 </td>
 <td width="50%" valign="top">
 <img src="docs/media/feat-power.gif" width="__W_power__" alt="Grabación de pantalla: se pulsa el botón de encendido del monitor y la imagen se encoge como en un viejo monitor de tubo; llega un archivo mientras está apagado y en el marco se enciende una insignia ámbar +1"><br>
-<b>Un botón de encendido de tubo</b><br>
+<b>Un botón de encendido de monitor CRT</b><br>
 ⏻ encoge la imagen como un viejo monitor de tubo (CRT) y oculta todos los archivos. Un archivo que llega mientras está apagado enciende la insignia ámbar +1.
 </td>
 </tr>
 <tr>
 <td width="50%" valign="top">
-<img src="docs/media/feat-input.gif" width="__W_input__" alt="Grabación de pantalla: el botón INPUT pasa por las páginas HDMI de archivos del monitor y luego a AV, que muestra un logo de NO SIGNAL"><br>
+<img src="docs/media/feat-input.gif" width="__W_input__" alt="Grabación de pantalla: el botón INPUT pasa por las páginas HDMI de archivos del monitor y luego a AV, que muestra un logo NO SIGNAL"><br>
 <b>INPUT y AV</b><br>
 INPUT pasa por páginas HDMI de 45 archivos cada una. AV siempre está vacía: NO SIGNAL (sin señal).
 </td>
 <td width="50%" valign="top">
 <b>Más en el monitor</b><br>
-Clean Up By (ordenar por) Name, Kind o Date Added · selecciona con un clic, ⌘-clic, un recuadro o ⌘A · teclas de flecha y Espacio para Quick Look · desplazarse sobre la pantalla pasa de página.<br>
+Clean Up By (ordenar por) Name, Kind o Date Added · selecciona con un clic, ⌘-clic, un recuadro o ⌘A · teclas de flecha, barra espaciadora para Quick Look · un desplazamiento sobre la pantalla cambia de página.<br>
 <a href="#todo-lo-que-hace">Todo lo que hace</a>
 </td>
 </tr>
@@ -97,9 +97,9 @@ La silla bloquea el archivador: apártala y vuelve a tirar. El cajón de abajo a
 Los archivos se convierten en mini apps en el teléfono. Ponlo boca abajo para ocultarlas.
 </td>
 <td width="50%" valign="top">
-<img src="docs/media/feat-pencup.gif" width="__W_pencup__" alt="Grabación de pantalla: los archivos soltados en el portalápices se convierten en bolígrafos; se le da un toque rápido al portalápices, que se vuelca, y los bolígrafos se desparraman por la mesa"><br>
+<img src="docs/media/feat-pencup.gif" width="__W_pencup__" alt="Grabación de pantalla: los archivos soltados en el portalápices se convierten en bolígrafos; se arrastra el portalápices con un movimiento rápido y se suelta, se vuelca y los bolígrafos se desparraman por la mesa"><br>
 <b>Portalápices</b><br>
-Los archivos se convierten en bolígrafos con el capuchón del color de su tipo. Dale un toque rápido al portalápices y se vuelca, desparramándolos.
+Los archivos se convierten en bolígrafos con el capuchón del color de su tipo. Arrástralo rápido y suéltalo: se vuelca y los desparrama.
 </td>
 </tr>
 <tr>
@@ -128,7 +128,7 @@ Suelta archivos sobre la alfombrilla: se deslizan debajo y dejan bultos. Levanta
 <td width="50%" valign="top">
 <img src="docs/media/feat-mat-moves.gif" width="__W_mat-moves__" alt="Grabación de pantalla: la alfombrilla se lleva de un sitio a otro y se arruga; con Opción pulsada se gira y se cambia de tamaño mientras el teclado que tiene encima gira también; se dobla y luego se alisa de un tirón"><br>
 <b>Un trozo de tela de verdad</b><br>
-Llévala y se arruga. Arrastra con ⌥ para girarla o cambiarle el tamaño (el teclado gira con ella), dóblala y alísala de un tirón.
+Llévala de un sitio a otro y se arruga. Arrastra con ⌥ para girarla o cambiarle el tamaño (el teclado gira con ella), dóblala y alísala de un tirón.
 </td>
 </tr>
 <tr>
@@ -202,7 +202,7 @@ Una memoria USB se enchufa en el hub de la mesa. Expúlsala desde su menú con E
 </td>
 <td width="50%" valign="top">
 <b>Más con archivos</b><br>
-Suelta archivos desde el Finder · arrástralos a otras apps · Empty Wastebasket… enseña antes los nombres · cada acción queda registrada.<br>
+Suelta archivos desde el Finder · arrástralos a otras apps · Empty Wastebasket… muestra antes los nombres · cada acción queda registrada.<br>
 <a href="#tus-archivos-están-a-salvo">Tus archivos están a salvo</a>
 </td>
 </tr>
@@ -234,12 +234,12 @@ usar cada parte.
 
 - **Tu Escritorio, en directo.** La carpeta Escritorio (u otra carpeta que elijas) se refleja a medida que cambia: los
   archivos nuevos aparecen imprimiéndose, los renombrados conservan su sitio y los eliminados desaparecen con un ¡puf!
-  Los archivos se reconocen por su identidad, así que los renombrados y los guardados seguros conservan su sitio, y un
+  Los archivos se reconocen por su identidad, así que los renombrados y los guardados atómicos conservan su sitio, y un
   archivo que vuelve antes de 7 días regresa a donde estaba.
-- **Iconos reales, en píxeles.** Cada archivo muestra su propio icono del Finder, o una miniatura de Quick Look si es
-  una imagen, un vídeo o un PDF, pixelada con los colores de la mesa. Hasta que el icono real está listo se ve un icono
-  dibujado a mano para su tipo. Los archivos de iCloud que no están descargados siguen así: reciben el icono de su tipo
-  y nunca se descargan.
+- **Iconos reales, en píxeles.** Cada archivo muestra su propio icono del Finder (o, si es una imagen, un vídeo o un
+  PDF, una miniatura de Quick Look), pixelado con los colores de la mesa. Hasta que el icono real está listo se ve un
+  icono dibujado a mano para su tipo. Los archivos de iCloud que no están descargados siguen así: reciben el icono de su
+  tipo y nunca se descargan.
 - **Nombres, también en coreano.** Los nombres se dibujan con la fuente pixelada Galmuri9, coreano incluido. Los nombres
   guardados en forma descompuesta (algo habitual con los nombres de archivo coreanos en un Mac) se componen antes (NFC),
   para que el hangul se dibuje entero; los emoji se dibujan en píxeles.
@@ -253,8 +253,8 @@ usar cada parte.
   llegan mientras está apagado encienden un LED ámbar y una insignia «+N».
 - **Clean Up By** (ordenar por) Name, Kind o Date Added, desde el menú de clic derecho del monitor.
 - **Selección y teclas.** Haz clic, ⌘-clic, arrastra un recuadro sobre la pantalla vacía o pulsa ⌘A; las teclas de
-  flecha mueven la selección; Espacio abre Quick Look, ⌘O abre y ⌘C copia. Arrastra un archivo a otra celda (si está
-  ocupada, se intercambian) o lleva varios a la vez.
+  flecha mueven la selección; la barra espaciadora abre Quick Look, ⌘O abre y ⌘C copia. Arrastra un archivo a otra celda
+  (si está ocupada, se intercambian) o lleva varios a la vez.
 - **Primer inicio.** Una ventana de bienvenida explica la mesa, y el monitor te pide que pulses ⏻ antes de leer el
   Escritorio; si se denegó el acceso, ofrece Open Settings y Choose Folder… (consulta [Primer inicio](#primer-inicio)).
 
@@ -262,8 +262,8 @@ usar cada parte.
 
 - **Cajones del elevador** (2). Cada uno admite 8 archivos; a partir de ahí se queda entreabierto (el contenido sigue
   oculto), y con 14 se atasca y hace bonk. Suelta un archivo sobre un cajón cerrado y se lo traga; haz clic en el
-  tirador o arrástralo; desplázate sobre él para echar un vistazo; pasa por encima un archivo que lleves para que se
-  abra de golpe; ciérralo con fuerza y da un portazo (que golpea la mesa).
+  tirador o arrástralo; desplázate sobre él para echar un vistazo; mantén encima un momento un archivo que lleves para
+  que se abra solo; ciérralo con fuerza y se cierra de golpe (lo que sacude la mesa).
 - **Hueco.** 12 archivos como siluetas tenues, con el nombre al pasar el puntero: solo oculta a medias.
 - **Archivador** (3 cajones: 8, 12 y 20 archivos, y se atascan con 6 más). Solo se abre un cajón a la vez; el de abajo
   archiva las cosas bajo pestañas de carpeta con el color de su tipo. Si la silla está delante, el cajón solo se abre
@@ -272,9 +272,9 @@ usar cada parte.
 - **Teléfono.** Hasta 6 archivos como iconos de mini apps. Haz clic para ponerlo boca abajo (el contenido se oculta y lo
   que sueltes encima rebota con un bonk); boca arriba, brilla de noche.
 - **Portalápices.** Hasta 6 bolígrafos con el capuchón del color de su tipo (el séptimo rebota con un bonk); saca el
-  último bolígrafo tirando de él. Arrastra el portalápices por la mesa y aparta los montones a empujones. Dale un toque
-  rápido con tres o más bolígrafos dentro (o elige Tip Over) y se vuelca, desparramando los bolígrafos en montones; haz
-  clic en él para ponerlo de pie.
+  último bolígrafo tirando de él. Arrastra el portalápices por la mesa y aparta los montones a empujones. Arrástralo
+  rápido y suéltalo con tres o más bolígrafos dentro (o elige Tip Over) y se vuelca, desparramando los bolígrafos en
+  montones; haz clic en él para ponerlo de pie.
 - **Cesto de papeles.** Hasta 24 bolas de papel arrugado, amontonadas por encima del borde a partir de la undécima.
   Suelta o lanza archivos dentro (SWISH! si entran limpios, rebotes en el borde, y los que fallan caen al suelo), saca
   la bola de arriba o arrastra el borde hacia un lado para volcarlo (las bolas se desarrugan en el suelo). Nunca borra
@@ -283,8 +283,8 @@ usar cada parte.
 - **Menús.** Los cajones, el hueco y el teléfono tienen Open o Close (Turn Face Up o Turn Face Down en el teléfono),
   List Contents (elige un nombre para enviarlo al monitor), Move Contents to y Take All Out; el portalápices y el cesto
   tienen Tip Over y Stand Up. El Move to ▸ de cualquier archivo lo envía directamente a un escondite.
-- **Nada sale solo.** Los golpes, los portazos y llenar de más nunca vacían un contenedor; si lo llenas de más, hace
-  bonk.
+- **Nada sale solo.** Los golpes, los cierres de golpe y llenar de más nunca vacían un contenedor; si lo llenas de más,
+  hace bonk.
 
 ### La alfombrilla
 
@@ -294,11 +294,11 @@ usar cada parte.
   montones cercanos comparten uno). Todo lo que cubre la tela queda oculto, así que deslizar la alfombrilla sobre
   montones sueltos también los esconde.
 - **Levantar y doblar.** Arrastra un borde o una esquina hacia dentro para levantarla: los montones de debajo se ponen
-  de pie y puedes llevártelos. Quédate quieto un momento antes de soltar y se queda levantada un rato; tira más allá de
-  la mitad y se queda doblada (haz doble clic en la solapa para desdoblarla).
-- **Llevarla y arrugas.** Arrastra la alfombrilla para llevarla; si la mueves rápido deja arrugas que se quedan, incluso
-  después de volver a abrir la app. Tira de una esquina hacia fuera, haz doble clic en un borde o elige Smooth Desk Mat
-  para alisarlas.
+  de pie y puedes llevártelos. Si te detienes un momento antes de soltar, se queda levantada un rato; si tiras más allá
+  de la mitad, se queda doblada (haz doble clic en la solapa para desdoblarla).
+- **Moverla deja arrugas.** Arrastra la alfombrilla para llevarla; si la mueves rápido deja arrugas que se quedan,
+  incluso después de volver a abrir la app. Tira de una esquina hacia fuera, haz doble clic en un borde o elige Smooth
+  Desk Mat para alisarlas.
 - **Girar y cambiar de tamaño.** Arrastra una esquina con ⌥ para cambiarle el tamaño y girarla (⇧ la ajusta a pasos de
   15°), arrastra el centro con ⌥ para deslizarla sin arrugas, o usa su menú: Rotate (±15°, Straighten), Size (Small,
   Medium, Large), Reset Mat. Solo gira o crece hasta donde cabe en la mesa.
@@ -345,8 +345,8 @@ usar cada parte.
   Out y **Show on Desk**, que abre lo que esconda el archivo (enciende el monitor, cambia de página, abre el cajón,
   aparta la silla, pone el teléfono boca arriba o levanta la alfombrilla) y lo señala.
 - **Take Everything Out.** Todos los archivos vuelven al monitor; un solo ⌘Z lo deshace.
-- **Órdenes de cada día.** Open (doble clic, ⌘O), Quick Look (Espacio), Show in Finder, Copy (⌘C), Open Desktop Folder
-  in Finder.
+- **Órdenes habituales.** Open (doble clic, ⌘O), Quick Look (barra espaciadora), Show in Finder, Copy (⌘C), Open Desktop
+  Folder in Finder.
 - **Acciones sobre archivos, solo cuando las pides.** Move to Trash (desde el menú; sin atajo de teclado), Empty
   Wastebasket…, soltar archivos desde el Finder (se mueven a la carpeta, o se copian si vienen de otro disco o si usas
   ⌥; si el nombre ya existe, se le añade « 2»), arrastrar archivos a otras apps, a Mail o a la Papelera del Dock, y
@@ -367,7 +367,7 @@ usar cada parte.
   los ajustes del Finder solo se leen. Sal de Deskterior o usa Pause Desk y vuelves a tener tu escritorio.
 - **Icono en la barra de menús y menú de la pared.** No hay icono en el Dock: las órdenes de la mesa están en el icono
   de la barra de menús y en un clic derecho sobre la pared vacía, y cada objeto tiene su propio menú de clic derecho.
-- **Cualquier pantalla.** El dibujo se amplía en múltiplos enteros (píxeles Chunky, Normal o Fine) y la habitación se
+- **Todas las pantallas.** El dibujo se amplía en múltiplos enteros (píxeles Chunky, Normal o Fine) y la habitación se
   extiende hasta llenar cualquier pantalla; las pantallas altas y verticales tienen un techo con vigas, una estantería,
   láminas y plantas colgantes. Las demás pantallas pueden tener una pared a juego (los archivos que sueltas en una van
   al monitor), y en Settings se elige la pantalla de la mesa.
@@ -375,7 +375,7 @@ usar cada parte.
   desactivado por omisión). Pause la guarda y muestra el escritorio del Finder hasta que la reanudes.
 - **No estorba.** La mesa se pausa bajo apps a pantalla completa, durante el reposo de la pantalla, el bloqueo de
   pantalla y el cambio de usuario, y opcionalmente con batería (una imagen fija hasta que la uses); deja de dibujar
-  mientras nada se mueve, y el modo de bajo consumo la limita a 30 fotogramas por segundo. Desplaza un poco la
+  mientras nada se mueve, y el Modo de bajo consumo la limita a 30 fotogramas por segundo. Desplaza un poco la
   habitación para mantener los widgets del escritorio lejos del monitor y los cajones.
 - **Recuerda tu mesa.** La disposición se guarda sobre la marcha, con copias de seguridad cada hora, cada día y cada
   semana; cada carpeta reflejada guarda su propia disposición, y un archivo de disposición dañado se repara o se
@@ -405,18 +405,19 @@ usar cada parte.
 | **Cajones del elevador** (2) y **hueco** | Suelta un archivo sobre un cajón cerrado: se abre, se lo queda y se cierra. Un cajón demasiado lleno queda entreabierto; uno atascado no admite más (BONK). El hueco solo oculta a medias: ves siluetas tenues, con el nombre al pasar el puntero. | Haz clic en el tirador, arrástralo o desplázate sobre un cajón cerrado para echar un vistazo. Arrastra los iconos pequeños hacia fuera. |
 | **Archivador** (3 cajones) y **silla** | Igual que los cajones del elevador; el cajón de abajo archiva las cosas bajo pestañas de carpeta de colores. Solo se abre un cajón a la vez. | Si la silla estorba, el cajón solo se abre una rendija: la silla se aparta rodando y el siguiente tirón funciona. |
 | **Soporte del teléfono** | Suelta archivos sobre el teléfono boca arriba y se convierten en iconos de app. Haz clic en el teléfono para ponerlo boca abajo (un teléfono boca arriba brilla de noche, como uno de verdad). | Vuelve a hacer clic, o elige Turn Face Up en su menú. |
-| **Portalápices** | Suelta un archivo dentro y se convierte en un bolígrafo; el color del capuchón indica su tipo. | Saca el último bolígrafo arrastrándolo. Un toque rápido al portalápices con tres o más bolígrafos dentro lo vuelca, y los bolígrafos se desparraman por la mesa; haz clic en él para ponerlo de pie. |
+| **Portalápices** | Suelta un archivo dentro y se convierte en un bolígrafo; el color del capuchón indica su tipo. | Saca el último bolígrafo arrastrándolo. Si arrastras rápido el portalápices con tres o más bolígrafos dentro y lo sueltas, se vuelca y los bolígrafos se desparraman por la mesa; haz clic en él para ponerlo de pie. |
 | **Cesto de papeles** | Suelta o lanza un archivo dentro. Se arruga, pero **no se borra**: «oculto, no borrado». | Saca la bola de arriba arrastrándola, o arrastra el borde hacia un lado para volcar el cesto. *Empty Wastebasket…* mueve su contenido a la Papelera de macOS tras una confirmación que lo enumera. |
-| **Alfombrilla** y **cepillo** | Suelta un archivo sobre la alfombrilla y se desliza debajo dejando un bulto; cuanto más alta la pila, más grande el bulto. Empuja los montones debajo con el cepillo o con un desplazamiento lateral con dos dedos sobre la mesa. | Levanta un borde o una esquina: los montones de debajo se ponen de pie y puedes llevártelos. O clic derecho ▸ Peek Under. Con la alfombrilla Flat (o Reduce motion) la alfombrilla no se levanta: clic derecho ▸ List Items Under Mat ▸ un nombre devuelve ese archivo al monitor, y Find Item… (⌘F) también sirve. |
+| **Alfombrilla** y **cepillo** | Suelta un archivo sobre la alfombrilla y se desliza debajo dejando un bulto; cuanto más alta la pila, más grande el bulto. Empuja los montones debajo con el cepillo o con un desplazamiento lateral con dos dedos sobre la mesa. | Levanta un borde o una esquina: los montones de debajo se ponen de pie y puedes llevártelos. O clic derecho ▸ Peek Under. Con el modo Flat (o Reduce motion), la alfombrilla no se levanta: clic derecho ▸ List Items Under Mat ▸ un nombre devuelve ese archivo al monitor, y Find Item… (⌘F) también sirve. |
 | **Lámpara** y **Lamp Only** | De noche, apaga la luz de la habitación y deja encendida la lámpara de mesa: solo el círculo de la lámpara y el brillo del monitor y del teléfono iluminan algo. Los archivos a oscuras son siluetas: sin nombres ni clics. | Los archivos que quedan dentro del círculo de la lámpara o del brillo del monitor o del teléfono boca arriba aún se pueden seleccionar; vuelve a encender la luz de la habitación o elige Lights ▸ Auto. |
 | **Hub de unidades** | Deskterior también tapa los iconos de unidades del Finder, así que las unidades montadas se enchufan en el hub de la mesa. | Doble clic para abrir; Eject desde el menú de la unidad. |
 | **Clear the Desk** | Un solo ítem de menú: el monitor se apaga, el teléfono se da la vuelta, los cajones se cierran y el cepillo barre bajo la alfombrilla todos los montones sueltos. «TIDY!» | Un solo ⌘Z lo devuelve todo exactamente como estaba. |
 | **Find Item…** (⌘F) | — | Enumera cada archivo y dónde está (con búsqueda). **Show on Desk** abre lo que lo esconda y señala el archivo; **Take Out** lo devuelve al monitor. **Take Everything Out** (en el menú) los devuelve todos. |
 | **Peek Desk** / **Pause Desk** | — | Peek Desk levanta la mesa por encima de tus ventanas un momento (× Done o Esc para volver; atajo opcional ⌃⌥⌘D). Pause Desk la guarda y muestra el escritorio del propio Finder hasta que la reanudes. |
 
-Nada sale de su escondite por sí solo. Los golpes, los portazos y llenar de más nunca vacían un contenedor; un archivo
-oculto solo vuelve a verse cuando abres su contenedor, levantas o mueves la alfombrilla, das la vuelta al teléfono,
-vuelcas el portalápices o el cesto, cambias de entrada o usas un menú, Find Item…, Show on Desk o Take Everything Out.
+Nada sale de su escondite por sí solo. Los golpes, los cierres de golpe y llenar de más nunca vacían un contenedor; un
+archivo oculto solo vuelve a verse cuando abres su contenedor, levantas o mueves la alfombrilla, das la vuelta al
+teléfono, vuelcas el portalápices o el cesto, cambias de entrada o usas un menú, Find Item…, Show on Desk o Take
+Everything Out.
 
 ## Gestos
 
@@ -425,14 +426,14 @@ vuelcas el portalápices o el cesto, cambias de entrada o usas un menú, Find It
 | **Clic** | Selecciona un archivo (⌘-clic añade o quita uno; arrastra sobre la pantalla vacía para seleccionar varios; ⌘A selecciona la página). También acciona interruptores y pulsa botones: el de encendido, INPUT, la lámpara, el interruptor de la luz de la habitación, el tirador de un cajón, el teléfono. |
 | **Doble clic** | Abre un archivo. En el borde frontal de la mesa (el faldón), **da un golpe a la mesa**: las cosas se tambalean, pero ningún archivo cambia de sitio. En el borde de la alfombrilla, la alisa. En una solapa doblada, la desdobla. En el cepillo, lo devuelve a su sitio. |
 | **Arrastrar** | Lleva archivos (varios a la vez si hay varios seleccionados) al monitor, a un escondite, a la mesa o al suelo. Si mantienes un momento un archivo sobre un cajón cerrado, se abre. Arrastra el cepillo, la silla (rueda), el portalápices, los tiradores de los cajones y el minutero del reloj (muestra otra hora del día). |
-| **Lanzar / dar un toque** | Suelta un archivo que llevas mientras lo mueves rápido y sale volando: por el borde de la mesa hasta el suelo, o dentro del cesto (SWISH!). Un toque rápido al portalápices (con tres o más bolígrafos dentro) lo vuelca. |
+| **Lanzar** | Suelta un archivo que llevas mientras lo mueves rápido y sale volando: por el borde de la mesa hasta el suelo, o dentro del cesto (SWISH!). Si sueltas el portalápices mientras lo arrastras rápido (con tres o más bolígrafos dentro), se vuelca. |
 | **Arrastrar la alfombrilla** | Lleva toda la alfombrilla (y el teclado que tiene encima); si la mueves rápido deja arrugas. |
-| **Levantar** | Arrastra un borde o una esquina de la alfombrilla hacia dentro: se levanta y los montones de debajo se ponen de pie para que puedas llevarte uno. Quédate quieto un momento antes de soltar y se queda levantada un rato; tira más allá de la mitad y se queda doblada. |
+| **Levantar** | Arrastra un borde o una esquina de la alfombrilla hacia dentro: se levanta y los montones de debajo se ponen de pie para que puedas llevarte uno. Si te detienes un momento antes de soltar, se queda levantada un rato; si tiras más allá de la mitad, se queda doblada. |
 | **Estirar** | Arrastra una esquina de la alfombrilla hacia fuera para alisar sus arrugas (o haz doble clic en un borde, o elige Smooth Desk Mat). |
 | **⌥ (Opción)** | Sobre la alfombrilla, muestra sus controles: arrastra una esquina con ⌥ para cambiarle el tamaño y girarla (⇧ la ajusta a pasos de 15°); arrastra el centro con ⌥ para deslizarla sin arrugas. |
 | **Desplazamiento con dos dedos** | De lado sobre la mesa: la **escoba de desplazamiento** barre los montones bajo la alfombrilla. Sobre la pantalla: cambia de página. Sobre un cajón cerrado: echa un vistazo dentro. |
 | **Clic derecho** | Un menú para todo: archivos (Open, Quick Look, Show in Finder, Copy, **Move to ▸** una página del monitor o un cajón, el hueco, el teléfono, el portalápices o el cesto, Move to Trash), el monitor, cada contenedor, la alfombrilla (Peek Under, Smooth, Rotate, Size, List Items Under Mat ▸) y las unidades. Un clic derecho en la pared vacía abre el mismo menú que el icono de la barra de menús. |
-| **Teclas** (tras hacer clic en la mesa) | Espacio: Quick Look · ⌘O / ⌘↓: abrir · flechas: mover la selección · ⌘A · ⌘C: copiar · ⌘F: Find Item… · ⌘Z / ⌘⇧Z: deshacer y rehacer · Esc: cancelar lo que llevas o terminar un vistazo. No hay tecla para borrar. |
+| **Teclas** (tras hacer clic en la mesa) | Barra espaciadora: Quick Look · ⌘O / ⌘↓: abrir · flechas: mover la selección · ⌘A · ⌘C: copiar · ⌘F: Find Item… · ⌘Z / ⌘⇧Z: deshacer y rehacer · Esc: cancelar lo que llevas o terminar un vistazo. No hay tecla para borrar. |
 
 <img src="docs/media/mat-peel.png" width="576" alt="La mesa alrededor de la alfombrilla: su borde frontal levantado, con la goma hacia arriba, y un montón de tres archivos de pie donde estaba">
 
@@ -485,7 +486,7 @@ esperado.
    ejecuta desde una copia oculta de solo lectura (App Translocation), donde puede olvidar sus permisos; Deskterior lo
    detecta y te pide que la muevas.
 3. Abre Deskterior.
-   - **macOS 15 Sequoia y posteriores:** macOS avisa de que no ha abierto «Deskterior». Haz clic en **OK** (no en
+   - **macOS 15 Sequoia y posteriores:** macOS muestra *No se ha abierto “Deskterior”*. Haz clic en **OK** (no en
      Trasladar a la Papelera). Abre **Ajustes del Sistema ▸ Privacidad y seguridad**, desplázate hasta **Seguridad** y
      haz clic en **Abrir igualmente** junto al mensaje sobre Deskterior (se queda ahí más o menos una hora); después
      confirma con **Abrir igualmente** y tu contraseña o Touch ID. Control + clic ▸ Abrir ya no se salta este paso.
@@ -654,8 +655,8 @@ Más: [docs/DESIGN.md](docs/DESIGN.md) (el diseño), [docs/DEMOS.md](docs/DEMOS.
 - Paleta: [Apollo](https://lospec.com/palette-list/apollo) de AdamCYounis. Cada píxel de la mesa es uno de sus 46
   colores.
 - Deskterior es un proyecto independiente inspirado en el prototipo de alfombra para el escritorio de Terkel Gjervig,
-  *Desktop Cleaning* (desktop.cleaning). No está afiliado a él ni a GitHub, no cuenta con su respaldo y no usa nada de
-  su código, nombre, arte ni marca.
+  *Desktop Cleaning* (desktop.cleaning). No está afiliado a él ni a GitHub, no cuenta con el respaldo de ninguno de los
+  dos y no usa nada del código, el nombre, el arte ni la marca de ese prototipo.
 
 ## Licencia
 
