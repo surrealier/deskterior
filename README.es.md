@@ -50,24 +50,34 @@ Cada clip de esta sección es una grabación real de la pantalla de Deskterior e
 
 <table>
 <tr>
-<td width="50%" valign="top">
-<img src="docs/media/feat-apps.gif" width="__W_apps__" alt="Grabación de pantalla: se arrastran apps y archivos desde una ventana del Finder al monitor en pixel art, donde sus iconos reales se convierten en iconos de píxeles"><br>
+<td valign="top">
+<img src="docs/media/feat-apps.gif" width="424" alt="Grabación de pantalla: se arrastran apps y archivos desde una ventana del Finder al monitor en pixel art, donde sus iconos reales se convierten en iconos de píxeles">
+</td>
+<td valign="top">
 <b>Iconos reales, en píxeles</b><br>
 Suelta apps o archivos del Finder en el monitor: sus iconos reales se convierten en iconos de píxeles.
 </td>
-<td width="50%" valign="top">
-<img src="docs/media/feat-power.gif" width="__W_power__" alt="Grabación de pantalla: se pulsa el botón de encendido del monitor y la imagen se encoge como en un viejo monitor de tubo; llega un archivo mientras está apagado y en el marco se enciende una insignia ámbar +1"><br>
+</tr>
+<tr>
+<td valign="top">
+<img src="docs/media/feat-power.gif" width="422" alt="Grabación de pantalla: se pulsa el botón de encendido del monitor y la imagen se encoge como en un viejo monitor de tubo; llega un archivo mientras está apagado y en el marco se enciende una insignia ámbar +1">
+</td>
+<td valign="top">
 <b>Un botón de encendido de monitor CRT</b><br>
 ⏻ encoge la imagen como un viejo monitor de tubo (CRT) y oculta todos los archivos. Un archivo que llega mientras está apagado enciende la insignia ámbar +1.
 </td>
 </tr>
 <tr>
-<td width="50%" valign="top">
-<img src="docs/media/feat-input.gif" width="__W_input__" alt="Grabación de pantalla: el botón INPUT pasa por las páginas HDMI de archivos del monitor y luego a AV, que muestra un logo NO SIGNAL"><br>
+<td valign="top">
+<img src="docs/media/feat-input.gif" width="424" alt="Grabación de pantalla: el botón INPUT pasa por las páginas HDMI de archivos del monitor y luego a AV, que muestra un logo NO SIGNAL">
+</td>
+<td valign="top">
 <b>INPUT y AV</b><br>
 INPUT pasa por páginas HDMI de 45 archivos cada una. AV siempre está vacía: NO SIGNAL (sin señal).
 </td>
-<td width="50%" valign="top">
+</tr>
+<tr>
+<td colspan="2" valign="top">
 <b>Más en el monitor</b><br>
 Clean Up By (ordenar por) Name, Kind o Date Added · selecciona con un clic, ⌘-clic, un recuadro o ⌘A · teclas de flecha, barra espaciadora para Quick Look · un desplazamiento sobre la pantalla cambia de página.<br>
 <a href="#todo-lo-que-hace">Todo lo que hace</a>
@@ -79,36 +89,52 @@ Clean Up By (ordenar por) Name, Kind o Date Added · selecciona con un clic, ⌘
 
 <table>
 <tr>
-<td width="50%" valign="top">
-<img src="docs/media/feat-drawers.gif" width="__W_drawers__" alt="Grabación de pantalla: los archivos soltados sobre los cajones del elevador desaparecen mientras los cajones se abren y se cierran; desplazarse sobre un cajón cerrado permite echar un vistazo dentro; en el hueco los archivos se ven como siluetas tenues"><br>
+<td valign="top">
+<img src="docs/media/feat-drawers.gif" width="424" alt="Grabación de pantalla: los archivos soltados sobre los cajones del elevador desaparecen mientras los cajones se abren y se cierran; desplazarse sobre un cajón cerrado permite echar un vistazo dentro; en el hueco los archivos se ven como siluetas tenues">
+</td>
+<td valign="top">
 <b>Cajones del elevador y hueco</b><br>
 Suelta un archivo sobre un cajón cerrado y se lo traga. Desplázate sobre uno para echar un vistazo; el hueco solo oculta a medias.
 </td>
-<td width="50%" valign="top">
-<img src="docs/media/feat-cabinet.gif" width="__W_cabinet__" alt="Grabación de pantalla: un cajón del archivador solo se abre una rendija porque la silla estorba; se aparta la silla y el cajón se abre y deja ver sus pestañas de carpeta de colores"><br>
+</tr>
+<tr>
+<td valign="top">
+<img src="docs/media/feat-cabinet.gif" width="412" alt="Grabación de pantalla: la silla que bloquea el archivador se aparta rodando, se abre el cajón de archivo y los dos archivos que se dejan caer dentro se convierten en pestañas de carpeta de colores">
+</td>
+<td valign="top">
 <b>Archivador y silla</b><br>
 La silla bloquea el archivador: apártala y vuelve a tirar. El cajón de abajo archiva las cosas bajo pestañas de carpeta.
 </td>
 </tr>
 <tr>
-<td width="50%" valign="top">
-<img src="docs/media/feat-phone.gif" width="__W_phone__" alt="Grabación de pantalla: los archivos soltados sobre el teléfono se convierten en pequeños iconos de app, y el teléfono se pone boca abajo para ocultarlos"><br>
+<td valign="top">
+<img src="docs/media/feat-phone.gif" width="362" alt="Grabación de pantalla: los archivos soltados sobre el teléfono se convierten en pequeños iconos de app, y el teléfono se pone boca abajo para ocultarlos">
+</td>
+<td valign="top">
 <b>Soporte del teléfono</b><br>
 Los archivos se convierten en mini apps en el teléfono. Ponlo boca abajo para ocultarlas.
 </td>
-<td width="50%" valign="top">
-<img src="docs/media/feat-pencup.gif" width="__W_pencup__" alt="Grabación de pantalla: los archivos soltados en el portalápices se convierten en bolígrafos; se arrastra el portalápices con un movimiento rápido y se suelta, se vuelca y los bolígrafos se desparraman por la mesa"><br>
+</tr>
+<tr>
+<td valign="top">
+<img src="docs/media/feat-pencup.gif" width="458" alt="Grabación de pantalla: los archivos soltados en el portalápices se convierten en bolígrafos; se arrastra el portalápices con un movimiento rápido y se suelta, se vuelca y los bolígrafos se desparraman por la mesa">
+</td>
+<td valign="top">
 <b>Portalápices</b><br>
 Los archivos se convierten en bolígrafos con el capuchón del color de su tipo. Arrástralo rápido y suéltalo: se vuelca y los desparrama.
 </td>
 </tr>
 <tr>
-<td width="50%" valign="top">
-<img src="docs/media/feat-wastebasket.gif" width="__W_wastebasket__" alt="Grabación de pantalla: se lanza un archivo al cesto de papeles con un SWISH!; luego el cesto se vuelca y se vuelve a poner de pie"><br>
+<td valign="top">
+<img src="docs/media/feat-wastebasket.gif" width="368" alt="Grabación de pantalla: se lanza un archivo al cesto de papeles con un SWISH!; luego el cesto se vuelca y se vuelve a poner de pie">
+</td>
+<td valign="top">
 <b>Cesto de papeles</b><br>
 Lanza un archivo dentro: SWISH! Vuelca el cesto y vuelve a ponerlo de pie. Oculto, no borrado.
 </td>
-<td width="50%" valign="top">
+</tr>
+<tr>
+<td colspan="2" valign="top">
 <b>Más en los escondites</b><br>
 Los cajones, el hueco y el teléfono enumeran su contenido, lo mueven o lo sacan todo desde sus menús · se ve lo llenos que están (un cajón demasiado lleno queda entreabierto y luego se atasca) · nada sale solo.<br>
 <a href="#dónde-se-esconde-cada-cosa">Dónde se esconde cada cosa</a>
@@ -120,24 +146,32 @@ Los cajones, el hueco y el teléfono enumeran su contenido, lo mueven o lo sacan
 
 <table>
 <tr>
-<td width="50%" valign="top">
-<img src="docs/media/feat-mat.gif" width="__W_mat__" alt="Grabación de pantalla: los archivos soltados sobre la alfombrilla de la mesa se deslizan debajo y dejan bultos; se levanta el borde de la alfombrilla y se saca un archivo"><br>
+<td valign="top">
+<img src="docs/media/feat-mat.gif" width="440" alt="Grabación de pantalla: los archivos soltados sobre la alfombrilla de la mesa se deslizan debajo y dejan bultos; se levanta el borde de la alfombrilla y se saca un archivo">
+</td>
+<td valign="top">
 <b>Barrer bajo la alfombrilla</b><br>
 Suelta archivos sobre la alfombrilla: se deslizan debajo y dejan bultos. Levanta el borde para sacar uno.
 </td>
-<td width="50%" valign="top">
-<img src="docs/media/feat-mat-moves.gif" width="__W_mat-moves__" alt="Grabación de pantalla: la alfombrilla se lleva de un sitio a otro y se arruga; con Opción pulsada se gira y se cambia de tamaño mientras el teclado que tiene encima gira también; se dobla y luego se alisa de un tirón"><br>
+</tr>
+<tr>
+<td colspan="2" valign="top">
+<img src="docs/media/feat-mat-moves.gif" width="616" alt="Grabación de pantalla: la alfombrilla se mueve deprisa y se arruga, y un doble clic en el borde la alisa; con Opción pulsada se arrastra una esquina para girarla y encogerla mientras el teclado que tiene encima gira también; al final se dobla una esquina"><br>
 <b>Un trozo de tela de verdad</b><br>
 Llévala de un sitio a otro y se arruga. Arrastra con ⌥ para girarla o cambiarle el tamaño (el teclado gira con ella), dóblala y alísala de un tirón.
 </td>
 </tr>
 <tr>
-<td width="50%" valign="top">
-<img src="docs/media/feat-brush.gif" width="__W_brush__" alt="Grabación de pantalla: el cepillo empuja montones de archivos bajo la alfombrilla y luego un desplazamiento lateral con dos dedos barre más debajo"><br>
+<td valign="top">
+<img src="docs/media/feat-brush.gif" width="304" alt="Grabación de pantalla: el cepillo empuja montones de archivos bajo la alfombrilla y luego un desplazamiento lateral con dos dedos barre más debajo">
+</td>
+<td valign="top">
 <b>Cepillo y escoba de desplazamiento</b><br>
 Empuja los montones bajo la alfombrilla con el cepillo o con un desplazamiento lateral con dos dedos sobre la mesa.
 </td>
-<td width="50%" valign="top">
+</tr>
+<tr>
+<td colspan="2" valign="top">
 <b>Más en la alfombrilla</b><br>
 Peek Under · List Items Under Mat · Rotate, Size, Smooth, Reset Mat · un modo Flat que conserva los bultos sin levantarse.<br>
 <a href="#gestos">Gestos</a>
@@ -149,13 +183,17 @@ Peek Under · List Items Under Mat · Rotate, Size, Smooth, Reset Mat · un modo
 
 <table>
 <tr>
-<td width="50%" valign="top">
-<img src="docs/media/feat-piles.gif" width="__W_piles__" alt="Grabación de pantalla: los archivos que se dejan en la mesa forman montones; uno sale despedido por el borde hasta el suelo; se da un golpe a la mesa y todo lo que hay encima se tambalea"><br>
+<td valign="top">
+<img src="docs/media/feat-piles.gif" width="424" alt="Grabación de pantalla: los archivos que se dejan en la mesa forman montones; uno sale despedido por el borde hasta el suelo; se da un golpe a la mesa y todo lo que hay encima se tambalea">
+</td>
+<td valign="top">
 <b>Montones, el suelo y golpes</b><br>
 Los archivos que dejas en la mesa se amontonan. Lanza uno al suelo; haz doble clic en el borde frontal de la mesa para darle un golpe.
 </td>
-<td width="50%" valign="top">
-<img src="docs/media/feat-clear-desk.gif" width="__W_clear-desk__" alt="Grabación de pantalla: Clear the Desk apaga el monitor, da la vuelta al teléfono, cierra los cajones y barre todos los montones bajo la alfombrilla, y aparece TIDY!; un solo Comando-Z lo devuelve todo a su sitio"><br>
+</tr>
+<tr>
+<td colspan="2" valign="top">
+<img src="docs/media/feat-clear-desk.gif" width="588" alt="Grabación de pantalla: Clear the Desk apaga el monitor, da la vuelta al teléfono, cierra los cajones y barre todos los montones bajo la alfombrilla, y aparece TIDY!; un solo Comando-Z lo devuelve todo a su sitio"><br>
 <b>Clear the Desk</b><br>
 Un solo ítem de menú, Clear the Desk (despejar la mesa), lo esconde todo: TIDY! Un solo ⌘Z lo devuelve todo a su sitio.
 </td>
@@ -166,12 +204,14 @@ Un solo ítem de menú, Clear the Desk (despejar la mesa), lo esconde todo: TIDY
 
 <table>
 <tr>
-<td width="50%" valign="top">
-<img src="docs/media/feat-lights.gif" width="__W_lights__" alt="Grabación de pantalla: la luz se pone en Night, se apaga el interruptor de la luz de la habitación en la pared para Lamp Only y se hace clic en la lámpara de mesa"><br>
+<td colspan="2" valign="top">
+<img src="docs/media/feat-lights.gif" width="588" alt="Grabación de pantalla: la luz se pone en Night, se apaga el interruptor de la luz de la habitación en la pared para Lamp Only y se hace clic en la lámpara de mesa"><br>
 <b>Night y Lamp Only</b><br>
 Pon la luz en Night (noche), apaga el interruptor de la habitación para Lamp Only (solo la lámpara) y haz clic en la lámpara de mesa.
 </td>
-<td width="50%" valign="top">
+</tr>
+<tr>
+<td colspan="2" valign="top">
 <b>Más sobre la luz</b><br>
 Auto sigue el reloj por el día, el atardecer y la noche · arrastra el minutero del reloj para ver otra hora · en Lamp Only, los archivos a oscuras son siluetas que no puedes seleccionar.<br>
 <a href="#todo-lo-que-hace">Todo lo que hace</a>
@@ -183,24 +223,32 @@ Auto sigue el reloj por el día, el atardecer y la noche · arrastra el minutero
 
 <table>
 <tr>
-<td width="50%" valign="top">
-<img src="docs/media/feat-find.gif" width="__W_find__" alt="Grabación de pantalla: Comando-F abre la ventana Find Item, que enumera cada archivo y dónde está; Show on Desk abre el escondite y señala el archivo"><br>
+<td colspan="2" valign="top">
+<img src="docs/media/feat-find.gif" width="584" alt="Grabación de pantalla: Comando-F abre la ventana Find Item, que enumera cada archivo y dónde está; Show on Desk abre el escondite y señala el archivo"><br>
 <b>Find Item…</b><br>
 ⌘F enumera todos los archivos y dónde se esconden. Show on Desk (mostrar en la mesa) abre el escondite y señala el archivo.
 </td>
-<td width="50%" valign="top">
-<img src="docs/media/feat-trash.gif" width="__W_trash__" alt="Grabación de pantalla: Move to Trash envía un archivo a la Papelera de macOS y Comando-Z lo devuelve al mismo sitio de la mesa"><br>
+</tr>
+<tr>
+<td valign="top">
+<img src="docs/media/feat-trash.gif" width="424" alt="Grabación de pantalla: Move to Trash envía un archivo a la Papelera de macOS y Comando-Z lo devuelve al mismo sitio de la mesa">
+</td>
+<td valign="top">
 <b>Move to Trash, y de vuelta</b><br>
 Move to Trash (trasladar a la Papelera) envía un archivo a la Papelera de macOS; ⌘Z lo devuelve al mismo sitio.
 </td>
 </tr>
 <tr>
-<td width="50%" valign="top">
-<img src="docs/media/feat-drives.gif" width="__W_drives__" alt="Grabación de pantalla: se conecta una memoria USB, que aparece en el hub de unidades de la mesa, y luego se expulsa desde su menú"><br>
+<td valign="top">
+<img src="docs/media/feat-drives.gif" width="256" alt="Grabación de pantalla: se conecta una memoria USB, que aparece en el hub de unidades de la mesa, y luego se expulsa desde su menú">
+</td>
+<td valign="top">
 <b>Hub de unidades</b><br>
 Una memoria USB se enchufa en el hub de la mesa. Expúlsala desde su menú con Eject.
 </td>
-<td width="50%" valign="top">
+</tr>
+<tr>
+<td colspan="2" valign="top">
 <b>Más con archivos</b><br>
 Suelta archivos desde el Finder · arrástralos a otras apps · Empty Wastebasket… muestra antes los nombres · cada acción queda registrada.<br>
 <a href="#tus-archivos-están-a-salvo">Tus archivos están a salvo</a>
@@ -212,12 +260,14 @@ Suelta archivos desde el Finder · arrástralos a otras apps · Empty Wastebaske
 
 <table>
 <tr>
-<td width="50%" valign="top">
-<img src="docs/media/feat-peek.gif" width="__W_peek__" alt="Grabación de pantalla: Peek Desk hace flotar la mesa por encima de las ventanas abiertas durante un momento"><br>
+<td colspan="2" valign="top">
+<img src="docs/media/feat-peek.gif" width="588" alt="Grabación de pantalla: Peek Desk hace flotar la mesa por encima de las ventanas abiertas durante un momento"><br>
 <b>Peek Desk</b><br>
 Peek Desk (asomarse a la mesa) hace flotar la mesa sobre tus ventanas un momento.
 </td>
-<td width="50%" valign="top">
+</tr>
+<tr>
+<td colspan="2" valign="top">
 <b>Más del sistema</b><br>
 Pause Desk · paredes a juego en otras pantallas · se pausa con apps a pantalla completa, en reposo y (si quieres) con batería · un icono en la barra de menús y ninguno en el Dock.<br>
 <a href="#ajustes">Ajustes</a>

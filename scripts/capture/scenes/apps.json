@@ -1,0 +1,7 @@
+[
+ {"note":"start","warp":[800,390]},{"wait":0.4},
+ {"note":"Music","drag":{"from":[934,604],"to":[605,322],"dur":0.75,"approach":0.35,"hold":0.15,"mods":["opt"],"modLead":0.05,"modTrail":0.35}},
+ {"wait":0.6},
+ {"note":"Notes","drag":{"from":[821,604],"to":[655,322],"dur":0.6,"approach":0.4,"hold":0.15,"mods":["opt"],"modLead":0.05,"modTrail":0.35}},
+ {"wait":0.4},{"move":[815,400],"dur":0.4},{"wait":1.6}
+]

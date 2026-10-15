@@ -1,0 +1,10 @@
+[
+ {"note":"start","warp":[1180,420]},{"wait":0.4},
+ {"rclick":[1060,440],"dur":0.45},{"wait":0.4},
+ {"move":[1128,559],"dur":0.3},{"wait":0.15},
+ {"note":"Clear the Desk","click":[1128,559],"dur":0.05},
+ {"move":[1180,430],"dur":0.35},
+ {"wait":4.2},
+ {"note":"cmd-Z","key":6,"mods":["cmd"],"chars":"z"},
+ {"wait":2.3}
+]

@@ -1,0 +1,11 @@
+[
+ {"note":"start","warp":[1030,580]},{"wait":0.3},
+ {"note":"carry","drag":{"from":[930,690],"via":[[885,686]],"to":[835,684],"dur":0.3,"approach":0.4,"hold":0.05}},
+ {"move":[1030,580],"dur":0.2},{"wait":0.6},
+ {"note":"smooth","click":[480,702],"count":2,"dur":0.45},{"move":[440,590],"dur":0.15},{"wait":0.7},
+ {"note":"opt-turn","drag":{"from":[880,606],"to":[760,568],"dur":0.7,"approach":0.4,"hold":0.15,"mods":["opt"],"modLead":0.15}},
+ {"move":[1030,580],"dur":0.15},{"wait":0.6},
+ {"note":"fold","drag":{"from":[815,673],"to":[808,645],"dur":0.25,"approach":0.35,"hold":0,"keepDown":true}},
+ {"dragTo":[785,615],"dur":0.3},{"dragTo":[765,598],"dur":0.3,"release":true},{"wait":0.3},
+ {"move":[1030,580],"dur":0.3},{"wait":1.0}
+]

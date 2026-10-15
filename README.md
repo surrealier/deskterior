@@ -44,24 +44,34 @@ Every clip here is a real screen recording of Deskterior on a Mac. The full list
 
 <table>
 <tr>
-<td width="50%" valign="top">
-<img src="docs/media/feat-apps.gif" width="__W_apps__" alt="Screen recording: apps and files are dragged from a Finder window onto the pixel-art monitor, where their real icons turn into pixel icons"><br>
+<td valign="top">
+<img src="docs/media/feat-apps.gif" width="424" alt="Screen recording: apps and files are dragged from a Finder window onto the pixel-art monitor, where their real icons turn into pixel icons">
+</td>
+<td valign="top">
 <b>Real icons, in pixels</b><br>
 Drop apps or files from Finder onto the monitor: their real icons turn into pixel icons.
 </td>
-<td width="50%" valign="top">
-<img src="docs/media/feat-power.gif" width="__W_power__" alt="Screen recording: the monitor's power button is pressed and the picture collapses like an old CRT; a file arrives while it is off and an amber +1 badge lights up on the bezel"><br>
+</tr>
+<tr>
+<td valign="top">
+<img src="docs/media/feat-power.gif" width="422" alt="Screen recording: the monitor's power button is pressed and the picture collapses like an old CRT; a file arrives while it is off and an amber +1 badge lights up on the bezel">
+</td>
+<td valign="top">
 <b>A CRT power button</b><br>
 ⏻ collapses the picture like an old CRT and hides every file. A file that arrives while it is off lights the amber +1 badge.
 </td>
 </tr>
 <tr>
-<td width="50%" valign="top">
-<img src="docs/media/feat-input.gif" width="__W_input__" alt="Screen recording: the INPUT button flips the monitor through its HDMI pages of files, then to AV, which shows a NO SIGNAL logo"><br>
+<td valign="top">
+<img src="docs/media/feat-input.gif" width="424" alt="Screen recording: the INPUT button flips the monitor through its HDMI pages of files, then to AV, which shows a NO SIGNAL logo">
+</td>
+<td valign="top">
 <b>INPUT and AV</b><br>
 INPUT flips through HDMI pages of 45 files each. AV is always empty: NO SIGNAL.
 </td>
-<td width="50%" valign="top">
+</tr>
+<tr>
+<td colspan="2" valign="top">
 <b>Also on the monitor</b><br>
 Clean Up By name, kind or date added · select with a click, ⌘-click, a box or ⌘A · arrow keys, Space for Quick Look · a scroll on the screen turns the page.<br>
 <a href="#everything-it-does">Everything it does</a>
@@ -73,36 +83,52 @@ Clean Up By name, kind or date added · select with a click, ⌘-click, a box or
 
 <table>
 <tr>
-<td width="50%" valign="top">
-<img src="docs/media/feat-drawers.gif" width="__W_drawers__" alt="Screen recording: files dropped on the riser drawers are swallowed as the drawers open and shut; a scroll over a closed drawer peeks inside; files sit in the cubby as dim silhouettes"><br>
+<td valign="top">
+<img src="docs/media/feat-drawers.gif" width="424" alt="Screen recording: files dropped on the riser drawers are swallowed as the drawers open and shut; a scroll over a closed drawer peeks inside; files sit in the cubby as dim silhouettes">
+</td>
+<td valign="top">
 <b>Riser drawers and cubby</b><br>
 Drop a file on a closed drawer and it chomps it. Scroll over one to peek; the cubby only half hides.
 </td>
-<td width="50%" valign="top">
-<img src="docs/media/feat-cabinet.gif" width="__W_cabinet__" alt="Screen recording: a filing cabinet drawer opens only a crack because the chair is in the way; the chair is pushed aside, and the drawer opens on its coloured folder tabs"><br>
+</tr>
+<tr>
+<td valign="top">
+<img src="docs/media/feat-cabinet.gif" width="412" alt="Screen recording: the chair in front of the filing cabinet is rolled aside, the file drawer is pulled open, and two files dropped into it become coloured folder tabs">
+</td>
+<td valign="top">
 <b>Filing cabinet and chair</b><br>
 The chair blocks the cabinet: push it aside and pull again. The bottom drawer files things under folder tabs.
 </td>
 </tr>
 <tr>
-<td width="50%" valign="top">
-<img src="docs/media/feat-phone.gif" width="__W_phone__" alt="Screen recording: files dropped on the phone become small app icons, and the phone is flipped face down to hide them"><br>
+<td valign="top">
+<img src="docs/media/feat-phone.gif" width="362" alt="Screen recording: files dropped on the phone become small app icons, and the phone is flipped face down to hide them">
+</td>
+<td valign="top">
 <b>Phone stand</b><br>
 Files become mini apps on the phone. Flip it face down to hide them.
 </td>
-<td width="50%" valign="top">
-<img src="docs/media/feat-pencup.gif" width="__W_pencup__" alt="Screen recording: files dropped in the pen cup become pens; the cup is flicked, tips over and the pens spill across the desk"><br>
+</tr>
+<tr>
+<td valign="top">
+<img src="docs/media/feat-pencup.gif" width="458" alt="Screen recording: files dropped in the pen cup become pens; the cup is flicked, tips over and the pens spill across the desk">
+</td>
+<td valign="top">
 <b>Pen cup</b><br>
 Files become pens, capped in their kind's colour. Flick the cup and it tips, spilling them.
 </td>
 </tr>
 <tr>
-<td width="50%" valign="top">
-<img src="docs/media/feat-wastebasket.gif" width="__W_wastebasket__" alt="Screen recording: a file is tossed into the wastebasket with a SWISH!, then the basket is tipped over and stood back up"><br>
+<td valign="top">
+<img src="docs/media/feat-wastebasket.gif" width="368" alt="Screen recording: a file is tossed into the wastebasket with a SWISH!, then the basket is tipped over and stood back up">
+</td>
+<td valign="top">
 <b>Wastebasket</b><br>
 Toss a file in: SWISH! Tip the basket over, stand it up. Hidden, not deleted.
 </td>
-<td width="50%" valign="top">
+</tr>
+<tr>
+<td colspan="2" valign="top">
 <b>Also in the hiding places</b><br>
 Drawers, cubby and phone list their contents, move them or take them all out from their menus · fullness shows (an overfull drawer rests ajar, then jams) · nothing comes out by itself.<br>
 <a href="#where-things-hide">Where things hide</a>
@@ -114,24 +140,32 @@ Drawers, cubby and phone list their contents, move them or take them all out fro
 
 <table>
 <tr>
-<td width="50%" valign="top">
-<img src="docs/media/feat-mat.gif" width="__W_mat__" alt="Screen recording: files dropped on the desk mat slide under it and leave bumps; the mat's edge is peeled back and a file is taken out"><br>
+<td valign="top">
+<img src="docs/media/feat-mat.gif" width="440" alt="Screen recording: files dropped on the desk mat slide under it and leave bumps; the mat's edge is peeled back and a file is taken out">
+</td>
+<td valign="top">
 <b>Sweep it under the mat</b><br>
 Drop files on the mat: they slide under and leave bumps. Peel the edge back to take one.
 </td>
-<td width="50%" valign="top">
-<img src="docs/media/feat-mat-moves.gif" width="__W_mat-moves__" alt="Screen recording: the desk mat is carried and creases; with Option held it is turned and resized while the keyboard on it turns too; it is folded, then tugged smooth"><br>
+</tr>
+<tr>
+<td colspan="2" valign="top">
+<img src="docs/media/feat-mat-moves.gif" width="616" alt="Screen recording: the desk mat is carried fast and creases, and a double-click on its edge smooths it; with Option held a corner is dragged to turn and shrink it while the keyboard on it turns too; then a corner is folded over"><br>
 <b>A real piece of cloth</b><br>
 Carry it and it creases. ⌥-drag to turn or resize it (the keyboard turns with it), fold it, tug it smooth.
 </td>
 </tr>
 <tr>
-<td width="50%" valign="top">
-<img src="docs/media/feat-brush.gif" width="__W_brush__" alt="Screen recording: the brush pushes piles of files under the desk mat, then a sideways two-finger scroll sweeps more under"><br>
+<td valign="top">
+<img src="docs/media/feat-brush.gif" width="304" alt="Screen recording: the brush pushes piles of files under the desk mat, then a sideways two-finger scroll sweeps more under">
+</td>
+<td valign="top">
 <b>Brush and scroll-broom</b><br>
 Push piles under the mat with the brush, or with a sideways two-finger scroll over the desk.
 </td>
-<td width="50%" valign="top">
+</tr>
+<tr>
+<td colspan="2" valign="top">
 <b>Also on the mat</b><br>
 Peek Under · List Items Under Mat · Rotate, Size, Smooth, Reset Mat · a Flat mode that keeps the bumps without lifting.<br>
 <a href="#gestures">Gestures</a>
@@ -143,13 +177,17 @@ Peek Under · List Items Under Mat · Rotate, Size, Smooth, Reset Mat · a Flat 
 
 <table>
 <tr>
-<td width="50%" valign="top">
-<img src="docs/media/feat-piles.gif" width="__W_piles__" alt="Screen recording: files set down on the desk form piles; one is flung off the edge onto the floor; the desk is knocked and everything on it wobbles"><br>
+<td valign="top">
+<img src="docs/media/feat-piles.gif" width="424" alt="Screen recording: files set down on the desk form piles; one is flung off the edge onto the floor; the desk is knocked and everything on it wobbles">
+</td>
+<td valign="top">
 <b>Piles, the floor and knocks</b><br>
 Files set on the desk pile up. Fling one onto the floor; double-click the desk's front edge to knock it.
 </td>
-<td width="50%" valign="top">
-<img src="docs/media/feat-clear-desk.gif" width="__W_clear-desk__" alt="Screen recording: Clear the Desk turns the monitor off, flips the phone, shuts the drawers and sweeps every pile under the mat, then TIDY! appears; one Command-Z puts it all back"><br>
+</tr>
+<tr>
+<td colspan="2" valign="top">
+<img src="docs/media/feat-clear-desk.gif" width="588" alt="Screen recording: Clear the Desk turns the monitor off, flips the phone, shuts the drawers and sweeps every pile under the mat, then TIDY! appears; one Command-Z puts it all back"><br>
 <b>Clear the Desk</b><br>
 One menu item hides everything: TIDY! One ⌘Z puts it all back.
 </td>
@@ -160,12 +198,14 @@ One menu item hides everything: TIDY! One ⌘Z puts it all back.
 
 <table>
 <tr>
-<td width="50%" valign="top">
-<img src="docs/media/feat-lights.gif" width="__W_lights__" alt="Screen recording: the lights are set to Night, the room light switch on the wall is flipped off for Lamp Only, and the desk lamp is clicked"><br>
+<td colspan="2" valign="top">
+<img src="docs/media/feat-lights.gif" width="588" alt="Screen recording: the lights are set to Night, the room light switch on the wall is flipped off for Lamp Only, and the desk lamp is clicked"><br>
 <b>Night and Lamp Only</b><br>
 Set the lights to Night, flip the room switch for Lamp Only, click the desk lamp.
 </td>
-<td width="50%" valign="top">
+</tr>
+<tr>
+<td colspan="2" valign="top">
 <b>Also in the light</b><br>
 Auto follows the clock through day, dusk and night · drag the clock's minute hand to preview another hour · in Lamp Only, files in the dark are silhouettes you cannot pick.<br>
 <a href="#everything-it-does">Everything it does</a>
@@ -177,24 +217,32 @@ Auto follows the clock through day, dusk and night · drag the clock's minute ha
 
 <table>
 <tr>
-<td width="50%" valign="top">
-<img src="docs/media/feat-find.gif" width="__W_find__" alt="Screen recording: Command-F opens the Find Item window, which lists every file and where it is; Show on Desk opens the hiding place and points the file out"><br>
+<td colspan="2" valign="top">
+<img src="docs/media/feat-find.gif" width="584" alt="Screen recording: Command-F opens the Find Item window, which lists every file and where it is; Show on Desk opens the hiding place and points the file out"><br>
 <b>Find Item…</b><br>
 ⌘F lists every file and where it hides. Show on Desk opens the hiding place and points the file out.
 </td>
-<td width="50%" valign="top">
-<img src="docs/media/feat-trash.gif" width="__W_trash__" alt="Screen recording: Move to Trash sends a file to the macOS Trash, and Command-Z brings it back to the same spot on the desk"><br>
+</tr>
+<tr>
+<td valign="top">
+<img src="docs/media/feat-trash.gif" width="424" alt="Screen recording: Move to Trash sends a file to the macOS Trash, and Command-Z brings it back to the same spot on the desk">
+</td>
+<td valign="top">
 <b>Move to Trash, and back</b><br>
 Move to Trash sends a file to the macOS Trash; ⌘Z brings it back to the same spot.
 </td>
 </tr>
 <tr>
-<td width="50%" valign="top">
-<img src="docs/media/feat-drives.gif" width="__W_drives__" alt="Screen recording: a USB stick is plugged in and appears in the drive hub on the desk, then it is ejected from its menu"><br>
+<td valign="top">
+<img src="docs/media/feat-drives.gif" width="256" alt="Screen recording: a USB stick is plugged in and appears in the drive hub on the desk, then it is ejected from its menu">
+</td>
+<td valign="top">
 <b>Drive hub</b><br>
 A USB stick plugs into the hub on the desk. Eject it from its menu.
 </td>
-<td width="50%" valign="top">
+</tr>
+<tr>
+<td colspan="2" valign="top">
 <b>Also with files</b><br>
 Drop files in from Finder · drag them out to other apps · Empty Wastebasket… lists the names first · every action is logged.<br>
 <a href="#your-files-are-safe">Your files are safe</a>
@@ -206,12 +254,14 @@ Drop files in from Finder · drag them out to other apps · Empty Wastebasket…
 
 <table>
 <tr>
-<td width="50%" valign="top">
-<img src="docs/media/feat-peek.gif" width="__W_peek__" alt="Screen recording: Peek Desk floats the desk above the open windows for a moment"><br>
+<td colspan="2" valign="top">
+<img src="docs/media/feat-peek.gif" width="588" alt="Screen recording: Peek Desk floats the desk above the open windows for a moment"><br>
 <b>Peek Desk</b><br>
 Peek Desk floats the desk over your windows for a moment.
 </td>
-<td width="50%" valign="top">
+</tr>
+<tr>
+<td colspan="2" valign="top">
 <b>Also in the system</b><br>
 Pause Desk · matching walls on other displays · pauses for full-screen apps, sleep and (optionally) battery · a menu bar icon, no Dock icon.<br>
 <a href="#settings">Settings</a>

@@ -1,0 +1,11 @@
+[
+ {"note":"start","warp":[690,385]},{"wait":0.4},
+ {"click":[755,271],"dur":0.35},{"wait":0.2},
+ {"rclick":[755,271],"dur":0.05},{"wait":0.55},
+ {"move":[800,426],"dur":0.35},{"wait":0.2},
+ {"note":"Move to Trash","click":[800,426],"dur":0.05},
+ {"move":[700,385],"dur":0.35},
+ {"wait":0.9},
+ {"note":"cmd-Z","key":6,"mods":["cmd"]},
+ {"wait":2.0}
+]

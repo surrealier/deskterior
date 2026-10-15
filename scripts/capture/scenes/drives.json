@@ -1,0 +1,11 @@
+[
+ {"note":"start","warp":[1040,620]},{"wait":0.3},
+ {"note":"plug in","shell":"hdiutil attach \"$CAP/usb.dmg\" >/dev/null 2>&1"},
+ {"wait":1.6},
+ {"move":[1123,537],"dur":0.4},{"wait":0.5},
+ {"rclick":[1123,537],"dur":0.05},{"wait":0.6},
+ {"move":[1180,608],"dur":0.35},{"wait":0.25},
+ {"note":"Eject","click":[1180,608],"dur":0.05},
+ {"move":[1060,610],"dur":0.4},
+ {"wait":2.0}
+]

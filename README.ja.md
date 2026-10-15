@@ -37,24 +37,34 @@
 
 <table>
 <tr>
-<td width="50%" valign="top">
-<img src="docs/media/feat-apps.gif" width="__W_apps__" alt="画面収録：Finderウインドウからアプリやファイルをピクセルアートのモニターへドラッグすると、本物のアイコンがピクセルアイコンに変わる様子"><br>
+<td valign="top">
+<img src="docs/media/feat-apps.gif" width="424" alt="画面収録：Finderウインドウからアプリやファイルをピクセルアートのモニターへドラッグすると、本物のアイコンがピクセルアイコンに変わる様子">
+</td>
+<td valign="top">
 <b>本物のアイコンを、ピクセルで</b><br>
 Finderからアプリやファイルをモニターにドロップすると、本物のアイコンがピクセルアイコンに変わります。
 </td>
-<td width="50%" valign="top">
-<img src="docs/media/feat-power.gif" width="__W_power__" alt="画面収録：モニターの電源ボタンを押すと、昔のブラウン管のように画面がしぼんで消え、電源が切れている間にファイルが届くと、ベゼルに琥珀色の+1バッジが点灯する様子"><br>
+</tr>
+<tr>
+<td valign="top">
+<img src="docs/media/feat-power.gif" width="422" alt="画面収録：モニターの電源ボタンを押すと、昔のブラウン管のように画面がしぼんで消え、電源が切れている間にファイルが届くと、ベゼルに琥珀色の+1バッジが点灯する様子">
+</td>
+<td valign="top">
 <b>ブラウン管の電源ボタン</b><br>
 ⏻を押すと、昔のブラウン管のように画面がしぼんで消え、すべてのファイルが隠れます。電源が切れている間にファイルが届くと、琥珀色の+1バッジが点灯します。
 </td>
 </tr>
 <tr>
-<td width="50%" valign="top">
-<img src="docs/media/feat-input.gif" width="__W_input__" alt="画面収録：INPUTボタンでモニターのHDMIページを切り替え、続いてAVにすると、NO SIGNALのロゴが表示される様子"><br>
+<td valign="top">
+<img src="docs/media/feat-input.gif" width="424" alt="画面収録：INPUTボタンでモニターのHDMIページを切り替え、続いてAVにすると、NO SIGNALのロゴが表示される様子">
+</td>
+<td valign="top">
 <b>INPUTとAV</b><br>
 INPUTで、ファイルが45個ずつ並ぶHDMIページを切り替えます。AVは常に空っぽで、NO SIGNALと表示されます。
 </td>
-<td width="50%" valign="top">
+</tr>
+<tr>
+<td colspan="2" valign="top">
 <b>モニターのほかの機能</b><br>
 Clean Up By（名前、種類、追加日で整頓） · クリック、⌘-クリック、ドラッグで囲む、⌘Aで選択 · 矢印キー、SpaceでQuick Look · 画面の上でスクロールするとページ送り。<br>
 <a href="#機能一覧">機能一覧</a>
@@ -66,36 +76,52 @@ Clean Up By（名前、種類、追加日で整頓） · クリック、⌘-ク�
 
 <table>
 <tr>
-<td width="50%" valign="top">
-<img src="docs/media/feat-drawers.gif" width="__W_drawers__" alt="画面収録：モニター台の引き出しにファイルをドロップすると、引き出しが開いて閉じながらファイルを飲み込み、閉じた引き出しの上でスクロールすると中がのぞけ、小物棚にはファイルがぼんやりしたシルエットで置かれている様子"><br>
+<td valign="top">
+<img src="docs/media/feat-drawers.gif" width="424" alt="画面収録：モニター台の引き出しにファイルをドロップすると、引き出しが開いて閉じながらファイルを飲み込み、閉じた引き出しの上でスクロールすると中がのぞけ、小物棚にはファイルがぼんやりしたシルエットで置かれている様子">
+</td>
+<td valign="top">
 <b>モニター台の引き出しと小物棚</b><br>
 閉じた引き出しにファイルをドロップすると、ぱくっと飲み込みます。上でスクロールすると中をのぞけます。小物棚は半分しか隠しません。
 </td>
-<td width="50%" valign="top">
-<img src="docs/media/feat-cabinet.gif" width="__W_cabinet__" alt="画面収録：椅子がじゃまでファイルキャビネットの引き出しが少ししか開かず、椅子を脇へ押しのけると、引き出しが色分けされたフォルダタブの見えるところまで開く様子"><br>
+</tr>
+<tr>
+<td valign="top">
+<img src="docs/media/feat-cabinet.gif" width="412" alt="画面収録：書類キャビネットの前をふさぐ椅子を転がしてどけ、ファイル引き出しを開けて2つのファイルを入れると、色付きのフォルダタブになる様子">
+</td>
+<td valign="top">
 <b>ファイルキャビネットと椅子</b><br>
 椅子がキャビネットをふさいでいたら、脇へ押しのけてもう一度引きましょう。いちばん下の引き出しは、フォルダタブで書類を整理します。
 </td>
 </tr>
 <tr>
-<td width="50%" valign="top">
-<img src="docs/media/feat-phone.gif" width="__W_phone__" alt="画面収録：スマートフォンにドロップしたファイルが小さなアプリアイコンになり、スマートフォンを伏せて隠す様子"><br>
+<td valign="top">
+<img src="docs/media/feat-phone.gif" width="362" alt="画面収録：スマートフォンにドロップしたファイルが小さなアプリアイコンになり、スマートフォンを伏せて隠す様子">
+</td>
+<td valign="top">
 <b>スマートフォンスタンド</b><br>
 ファイルがスマートフォンのミニアプリになります。伏せておけば隠れます。
 </td>
-<td width="50%" valign="top">
-<img src="docs/media/feat-pencup.gif" width="__W_pencup__" alt="画面収録：ペン立てに入れたファイルがペンになり、ペン立てをはじくと倒れて、ペンがデスクに散らばる様子"><br>
+</tr>
+<tr>
+<td valign="top">
+<img src="docs/media/feat-pencup.gif" width="458" alt="画面収録：ペン立てに入れたファイルがペンになり、ペン立てをはじくと倒れて、ペンがデスクに散らばる様子">
+</td>
+<td valign="top">
 <b>ペン立て</b><br>
 ファイルは、種類ごとの色のキャップが付いたペンになります。ペン立てをはじくと倒れて、ペンがこぼれます。
 </td>
 </tr>
 <tr>
-<td width="50%" valign="top">
-<img src="docs/media/feat-wastebasket.gif" width="__W_wastebasket__" alt="画面収録：ファイルをくずかごへ放り込むとSWISH!と表示され、くずかごを倒してから起こす様子"><br>
+<td valign="top">
+<img src="docs/media/feat-wastebasket.gif" width="368" alt="画面収録：ファイルをくずかごへ放り込むとSWISH!と表示され、くずかごを倒してから起こす様子">
+</td>
+<td valign="top">
 <b>くずかご</b><br>
 ファイルを放り込むと、SWISH! くずかごは倒したり起こしたりできます。隠すだけで、削除はしません。
 </td>
-<td width="50%" valign="top">
+</tr>
+<tr>
+<td colspan="2" valign="top">
 <b>隠し場所のほかの機能</b><br>
 引き出し、小物棚、スマートフォンは、メニューから中身の一覧、中身の移動、全部の取り出しができます · どれだけ入っているかが見えます（入れすぎた引き出しは少し開いたままになり、さらに入れると詰まります） · 勝手に出てくるものはありません。<br>
 <a href="#隠し場所の使い方">隠し場所の使い方</a>
@@ -107,24 +133,32 @@ Clean Up By（名前、種類、追加日で整頓） · クリック、⌘-ク�
 
 <table>
 <tr>
-<td width="50%" valign="top">
-<img src="docs/media/feat-mat.gif" width="__W_mat__" alt="画面収録：デスクマットにドロップしたファイルが下に滑り込んでふくらみを残し、マットの端をめくってファイルを1つ取り出す様子"><br>
+<td valign="top">
+<img src="docs/media/feat-mat.gif" width="440" alt="画面収録：デスクマットにドロップしたファイルが下に滑り込んでふくらみを残し、マットの端をめくってファイルを1つ取り出す様子">
+</td>
+<td valign="top">
 <b>マットの下に掃き込む</b><br>
 マットにファイルをドロップすると、下に滑り込んでふくらみが残ります。端をめくれば、1つ取り出せます。
 </td>
-<td width="50%" valign="top">
-<img src="docs/media/feat-mat-moves.gif" width="__W_mat-moves__" alt="画面収録：デスクマットを持ち運ぶとしわが寄り、Optionキーを押しながら回したりサイズを変えたりすると上のキーボードも一緒に回り、マットを折りたたんでから引っぱって平らにする様子"><br>
+</tr>
+<tr>
+<td colspan="2" valign="top">
+<img src="docs/media/feat-mat-moves.gif" width="616" alt="画面収録：デスクマットを素早く持ち運ぶとしわが寄り、ふちをダブルクリックすると平らに戻る。Optionキーを押しながら角をドラッグすると回転して小さくなり、上のキーボードも一緒に回る。最後に角を折り返す様子"><br>
 <b>本物の布のように</b><br>
 持ち運ぶとしわが寄ります。⌥-ドラッグで回したりサイズを変えたり（上のキーボードも一緒に回ります）、折りたたんだり、引っぱって平らにしたりできます。
 </td>
 </tr>
 <tr>
-<td width="50%" valign="top">
-<img src="docs/media/feat-brush.gif" width="__W_brush__" alt="画面収録：ブラシでファイルの山をデスクマットの下へ押し込み、続いて2本指で横にスクロールしてさらに掃き込む様子"><br>
+<td valign="top">
+<img src="docs/media/feat-brush.gif" width="304" alt="画面収録：ブラシでファイルの山をデスクマットの下へ押し込み、続いて2本指で横にスクロールしてさらに掃き込む様子">
+</td>
+<td valign="top">
 <b>ブラシとスクロールほうき</b><br>
 ブラシで、またはデスクの上で2本指で横にスクロールして、山をマットの下へ押し込みます。
 </td>
-<td width="50%" valign="top">
+</tr>
+<tr>
+<td colspan="2" valign="top">
 <b>マットのほかの機能</b><br>
 Peek Under（下をのぞく） · List Items Under Mat（マットの下の項目） · Rotate、Size、Smooth、Reset Mat · ふくらみはそのままでマットが持ち上がらないFlatモード。<br>
 <a href="#操作方法">操作方法</a>
@@ -136,13 +170,17 @@ Peek Under（下をのぞく） · List Items Under Mat（マットの下の項�
 
 <table>
 <tr>
-<td width="50%" valign="top">
-<img src="docs/media/feat-piles.gif" width="__W_piles__" alt="画面収録：デスクに置いたファイルが山になり、1つをデスクの端から床へ放り投げ、デスクを叩くと上のものがすべて揺れる様子"><br>
+<td valign="top">
+<img src="docs/media/feat-piles.gif" width="424" alt="画面収録：デスクに置いたファイルが山になり、1つをデスクの端から床へ放り投げ、デスクを叩くと上のものがすべて揺れる様子">
+</td>
+<td valign="top">
 <b>山積み、床、デスクを叩く</b><br>
 デスクに置いたファイルは山になります。床へ放り投げたり、デスクの手前の縁をダブルクリックして叩いたりできます。
 </td>
-<td width="50%" valign="top">
-<img src="docs/media/feat-clear-desk.gif" width="__W_clear-desk__" alt="画面収録：Clear the Deskを選ぶと、モニターが消え、スマートフォンが伏せられ、引き出しが閉まり、すべての山がマットの下へ掃き込まれてTIDY!と表示され、Command-Zを1回押すとすべて元に戻る様子"><br>
+</tr>
+<tr>
+<td colspan="2" valign="top">
+<img src="docs/media/feat-clear-desk.gif" width="588" alt="画面収録：Clear the Deskを選ぶと、モニターが消え、スマートフォンが伏せられ、引き出しが閉まり、すべての山がマットの下へ掃き込まれてTIDY!と表示され、Command-Zを1回押すとすべて元に戻る様子"><br>
 <b>Clear the Desk</b><br>
 メニュー項目1つで全部隠します。TIDY! ⌘Zを1回押せば、すべて元どおりです。
 </td>
@@ -153,12 +191,14 @@ Peek Under（下をのぞく） · List Items Under Mat（マットの下の項�
 
 <table>
 <tr>
-<td width="50%" valign="top">
-<img src="docs/media/feat-lights.gif" width="__W_lights__" alt="画面収録：照明をNightにし、壁の部屋の照明スイッチを切ってLamp Onlyにして、デスクライトをクリックする様子"><br>
+<td colspan="2" valign="top">
+<img src="docs/media/feat-lights.gif" width="588" alt="画面収録：照明をNightにし、壁の部屋の照明スイッチを切ってLamp Onlyにして、デスクライトをクリックする様子"><br>
 <b>NightとLamp Only</b><br>
 照明をNight（夜）にして、部屋のスイッチを切ればLamp Only（デスクライトだけ）。デスクライトはクリックでつけたり消したりできます。
 </td>
-<td width="50%" valign="top">
+</tr>
+<tr>
+<td colspan="2" valign="top">
 <b>照明のほかの機能</b><br>
 Autoは時計に合わせて昼、夕暮れ、夜と移り変わります · 時計の分針をドラッグすると別の時刻をプレビュー · Lamp Onlyのとき、暗がりのファイルは選べないシルエットになります。<br>
 <a href="#機能一覧">機能一覧</a>
@@ -170,24 +210,32 @@ Autoは時計に合わせて昼、夕暮れ、夜と移り変わります · 時
 
 <table>
 <tr>
-<td width="50%" valign="top">
-<img src="docs/media/feat-find.gif" width="__W_find__" alt="画面収録：Command-FでFind Itemウインドウを開くと、すべてのファイルとその場所が一覧になり、Show on Deskを押すと隠し場所が開いてファイルを指し示す様子"><br>
+<td colspan="2" valign="top">
+<img src="docs/media/feat-find.gif" width="584" alt="画面収録：Command-FでFind Itemウインドウを開くと、すべてのファイルとその場所が一覧になり、Show on Deskを押すと隠し場所が開いてファイルを指し示す様子"><br>
 <b>Find Item…</b><br>
 ⌘Fで、すべてのファイルとその隠し場所を一覧できます。Show on Deskは隠し場所を開いて、ファイルを指し示します。
 </td>
-<td width="50%" valign="top">
-<img src="docs/media/feat-trash.gif" width="__W_trash__" alt="画面収録：Move to TrashでファイルをmacOSのゴミ箱に送り、Command-Zでデスクの同じ場所に戻す様子"><br>
+</tr>
+<tr>
+<td valign="top">
+<img src="docs/media/feat-trash.gif" width="424" alt="画面収録：Move to TrashでファイルをmacOSのゴミ箱に送り、Command-Zでデスクの同じ場所に戻す様子">
+</td>
+<td valign="top">
 <b>Move to Trash、そして元に戻す</b><br>
 Move to Trash（ゴミ箱に入れる）はファイルをmacOSのゴミ箱に送ります。⌘Zで同じ場所に戻ります。
 </td>
 </tr>
 <tr>
-<td width="50%" valign="top">
-<img src="docs/media/feat-drives.gif" width="__W_drives__" alt="画面収録：USBメモリを差し込むとデスクのドライブハブに現れ、そのメニューから取り出す様子"><br>
+<td valign="top">
+<img src="docs/media/feat-drives.gif" width="256" alt="画面収録：USBメモリを差し込むとデスクのドライブハブに現れ、そのメニューから取り出す様子">
+</td>
+<td valign="top">
 <b>ドライブハブ</b><br>
 USBメモリは、デスクのハブに差し込まれた姿で現れます。取り出しはメニューのEjectから。
 </td>
-<td width="50%" valign="top">
+</tr>
+<tr>
+<td colspan="2" valign="top">
 <b>ファイルのほかの機能</b><br>
 Finderからファイルをドロップ · ほかのアプリへドラッグして出す · Empty Wastebasket…はまず名前を一覧表示 · すべての操作を記録。<br>
 <a href="#ファイルは安全です">ファイルは安全です</a>
@@ -199,12 +247,14 @@ Finderからファイルをドロップ · ほかのアプリへドラッグし�
 
 <table>
 <tr>
-<td width="50%" valign="top">
-<img src="docs/media/feat-peek.gif" width="__W_peek__" alt="画面収録：Peek Deskで、開いているウインドウの上にデスクを一時的に浮かべる様子"><br>
+<td colspan="2" valign="top">
+<img src="docs/media/feat-peek.gif" width="588" alt="画面収録：Peek Deskで、開いているウインドウの上にデスクを一時的に浮かべる様子"><br>
 <b>Peek Desk</b><br>
 Peek Deskは、ウインドウの上にデスクを一時的に浮かべます。
 </td>
-<td width="50%" valign="top">
+</tr>
+<tr>
+<td colspan="2" valign="top">
 <b>システムのほかの機能</b><br>
 Pause Desk · ほかのディスプレイにもおそろいの壁 · フルスクリーンのアプリ、スリープ、（設定すれば）バッテリー駆動中は一時停止 · メニューバーアイコンのみで、Dockアイコンなし。<br>
 <a href="#設定">設定</a>

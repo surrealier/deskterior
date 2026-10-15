@@ -6,6 +6,14 @@ All notable changes to Deskterior are listed here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- **README in five languages.** English, 한국어, 简体中文, 日本語 and Español editions with a language selector, a
+  gallery of 18 real screen recordings (one per feature) and a complete feature list. The hero GIF is a real screen
+  recording too.
+- **Capture tooling** in `scripts/capture/` for those recordings: an input director that drives scenes with real
+  mouse and keyboard events, art-aligned ffmpeg recording, and a GIF cutter that keeps the pixel art exact.
+
 ## [0.1.0] - 2026-10-15
 
 The first release: milestones M0–M13 of [docs/DESIGN.md](docs/DESIGN.md).

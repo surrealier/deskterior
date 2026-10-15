@@ -1,0 +1,8 @@
+[
+ {"note":"start","warp":[960,600]},{"wait":0.3},
+ {"note":"chair aside","drag":{"from":[1105,750],"to":[915,750],"dur":0.7,"approach":0.35,"hold":0.3}},{"wait":0.4},
+ {"note":"open file drawer","click":[1175,855],"dur":0.35},{"wait":0.5},
+ {"drag":{"from":[1283,630],"to":[1175,868],"dur":0.5,"approach":0.35,"hold":0.25}},{"wait":0.5},
+ {"drag":{"from":[1322,617],"to":[1175,868],"dur":0.5,"approach":0.35,"hold":0.25}},{"wait":0.5},
+ {"move":[1290,790],"dur":0.35},{"wait":1.2}
+]

@@ -43,24 +43,34 @@
 
 <table>
 <tr>
-<td width="50%" valign="top">
-<img src="docs/media/feat-apps.gif" width="__W_apps__" alt="화면 녹화: Finder 창에서 앱과 파일을 픽셀 아트 모니터로 끌어오자 진짜 아이콘이 픽셀 아이콘으로 바뀌는 모습"><br>
+<td valign="top">
+<img src="docs/media/feat-apps.gif" width="424" alt="화면 녹화: Finder 창에서 앱과 파일을 픽셀 아트 모니터로 끌어오자 진짜 아이콘이 픽셀 아이콘으로 바뀌는 모습">
+</td>
+<td valign="top">
 <b>진짜 아이콘을 픽셀로</b><br>
 Finder에서 앱이나 파일을 모니터에 놓으면 진짜 아이콘이 픽셀 아이콘으로 바뀝니다.
 </td>
-<td width="50%" valign="top">
-<img src="docs/media/feat-power.gif" width="__W_power__" alt="화면 녹화: 모니터 전원 버튼을 누르자 옛날 브라운관처럼 화면이 한 줄로 오므라들고, 꺼져 있는 동안 파일이 하나 생기자 모니터 테두리에 주황색 +1 배지가 켜지는 모습"><br>
+</tr>
+<tr>
+<td valign="top">
+<img src="docs/media/feat-power.gif" width="422" alt="화면 녹화: 모니터 전원 버튼을 누르자 옛날 브라운관처럼 화면이 한 줄로 오므라들고, 꺼져 있는 동안 파일이 하나 생기자 모니터 테두리에 주황색 +1 배지가 켜지는 모습">
+</td>
+<td valign="top">
 <b>브라운관 전원 버튼</b><br>
 ⏻을 누르면 옛날 브라운관처럼 화면이 오므라들며 모든 파일이 숨습니다. 꺼져 있는 동안 파일이 생기면 주황색 +1 배지가 켜집니다.
 </td>
 </tr>
 <tr>
-<td width="50%" valign="top">
-<img src="docs/media/feat-input.gif" width="__W_input__" alt="화면 녹화: INPUT 버튼으로 모니터의 파일 페이지를 HDMI 입력별로 넘기다가 AV로 바꾸자 NO SIGNAL 로고가 뜨는 모습"><br>
+<td valign="top">
+<img src="docs/media/feat-input.gif" width="424" alt="화면 녹화: INPUT 버튼으로 모니터의 파일 페이지를 HDMI 입력별로 넘기다가 AV로 바꾸자 NO SIGNAL 로고가 뜨는 모습">
+</td>
+<td valign="top">
 <b>INPUT과 AV</b><br>
 INPUT으로 파일이 45개씩 담긴 HDMI 페이지를 넘깁니다. AV는 늘 비어 있어 NO SIGNAL만 뜹니다.
 </td>
-<td width="50%" valign="top">
+</tr>
+<tr>
+<td colspan="2" valign="top">
 <b>모니터의 다른 기능</b><br>
 정리 기준 ▸ 이름·종류·추가된 날짜 · 클릭, ⌘-클릭, 끌어서 그린 상자, ⌘A로 선택 · 화살표 키와 Space(훑어보기) · 화면 위에서 스크롤하면 페이지 넘김.<br>
 <a href="#기능-전체-목록">기능 전체 목록</a>
@@ -72,36 +82,52 @@ INPUT으로 파일이 45개씩 담긴 HDMI 페이지를 넘깁니다. AV는 늘 
 
 <table>
 <tr>
-<td width="50%" valign="top">
-<img src="docs/media/feat-drawers.gif" width="__W_drawers__" alt="화면 녹화: 받침대 서랍에 놓은 파일을 서랍이 열렸다 닫히며 삼키고, 닫힌 서랍 위에서 스크롤하자 안이 살짝 보이고, 받침대 칸에는 파일이 어렴풋한 실루엣으로 놓인 모습"><br>
+<td valign="top">
+<img src="docs/media/feat-drawers.gif" width="424" alt="화면 녹화: 받침대 서랍에 놓은 파일을 서랍이 열렸다 닫히며 삼키고, 닫힌 서랍 위에서 스크롤하자 안이 살짝 보이고, 받침대 칸에는 파일이 어렴풋한 실루엣으로 놓인 모습">
+</td>
+<td valign="top">
 <b>받침대 서랍과 받침대 칸</b><br>
 닫힌 서랍에 파일을 놓으면 덥석 삼킵니다. 서랍 위에서 스크롤하면 살짝 들여다볼 수 있고, 받침대 칸은 반만 숨깁니다.
 </td>
-<td width="50%" valign="top">
-<img src="docs/media/feat-cabinet.gif" width="__W_cabinet__" alt="화면 녹화: 의자가 가로막아 서랍장 서랍이 조금만 열리고, 의자를 옆으로 밀어내자 서랍이 색깔 폴더 탭이 보이게 열리는 모습"><br>
+</tr>
+<tr>
+<td valign="top">
+<img src="docs/media/feat-cabinet.gif" width="412" alt="화면 녹화: 서랍장 앞을 막은 의자를 굴려 옆으로 치우고, 서류 서랍을 열어 파일 두 개를 넣자 색깔 폴더 탭이 되는 모습">
+</td>
+<td valign="top">
 <b>서랍장과 의자</b><br>
 의자가 서랍장을 가로막으면 옆으로 밀어내고 다시 당기세요. 맨 아래 서류 칸은 폴더 탭으로 정리됩니다.
 </td>
 </tr>
 <tr>
-<td width="50%" valign="top">
-<img src="docs/media/feat-phone.gif" width="__W_phone__" alt="화면 녹화: 휴대폰에 놓은 파일이 작은 앱 아이콘이 되고, 휴대폰을 엎어서 숨기는 모습"><br>
+<td valign="top">
+<img src="docs/media/feat-phone.gif" width="362" alt="화면 녹화: 휴대폰에 놓은 파일이 작은 앱 아이콘이 되고, 휴대폰을 엎어서 숨기는 모습">
+</td>
+<td valign="top">
 <b>휴대폰 거치대</b><br>
 파일이 휴대폰 속 작은 앱이 됩니다. 휴대폰을 엎어 두면 숨습니다.
 </td>
-<td width="50%" valign="top">
-<img src="docs/media/feat-pencup.gif" width="__W_pencup__" alt="화면 녹화: 펜꽂이에 넣은 파일이 펜이 되고, 펜꽂이를 휙 밀자 넘어지며 펜이 책상 위로 쏟아지는 모습"><br>
+</tr>
+<tr>
+<td valign="top">
+<img src="docs/media/feat-pencup.gif" width="458" alt="화면 녹화: 펜꽂이에 넣은 파일이 펜이 되고, 펜꽂이를 휙 밀자 넘어지며 펜이 책상 위로 쏟아지는 모습">
+</td>
+<td valign="top">
 <b>펜꽂이</b><br>
 파일이 종류별 색깔 뚜껑을 단 펜이 됩니다. 펜꽂이를 휙 밀면 넘어지면서 펜이 쏟아집니다.
 </td>
 </tr>
 <tr>
-<td width="50%" valign="top">
-<img src="docs/media/feat-wastebasket.gif" width="__W_wastebasket__" alt="화면 녹화: 파일을 쓰레기통에 던져 넣자 SWISH!가 뜨고, 쓰레기통을 넘어뜨렸다가 다시 세우는 모습"><br>
+<td valign="top">
+<img src="docs/media/feat-wastebasket.gif" width="368" alt="화면 녹화: 파일을 쓰레기통에 던져 넣자 SWISH!가 뜨고, 쓰레기통을 넘어뜨렸다가 다시 세우는 모습">
+</td>
+<td valign="top">
 <b>쓰레기통</b><br>
 파일을 던져 넣으면 SWISH! 쓰레기통을 넘어뜨렸다가 다시 세울 수 있습니다. 숨길 뿐 지우지 않습니다.
 </td>
-<td width="50%" valign="top">
+</tr>
+<tr>
+<td colspan="2" valign="top">
 <b>숨겨 둘 곳의 다른 기능</b><br>
 서랍·받침대 칸·휴대폰 메뉴에서 내용 보기, 내용물 옮기기, 전부 꺼내기 · 얼마나 찼는지 보임(너무 찬 서랍은 살짝 열린 채로 있다가 꽉 끼면 더 들어가지 않음) · 저절로 튀어나오는 건 없음.<br>
 <a href="#숨기는-곳">숨기는 곳</a>
@@ -113,24 +139,32 @@ INPUT으로 파일이 45개씩 담긴 HDMI 페이지를 넘깁니다. AV는 늘 
 
 <table>
 <tr>
-<td width="50%" valign="top">
-<img src="docs/media/feat-mat.gif" width="__W_mat__" alt="화면 녹화: 책상 매트에 놓은 파일이 밑으로 쏙 들어가 매트가 볼록 솟고, 매트 가장자리를 들춰 파일 하나를 꺼내는 모습"><br>
+<td valign="top">
+<img src="docs/media/feat-mat.gif" width="440" alt="화면 녹화: 책상 매트에 놓은 파일이 밑으로 쏙 들어가 매트가 볼록 솟고, 매트 가장자리를 들춰 파일 하나를 꺼내는 모습">
+</td>
+<td valign="top">
 <b>매트 밑에 쓸어 넣기</b><br>
 매트에 파일을 놓으면 밑으로 쏙 들어가고 그 자리가 볼록 솟습니다. 가장자리를 들추면 하나씩 꺼낼 수 있습니다.
 </td>
-<td width="50%" valign="top">
-<img src="docs/media/feat-mat-moves.gif" width="__W_mat-moves__" alt="화면 녹화: 책상 매트를 끌어 옮기자 주름이 생기고, Option 키를 누른 채 돌리고 크기를 바꾸자 위에 놓인 키보드도 함께 돌고, 매트를 접었다가 당겨서 펴는 모습"><br>
+</tr>
+<tr>
+<td colspan="2" valign="top">
+<img src="docs/media/feat-mat-moves.gif" width="616" alt="화면 녹화: 책상 매트를 빠르게 옮기자 주름이 생기고 가장자리를 두 번 클릭하자 펴지며, Option 키를 누른 채 모서리를 끌어 돌리고 줄이자 위에 놓인 키보드도 함께 돌고, 마지막으로 모서리를 접어 넘기는 모습"><br>
 <b>진짜 천 한 장처럼</b><br>
 끌어 옮기면 주름이 집니다. ⌥-끌기로 돌리거나 크기를 바꾸고(위에 놓인 키보드도 함께 돌아갑니다), 접고, 당겨서 펴세요.
 </td>
 </tr>
 <tr>
-<td width="50%" valign="top">
-<img src="docs/media/feat-brush.gif" width="__W_brush__" alt="화면 녹화: 빗자루로 파일 더미를 책상 매트 밑으로 밀어 넣고, 두 손가락으로 옆으로 스크롤해 더 쓸어 넣는 모습"><br>
+<td valign="top">
+<img src="docs/media/feat-brush.gif" width="304" alt="화면 녹화: 빗자루로 파일 더미를 책상 매트 밑으로 밀어 넣고, 두 손가락으로 옆으로 스크롤해 더 쓸어 넣는 모습">
+</td>
+<td valign="top">
 <b>빗자루와 스크롤 빗자루</b><br>
 빗자루로, 또는 책상 위에서 두 손가락으로 옆으로 스크롤해서 더미를 매트 밑으로 밀어 넣습니다.
 </td>
-<td width="50%" valign="top">
+</tr>
+<tr>
+<td colspan="2" valign="top">
 <b>매트의 다른 기능</b><br>
 밑 들춰 보기 · 매트 밑 항목 보기 · 돌리기, 크기, 매트 펴기, 매트 처음대로 · 매트가 들리지 않고 볼록한 모양만 남는 ‘평평하게’ 모드.<br>
 <a href="#조작법">조작법</a>
@@ -142,13 +176,17 @@ INPUT으로 파일이 45개씩 담긴 HDMI 페이지를 넘깁니다. AV는 늘 
 
 <table>
 <tr>
-<td width="50%" valign="top">
-<img src="docs/media/feat-piles.gif" width="__W_piles__" alt="화면 녹화: 책상에 내려놓은 파일이 더미를 이루고, 하나를 책상 모서리 너머 바닥으로 휙 던지고, 책상을 두드리자 위에 있는 것들이 모두 흔들리는 모습"><br>
+<td valign="top">
+<img src="docs/media/feat-piles.gif" width="424" alt="화면 녹화: 책상에 내려놓은 파일이 더미를 이루고, 하나를 책상 모서리 너머 바닥으로 휙 던지고, 책상을 두드리자 위에 있는 것들이 모두 흔들리는 모습">
+</td>
+<td valign="top">
 <b>더미, 바닥, 두드리기</b><br>
 책상에 내려놓은 파일은 더미로 쌓입니다. 바닥으로 휙 던질 수도 있고, 책상 앞쪽 가장자리를 더블클릭하면 책상을 두드립니다.
 </td>
-<td width="50%" valign="top">
-<img src="docs/media/feat-clear-desk.gif" width="__W_clear-desk__" alt="화면 녹화: 책상 치우기를 고르자 모니터가 꺼지고 휴대폰이 엎어지고 서랍이 닫히고 더미가 모두 매트 밑으로 쓸려 들어간 뒤 TIDY!가 뜨고, Command-Z 한 번에 모두 돌아오는 모습"><br>
+</tr>
+<tr>
+<td colspan="2" valign="top">
+<img src="docs/media/feat-clear-desk.gif" width="588" alt="화면 녹화: 책상 치우기를 고르자 모니터가 꺼지고 휴대폰이 엎어지고 서랍이 닫히고 더미가 모두 매트 밑으로 쓸려 들어간 뒤 TIDY!가 뜨고, Command-Z 한 번에 모두 돌아오는 모습"><br>
 <b>책상 치우기</b><br>
 메뉴 항목 하나로 전부 숨깁니다. TIDY! ⌘Z 한 번이면 모두 그대로 돌아옵니다.
 </td>
@@ -159,12 +197,14 @@ INPUT으로 파일이 45개씩 담긴 HDMI 페이지를 넘깁니다. AV는 늘 
 
 <table>
 <tr>
-<td width="50%" valign="top">
-<img src="docs/media/feat-lights.gif" width="__W_lights__" alt="화면 녹화: 조명을 밤으로 바꾸고, 벽의 방 조명 스위치를 꺼서 스탠드만 남기고, 책상 스탠드를 클릭하는 모습"><br>
+<td colspan="2" valign="top">
+<img src="docs/media/feat-lights.gif" width="588" alt="화면 녹화: 조명을 밤으로 바꾸고, 벽의 방 조명 스위치를 꺼서 스탠드만 남기고, 책상 스탠드를 클릭하는 모습"><br>
 <b>밤과 스탠드만</b><br>
 조명을 밤으로 바꾸고, 방 조명 스위치를 꺼서 스탠드만 남기고, 책상 스탠드를 클릭해 보세요.
 </td>
-<td width="50%" valign="top">
+</tr>
+<tr>
+<td colspan="2" valign="top">
 <b>조명의 다른 기능</b><br>
 자동은 시계를 따라 낮, 해 질 녘, 밤으로 바뀜 · 시계 분침을 끌어 다른 시간 미리 보기 · 스탠드만일 때 어둠 속 파일은 집을 수 없는 실루엣.<br>
 <a href="#기능-전체-목록">기능 전체 목록</a>
@@ -176,24 +216,32 @@ INPUT으로 파일이 45개씩 담긴 HDMI 페이지를 넘깁니다. AV는 늘 
 
 <table>
 <tr>
-<td width="50%" valign="top">
-<img src="docs/media/feat-find.gif" width="__W_find__" alt="화면 녹화: Command-F로 항목 찾기 창을 열자 모든 파일과 그 위치가 나오고, 책상에서 보기를 누르자 숨긴 곳이 열리며 파일을 짚어 주는 모습"><br>
+<td colspan="2" valign="top">
+<img src="docs/media/feat-find.gif" width="584" alt="화면 녹화: Command-F로 항목 찾기 창을 열자 모든 파일과 그 위치가 나오고, 책상에서 보기를 누르자 숨긴 곳이 열리며 파일을 짚어 주는 모습"><br>
 <b>항목 찾기…</b><br>
 ⌘F로 모든 파일과 숨은 곳을 봅니다. ‘책상에서 보기’는 숨긴 곳을 열어 파일을 짚어 줍니다.
 </td>
-<td width="50%" valign="top">
-<img src="docs/media/feat-trash.gif" width="__W_trash__" alt="화면 녹화: 휴지통으로 이동으로 파일을 macOS 휴지통에 보냈다가 Command-Z로 책상의 같은 자리에 되돌리는 모습"><br>
+</tr>
+<tr>
+<td valign="top">
+<img src="docs/media/feat-trash.gif" width="424" alt="화면 녹화: 휴지통으로 이동으로 파일을 macOS 휴지통에 보냈다가 Command-Z로 책상의 같은 자리에 되돌리는 모습">
+</td>
+<td valign="top">
 <b>휴지통으로 이동, 그리고 되돌리기</b><br>
 ‘휴지통으로 이동’은 파일을 macOS 휴지통으로 보냅니다. ⌘Z를 누르면 같은 자리로 돌아옵니다.
 </td>
 </tr>
 <tr>
-<td width="50%" valign="top">
-<img src="docs/media/feat-drives.gif" width="__W_drives__" alt="화면 녹화: USB 메모리를 꽂자 책상 위 드라이브 허브에 나타나고, 메뉴에서 추출하는 모습"><br>
+<td valign="top">
+<img src="docs/media/feat-drives.gif" width="256" alt="화면 녹화: USB 메모리를 꽂자 책상 위 드라이브 허브에 나타나고, 메뉴에서 추출하는 모습">
+</td>
+<td valign="top">
 <b>드라이브 허브</b><br>
 USB 메모리를 꽂으면 책상 위 허브에 꽂힌 채 나타납니다. 추출은 메뉴에서 합니다.
 </td>
-<td width="50%" valign="top">
+</tr>
+<tr>
+<td colspan="2" valign="top">
 <b>파일 관련 다른 기능</b><br>
 Finder에서 파일 끌어다 놓기 · 다른 앱으로 끌어내기 · ‘쓰레기통 비우기…’는 이름 목록부터 보여 줌 · 모든 작업은 기록으로 남음.<br>
 <a href="#파일은-안전합니다">파일은 안전합니다</a>
@@ -205,12 +253,14 @@ Finder에서 파일 끌어다 놓기 · 다른 앱으로 끌어내기 · ‘쓰�
 
 <table>
 <tr>
-<td width="50%" valign="top">
-<img src="docs/media/feat-peek.gif" width="__W_peek__" alt="화면 녹화: 책상 엿보기로 열린 창들 위에 책상을 잠깐 띄우는 모습"><br>
+<td colspan="2" valign="top">
+<img src="docs/media/feat-peek.gif" width="588" alt="화면 녹화: 책상 엿보기로 열린 창들 위에 책상을 잠깐 띄우는 모습"><br>
 <b>책상 엿보기</b><br>
 책상 엿보기는 열린 창들 위로 책상을 잠깐 띄웁니다.
 </td>
-<td width="50%" valign="top">
+</tr>
+<tr>
+<td colspan="2" valign="top">
 <b>시스템의 다른 기능</b><br>
 책상 일시 정지 · 다른 디스플레이에는 어울리는 벽 · 전체 화면 앱, 잠자기, (원하면) 배터리 사용 중에는 멈춤 · Dock 아이콘 없이 메뉴 막대 아이콘만.<br>
 <a href="#설정">설정</a>

@@ -1,0 +1,11 @@
+[
+ {"note":"start","warp":[300,580]},{"wait":0.3},
+ {"drag":{"from":[555,418],"to":[420,655],"dur":0.55,"approach":0.35,"hold":0.25}},{"wait":0.3},
+ {"drag":{"from":[605,418],"to":[424,652],"dur":0.5,"approach":0.35,"hold":0.25}},{"wait":0.3},
+ {"drag":{"from":[655,418],"to":[345,682],"dur":0.55,"approach":0.35,"hold":0.25}},{"wait":0.5},
+ {"note":"fling","drag":{"from":[345,682],"to":[368,775],"dur":0.06,"approach":0.3,"hold":0,"press":0.06,"linear":true}},
+ {"wait":1.0},
+ {"note":"knock","click":[470,731],"count":2,"dur":0.4},{"wait":1.2},
+ {"note":"knock 2","click":[470,731],"count":2,"dur":0.05},{"wait":0.5},
+ {"move":[300,610],"dur":0.35},{"wait":1.0}
+]

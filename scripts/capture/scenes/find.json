@@ -1,0 +1,8 @@
+[
+ {"note":"start","warp":[60,660]},{"wait":0.4},
+ {"note":"cmd-F","key":3,"mods":["cmd"],"chars":"f"},{"wait":0.6},
+ {"key":19,"chars":"2"},{"wait":0.12},{"key":29,"chars":"0"},{"wait":0.12},{"key":21,"chars":"4"},{"wait":0.12},{"key":18,"chars":"1"},
+ {"wait":0.6},
+ {"note":"select","key":125},{"wait":0.6},
+ {"note":"Show on Desk (Return)","key":36,"chars":"\r"},{"wait":2.2}
+]

@@ -37,24 +37,34 @@ Deskterior 的界面只有英文和韩文两种语言，会按你 Mac 的语言�
 
 <table>
 <tr>
-<td width="50%" valign="top">
-<img src="docs/media/feat-apps.gif" width="__W_apps__" alt="录屏：从访达窗口把应用和文件拖到像素风显示器上，它们的真实图标变成像素图标"><br>
+<td valign="top">
+<img src="docs/media/feat-apps.gif" width="424" alt="录屏：从访达窗口把应用和文件拖到像素风显示器上，它们的真实图标变成像素图标">
+</td>
+<td valign="top">
 <b>真实图标，像素呈现</b><br>
 把应用或文件从访达拖到显示器上：它们的真实图标会变成像素图标。
 </td>
-<td width="50%" valign="top">
-<img src="docs/media/feat-power.gif" width="__W_power__" alt="录屏：按下显示器的电源键，画面像老式 CRT 显像管一样收缩消失；关机时来了一个文件，边框上亮起琥珀色的 +1 角标"><br>
+</tr>
+<tr>
+<td valign="top">
+<img src="docs/media/feat-power.gif" width="422" alt="录屏：按下显示器的电源键，画面像老式 CRT 显像管一样收缩消失；关机时来了一个文件，边框上亮起琥珀色的 +1 角标">
+</td>
+<td valign="top">
 <b>CRT 电源键</b><br>
 ⏻ 让画面像老式 CRT 一样收缩消失，所有文件随之隐藏。关机期间有文件到来，会亮起琥珀色的 +1 角标。
 </td>
 </tr>
 <tr>
-<td width="50%" valign="top">
-<img src="docs/media/feat-input.gif" width="__W_input__" alt="录屏：INPUT 按钮让显示器在各个 HDMI 文件页之间切换，然后切到 AV，屏幕上出现 NO SIGNAL 标志"><br>
+<td valign="top">
+<img src="docs/media/feat-input.gif" width="424" alt="录屏：INPUT 按钮让显示器在各个 HDMI 文件页之间切换，然后切到 AV，屏幕上出现 NO SIGNAL 标志">
+</td>
+<td valign="top">
 <b>INPUT 与 AV</b><br>
 INPUT 在 HDMI 页之间切换，每页 45 个文件。AV 永远是空的：NO SIGNAL。
 </td>
-<td width="50%" valign="top">
+</tr>
+<tr>
+<td colspan="2" valign="top">
 <b>显示器上的其他功能</b><br>
 Clean Up By（整理方式）按名称、种类或添加日期 · 点击、按住 ⌘ 点击、拖出选框或 ⌘A 选择 · 方向键；空格键快速查看 · 在屏幕上滚动即可翻页。<br>
 <a href="#全部功能">全部功能</a>
@@ -66,36 +76,52 @@ Clean Up By（整理方式）按名称、种类或添加日期 · 点击、按�
 
 <table>
 <tr>
-<td width="50%" valign="top">
-<img src="docs/media/feat-drawers.gif" width="__W_drawers__" alt="录屏：放到增高架抽屉上的文件被抽屉一开一合吞了进去；在关着的抽屉上滚动可以偷看里面；置物格里的文件显示为暗淡的剪影"><br>
+<td valign="top">
+<img src="docs/media/feat-drawers.gif" width="424" alt="录屏：放到增高架抽屉上的文件被抽屉一开一合吞了进去；在关着的抽屉上滚动可以偷看里面；置物格里的文件显示为暗淡的剪影">
+</td>
+<td valign="top">
 <b>增高架抽屉与置物格</b><br>
 把文件放到关着的抽屉上，它会一口吞下。在抽屉上滚动可以偷看；置物格只藏一半。
 </td>
-<td width="50%" valign="top">
-<img src="docs/media/feat-cabinet.gif" width="__W_cabinet__" alt="录屏：椅子挡在前面，文件柜抽屉只能拉开一条缝；把椅子推开后，抽屉打开，露出彩色的文件夹标签"><br>
+</tr>
+<tr>
+<td valign="top">
+<img src="docs/media/feat-cabinet.gif" width="412" alt="录屏：把挡在文件柜前的椅子推到一旁，拉开文件抽屉，放进去的两个文件变成了彩色的文件夹标签">
+</td>
+<td valign="top">
 <b>文件柜与椅子</b><br>
 椅子挡住了文件柜：把它推开，再拉一次。最下层抽屉会把文件归到文件夹标签下。
 </td>
 </tr>
 <tr>
-<td width="50%" valign="top">
-<img src="docs/media/feat-phone.gif" width="__W_phone__" alt="录屏：放到手机上的文件变成小小的应用图标，把手机屏幕朝下扣过去就把它们藏起来了"><br>
+<td valign="top">
+<img src="docs/media/feat-phone.gif" width="362" alt="录屏：放到手机上的文件变成小小的应用图标，把手机屏幕朝下扣过去就把它们藏起来了">
+</td>
+<td valign="top">
 <b>手机支架</b><br>
 文件会变成手机上的迷你应用。把手机屏幕朝下扣过去，它们就藏起来了。
 </td>
-<td width="50%" valign="top">
-<img src="docs/media/feat-pencup.gif" width="__W_pencup__" alt="录屏：放进笔筒的文件变成笔；甩一下笔筒，它倒下，笔撒满桌面"><br>
+</tr>
+<tr>
+<td valign="top">
+<img src="docs/media/feat-pencup.gif" width="458" alt="录屏：放进笔筒的文件变成笔；甩一下笔筒，它倒下，笔撒满桌面">
+</td>
+<td valign="top">
 <b>笔筒</b><br>
 文件变成笔，笔帽颜色代表文件种类。甩一下笔筒，它就会倒下，把笔撒出来。
 </td>
 </tr>
 <tr>
-<td width="50%" valign="top">
-<img src="docs/media/feat-wastebasket.gif" width="__W_wastebasket__" alt="录屏：一个文件被扔进垃圾桶，出现 SWISH!，然后垃圾桶被碰倒，又被扶了起来"><br>
+<td valign="top">
+<img src="docs/media/feat-wastebasket.gif" width="368" alt="录屏：一个文件被扔进垃圾桶，出现 SWISH!，然后垃圾桶被碰倒，又被扶了起来">
+</td>
+<td valign="top">
 <b>垃圾桶</b><br>
 把文件扔进去：SWISH! 可以把垃圾桶碰倒，再扶起来。只是藏起来，并没有删除。
 </td>
-<td width="50%" valign="top">
+</tr>
+<tr>
+<td colspan="2" valign="top">
 <b>藏身处的其他功能</b><br>
 抽屉、置物格和手机可以在各自的菜单里列出内容、移走内容或全部取出 · 能看出装了多满（太满的抽屉会微微敞开，再多就卡住） · 不会有东西自己跑出来。<br>
 <a href="#东西藏在哪里">东西藏在哪里</a>
@@ -107,24 +133,32 @@ Clean Up By（整理方式）按名称、种类或添加日期 · 点击、按�
 
 <table>
 <tr>
-<td width="50%" valign="top">
-<img src="docs/media/feat-mat.gif" width="__W_mat__" alt="录屏：放到桌垫上的文件滑到垫子底下，留下鼓包；掀起桌垫边缘，取出一个文件"><br>
+<td valign="top">
+<img src="docs/media/feat-mat.gif" width="440" alt="录屏：放到桌垫上的文件滑到垫子底下，留下鼓包；掀起桌垫边缘，取出一个文件">
+</td>
+<td valign="top">
 <b>扫到垫子底下</b><br>
 把文件放到桌垫上：它们会滑进底下，留下鼓包。掀起边缘就能取出一个。
 </td>
-<td width="50%" valign="top">
-<img src="docs/media/feat-mat-moves.gif" width="__W_mat-moves__" alt="录屏：搬动桌垫时出现褶皱；按住 Option 键旋转并调整大小，垫子上的键盘也跟着转；把桌垫对折，再把它拽平"><br>
+</tr>
+<tr>
+<td colspan="2" valign="top">
+<img src="docs/media/feat-mat-moves.gif" width="616" alt="录屏：快速搬动桌垫时出现褶皱，双击边缘即可抚平；按住 Option 键拖动一角，桌垫随之旋转并缩小，上面的键盘也跟着转；最后把一角折过来"><br>
 <b>一块真正的布</b><br>
 搬动它会起皱。按住 ⌥ 拖动可以旋转或调整大小（上面的键盘跟着一起转），还能对折，拽一拽就平了。
 </td>
 </tr>
 <tr>
-<td width="50%" valign="top">
-<img src="docs/media/feat-brush.gif" width="__W_brush__" alt="录屏：刷子把文件堆推到桌垫底下，接着用两指横向滚动再扫进去一些"><br>
+<td valign="top">
+<img src="docs/media/feat-brush.gif" width="304" alt="录屏：刷子把文件堆推到桌垫底下，接着用两指横向滚动再扫进去一些">
+</td>
+<td valign="top">
 <b>刷子与滚动扫帚</b><br>
 用刷子把文件堆推到垫子底下，或者在书桌上用两指横向滚动。
 </td>
-<td width="50%" valign="top">
+</tr>
+<tr>
+<td colspan="2" valign="top">
 <b>桌垫的其他功能</b><br>
 Peek Under · List Items Under Mat · Rotate、Size、Smooth、Reset Mat · Flat（平铺）模式保留鼓包，但桌垫不会掀起。<br>
 <a href="#操作手势">操作手势</a>
@@ -136,13 +170,17 @@ Peek Under · List Items Under Mat · Rotate、Size、Smooth、Reset Mat · Flat
 
 <table>
 <tr>
-<td width="50%" valign="top">
-<img src="docs/media/feat-piles.gif" width="__W_piles__" alt="录屏：放在书桌上的文件堆成一堆；一个文件被甩出桌边落到地板上；敲一下书桌，桌上的东西都晃了起来"><br>
+<td valign="top">
+<img src="docs/media/feat-piles.gif" width="424" alt="录屏：放在书桌上的文件堆成一堆；一个文件被甩出桌边落到地板上；敲一下书桌，桌上的东西都晃了起来">
+</td>
+<td valign="top">
 <b>文件堆、地板与敲桌子</b><br>
 放在桌面上的文件会堆起来。可以把一个甩到地板上；双击书桌前沿就能敲一下桌子。
 </td>
-<td width="50%" valign="top">
-<img src="docs/media/feat-clear-desk.gif" width="__W_clear-desk__" alt="录屏：Clear the Desk 关掉显示器、把手机扣下、关上抽屉，把所有文件堆扫到桌垫底下，然后出现 TIDY!；按一次 Command-Z 全部复原"><br>
+</tr>
+<tr>
+<td colspan="2" valign="top">
+<img src="docs/media/feat-clear-desk.gif" width="588" alt="录屏：Clear the Desk 关掉显示器、把手机扣下、关上抽屉，把所有文件堆扫到桌垫底下，然后出现 TIDY!；按一次 Command-Z 全部复原"><br>
 <b>Clear the Desk（一键清桌）</b><br>
 一个菜单项就能把所有东西藏起来：TIDY! 按一次 ⌘Z 全部复原。
 </td>
@@ -153,12 +191,14 @@ Peek Under · List Items Under Mat · Rotate、Size、Smooth、Reset Mat · Flat
 
 <table>
 <tr>
-<td width="50%" valign="top">
-<img src="docs/media/feat-lights.gif" width="__W_lights__" alt="录屏：灯光设为 Night，关掉墙上的房间灯开关进入 Lamp Only，再点击台灯"><br>
+<td colspan="2" valign="top">
+<img src="docs/media/feat-lights.gif" width="588" alt="录屏：灯光设为 Night，关掉墙上的房间灯开关进入 Lamp Only，再点击台灯"><br>
 <b>Night 与 Lamp Only</b><br>
 把灯光设为 Night（夜晚），拨动房间开关进入 Lamp Only（只开台灯），再点一下台灯。
 </td>
-<td width="50%" valign="top">
+</tr>
+<tr>
+<td colspan="2" valign="top">
 <b>灯光的其他功能</b><br>
 Auto 跟随时钟在白天、黄昏和夜晚之间变化 · 拖动时钟的分针预览其他时刻 · 在 Lamp Only 下，黑暗中的文件只是剪影，无法选取。<br>
 <a href="#全部功能">全部功能</a>
@@ -170,24 +210,32 @@ Auto 跟随时钟在白天、黄昏和夜晚之间变化 · 拖动时钟的分�
 
 <table>
 <tr>
-<td width="50%" valign="top">
-<img src="docs/media/feat-find.gif" width="__W_find__" alt="录屏：按 Command-F 打开 Find Item 窗口，列出每个文件及其位置；Show on Desk 打开藏着它的地方并把文件指出来"><br>
+<td colspan="2" valign="top">
+<img src="docs/media/feat-find.gif" width="584" alt="录屏：按 Command-F 打开 Find Item 窗口，列出每个文件及其位置；Show on Desk 打开藏着它的地方并把文件指出来"><br>
 <b>Find Item…（查找项目）</b><br>
 ⌘F 列出每个文件以及它藏在哪里。Show on Desk 会打开藏身处，把文件指给你看。
 </td>
-<td width="50%" valign="top">
-<img src="docs/media/feat-trash.gif" width="__W_trash__" alt="录屏：Move to Trash 把一个文件移到 macOS 废纸篓，按 Command-Z 又把它放回书桌上的原位"><br>
+</tr>
+<tr>
+<td valign="top">
+<img src="docs/media/feat-trash.gif" width="424" alt="录屏：Move to Trash 把一个文件移到 macOS 废纸篓，按 Command-Z 又把它放回书桌上的原位">
+</td>
+<td valign="top">
 <b>Move to Trash，再撤销回来</b><br>
 Move to Trash（移到废纸篓）把文件移到 macOS 废纸篓；⌘Z 把它放回原来的位置。
 </td>
 </tr>
 <tr>
-<td width="50%" valign="top">
-<img src="docs/media/feat-drives.gif" width="__W_drives__" alt="录屏：插入一个 U 盘，它出现在书桌上的驱动器集线器里，然后从它的菜单中推出"><br>
+<td valign="top">
+<img src="docs/media/feat-drives.gif" width="256" alt="录屏：插入一个 U 盘，它出现在书桌上的驱动器集线器里，然后从它的菜单中推出">
+</td>
+<td valign="top">
 <b>驱动器集线器</b><br>
 U 盘会插在书桌上的集线器里。从它的菜单里选 Eject 即可推出。
 </td>
-<td width="50%" valign="top">
+</tr>
+<tr>
+<td colspan="2" valign="top">
 <b>文件的其他功能</b><br>
 从访达拖入文件 · 把文件拖出到其他应用 · Empty Wastebasket… 会先列出文件名 · 每个操作都有日志记录。<br>
 <a href="#你的文件很安全">你的文件很安全</a>
@@ -199,12 +247,14 @@ U 盘会插在书桌上的集线器里。从它的菜单里选 Eject 即可推�
 
 <table>
 <tr>
-<td width="50%" valign="top">
-<img src="docs/media/feat-peek.gif" width="__W_peek__" alt="录屏：Peek Desk 让书桌暂时浮在所有打开的窗口之上"><br>
+<td colspan="2" valign="top">
+<img src="docs/media/feat-peek.gif" width="588" alt="录屏：Peek Desk 让书桌暂时浮在所有打开的窗口之上"><br>
 <b>Peek Desk（偷看书桌）</b><br>
 Peek Desk 让书桌暂时浮在你的窗口上方。
 </td>
-<td width="50%" valign="top">
+</tr>
+<tr>
+<td colspan="2" valign="top">
 <b>系统方面的其他功能</b><br>
 Pause Desk · 其他显示器可铺上配套的墙 · 全屏应用、睡眠时（以及可选的电池供电时）自动暂停 · 只有菜单栏图标，没有程序坞图标。<br>
 <a href="#设置">设置</a>

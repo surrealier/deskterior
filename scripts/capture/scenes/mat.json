@@ -1,0 +1,10 @@
+[
+ {"note":"start","warp":[1000,575]},{"wait":0.3},
+ {"click":[755,418],"dur":0.35},{"click":[705,418],"mods":["cmd"],"dur":0.15},{"click":[605,418],"mods":["cmd"],"dur":0.2},{"wait":0.15},
+ {"note":"drop on the mat","drag":{"from":[605,418],"to":[932,697],"dur":0.6,"approach":0.1,"hold":0.15}},{"wait":0.7},
+ {"note":"second drop","drag":{"from":[805,418],"to":[933,697],"dur":0.5,"approach":0.3,"hold":0.15}},{"wait":0.7},
+ {"note":"peel","drag":{"from":[932,701],"to":[932,671],"dur":0.25,"approach":0.3,"hold":0,"keepDown":true}},
+ {"dragTo":[932,626],"dur":0.35},{"wait":0.45},{"dragTo":[932,626],"dur":0.01,"release":true},{"wait":0.35},
+ {"note":"one back","drag":{"from":[928,665],"to":[855,418],"dur":0.5,"approach":0.3,"hold":0.15}},{"wait":0.3},
+ {"move":[1000,575],"dur":0.35},{"wait":1.0}
+]

@@ -1,0 +1,24 @@
+{
+  "name": "plates",
+  "display": "1470x956@2",
+  "clock": "16:00",
+  "seed": 1,
+  "steps": [
+    { "waitIdle": 10 },
+    { "hover": "core:256,300" },
+    { "wait": 0.5 },
+    { "snapshot": "p-day" },
+    { "menu": { "at": "core:300,4", "item": "lights.night" } },
+    { "wait": 1.5 },
+    { "snapshot": "p-night" },
+    { "click": "room.switch" },
+    { "wait": 1.5 },
+    { "snapshot": "p-lamponly" },
+    { "click": "lamp.switch" },
+    { "wait": 1.5 },
+    { "snapshot": "p-lampoff" },
+    { "click": "lamp.switch" },
+    { "wait": 1.5 },
+    { "snapshot": "p-lampon" }
+  ]
+}

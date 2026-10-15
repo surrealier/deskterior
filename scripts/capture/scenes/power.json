@@ -1,0 +1,7 @@
+[
+ {"note":"start","warp":[1040,440]},{"wait":0.4},
+ {"click":[968,478],"dur":0.4},{"move":[1045,462],"dur":0.3},{"wait":0.45},
+ {"note":"a new file arrives while off","shell":"printf 'agenda\\n' > \"$CAP/showcase/Desktop/Meeting notes.txt\""},
+ {"wait":1.1},
+ {"click":[968,478],"dur":0.4},{"move":[1045,462],"dur":0.3},{"wait":1.8}
+]

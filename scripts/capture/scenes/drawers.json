@@ -1,0 +1,10 @@
+[
+ {"note":"start","warp":[700,400]},{"wait":0.4},
+ {"note":"photo into the left drawer","drag":{"from":[805,222],"to":[640,556],"dur":0.6,"approach":0.35,"hold":0.25}},
+ {"wait":0.5},
+ {"note":"peek","scroll":{"at":[640,560],"dx":0,"dy":8,"n":48}},{"wait":0.7},
+ {"note":"notes into the right drawer","drag":{"from":[955,222],"to":[870,556],"dur":0.55,"approach":0.35,"hold":0.25}},
+ {"wait":0.6},
+ {"note":"cubby","drag":{"from":[705,271],"to":[755,556],"dur":0.5,"approach":0.35,"hold":0.25}},
+ {"wait":0.4},{"move":[525,522],"dur":0.4},{"wait":1.4}
+]
