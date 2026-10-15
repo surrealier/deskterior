@@ -155,6 +155,56 @@ struct AliasFileTests {
         #expect(report.toast == .aliasesMadeOriginals && report.undoLabel == "Make Alias")
     }
 
+    @Test("Only an application loses its .app: a document named notes.app keeps it; a link to an app does not")
+    func appByKindNotName() async throws {
+        let rig = try FileRig()
+        let doc = try rig.file(rig.elsewhere, "notes.app", "just text")
+        let app = try rig.app(rig.elsewhere, "Calc.app")
+        let link = rig.at(rig.elsewhere, "Link.app")
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: app)
+        let docLink = rig.at(rig.elsewhere, "Text.app")
+        try FileManager.default.createSymbolicLink(at: docLink, withDestinationURL: doc)
+        #expect(FileOperator.isApplication(app) && FileOperator.isApplication(link))
+        #expect(!FileOperator.isApplication(doc) && !FileOperator.isApplication(docLink))
+        let before = Fingerprint(doc)
+        let result = await rig.op.importItems([doc, link, docLink], ops: [.alias, .alias, .alias], rig.intent(.drop))
+        #expect(result.outcomes == [
+            .aliased(doc, to: rig.at(rig.desk, "notes.app")), .aliased(link, to: rig.at(rig.desk, "Link")),
+            .aliased(docLink, to: rig.at(rig.desk, "Text.app")),
+        ])
+        #expect(Fingerprint(doc) == before && rig.text(doc) == "just text")
+        #expect(rig.target(ofAlias: rig.at(rig.desk, "notes.app")) == DesktopLocator.canonicalPath(doc))
+        // The report: two originals and one app; alone, the document is an original, never "the app".
+        let report = FileReport(import: result, undo: nil, ops: [.alias, .alias, .alias])
+        #expect(report.placed.map(\.name) == ["notes.app", "Link", "Text.app"] && report.toast == .aliasesMadeOriginals)
+        let one = await rig.op.importItems([doc], ops: [.alias], rig.intent(.drop))
+        #expect(one.outcomes == [.renamed(doc, to: rig.at(rig.desk, "notes 2.app"), op: .alias)])
+        #expect(FileReport(import: one, undo: nil, ops: [.alias]).toast == .aliasMadeOriginal)
+    }
+
+    @Test("An alias is written off the actor: a trash issued meanwhile is served at once")
+    func aliasDoesNotBlock() async throws {
+        let rig = try FileRig()
+        let a = try rig.file(rig.desk, "a.txt")
+        let app = try rig.app(rig.elsewhere, "Calc.app")
+        let started = Latch(), release = Latch(), resumed = Latch()
+        await rig.op.setHooks(.init(whileAliasing: { _ in
+            started.open()
+            _ = release.wait(seconds: 30)
+            resumed.open()
+        }))
+        let drop = Task { await rig.op.importItems([app], ops: [.alias], rig.intent(.drop)) }
+        #expect(await started.opened(within: 30))
+        let trashed = await rig.op.trash([a], expecting: [rig.key(a)], rig.intent())
+        let aliasWasRunning = !resumed.isOpen
+        release.open()
+        let dropped = await drop.value
+        #expect(aliasWasRunning, "the trash did not wait for the alias")
+        #expect(trashed.refusals.isEmpty)
+        #expect(dropped.outcomes == [.aliased(app, to: rig.at(rig.desk, "Calc"))])
+        #expect(rig.isAliasFile(rig.at(rig.desk, "Calc")))
+    }
+
     @Test("A taken name gets \" 2\", \" 3\"… exactly like a copy, and the item already there is untouched")
     func clashes() async throws {
         let rig = try FileRig()

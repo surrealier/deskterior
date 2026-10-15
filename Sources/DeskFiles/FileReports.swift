@@ -125,7 +125,7 @@ extension FileReport {
                 placed.append(Placed(
                     source: source.standardizedFileURL.path, name: to.lastPathComponent, key: identity(to), aliased: true
                 ))
-                if DropIn.isAppName(source.lastPathComponent) { aliasedApps += 1 }
+                if DropIn.isAppAlias(source: source.lastPathComponent, alias: to.lastPathComponent) { aliasedApps += 1 }
             case let .refused(source, r):
                 refused.append(source.standardizedFileURL.path)
                 problems.append(r == .landedUnverified && asked == .alias ? .aliasUnverified : FileProblem(r))

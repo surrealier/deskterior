@@ -6,16 +6,17 @@ import UniformTypeIdentifiers
 
 /// Files dragged onto the desk from Finder or another app (DESIGN §3.6 Drop-in). While the drag is over the desk,
 /// the screen brackets the cell it would land in, and the drag source is told what will happen
-/// (`DropIn.dragOperation`): nothing where the drop would bonk, a link when every item becomes an alias, a copy when
-/// any item is copied or lies on another volume (or with ⌥), else a move, so a source that removes its own item after
-/// a move never does so for one we only copied or aliased. On the drop, the scene says where they land (a screen
-/// cell, a hiding place, a desk pile at that spot, the floor), or bonks (the screen is off, a container is full, a
-/// drive); the store gets one `requestDropIn`. Items already in the desk folder only move on the desk; the others
-/// come in by `FileOperator`, undoably, and land where they were dropped, each as the keys held say (Erratum 29,
-/// `DropIn.ops`): with no key an application becomes an alias (Finder's "put a shortcut to it there") and anything
-/// else is moved in (same volume, `RENAME_EXCL`, " 2" on a clash) or copied (another volume); ⌥ copies everything,
-/// ⌘ moves everything (apps too), ⌘⌥ makes an alias of everything. The demo runner's `dropIn` step comes through
-/// `drop` too.
+/// (`DropIn.dragOperation`, within what the source allows: `DropKeys.answer`): nothing where the drop would bonk, a
+/// link when every item becomes an alias, a copy when any item stays where it is (copied, aliased, or on another
+/// volume), else a move, so a source that removes its own item after a move never does so for one we only copied or
+/// aliased. On the drop, the scene says where they land (a screen cell, a hiding place, a desk pile at that spot, the
+/// floor), or bonks (the screen is off, a container is full, a drive); the store gets one `requestDropIn`. Items
+/// already in the desk folder only move on the desk; the others come in by `FileOperator`, undoably, and land where
+/// they were dropped, each as the keys held say (Erratum 29, `DropIn.ops`): with no key an application becomes an
+/// alias (Finder's "put a shortcut to it there"; not one in a Trash or on a disk image, `staysInstalled`) and
+/// anything else is moved in (same volume, `RENAME_EXCL`, " 2" on a clash) or copied (another volume); ⌥ copies
+/// everything, ⌘ moves everything (apps too), ⌘⌥ makes an alias of everything. Walls answer and take drags the same
+/// way. The demo runner's `dropIn` step comes through `drop` too.
 final class DropInController {
     let host: SceneHost
     unowned let store: Store
@@ -29,9 +30,18 @@ final class DropInController {
 
     // MARK: Dragging over the desk
 
-    /// The drag the item facts below belong to (`NSDraggingInfo.draggingSequenceNumber`): for each item, whether it
-    /// lies on another volume than the desk folder and whether it is an application.
-    private var itemsChecked: (drag: Int, crosses: [Bool], isApp: [Bool])?
+    /// What a drop needs to know of each dropped item, read from the items themselves.
+    struct ItemFacts: Equatable {
+        /// It lies on another volume than the desk folder (or its volume cannot be read).
+        var crosses: [Bool]
+        /// It is an application bundle (`FileOperator.isApplication`): its alias is named without ".app".
+        var isApp: [Bool]
+        /// It is an application that a drop with no key makes an alias of (`staysInstalled`).
+        var aliasedWithNoKey: [Bool]
+    }
+
+    /// The drag the item facts below belong to (`NSDraggingInfo.draggingSequenceNumber`).
+    private var itemsChecked: (drag: Int, facts: ItemFacts)?
 
     /// The operation a drag of `urls` at canvas `p` would get (`DropIn.dragOperation`; `copy`: ⌥, or a source that
     /// offers no move); the landing cell is bracketed. `drag` names the dragging session: its items' volumes and kinds
@@ -47,18 +57,39 @@ final class DropInController {
         let bonks: Bool = if case .bonk = host.scene.fileDropVerdict(count: urls.count, at: p) { true } else { false }
         host.scene.showFileDropTarget(count: bonks ? 0 : urls.count, at: bonks ? nil : p)
         host.modelChanged()
-        let k = keys ?? DropKeys(copy: copy)
-        let ops = DropIn.ops(k.mode, isApp: facts.isApp, canMove: !copy, canAlias: k.canAlias)
-        return k.answer(DropIn.dragOperation(bonks: bonks, ops: ops, crosses: facts.crosses))
+        return Self.answer(facts, copy: copy, keys: keys, bonks: bonks)
     }
 
     /// The facts of `urls` for drag `drag` (read once per drag).
-    private func items(_ urls: [URL], drag: Int, root: DesktopRoot) -> (crosses: [Bool], isApp: [Bool]) {
-        if let c = itemsChecked, c.drag == drag, c.crosses.count == urls.count { return (c.crosses, c.isApp) }
-        let desk = URL(fileURLWithPath: root.path, isDirectory: true)
-        let facts = (crosses: Self.crossings(urls, desk: desk), isApp: urls.map(Self.isApplication))
-        itemsChecked = (drag, facts.crosses, facts.isApp)
+    private func items(_ urls: [URL], drag: Int, root: DesktopRoot) -> ItemFacts {
+        if let c = itemsChecked, c.drag == drag, c.facts.crosses.count == urls.count { return c.facts }
+        let facts = Self.facts(urls, desk: URL(fileURLWithPath: root.path, isDirectory: true))
+        itemsChecked = (drag, facts)
         return facts
+    }
+
+    /// The facts of `urls` dropped on the desk folder `desk` (nil: crossings are not asked for).
+    static func facts(_ urls: [URL], desk: URL?) -> ItemFacts {
+        let isApp = urls.map(isApplication)
+        return ItemFacts(
+            crosses: desk.map { crossings(urls, desk: $0) } ?? urls.map { _ in false }, isApp: isApp,
+            aliasedWithNoKey: zip(urls, isApp).map { $1 && staysInstalled($0) }
+        )
+    }
+
+    /// What a drag of items with `facts` is told (`DropIn.dragOperation`, as `DropKeys.answer` puts it to the
+    /// source), with `copy` and `keys` as for `dragged`.
+    static func answer(_ facts: ItemFacts, copy: Bool, keys: DropKeys?, bonks: Bool) -> NSDragOperation {
+        let k = keys ?? DropKeys(copy: copy)
+        let ops = ops(facts, copy: copy, keys: k)
+        return k.answer(DropIn.dragOperation(bonks: bonks, ops: ops, crosses: facts.crosses))
+    }
+
+    /// The op of each item with `facts` (`DropIn.ops`): the keys held, and what the source allows (`canMove` from
+    /// its mask as well as `copy`; a link-only source makes aliases).
+    static func ops(_ facts: ItemFacts, copy: Bool, keys k: DropKeys) -> [ImportOp] {
+        DropIn.ops(k.mode, isApp: facts.aliasedWithNoKey, canMove: !copy && k.canMove, canAlias: k.canAlias,
+                   linkOnly: k.linkOnly)
     }
 
     /// Whether any of `urls` lies on another volume than the desk folder (or its volume cannot be read): that item
@@ -73,15 +104,35 @@ final class DropInController {
         return urls.map { FileOperator.volumeUUID($0) != deskVolume }
     }
 
-    /// An application bundle (Erratum 29): a folder whose type is an application (`UTType.application`), or a
-    /// package named ".app". Reads resource values only; a symbolic link to an app is not one (the link moves).
+    /// An application bundle (Erratum 29), directly or through a symbolic link (`FileOperator.isApplication`).
     static func isApplication(_ url: URL) -> Bool {
-        guard url.isFileURL,
-              let v = try? url.resourceValues(forKeys: [.contentTypeKey, .isDirectoryKey, .isPackageKey, .isSymbolicLinkKey]),
-              v.isSymbolicLink != true, v.isDirectory == true
-        else { return false }
-        if v.contentType?.conforms(to: .application) == true { return true }
-        return v.isPackage == true && url.pathExtension.lowercased() == "app"
+        FileOperator.isApplication(url)
+    }
+
+    /// Whether an app at `url` stays where it is installed, so a drop with no key makes an alias of it (Erratum 29).
+    /// Not one in a Trash (dragged out, it comes back out as before) nor on a volume that comes and goes (a disk
+    /// image, a USB stick or a card: ejectable, removable, or read-only other than the system's own), where an alias
+    /// would break once the volume is gone. Such an app comes in as before: moved, or copied from another volume.
+    static func staysInstalled(_ url: URL) -> Bool {
+        guard !inTrash(url) else { return false }
+        let keys: Set<URLResourceKey> = [
+            .volumeIsEjectableKey, .volumeIsRemovableKey, .volumeIsReadOnlyKey, .volumeIsRootFileSystemKey,
+        ]
+        guard let v = try? URL(fileURLWithPath: url.path).resourceValues(forKeys: keys) else { return true }
+        return !passingVolume(ejectable: v.volumeIsEjectable == true, removable: v.volumeIsRemovable == true,
+                              readOnly: v.volumeIsReadOnly == true, system: v.volumeIsRootFileSystem == true)
+    }
+
+    /// The item lies in a Trash, by its path alone: the user's (`~/.Trash`), a volume's (`.Trashes/<uid>`) or
+    /// iCloud Drive's (`.Trash`).
+    static func inTrash(_ url: URL) -> Bool {
+        url.standardizedFileURL.pathComponents.dropLast().contains { $0 == ".Trash" || $0 == ".Trashes" }
+    }
+
+    /// A volume an app does not stay installed on: one that comes and goes (ejectable or removable: a disk image, a
+    /// USB stick, a card) or that cannot be written other than the system's own (a read-only disk image).
+    static func passingVolume(ejectable: Bool, removable: Bool, readOnly: Bool, system: Bool) -> Bool {
+        ejectable || removable || (readOnly && !system)
     }
 
     func dragEnded() {
@@ -106,8 +157,7 @@ final class DropInController {
             host.modelChanged()
             return false
         case let .land(location, pilePos):
-            let ops = Self.ops(files, copy: copy, keys: keys)
-            let request = DropIn(urls: files, location: location, pilePos: pilePos, ops: ops)
+            let request = Self.request(files, location: location, pilePos: pilePos, copy: copy, keys: keys)
             effects.withOrigin(.drop) { store.dispatch(.requestDropIn(request)) }
             return true
         }
@@ -115,8 +165,17 @@ final class DropInController {
 
     /// The op of each dropped item (`DropIn.ops`), read from the items at the drop.
     static func ops(_ files: [URL], copy: Bool, keys: DropKeys?) -> [ImportOp] {
-        let k = keys ?? DropKeys(copy: copy)
-        return DropIn.ops(k.mode, isApp: files.map(isApplication), canMove: !copy, canAlias: k.canAlias)
+        ops(facts(files, desk: nil), copy: copy, keys: keys ?? DropKeys(copy: copy))
+    }
+
+    /// The request for `files` dropped at `location`: each item's op, and which are applications (read from the
+    /// items at the drop).
+    private static func request(
+        _ files: [URL], location: Location, pilePos: SIMD2<Float>? = nil, copy: Bool, keys: DropKeys?
+    ) -> DropIn {
+        let f = facts(files, desk: nil)
+        return DropIn(urls: files, location: location, pilePos: pilePos,
+                      ops: ops(f, copy: copy, keys: keys ?? DropKeys(copy: copy)), apps: f.isApp)
     }
 
     // MARK: Walls (M12)
@@ -126,10 +185,7 @@ final class DropInController {
     func wallOperation(_ urls: [URL], copy: Bool, drag: Int, keys: DropKeys? = nil) -> NSDragOperation {
         let s = store.state
         guard !urls.isEmpty, s.access == .connected, let root = s.root else { return [] }
-        let facts = items(urls, drag: drag, root: root)
-        let k = keys ?? DropKeys(copy: copy)
-        let ops = DropIn.ops(k.mode, isApp: facts.isApp, canMove: !copy, canAlias: k.canAlias)
-        return k.answer(DropIn.dragOperation(bonks: false, ops: ops, crosses: facts.crosses))
+        return Self.answer(items(urls, drag: drag, root: root), copy: copy, keys: keys, bonks: false)
     }
 
     /// Takes `urls` dropped on a wall (another display): they land on the monitor's first free cell (DESIGN §4.10)
@@ -141,7 +197,7 @@ final class DropInController {
         let files = urls.filter(\.isFileURL).map { Self.spelled($0, underRoot: root.path) }
         guard !files.isEmpty else { return false }
         let cell = ScreenGrid.standard.firstFree(s.tokens.occupiedCells)
-        let request = DropIn(urls: files, location: cell.location, ops: Self.ops(files, copy: copy, keys: keys))
+        let request = Self.request(files, location: cell.location, copy: copy, keys: keys)
         effects.withOrigin(.drop) { store.dispatch(.requestDropIn(request)) }
         return true
     }
@@ -189,19 +245,31 @@ struct DropKeys: Equatable {
         self.init(mode: copy ? .copy : .standard)
     }
 
+    /// The source lets its item be moved: it allows a move, or a generic drop (AppKit narrows the mask to that
+    /// while ⌘ is held).
+    var canMove: Bool { !mask.intersection([.move, .generic]).isEmpty }
+
     /// The source lets us leave its item where it is (it allows a link, a copy or a generic drop), so an alias can
     /// be its answer.
     var canAlias: Bool { !mask.intersection([.link, .copy, .generic]).isEmpty }
 
-    /// The answer to the drag source for `op` (`DropIn.dragOperation`): a link for aliases (or the copy, else the
-    /// generic drop, the source allows: each leaves its item where it is), a copy, a move (or the generic drop when
-    /// the source allows no move, as AppKit narrows the mask while ⌘ is held), nothing where it bonks.
+    /// The source allows nothing but a link (AppKit narrows the mask to that while ⌃ is held): every item becomes
+    /// an alias.
+    var linkOnly: Bool { mask.contains(.link) && mask.intersection([.move, .copy, .generic]).isEmpty }
+
+    /// The answer to the drag source for `op` (`DropIn.dragOperation`), the first of these the source allows: for
+    /// aliases a link, else a copy, else a generic drop (each leaves its item where it is); for a copy a copy, else
+    /// a generic drop (AppKit narrows the mask to that while ⌘ is held); for a move a move, else a generic drop.
+    /// When the source allows none of them, the first (as before). Nothing where it bonks, or when the source
+    /// allows no move, copy, link or generic drop at all.
     func answer(_ op: ImportOp?) -> NSDragOperation {
-        switch op {
+        guard !mask.intersection([.move, .copy, .link, .generic]).isEmpty else { return [] }
+        let wanted: [NSDragOperation] = switch op {
         case nil: []
-        case .copy?: .copy
-        case .move?: mask.contains(.move) || !mask.contains(.generic) ? .move : .generic
-        case .alias?: mask.contains(.link) ? .link : mask.contains(.copy) ? .copy : .generic
+        case .copy?: [.copy, .generic]
+        case .move?: [.move, .generic]
+        case .alias?: [.link, .copy, .generic]
         }
+        return wanted.first(where: mask.contains) ?? wanted.first ?? []
     }
 }

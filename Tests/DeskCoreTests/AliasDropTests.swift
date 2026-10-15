@@ -16,8 +16,11 @@ struct AliasDropTests {
         var isApp: Bool
         var canMove = true
         var canAlias = true
+        var linkOnly = false
         var expected: ImportOp
-        var description: String { "\(mode) app:\(isApp) move:\(canMove) alias:\(canAlias) → \(expected)" }
+        var description: String {
+            "\(mode) app:\(isApp) move:\(canMove) alias:\(canAlias) linkOnly:\(linkOnly) → \(expected)"
+        }
     }
 
     static let opCases: [OpCase] = [
@@ -41,13 +44,19 @@ struct AliasDropTests {
         OpCase(mode: .alias, isApp: false, expected: .alias),
         OpCase(mode: .alias, isApp: false, canMove: false, expected: .alias),
         OpCase(mode: .alias, isApp: false, canAlias: false, expected: .copy),
+        // A source that allows only a link (⌃): an alias of every item, whatever the keys; never a move or a copy.
+        OpCase(mode: .standard, isApp: false, canMove: false, linkOnly: true, expected: .alias),
+        OpCase(mode: .standard, isApp: true, canMove: false, linkOnly: true, expected: .alias),
+        OpCase(mode: .move, isApp: false, canMove: false, linkOnly: true, expected: .alias),
+        OpCase(mode: .copy, isApp: false, canMove: false, linkOnly: true, expected: .alias),
     ]
 
     @Test("Each item's op follows the keys held, whether it is an app, and what the source allows", arguments: opCases)
     func opRules(_ c: OpCase) {
-        #expect(DropIn.op(c.mode, isApp: c.isApp, canMove: c.canMove, canAlias: c.canAlias) == c.expected)
-        #expect(DropIn.ops(c.mode, isApp: [c.isApp, c.isApp], canMove: c.canMove, canAlias: c.canAlias)
-            == [c.expected, c.expected])
+        #expect(DropIn.op(c.mode, isApp: c.isApp, canMove: c.canMove, canAlias: c.canAlias, linkOnly: c.linkOnly)
+            == c.expected)
+        #expect(DropIn.ops(c.mode, isApp: [c.isApp, c.isApp], canMove: c.canMove, canAlias: c.canAlias,
+                           linkOnly: c.linkOnly) == [c.expected, c.expected])
     }
 
     @Test("The keys: none, ⌥ copies, ⌘ moves, ⌘⌥ makes aliases (Finder's convention)")
@@ -78,14 +87,19 @@ struct AliasDropTests {
         DragCase(ops: [.move], crosses: [true], expected: .copy),
         DragCase(ops: [.move], crosses: [], expected: .copy),
         DragCase(ops: [.copy], crosses: [false], expected: .copy),
-        // Aliases beside other items do not change today's answer.
-        DragCase(ops: [.alias, .move], crosses: [true, false], expected: .move),
+        DragCase(ops: [.move, .move], crosses: [false, false], expected: .move),
+        // An alias beside other items stays where it is, like a copy: the source is told a copy, never a move it
+        // might follow by removing its own item (the app we only aliased).
+        DragCase(ops: [.alias, .move], crosses: [true, false], expected: .copy),
+        DragCase(ops: [.alias, .move], crosses: [false, false], expected: .copy),
+        DragCase(ops: [.move, .alias], crosses: [false, false], expected: .copy),
         DragCase(ops: [.alias, .move], crosses: [false, true], expected: .copy),
         DragCase(ops: [.alias, .copy], crosses: [false, false], expected: .copy),
         DragCase(ops: [], crosses: [], expected: .move),
     ]
 
-    @Test("What a drag is told: a link only when every item becomes an alias, else as before", arguments: dragCases)
+    @Test("What a drag is told: a link when every item becomes an alias, a move only when every item moves",
+          arguments: dragCases)
     func dragOperation(_ c: DragCase) {
         #expect(DropIn.dragOperation(bonks: c.bonks, ops: c.ops, crosses: c.crosses) == c.expected)
     }
@@ -99,19 +113,28 @@ struct AliasDropTests {
         }
     }
 
-    @Test("An app's alias is named without .app; a folder or document keeps its full name")
+    @Test("An app's alias is named without .app; a folder or document keeps its full name, \"notes.app\" too")
     func names() {
-        #expect(DropIn.aliasName("Safari.app") == "Safari")
-        #expect(DropIn.aliasName("Visual Studio Code.app") == "Visual Studio Code")
-        #expect(DropIn.aliasName("Foo.Bar.app") == "Foo.Bar")
-        #expect(DropIn.aliasName("Mail.APP") == "Mail")
-        #expect(DropIn.aliasName("report.pdf") == "report.pdf")
-        #expect(DropIn.aliasName("Photos") == "Photos")
-        #expect(DropIn.aliasName(".app") == ".app")
-        #expect(DropIn.landingName("Safari.app", op: .alias) == "Safari")
-        #expect(DropIn.landingName("Safari.app", op: .move) == "Safari.app")
-        #expect(DropIn.landingName("Safari.app", op: .copy) == "Safari.app")
-        #expect(DropIn.isAppName("Safari.app") && !DropIn.isAppName("Safari") && !DropIn.isAppName("a.txt"))
+        #expect(DropIn.aliasName("Safari.app", isApp: true) == "Safari")
+        #expect(DropIn.aliasName("Visual Studio Code.app", isApp: true) == "Visual Studio Code")
+        #expect(DropIn.aliasName("Foo.Bar.app", isApp: true) == "Foo.Bar")
+        #expect(DropIn.aliasName("Mail.APP", isApp: true) == "Mail")
+        #expect(DropIn.aliasName("report.pdf", isApp: false) == "report.pdf")
+        #expect(DropIn.aliasName("Photos", isApp: false) == "Photos")
+        #expect(DropIn.aliasName(".app", isApp: true) == ".app")
+        // Only an application bundle loses its ".app": a document (or a plain file) named so keeps it.
+        #expect(DropIn.aliasName("notes.app", isApp: false) == "notes.app")
+        #expect(DropIn.aliasName("Safari", isApp: true) == "Safari", "an app without the extension (a link) as it is")
+        #expect(DropIn.landingName("Safari.app", op: .alias, isApp: true) == "Safari")
+        #expect(DropIn.landingName("notes.app", op: .alias, isApp: false) == "notes.app")
+        #expect(DropIn.landingName("Safari.app", op: .move, isApp: true) == "Safari.app")
+        #expect(DropIn.landingName("Safari.app", op: .copy, isApp: true) == "Safari.app")
+        // The report tells an app's alias by the ".app" it left off, after a clash too.
+        #expect(DropIn.isAppAlias(source: "Safari.app", alias: "Safari"))
+        #expect(DropIn.isAppAlias(source: "Foo.Bar.app", alias: "Foo.Bar 2"))
+        #expect(!DropIn.isAppAlias(source: "notes.app", alias: "notes.app"))
+        #expect(!DropIn.isAppAlias(source: "notes.app", alias: "notes 2.app"))
+        #expect(!DropIn.isAppAlias(source: "a.txt", alias: "a.txt") && !DropIn.isAppAlias(source: "Photos", alias: "Photos"))
     }
 
     @Test("A drop's headline op: the items' op when they agree, else a copy when any is, else a move")
@@ -125,6 +148,11 @@ struct AliasDropTests {
                        ops: [.alias, .move])
         #expect(d.op == .move && d.op(at: 0) == .alias && d.op(at: 1) == .move && d.op(at: 7) == .move)
         #expect(DropIn(urls: [URL(fileURLWithPath: "/a/b.txt")], location: .floor(x: 0), op: .copy).ops == [.copy])
+        // Which items are apps: as the app read them, else by the name.
+        #expect(d.apps == [true, false] && d.isApp(at: 0) && !d.isApp(at: 1) && !d.isApp(at: 7))
+        let read = DropIn(urls: [URL(fileURLWithPath: "/a/notes.app"), URL(fileURLWithPath: "/a/Safari")],
+                          location: .floor(x: 0), ops: [.alias, .alias], apps: [false, true])
+        #expect(read.apps == [false, true] && !read.isApp(at: 0) && read.isApp(at: 1))
     }
 
     // MARK: The reducer
@@ -148,6 +176,14 @@ struct AliasDropTests {
         #expect(s.hints.map(\.matchesName) == [false, true, true])
         #expect(s.tokens.location(of: F.key(1))?.container == .riserRight, "a desk item only moves, whatever the keys")
         #expect(s.violations().isEmpty)
+
+        // A document named "notes.app" (⌘⌥) keeps its name: the app said it is no app.
+        let notes = URL(fileURLWithPath: "/elsewhere/notes.app")
+        var t = F.mirrored(["z"])
+        let e = Reducer.reduce(&t, journal: &journal, .requestDropIn(DropIn(urls: [notes], location: at, ops: [.alias],
+                                                                            apps: [false])), env)
+        #expect(e.contains(.importFiles([notes], ops: [.alias], hints: ["notes.app": at])))
+        #expect(t.hints.map(\.name) == ["notes.app"])
 
         // The result: the alias landed as "Safari 2" and goes where it was dropped, by identity.
         let landed = FileReport.Placed(source: app.path, name: "Safari 2", key: F.key(40), aliased: true)

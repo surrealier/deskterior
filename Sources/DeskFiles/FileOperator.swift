@@ -1,6 +1,7 @@
 import AppKit
 import DeskCore
 import Foundation
+import UniformTypeIdentifiers
 
 // MARK: Results
 
@@ -234,6 +235,9 @@ public actor FileOperator {
         var beforeCheck: (@Sendable (URL) -> Void)?
         /// Runs right after a copy finishes (or an alias file is written), with the staged copy or alias.
         var afterCopy: (@Sendable (URL) -> Void)?
+        // MARK: alias (Erratum 29)
+        /// Runs on the alias's own thread (off the actor), right before the source's bookmark data is made.
+        var whileAliasing: (@Sendable (URL) -> Void)?
         // MARK: harden
         /// Runs right after a copy's final rename, with where it landed.
         var afterPlace: (@Sendable (URL) -> Void)?
@@ -279,6 +283,21 @@ public actor FileOperator {
     /// `URLResourceValues.volumeUUIDString`, read fresh (never from a URL's cache).
     public static func volumeUUID(_ url: URL) -> String? {
         (try? URL(fileURLWithPath: url.path).resourceValues(forKeys: [.volumeUUIDStringKey]))?.volumeUUIDString
+    }
+
+    // MARK: alias (Erratum 29)
+
+    /// An application bundle: a folder whose type is an application (`UTType.application`), or a package named
+    /// ".app", reached directly or through a symbolic link (Safari in /Applications is a link to the system's copy).
+    /// Reads resource values only, fresh. Its alias is named without ".app"; a drop with no key aliases it.
+    public static func isApplication(_ url: URL) -> Bool {
+        guard url.isFileURL else { return false }
+        let item = URL(fileURLWithPath: url.path).resolvingSymlinksInPath()
+        guard let v = try? item.resourceValues(forKeys: [.contentTypeKey, .isDirectoryKey, .isPackageKey]),
+              v.isDirectory == true
+        else { return false }
+        if v.contentType?.conforms(to: .application) == true { return true }
+        return v.isPackage == true && item.pathExtension.lowercased() == "app"
     }
 
     // MARK: Trash
@@ -402,10 +421,11 @@ public actor FileOperator {
         let splits = FileMoves.splitsExtension(source)
         // MARK: alias (Erratum 29): the item stays where it is; only an alias file of it comes in.
         if op == .alias {
-            // An app's alias has no extension left to keep apart ("Foo.Bar" from "Foo.Bar.app" numbers as "Foo.Bar 2").
-            let aliasName = DropIn.aliasName(name)
-            return aliasIn(url, from: source, name: aliasName, splitsExtension: aliasName == name && splits,
-                           sourceKey: key)
+            // Only an application's alias loses its ".app" (a document named "notes.app" keeps it), and then has no
+            // extension left to keep apart ("Foo.Bar" from "Foo.Bar.app" numbers as "Foo.Bar 2").
+            let aliasName = DropIn.aliasName(name, isApp: Self.isApplication(source))
+            return await aliasIn(url, from: source, name: aliasName, splitsExtension: aliasName == name && splits,
+                                 sourceKey: key)
         }
         let sourceVolume = volumeID(source)
         if op == .move, let sourceVolume, sourceVolume == volumeID(root) {
@@ -487,13 +507,14 @@ public actor FileOperator {
 
     // MARK: alias (Erratum 29)
 
-    /// Writes a Finder alias of `source` (bookmark data `suitableForBookmarkFile`) into a fresh staging folder, then
-    /// renames it into place as `name`, or "name 2", "name 3"… on a clash (`RENAME_EXCL`), exactly like a copy. The
-    /// source is only read: the alias names the item that was checked (one swapped in meanwhile is refused), and its
-    /// landing is checked like a copy's (`landed`). The undo step trashes the alias, never what it points to.
+    /// Writes a Finder alias of `source` (bookmark data `suitableForBookmarkFile`) into a fresh staging folder, off
+    /// the actor as a copy is (a volume slow to answer holds up no other request), then renames it into place as
+    /// `name`, or "name 2", "name 3"… on a clash (`RENAME_EXCL`), exactly like a copy. The source is only read: the
+    /// alias names the item that was checked (one swapped in meanwhile is refused), and its landing is checked like a
+    /// copy's (`landed`). The undo step trashes the alias, never what it points to.
     private func aliasIn(
         _ url: URL, from source: URL, name: String, splitsExtension: Bool, sourceKey: TokenKey
-    ) -> (FileOutcome, FileUndoRecord.Step?, [UInt64]) {
+    ) async -> (FileOutcome, FileUndoRecord.Step?, [UInt64]) {
         let staging: URL
         do {
             staging = try makeStaging()
@@ -503,10 +524,7 @@ public actor FileOperator {
         defer { removeStaging(staging) }
         let staged = staging.appendingPathComponent(name, isDirectory: false)
         do {
-            let bookmark = try source.bookmarkData(
-                options: .suitableForBookmarkFile, includingResourceValuesForKeys: nil, relativeTo: nil
-            )
-            try URL.writeBookmarkData(bookmark, to: staged)
+            try await Self.writeAlias(of: source, to: staged, before: hooks.whileAliasing)
         } catch {
             return (.refused(url, FileRefusal.from(error)), nil, [sourceKey.inode])
         }
@@ -530,6 +548,24 @@ public actor FileOperator {
             return (outcome, .trashAlias(placed.url, key: key), [sourceKey.inode, key.inode])
         case let .failure(f):
             return (.refused(url, f.refusal), nil, [sourceKey.inode])
+        }
+    }
+
+    /// Makes `source`'s bookmark data and writes it as a Finder alias file at `staged`, on a GCD thread, so the actor
+    /// serves other requests meanwhile (as `copy` does). `before` is the test seam `Hooks.whileAliasing`.
+    private nonisolated static func writeAlias(
+        of source: URL, to staged: URL, before: (@Sendable (URL) -> Void)?
+    ) async throws {
+        try await withCheckedThrowingContinuation { (done: CheckedContinuation<Void, any Error>) in
+            DispatchQueue.global(qos: .userInitiated).async {
+                before?(source)
+                done.resume(with: Result {
+                    let bookmark = try source.bookmarkData(
+                        options: .suitableForBookmarkFile, includingResourceValuesForKeys: nil, relativeTo: nil
+                    )
+                    try URL.writeBookmarkData(bookmark, to: staged)
+                })
+            }
         }
     }
 

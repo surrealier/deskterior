@@ -59,7 +59,7 @@ final class WallView: NSView {
     var onDrop: (([URL], _ copy: Bool, _ keys: DropKeys) -> Void)?
     /// File drags are taken at all.
     var acceptsFiles = false
-    /// The operation the desk's drop-in gives these files (copy when one lies on another volume, link when every one
+    /// The operation the desk's drop-in gives these files (copy when one stays where it is, link when every one
     /// becomes an alias; nothing while the desk folder is not connected), given the copy the source's operations and
     /// ⌥ ask for, and the keys.
     var operationFor: (([URL], _ copy: Bool, _ drag: Int, _ keys: DropKeys) -> NSDragOperation)?
@@ -129,27 +129,27 @@ final class WallView: NSView {
 
     override func performDragOperation(_ sender: any NSDraggingInfo) -> Bool {
         let urls = Self.fileURLs(sender.draggingPasteboard)
-        guard !urls.isEmpty, let op = importOp(sender), let onDrop else { return false }
-        onDrop(urls, op == .copy, keys(sender))
+        guard let onDrop, !operation(sender).isEmpty else { return false }
+        onDrop(urls, copy(sender), keys(sender))
         return true
     }
 
+    /// What the wall answers (Erratum 29): exactly what the desk's drop-in would (`operationFor`, or without one the
+    /// same rules for items that are neither apps nor on another volume), so a drag the desk takes (a ⌘ drag, whose
+    /// mask AppKit narrows to `.generic`; a ⌃ drag, narrowed to `.link`) is taken here too; nothing while walls take
+    /// no files or the drag carries none.
     private func operation(_ sender: any NSDraggingInfo) -> NSDragOperation {
         let urls = Self.fileURLs(sender.draggingPasteboard)
-        guard !urls.isEmpty, let op = importOp(sender) else { return [] }
-        if let operationFor { return operationFor(urls, op == .copy, sender.draggingSequenceNumber, keys(sender)) }
-        return op == .copy ? .copy : op == .alias ? .link : .move
+        guard acceptsFiles, onDrop != nil, !urls.isEmpty else { return [] }
+        if let operationFor { return operationFor(urls, copy(sender), sender.draggingSequenceNumber, keys(sender)) }
+        let plain = urls.map { _ in false }
+        let facts = DropInController.ItemFacts(crosses: plain, isApp: plain, aliasedWithNoKey: plain)
+        return DropInController.answer(facts, copy: copy(sender), keys: keys(sender), bonks: false)
     }
 
-    /// What dropping now would do: the source's allowed operations and ⌥ (`ImportOp.forDrop`), nil when refused;
-    /// with ⌘⌥ an alias whenever the source allows a link (Erratum 29).
-    private func importOp(_ sender: any NSDraggingInfo) -> ImportOp? {
-        guard acceptsFiles, onDrop != nil else { return nil }
-        let mask = sender.draggingSourceOperationMask
-        let keys = keys(sender)
-        if keys.mode == .alias, mask.contains(.link) { return .alias }
-        return ImportOp.forDrop(copyHeld: NSEvent.modifierFlags.contains(.option), canMove: mask.contains(.move),
-                                canCopy: mask.contains(.copy))
+    /// Copy rather than move: ⌥ held, or a source that offers copying but not moving (as over the desk).
+    private func copy(_ sender: any NSDraggingInfo) -> Bool {
+        DropInController.wantsCopy(sender.draggingSourceOperationMask, modifiers: NSEvent.modifierFlags)
     }
 
     /// The keys held over the drag and what its source allows (`DropKeys`).

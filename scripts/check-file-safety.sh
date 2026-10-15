@@ -71,6 +71,7 @@ NSWorkspace.shared.setIcon(img, forFile: "/x", options: [])
 NSWorkspace.shared.duplicate([u]) { _, _ in }
 try URL.writeBookmarkData(data, to: u)
 _ = CFURLWriteBookmarkDataToFile(data as CFData, u as CFURL, 0, nil)
+_ = FSNewAlias(nil, &target, &alias)
 #selector(FileManager.removeItem(at:))
 let s = Selector(("removeItemAtPath:error:"))
 func renameAll(_ a: String, _ b: String) -> Int32 { rename(a, b) }
@@ -313,7 +314,8 @@ WRITE_PATTERNS='\bwrite[[:space:]]*\([[:space:]]*(to|toFile|toURL)[[:space:]]*:
 \bCGPDFContextCreateWithURL\b
 \bCGDataConsumer[[:space:]]*\([[:space:]]*url:
 \bwriteBookmarkData\b
-\bCFURLWriteBookmarkDataToFile\b'
+\bCFURLWriteBookmarkDataToFile\b
+\bFS(New|Update)Alias'
 # Bookmark (alias) files written: a write as above, and allowed only in the file operator.
 BOOKMARK_PATTERNS='\bwriteBookmarkData\b
 \bCFURLWriteBookmarkDataToFile\b

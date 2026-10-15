@@ -91,11 +91,13 @@ extension Reducer {
         var onDesk: [TokenKey] = []
         var outside: [URL] = []
         var ops: [ImportOp] = []
+        var apps: [Bool] = []
         for (i, url) in d.urls.enumerated() {
             let u = url.standardizedFileURL
             guard u.deletingLastPathComponent().path == rootPath else {
                 outside.append(url)
                 ops.append(d.op(at: i))
+                apps.append(d.isApp(at: i))
                 continue
             }
             // A desk item the mirror has not seen yet is left to it.
@@ -112,10 +114,10 @@ extension Reducer {
             var taken = Set(s.tokens.sortedKeys.compactMap { s.tokens.meta(of: $0).map { folded($0.displayName) } })
             taken.formUnion(s.hints.filter { $0.source != nil && $0.matchesName }.map { folded($0.name) })
             var hints: [String: Location] = [:]
-            for (url, op) in zip(outside, ops) {
+            for (i, url) in outside.enumerated() {
                 let path = url.standardizedFileURL.path
                 // An app's alias lands without ".app" (Erratum 29).
-                let name = TextLayout.nfc(DropIn.landingName(url.lastPathComponent, op: op))
+                let name = TextLayout.nfc(DropIn.landingName(url.lastPathComponent, op: ops[i], isApp: apps[i]))
                 s.hints.removeAll { $0.source == path }
                 s.hints.append(PlacementHint(
                     name: name, location: d.location, expires: expires, pilePos: d.pilePos, source: path,

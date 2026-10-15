@@ -564,53 +564,71 @@
       so the before and after files can match. After a repository move, `BUNDLE_ID` set in the release job's `env:`
       is what both the build and the Verify step use. The CHANGELOG heading carries the day the tag is pushed.
 29. **Apps become aliases on drop-in (0.2.0).** These refine §3.4, §3.6 Drop-in, §3.7 items 1 and 6, and Errata 19,
-    20 and 25. Users who drag an app onto their desk mean "put a shortcut to it there", never "take it out of
+    20, 22 and 25. Users who drag an app onto their desk mean "put a shortcut to it there", never "take it out of
     Applications".
     - **The op of each dropped item** (`DropIn.ops`, from `DropMode` and whether the item is an app): ⌥ copies every
       item, as before. ⌘⌥ makes an alias of every item (Finder's convention). ⌘ alone moves every item, apps too, on
       the same volume; across volumes it stays a copy, since a source is never deleted. With no key an application
-      bundle (a folder whose `UTType` conforms to `.application`, or a `.app` package; a symbolic link to one is not
-      one) becomes an alias and every other item keeps today's rule (moved on the same volume, else copied). A source
-      that offers no move turns what would move into a copy, as before; one that allows no answer leaving its item
-      where it is (a link, a copy or a generic drop) gets no alias: an app then moves with no key, and ⌘⌥ copies.
-      Items already in the mirrored folder only move on the desk, whatever the keys. Drops of the desk folder, a
-      folder holding it, a whole volume, or anything outside the sandbox are refused for aliases too.
+      bundle (`FileOperator.isApplication`: a folder whose `UTType` conforms to `.application`, or a `.app` package,
+      reached directly or through a symbolic link, since Safari in /Applications is a system link to its own copy)
+      becomes an alias and every other item keeps today's rule (moved on the same volume, else copied).
+    - **Apps passing through** (`DropInController.staysInstalled`) are not aliased with no key: an app in a Trash (a
+      `.Trash` or `.Trashes` folder on its path; dragged out, it comes out as before) or on a volume that comes and
+      goes (ejectable or removable: a disk image, a USB stick, a card; or read-only other than the system's own),
+      where the alias would break once the Trash is emptied or the volume ejected. Such an app is moved or copied as
+      before; ⌘⌥ still makes an alias of it.
+    - **What the source allows** (`DropKeys`, from `NSDraggingInfo.draggingSourceOperationMask`): a source that offers
+      no move (neither `.move` nor `.generic`) turns what would move into a copy, as before. One that allows no answer
+      leaving its item where it is (a link, a copy or a generic drop) gets no alias: an app then moves with no key,
+      and ⌘⌥ copies. One that allows only a link (AppKit narrows the mask to `.link` while ⌃ is held) gets an alias of
+      every item, whatever the keys: never a move or a copy it did not allow. Items already in the mirrored folder
+      only move on the desk, whatever the keys. Drops of the desk folder, a folder holding it, a whole volume, or
+      anything outside the sandbox are refused for aliases too.
     - **What the drag is told** (`DropIn.dragOperation(bonks:ops:crosses:)`, over the desk and over walls): `.link` when
-      every item will be aliased (else the copy, or the generic drop, the source allows: each leaves its item where it
-      is); otherwise today's answer, from the items that are not aliases (a copy when one is copied or lies on another
-      volume, else a move; `.generic` when the source allows no `.move`, as AppKit narrows the mask while ⌘ is held).
-      A wall also takes a ⌘⌥ drag whose source allows only a link. `DropInController.dragged`, `drop`, `wallOperation`
-      and `dropOnWall` keep their call shapes; `keys: DropKeys` (the mode and the source's mask) is optional, and
-      without it `copy` means ⌥ and no key otherwise (so an app is aliased). The demo's `dropIn` step takes `cmd`,
-      `opt` or both.
+      every item will be aliased; a copy when any item stays where it is (copied, aliased beside other items, or on
+      another volume), so a source that removes its own item after a move never removes an app we only aliased; a
+      move only when every item moves. `DropKeys.answer` puts that to the source within its mask: for aliases a link,
+      else a copy, else the generic drop; for a copy a copy, else the generic drop; for a move a move, else the
+      generic drop (AppKit narrows the mask to `.generic` while ⌘ is held); nothing when the mask allows no move,
+      copy, link or generic drop.
+    - **Walls** answer and take a drag exactly as the desk does: `WallView` asks the drop-in and has no gate of its
+      own (`ImportOp.forDrop` no longer decides for walls; Erratum 22), so a ⌘ or ⌃ drag the desk takes is taken
+      there too. `DropInController.dragged`, `drop`, `wallOperation` and `dropOnWall` keep their call shapes;
+      `keys: DropKeys` (the mode and the source's mask) is optional, and without it `copy` means ⌥ and no key
+      otherwise (so an app is aliased). The demo's `dropIn` step takes `cmd`, `opt` or both.
     - **The alias** (`FileOperator.importItems(_:ops:)`, op `.alias`): the operator writes a Finder alias of the source
       (`bookmarkData(options: .suitableForBookmarkFile)` and `URL.writeBookmarkData`) into a staging folder of its own
-      (as a copy's), re-checks that the source is still the item it checked (else `identityChanged`, and nothing
-      lands), and renames it into place with `renamex_np(RENAME_EXCL)` under the source's name without ".app"
-      ("Safari"; a folder or a document keeps its full name), " 2", " 3"… on a clash, exactly like a copy. Its landing
-      is checked like a copy's (`landedUnverified`, reported as `FileProblem.aliasUnverified`: "Made an alias, but it
-      can't be undone."). The source is only read: its inode, times, flags and extended attributes never change, and
-      a locked app, or one in a locked folder, is aliased (a move of it is still refused as locked). The log names it
-      `import-alias`; across volumes it is still an alias, never a copy.
+      (as a copy's), on a GCD thread so a volume slow to answer holds up no other request (as a copy). Back on the
+      actor it re-checks that the source is still the item it checked (else `identityChanged`, and nothing lands) and
+      renames the alias into place with `renamex_np(RENAME_EXCL)`, " 2", " 3"… on a clash, exactly like a copy. Its
+      name is the source's, without ".app" only when the source is an application bundle by `isApplication`
+      ("Safari"; a folder or a document keeps its full name, "notes.app" too); the model's hint names it the same
+      from `DropIn.apps`, which the app reads from the items. An alias of a symbolic link points at what the link
+      points to (the bookmark resolves it). Its landing is checked like a copy's (`landedUnverified`, reported as
+      `FileProblem.aliasUnverified`: "Made an alias, but it can't be undone."). The source is only read: its inode,
+      times, flags and extended attributes never change, and a locked app, or one in a locked folder, is aliased (a
+      move of it is still refused as locked). The log names it `import-alias`; across volumes it is still an alias,
+      never a copy.
     - **Undo** (`FileUndoRecord.Step.trashAlias`, logged `trash-alias`) trashes the alias after its identity check,
       like undoing a copy, and never touches what it points to. A drop that did several things takes its steps back
       newest first, as before.
     - **Words.** The undo label is "Make Alias" ("별칭 만들기") while the drop runs and once it is in, "Drop In" beside
-      moves or copies. Toasts (`FileReport(import:undo:ops:)`): "Made an alias; the app stayed put." (one app), "Made
-      aliases; the apps stayed put.", "Made an alias; the original stayed put." (⌘⌥ of something else), "Made aliases;
-      the originals stayed put.", "The app became an alias; the rest came in." / "Apps became aliases; the rest came
-      in." (beside moves or copies). A move that came in as a copy is still said first (Errata 25), and refusals say
-      some stayed, as before. Undo (`FileReport(undo:of:record:)`, which tells aliases from copies by the record):
-      "The alias went to the Trash.", "The aliases went to the Trash.", or "Undone; the alias(es) went to the Trash."
-      beside items sent back or trashed. Every one has natural Korean and fits the toast band (`KoreanFitTests`).
+      moves or copies. Toasts (`FileReport(import:undo:ops:)`, which tells an app's alias by the ".app" its name left
+      off, `DropIn.isAppAlias`): "Made an alias; the app stayed put." (one app), "Made aliases; the apps stayed put.",
+      "Made an alias; the original stayed put." (⌘⌥ of something else), "Made aliases; the originals stayed put.",
+      "The app became an alias; the rest came in." / "Apps became aliases; the rest came in." (beside moves or
+      copies). A move that came in as a copy is still said first (Errata 25), and refusals say some stayed, as
+      before. Undo (`FileReport(undo:of:record:)`, which tells aliases from copies by the record): "The alias went to
+      the Trash.", "The aliases went to the Trash.", or "Undone; the alias(es) went to the Trash." beside items sent
+      back or trashed. Every one has natural Korean and fits the toast band (`KoreanFitTests`).
     - **The alias token.** The scanner reads `isAliasFileKey` as before; the token's name is the alias's (no ".app").
       `IconProvider` draws an alias with its target's workspace icon, found from the path its bookmark data stored
       (read from the alias file, never resolved: no search, no mounting, no UI), so Finder's own arrow is not drawn
       under the desk's alias mark; a broken or moved alias falls back to the alias file's workspace icon. Open,
       double-click, Quick Look and Show in Finder hand the alias file itself to the system (`NSWorkspace.open` opens
       the app). Find Item's Kind column says "Alias" ("별칭"), as the tooltip does.
-    - **Lint.** `writeBookmarkData` and `CFURLWriteBookmarkDataToFile` (and the old `FSNewAlias`/`FSUpdateAlias`) are
-      write patterns, and a `bookmark` check allows them only in `DeskFiles/FileOperator.swift` (self-test lines in the
+    - **Lint.** `writeBookmarkData`, `CFURLWriteBookmarkDataToFile` and the old `FSNewAlias`/`FSUpdateAlias` are write
+      patterns, and a `bookmark` check allows them only in `DeskFiles/FileOperator.swift` (self-test lines in the
       script's Bypass fixture).
     - **Demo.** `13-file-actions` drops a scratch copy of Calculator (`{"fs": {"sourceApp": "Calculator.app"}}`: the
       harness copies `/System/Applications/<name>.app` into the drop source with `ditto`, or `cp -R` where ditto stops

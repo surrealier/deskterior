@@ -201,16 +201,22 @@ public struct DropIn: Sendable, Equatable {
     public var pilePos: SIMD2<Float>?
     /// How each item comes in, one per URL (a missing one moves).
     public var ops: [ImportOp]
+    /// Whether each item is an application bundle (its alias is named without ".app"), one per URL, as the app read
+    /// them from the items; a missing one goes by the name.
+    public var apps: [Bool]
 
-    public init(urls: [URL], location: Location, pilePos: SIMD2<Float>? = nil, op: ImportOp) {
-        self.init(urls: urls, location: location, pilePos: pilePos, ops: Array(repeating: op, count: urls.count))
+    public init(urls: [URL], location: Location, pilePos: SIMD2<Float>? = nil, op: ImportOp, apps: [Bool]? = nil) {
+        self.init(urls: urls, location: location, pilePos: pilePos, ops: Array(repeating: op, count: urls.count),
+                  apps: apps)
     }
 
-    public init(urls: [URL], location: Location, pilePos: SIMD2<Float>? = nil, ops: [ImportOp]) {
+    /// `apps`: whether each item is an application bundle (nil: by its name, an ".app" one).
+    public init(urls: [URL], location: Location, pilePos: SIMD2<Float>? = nil, ops: [ImportOp], apps: [Bool]? = nil) {
         self.urls = urls
         self.location = location
         self.pilePos = pilePos
         self.ops = ops
+        self.apps = apps ?? urls.map { Self.hasAppExtension($0.lastPathComponent) }
     }
 
     /// The drop's op as one (`ImportOp.headline`).
@@ -218,6 +224,12 @@ public struct DropIn: Sendable, Equatable {
 
     /// The op of the item at `index` (a missing one moves).
     public func op(at index: Int) -> ImportOp { ops.indices.contains(index) ? ops[index] : .move }
+
+    /// Whether the item at `index` is an application bundle (a missing entry goes by the name).
+    public func isApp(at index: Int) -> Bool {
+        if apps.indices.contains(index) { return apps[index] }
+        return urls.indices.contains(index) && Self.hasAppExtension(urls[index].lastPathComponent)
+    }
 
     /// What a drag of files over the desk is told (DESIGN §3.6): nothing where the drop would bonk (a full container,
     /// a drive, the monitor off); a copy when one is forced (⌥, or a source that offers no move) or when an item lies
@@ -230,13 +242,14 @@ public struct DropIn: Sendable, Equatable {
     // MARK: alias (Erratum 29)
 
     /// What a drag of items with `ops` (`DropIn.ops`) is told: nothing where the drop would bonk; a link when every
-    /// item becomes an alias; else, as before, a copy when an item is copied or would move across volumes
-    /// (`crosses[i]`: item `i` lies on another volume than the desk, or its volume cannot be read; a missing entry
-    /// counts as crossing), else a move. Aliases beside other items do not change that answer.
+    /// item becomes an alias; else a copy when any item stays where it is (it is copied, aliased, or would move
+    /// across volumes: `crosses[i]`, item `i` lies on another volume than the desk, or its volume cannot be read; a
+    /// missing entry counts as crossing), so a source that removes its own item after a move never removes one we
+    /// only copied or aliased; else (every item moves) a move.
     public static func dragOperation(bonks: Bool, ops: [ImportOp], crosses: [Bool]) -> ImportOp? {
         if bonks { return nil }
         if !ops.isEmpty, ops.allSatisfy({ $0 == .alias }) { return .alias }
-        for (i, op) in ops.enumerated() where op == .copy || (op == .move && (i < crosses.count ? crosses[i] : true)) {
+        for (i, op) in ops.enumerated() where op != .move || (i < crosses.count ? crosses[i] : true) {
             return .copy
         }
         return .move
@@ -245,15 +258,24 @@ public struct DropIn: Sendable, Equatable {
     /// The op each dropped item asks for (Erratum 29), one per item: ⌥ copies every item; ⌘⌥ makes an alias of
     /// every item (Finder's convention); ⌘ alone moves every item, applications too (across volumes still a copy: a
     /// source is never deleted); with no key an application becomes an alias and every other item moves (or is copied
-    /// across volumes), as before. `canMove`: the drag's source lets the item be moved (else what would move is
-    /// copied, as before); `canAlias`: it allows an answer that leaves its item where it is (a link, or a copy), else
-    /// an app with no key moves as before and ⌘⌥ copies.
-    public static func ops(_ mode: DropMode, isApp: [Bool], canMove: Bool = true, canAlias: Bool = true) -> [ImportOp] {
-        isApp.map { op(mode, isApp: $0, canMove: canMove, canAlias: canAlias) }
+    /// across volumes), as before. `isApp[i]`: item `i` is an application a drop with no key aliases (not one in a
+    /// Trash or on a disk image or another volume that comes and goes, which comes in as before; the app's drop-in
+    /// controller tells).
+    /// `canMove`: the drag's source lets the item be moved (else what would move is copied, as before); `canAlias`:
+    /// it allows an answer that leaves its item where it is (a link, a copy or a generic drop), else an app with no
+    /// key moves as before and ⌘⌥ copies; `linkOnly`: it allows nothing but a link (as AppKit narrows the mask while
+    /// ⌃ is held), so every item becomes an alias, whatever the keys.
+    public static func ops(
+        _ mode: DropMode, isApp: [Bool], canMove: Bool = true, canAlias: Bool = true, linkOnly: Bool = false
+    ) -> [ImportOp] {
+        isApp.map { op(mode, isApp: $0, canMove: canMove, canAlias: canAlias, linkOnly: linkOnly) }
     }
 
     /// One item's op (`ops`).
-    public static func op(_ mode: DropMode, isApp: Bool, canMove: Bool = true, canAlias: Bool = true) -> ImportOp {
+    public static func op(
+        _ mode: DropMode, isApp: Bool, canMove: Bool = true, canAlias: Bool = true, linkOnly: Bool = false
+    ) -> ImportOp {
+        if linkOnly { return .alias }
         let move: ImportOp = canMove ? .move : .copy
         switch mode {
         case .copy: return .copy
@@ -263,23 +285,31 @@ public struct DropIn: Sendable, Equatable {
         }
     }
 
-    /// The name an alias of an item named `name` takes on the desk: an app's without its ".app" ("Safari"), any
-    /// other item's as it is (a folder or a document keeps its full name). A taken name gets " 2", " 3"… as a copy's.
-    public static func aliasName(_ name: String) -> String {
-        guard (name as NSString).pathExtension.lowercased() == "app" else { return name }
+    /// The name an alias of an item named `name` takes on the desk: an application bundle's without its ".app"
+    /// ("Safari"), any other item's as it is (a folder or a document keeps its full name, "notes.app" too). A taken
+    /// name gets " 2", " 3"… as a copy's.
+    public static func aliasName(_ name: String, isApp: Bool) -> String {
+        guard isApp, hasAppExtension(name) else { return name }
         let stem = (name as NSString).deletingPathExtension
         return stem.isEmpty ? name : stem
     }
 
     /// The name an item named `name` lands under with `op` (`aliasName` for an alias).
-    public static func landingName(_ name: String, op: ImportOp) -> String {
-        op == .alias ? aliasName(name) : name
+    public static func landingName(_ name: String, op: ImportOp, isApp: Bool) -> String {
+        op == .alias ? aliasName(name, isApp: isApp) : name
     }
 
-    /// Whether an item named `name` is an application by its name (an ".app" bundle): its alias is named without the
-    /// extension, and the toasts call it an app.
-    public static func isAppName(_ name: String) -> Bool {
-        aliasName(name) != name
+    /// Whether the alias named `alias` of an item named `source` is an application's: its ".app" was left off
+    /// (`aliasName` leaves it off only for an application bundle; " 2" after a clash keeps that true). The toasts
+    /// then say the app stayed put.
+    public static func isAppAlias(source: String, alias: String) -> Bool {
+        hasAppExtension(source) && !hasAppExtension(alias)
+    }
+
+    /// The name ends in ".app" (any case) after a stem.
+    static func hasAppExtension(_ name: String) -> Bool {
+        let ns = name as NSString
+        return ns.pathExtension.lowercased() == "app" && !ns.deletingPathExtension.isEmpty
     }
 }
 
