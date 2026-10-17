@@ -1,7 +1,7 @@
 # Third-party notices
 
 Deskterior's own code is MIT-licensed (see `LICENSE`). The following third-party material is bundled or
-credited and keeps its own terms.
+credited and keeps its own terms; it is not relicensed under MIT.
 
 ## Galmuri (font)
 - Author: Lee Minseo (quiple) — https://github.com/quiple/galmuri
