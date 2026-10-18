@@ -182,7 +182,7 @@ struct FileReportsTests {
         #expect(full.toast == .nameTaken)
         let unverified = FileReport(create: FileResult(outcomes: [.refused(landed, .landedUnverified)], undo: nil),
                                     source: "s", undo: nil)
-        #expect(unverified.toast == .copiedNoUndo, "it says it can't be undone")
+        #expect(unverified.toast == .savedNoUndo, "it says it was saved and can't be undone")
         // The name the hint follows is NFC, as the model's names are (a file URL spells it decomposed).
         let korean = await rig.op.createTextFile(named: "우유 사기.txt", contents: Data("우유 사기\n".utf8), rig.intent())
         let named = FileReport(create: korean, source: "memo:note:N1", undo: nil)

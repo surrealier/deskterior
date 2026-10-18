@@ -533,7 +533,7 @@ public enum L10nKey: String, CaseIterable, Sendable {
         .toastNoteRemoved: p("Note taken off.", "메모지를 뗐어요."),
         .toastSavedTextFile: p("Saved as a text file.", "텍스트 파일로 저장했어요."),
         .toastUndidSaveTextFile: p("The text file went to the Trash.", "텍스트 파일을 휴지통으로 옮겼어요."),
-        .toastSavedNoUndo: p("Saved as a text file, but it can't be undone.", "텍스트 파일로 저장했지만 실행 취소할 수 없어요."),
+        .toastSavedNoUndo: p("Saved, but it can't be undone.", "저장했지만 실행 취소할 수 없어요."),
         // Scene tooltips and VoiceOver (through `L10n.tr`; an exception to Errata 21/23 for these items only).
         .stickyNote: p("Sticky Note", "메모지"),
         .stickyCube: p("Sticky Note Cube", "메모지 큐브"),
