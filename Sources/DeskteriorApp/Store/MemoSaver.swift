@@ -7,8 +7,8 @@ import Foundation
 /// `arm()`: the session arms it only once `memos.json` was read and may be written (`StateStore.MemosLoaded.writable`,
 /// false for a newer Deskterior's file), so an empty book can never replace the user's notes, not before the load and
 /// not over a newer file. Unlike the layout, the notes are saved with no folder connected too (they are not about the
-/// folder). Errors are logged once each; a `memos.json` that turned newer or unreadable during the session disarms it
-/// for the rest of the session, as the load would have.
+/// folder). Errors are logged once each, and a failed write keeps its book for the next try; a `memos.json` that
+/// turned newer or unreadable during the session disarms it for the rest of the session, as the load would have.
 nonisolated final class MemoSaver: @unchecked Sendable {
     let store: StateStore
     let delay: TimeInterval
@@ -80,6 +80,16 @@ nonisolated final class MemoSaver: @unchecked Sendable {
             let message = "could not save the memos: \(error)"
             if message != lastError { FileHandle.standardError.write(Data("Deskterior: \(message)\n".utf8)) }
             lastError = message
+            // A write that failed (a full disk, a state folder briefly unwritable) keeps the book: it is tried again
+            // in `maxWait`, and a flush (quit, sleep, a folder switch) writes it. Nothing newer can have arrived since
+            // `pending = nil`: `schedule` runs on this queue too.
+            if pending == nil { pending = book }
+            if work == nil {
+                dirtySince = .now()
+                let item = DispatchWorkItem { [weak self] in self?.save() }
+                work = item
+                queue.asyncAfter(deadline: .now() + maxWait, execute: item)
+            }
         }
     }
 }

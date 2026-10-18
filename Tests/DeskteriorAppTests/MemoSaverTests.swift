@@ -69,6 +69,43 @@ struct MemoSaverTests {
         #expect(store.loadMemos().book == memoBook())
     }
 
+    @Test("A failed write (an unwritable state folder) is kept: the next flush writes it, as quitting or a stop does")
+    func failedWriteFlushed() async throws {
+        let temp = try AppTemp()
+        let dir = try temp.dir("State")
+        let store = try StateStore(directory: dir, mirrored: try temp.dir("Desk"))
+        let saver = MemoSaver(store: store, delay: 0.01, maxWait: 60)
+        saver.arm()
+        saver.flush(memoBook("first"))
+        chmod(dir.path, 0o500)
+        defer { chmod(dir.path, 0o700) }
+        saver.schedule(memoBook("typed while the disk was full"))
+        try await Task.sleep(for: .milliseconds(200))
+        #expect(saver.isArmed && saver.saveCount == 1, "the write failed, and a failed write does not disarm")
+        chmod(dir.path, 0o700)
+        Store(memoSaver: saver).flush()
+        #expect(saver.saveCount == 2)
+        #expect(store.loadMemos().book == memoBook("typed while the disk was full"))
+    }
+
+    @Test("A failed write is tried again by itself, maxWait later")
+    func failedWriteRetried() async throws {
+        let temp = try AppTemp()
+        let dir = try temp.dir("State")
+        let store = try StateStore(directory: dir, mirrored: try temp.dir("Desk"))
+        let saver = MemoSaver(store: store, delay: 0.01, maxWait: 0.3)
+        saver.arm()
+        saver.flush(memoBook("first"))
+        chmod(dir.path, 0o500)
+        defer { chmod(dir.path, 0o700) }
+        saver.schedule(memoBook("typed while the disk was full"))
+        try await Task.sleep(for: .milliseconds(100))
+        #expect(saver.saveCount == 1)
+        chmod(dir.path, 0o700)
+        #expect(await eventually { saver.saveCount == 2 })
+        #expect(store.loadMemos().book == memoBook("typed while the disk was full"))
+    }
+
     @Test("A memos.json that a newer Deskterior wrote mid-session stops the saves: it is never written over")
     func newerFileDisarms() throws {
         let temp = try AppTemp()
