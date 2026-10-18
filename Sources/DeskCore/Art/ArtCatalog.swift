@@ -197,8 +197,21 @@ public struct RoomState: Equatable, Sendable {
         self.chairFacing = chairFacing
     }
 
-    /// The lights a mode implies (Lamp Only forces the room light off and the lamp on).
-    public var effectiveLights: RoomLightState { lights.applying(lightsMode) }
+    /// The lights a mode implies (Lamp Only forces the room light off and the lamp on); the lamp washes the partition
+    /// only while it is out, the clip light shines only while it is out (Erratum 31), and a phone put away with its
+    /// stand casts no glow (Erratum 30).
+    public var effectiveLights: RoomLightState {
+        var l = lights.applying(lightsMode)
+        l.partitionOut = isOut(.partition)
+        l.clipLightOn = lights.clipLightOn && isOut(.clipLight)
+        l.phoneFaceUp = lights.phoneFaceUp && isOut(.phoneStand)
+        return l
+    }
+
+    /// The object is in the room: not put away, and neither is what it hangs on (`DeskState.isOut`).
+    public func isOut(_ id: StowID) -> Bool {
+        !stowed.contains(id) && (StowCatalog.spec(id).parent.map(isOut) ?? true)
+    }
 
     public var timeOfDay: TimeOfDay {
         TimeOfDay(time, mode: lightsMode, roomLightOn: effectiveLights.roomLightOn)
@@ -237,28 +250,35 @@ public enum RoomPlan {
     public static let stateDependentIDs: Set<String> = [
         "decor", "glow.lampHalo", "glow.lampPool", "window", "clock", "calendar", "room.switch", "riser.drawerL",
         "riser.drawerR", "monitor.screen", "monitor.led", "lamp", "phone", "cabinet", "chair",
+        // MARK: memos (0.3.0)
+        "partition.pad", "partition.dday", "partition.clipLight",
     ]
     /// Painted light that belongs to the room's backdrop (never hit-tested as an object).
     public static let glowIDs: Set<String> = ["glow.lampHalo", "glow.lampPool"]
     /// Ids that change from minute to minute within one light phase.
-    public static let minuteIDs: Set<String> = ["window", "clock", "calendar"]
+    public static let minuteIDs: Set<String> = ["window", "clock", "calendar", "partition.pad", "partition.dday"]
     // MARK: memos (0.3.0)
     /// Ids that follow the memos (the calendar's marks, the pad's page, the D-Day card).
     public static let memoIDs: Set<String> = ["calendar", "partition.pad", "partition.dday"]
 
     /// The placements, back to front. With `only`, builds just those ids ("decor" stands for every decor piece).
+    /// Whatever is put away is left out (Erratum 30): its placements, its wall decor (`SceneLayout.hiding`), its shadows
+    /// in the backdrop; the riser without its drawers is drawn sealed.
     public static func placements(_ layout: SceneLayout, _ state: RoomState, only: Set<String>? = nil) -> [RoomPlacement] {
+        let layout = layout.hiding(StowCatalog.decorKinds(hiddenBy: state.stowed))
         var out: [RoomPlacement] = []
         let lights = state.effectiveLights
         let tod = state.timeOfDay
         func wanted(_ id: String) -> Bool { only.map { $0.contains(id) } ?? true }
-        func add(_ id: String, _ layer: RoomLayer, _ sprite: @autoclosure () -> SpriteAsset, core: ArtPoint) {
-            guard wanted(id) else { return }
+        func add(_ id: String, _ layer: RoomLayer, _ sprite: @autoclosure () -> SpriteAsset, core: ArtPoint,
+                 if shown: Bool = true) {
+            guard shown, wanted(id) else { return }
             out.append(RoomPlacement(id, layer, sprite(), at: layout.point(core)))
         }
 
         if wanted("backdrop") {
-            out.append(RoomPlacement("backdrop", .backdrop, SpriteAsset("backdrop", RoomArt.backdrop(layout), anchor: .zero),
+            out.append(RoomPlacement("backdrop", .backdrop,
+                                     SpriteAsset("backdrop", RoomArt.backdrop(layout, stowed: state.stowed), anchor: .zero),
                                      at: .zero))
         }
         // The lamp's bloom and the warm centre of its pool, when the room is dark enough (blank otherwise, so
@@ -283,14 +303,29 @@ public enum RoomPlan {
         add("window", .backdrop, WindowArt.window(sky: state.sky, minuteOfDay: state.time.minuteOfDay),
             core: CoreLayout.window.origin)
         add("clock", .backdrop, RoomArt.clock(hour: state.time.hour, minute: state.time.minute), core: CoreLayout.clock.origin)
-        add("calendar", .backdrop, RoomArt.calendar(state.time), core: CoreLayout.calendar.origin)
+        add("calendar", .backdrop, RoomArt.calendar(state.time, marks: state.calendarMarks), core: CoreLayout.calendar.origin)
         add("room.switch", .backdrop, RoomArt.roomSwitch(on: lights.roomLightOn), core: CoreLayout.roomSwitch.origin)
+        // MARK: memos (0.3.0)
+        // The desk partition: the last of the backdrop, so every desk object stands in front of it (Erratum 31).
+        let partition = state.isOut(.partition)
+        add("partition.panel", .backdrop, PartitionArt.panel(), core: CoreLayout.partition.origin, if: partition)
+        add("partition.cube", .backdrop, PartitionArt.cube(), core: CoreLayout.partitionCube.origin, if: partition)
+        add("partition.pad", .backdrop, PartitionArt.dailyPad(state.time, written: state.padWritten),
+            core: CoreLayout.partitionPad.origin, if: state.isOut(.dailyPad))
+        add("partition.clips", .backdrop, PartitionArt.clipsRail(), core: CoreLayout.partitionClips.origin,
+            if: state.isOut(.memoClips))
+        add("partition.dday", .backdrop, PartitionArt.dDayCard(days: state.dDayDays), core: CoreLayout.partitionDDay.origin,
+            if: state.isOut(.dDayCard))
+        add("partition.clipLight", .backdrop, PartitionArt.clipLight(on: lights.clipLightOn),
+            core: CoreLayout.partitionClipLight.origin, if: state.isOut(.clipLight))
 
-        add("plant", .deskBack, PropArt.plant(), core: CoreLayout.plant.origin)
-        add("riser", .deskBack, StorageArt.riser(), core: CoreLayout.riser.origin)
-        add("riser.drawerL", .deskBack, StorageArt.riserDrawer(p: state.riserOpen.first ?? 0), core: CoreLayout.riserDrawerL.origin)
+        let drawers = state.isOut(.riserDrawers)
+        add("plant", .deskBack, PropArt.plant(), core: CoreLayout.plant.origin, if: state.isOut(.plant))
+        add("riser", .deskBack, StorageArt.riser(sealed: !drawers), core: CoreLayout.riser.origin)
+        add("riser.drawerL", .deskBack, StorageArt.riserDrawer(p: state.riserOpen.first ?? 0), core: CoreLayout.riserDrawerL.origin,
+            if: drawers)
         add("riser.drawerR", .deskBack, StorageArt.riserDrawer(p: state.riserOpen.dropFirst().first ?? 0),
-            core: CoreLayout.riserDrawerR.origin)
+            core: CoreLayout.riserDrawerR.origin, if: drawers)
         add("monitor.stand", .deskBack, MonitorArt.stand(), core: MonitorArt.standRect.origin)
         add("monitor.body", .deskBack, MonitorArt.body(), core: CoreLayout.monitorBody.origin)
         add("monitor.screen", .deskBack,
@@ -307,7 +342,8 @@ public enum RoomPlan {
                 : RoomPlacement("glow.lampHalo", .deskBack, blank("glow.lampHalo.off"), at: .zero))
         }
         add("lamp", .deskBack, PropArt.lamp(on: lights.lampOn), core: PropArt.lampRect.origin)
-        add("phone", .deskBack, PropArt.phoneStand(faceUp: lights.phoneFaceUp), core: CoreLayout.phone.origin)
+        add("phone", .deskBack, PropArt.phoneStand(faceUp: lights.phoneFaceUp), core: CoreLayout.phone.origin,
+            if: state.isOut(.phoneStand))
         add("hub", .deskBack, PropArt.driveHub(), core: CoreLayout.driveHub.origin)
 
         // The desk-surface layer is the scene's desk mat (it takes this slot); the bare room shows only the keyboard's
@@ -320,7 +356,8 @@ public enum RoomPlan {
 
         add("desk.front", .apron, RoomArt.deskFront(), core: CoreLayout.apron.origin)
 
-        add("cabinet", .underDesk, StorageArt.cabinet(p: state.cabinetOpen), core: StorageArt.cabinetSpriteOrigin)
+        add("cabinet", .underDesk, StorageArt.cabinet(p: state.cabinetOpen), core: StorageArt.cabinetSpriteOrigin,
+            if: state.isOut(.cabinet))
         add("wastebasket.back", .underDesk, PropArt.wastebasketBack(), core: CoreLayout.wastebasket.origin)
         add("wastebasket.front", .underDesk, PropArt.wastebasketFront(), core: CoreLayout.wastebasket.origin)
 
@@ -347,6 +384,7 @@ public enum RoomPlan {
 
     /// The lit room (CPU twin of the GPU lit pass).
     public static func render(_ layout: SceneLayout, _ state: RoomState) -> PixelBuffer {
+        let layout = layout.hiding(StowCatalog.decorKinds(hiddenBy: state.stowed))
         let tod = state.timeOfDay
         let mask = LightMask.room(layout, lights: state.effectiveLights, time: tod)
         return mask.apply(to: compose(layout, state), ambient: tod.ambient)

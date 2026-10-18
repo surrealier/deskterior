@@ -23,7 +23,6 @@ public enum RoomArt {
     /// desk top face, and the soft shadows that wall pieces, back-strip props and floor furniture cast. `stowed`:
     /// the objects put away, whose shadows go with them (Erratum 30).
     public static func backdrop(_ layout: SceneLayout, stowed: Set<StowID> = []) -> PixelBuffer {
-        // Step 0 stub: Track B (`stowed` is not read yet: the cabinet's, plant's and phone's shadows, the tower's).
         let w = layout.canvas.w, h = layout.canvas.h
         var c = PixelCanvas(width: w, height: h, fill: wall)
         let base = layout.wallBaseY
@@ -33,12 +32,12 @@ public enum RoomArt {
         drawFloor(&c, from: base, layout: layout)
         drawUnderDeskShade(&c, layout: layout)
         drawRug(&c, layout: layout)
-        drawFloorShadows(&c, layout: layout)
+        drawFloorShadows(&c, layout: layout, cabinet: !stowed.contains(.cabinet))
 
         // Contact shadow on the wall just above the desk's back edge.
         for x in desk.minX..<desk.maxX where c.ink(at: x, desk.y - 1) == wall { c.plot(x, desk.y - 1, wallShade) }
-        c.blit(deskSurface, at: desk.origin)
-        drawWallShadows(&c, layout)
+        c.blit(deskSurface(skipping: stowed), at: desk.origin)
+        drawWallShadows(&c, layout, partition: !stowed.contains(.partition))
         return c.buffer
     }
 
@@ -71,12 +70,29 @@ public enum RoomArt {
     /// The desk top face in desk-local px, with the contact shadows of the back-strip props (the keyboard's is a
     /// sprite of its own, `keyboardShadow`, since it rides on the mat). It is the same for every layout, so it is
     /// built once.
-    static let deskSurface: PixelBuffer = {
+    static let deskSurface: PixelBuffer = deskSurface(skipping: [])
+
+    // MARK: tidy (0.3.0)
+    /// The desk top face without the shadows of the back-strip props put away (only the plant and the phone stand cast
+    /// one that can go, Erratum 30).
+    static func deskSurface(skipping stowed: Set<StowID>) -> PixelBuffer {
+        deskSurfaces[stowed.intersection(shadowCasters)]!
+    }
+
+    /// The back-strip props that can be put away.
+    static let shadowCasters: Set<StowID> = [.plant, .phoneStand]
+
+    /// The desk top for each subset of `shadowCasters`, built once on first use.
+    private static let deskSurfaces: [Set<StowID>: PixelBuffer] = {
         let d = CoreLayout.deskTop
-        var c = PixelCanvas(width: d.w, height: d.h)
-        drawDeskTop(&c, c.bounds)
-        drawDeskShadows(&c, offset: ArtPoint(-d.x, -d.y))
-        return c.buffer
+        var table: [Set<StowID>: PixelBuffer] = [:]
+        for skipped in [[], [StowID.plant], [.phoneStand], [.plant, .phoneStand]] as [Set<StowID>] {
+            var c = PixelCanvas(width: d.w, height: d.h)
+            drawDeskTop(&c, c.bounds)
+            drawDeskShadows(&c, offset: ArtPoint(-d.x, -d.y), skipping: skipped)
+            table[skipped] = c.buffer
+        }
+        return table
     }()
 
     /// The keyboard's contact shadow on the bare desk (one oak step darker: a row under its front face and a column on
@@ -123,7 +139,7 @@ public enum RoomArt {
 
     /// Contact shadows on the floor (one ramp step darker, offset right of the light) under the wastebasket,
     /// the cabinet's plinth and the floor plant's basket; the chair carries its own.
-    static func drawFloorShadows(_ c: inout PixelCanvas, layout: SceneLayout) {
+    static func drawFloorShadows(_ c: inout PixelCanvas, layout: SceneLayout, cabinet: Bool = true) {
         func shadow(_ r: ArtRect) {
             var e = PixelCanvas(width: r.w, height: r.h)
             e.ellipseFill(e.bounds, .neutral0)
@@ -137,7 +153,7 @@ public enum RoomArt {
         let basket = CoreLayout.wastebasket
         shadow(layout.rect(ArtRect(basket.x - 1, floor - 3, basket.w + 8, 6)))
         let cab = CoreLayout.cabinet
-        shadow(layout.rect(ArtRect(cab.x - 2, floor - 3, cab.w + 10, 6)))
+        if cabinet { shadow(layout.rect(ArtRect(cab.x - 2, floor - 3, cab.w + 10, 6))) }
         for d in layout.decor(.floorPlant) {
             let pot = DecorArt.floorPlantPot(d.rect.size).offsetBy(d.rect.x, d.rect.y)
             shadow(ArtRect(pot.x - 2, pot.maxY - 3, pot.w + 7, 5))
@@ -254,8 +270,8 @@ public enum RoomArt {
         c.plot(d.x, d.maxY - 1, Role.deskHighlight)
     }
 
-    /// Soft wall shadows (down-right of each wall piece and of the monitor).
-    static func drawWallShadows(_ c: inout PixelCanvas, _ layout: SceneLayout) {
+    /// Soft wall shadows (down-right of each wall piece, of the monitor and of the partition's tower).
+    static func drawWallShadows(_ c: inout PixelCanvas, _ layout: SceneLayout, partition: Bool = true) {
         func drop(_ r: ArtRect, dx: Int, dy: Int, ink: Ink = wallShade) {
             let s = r.offsetBy(dx, dy)
             for y in s.minY..<s.maxY {
@@ -277,6 +293,8 @@ public enum RoomArt {
         }
         let mon = layout.rect(CoreLayout.monitorBody)
         drop(ArtRect(mon.x, mon.y, mon.w, mon.h - 6), dx: 5, dy: 4)
+        // MARK: memos (0.3.0)
+        if partition { drop(layout.rect(CoreLayout.partitionTower), dx: 2, dy: 2) }
         for d in layout.decor {
             switch d.kind {
             case .shelf:
@@ -303,13 +321,18 @@ public enum RoomArt {
     /// Contact shadows on the desk top (one oak step darker, onto bare desk only): the back-strip props cast
     /// theirs down-right (the keyboard's is `keyboardShadow`).
     /// `offset` moves core px into the canvas being drawn.
-    static func drawDeskShadows(_ c: inout PixelCanvas, offset: ArtPoint) {
+    /// `skipping`: the plant's or phone stand's shadow is left out while it is put away.
+    static func drawDeskShadows(_ c: inout PixelCanvas, offset: ArtPoint, skipping: Set<StowID> = []) {
         func onDesk(_ i: Ink) -> Bool { i == Role.desk || i == Role.deskHighlight }
-        let props: [(PixelBuffer, ArtRect, ArtPoint)] = [
+        var props: [(PixelBuffer, ArtRect, ArtPoint)] = [
             (StorageArt.riser().image, CoreLayout.riser, ArtPoint(3, 2)),
             (MonitorArt.stand().image, MonitorArt.standRect, ArtPoint(3, 2)),
-            (PropArt.plant().image, CoreLayout.plant, ArtPoint(3, 2)),
-            (PropArt.phoneStand(faceUp: true).image, PropArt.phoneStandRect, ArtPoint(3, 2)),
+        ]
+        if !skipping.contains(.plant) { props.append((PropArt.plant().image, CoreLayout.plant, ArtPoint(3, 2))) }
+        if !skipping.contains(.phoneStand) {
+            props.append((PropArt.phoneStand(faceUp: true).image, PropArt.phoneStandRect, ArtPoint(3, 2)))
+        }
+        props += [
             (PropArt.driveHub().image, CoreLayout.driveHub, ArtPoint(3, 2)),
             (PropArt.lamp(on: false).image, PropArt.lampRect, ArtPoint(3, 2)),
         ]
