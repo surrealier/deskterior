@@ -6,8 +6,9 @@ import SpriteKit
 /// scene updates (`SKRenderer.update(atTime:)`). Its bodies hang off `root`, an invisible node that is never moved,
 /// so a body's scene position is its desk-plane point `(x, d)` × `DeskPlanePhysics.unitsPerArtPixel`.
 ///
-/// - furniture (static): the back wall's edge, the back-strip footprints (riser, lamp base, plant, phone stand, hub),
-///   the keyboard, and the pen cup while it stands;
+/// - furniture (static): the back wall's edge, the back-strip footprints (riser, lamp base, plant, phone stand, hub;
+///   a put-away plant's or phone stand's leaves, `setFootprints(stowed:)`), the keyboard, and the pen cup while it
+///   stands;
 /// - piles (dynamic, 14×10 plane px less a 1-px inset, no rotation, damping 4, friction 0.3, restitution 0.2, CCD),
 ///   frozen to static by the `PileFreezer`;
 /// - one prop (the pen cup while carried): velocity-driven, 20× a pile's mass.
@@ -35,9 +36,7 @@ final class DeskPlaneWorld {
         wall.physicsBody = edge
         root.addChild(wall)
         furniture["wall"] = wall
-        for (name, rect) in DeskPlanePhysics.footprints(stowed: []).sorted(by: { $0.key < $1.key }) {
-            setFurniture(name, rect)
-        }
+        setFootprints(stowed: [])
         setFurniture("keyboard", Self.keyboardFootprint(nil))
     }
 
@@ -92,9 +91,24 @@ final class DeskPlaneWorld {
         furniture[name] = node
     }
 
-    /// Footprints the piles keep clear of (for valid-spot searches), except the back wall.
+    // MARK: tidy (0.3.0)
+    /// The back-strip footprints for what is out: those of put-away objects (an away plant or phone stand) leave the
+    /// plane and come back with them (Erratum 30).
+    func setFootprints(stowed: Set<StowID>) {
+        let out = DeskPlanePhysics.footprints(stowed: stowed)
+        for name in Self.footprintNames { setFurniture(name, out[name]) }
+    }
+
+    /// Every back-strip footprint's name, sorted.
+    static let footprintNames = DeskPlanePhysics.footprints(stowed: []).keys.sorted()
+
+    /// Whether the back-strip footprint `name` stands on the plane now.
+    func hasFurniture(_ name: String) -> Bool { furniture[name] != nil }
+
+    /// Footprints the piles keep clear of (for valid-spot searches), except the back wall and the back strip (the
+    /// watchdog keeps piles off the back strip's footprints itself).
     var obstacles: [DeskPlaneRect] {
-        furnitureRects.filter { DeskPlanePhysics.footprints(stowed: [])[$0.key] == nil }.map(\.value)
+        furnitureRects.filter { !Self.footprintNames.contains($0.key) }.map(\.value)
     }
 
     static func configureFurniture(_ body: SKPhysicsBody) {

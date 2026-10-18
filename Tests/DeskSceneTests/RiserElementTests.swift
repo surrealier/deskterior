@@ -334,4 +334,44 @@ struct RiserElementTests {
         #expect(!scene.needsFrames)
         #expect(store.state.drawerOpening(.riserLeft) == Float(unit.pixel))
     }
+
+    // MARK: tidy (0.3.0)
+
+    @Test("The sealed riser stays routed: one part, its menu brings the drawers back, a drop on it bonks")
+    func sealedRiser() throws {
+        var sealed = C.state()
+        sealed.stowed = [.riserDrawers]
+        let store = SceneStore(sealed)
+        let scene = store.scene
+        let p = Pointer(scene: scene)
+        let room = try C.room(scene)
+        let riser = try #require(room.riserElement)
+        let a = try #require(scene.layout).anchors
+        let handle = try #require(a.point("riser.drawerL.handle"))
+        #expect(scene.isRouted("riser") && riser.isSealed)
+        #expect(scene.hitTest(handle)?.part == RiserElement.sealedPart)
+        #expect(scene.liveAnchor("riser.drawerL.handle") == nil && riser.shownTokens.isEmpty)
+        #expect(riser.accessibilityItems().map(\.id) == ["riser"])
+        // The drawer fronts are gone; the body is the sealed stand.
+        #expect(riser.root.children.filter { !$0.isHidden }.count == 1)
+        var context = scene.menuContext
+        context.today = scene.today
+        #expect(scene.contextMenu(at: handle) == MenuSpec.sealedRiser(store.state, context))
+        #expect(scene.contextMenu(at: handle).item("bringBack")?.command == .bringBack(.riserDrawers))
+        // A carry let go on it bonks with the toast, and the file stays on the monitor.
+        let screen = try #require(scene.screen)
+        let before = store.state.tokens.location(of: F.key(1))
+        p.drag(F.centre(try #require(screen.iconRect(of: F.key(1)))), F.centre(ArtRect(origin: handle, size: ArtSize(1, 1))))
+        #expect(scene.bonkCount == 1 && scene.toastShown == .drawersPutAway)
+        #expect(store.state.tokens.location(of: F.key(1)) == before)
+        #expect(!store.actions.contains { $0.hasPrefix("move(") })
+        // Brought back, its drawers are there again.
+        var s = store.state
+        s.stowed = []
+        store.state = s
+        scene.apply(s)
+        C.settle(p)
+        #expect(!riser.isSealed && scene.hitTest(handle)?.part == "riser.drawerL.handle")
+        #expect(riser.root.children.allSatisfy { !$0.isHidden })
+    }
 }

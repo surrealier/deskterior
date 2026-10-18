@@ -48,6 +48,13 @@ final class PileBodies {
         self.world = world
     }
 
+    // MARK: tidy (0.3.0)
+    /// Put-away objects: their footprints are off the plane, so the watchdog lets piles rest there (Erratum 30).
+    var stowed: Set<StowID> {
+        get { watchdog.stowed }
+        set { watchdog.stowed = newValue }
+    }
+
     /// Something still moves (frames are needed).
     var isMoving: Bool { !unsettled.isEmpty }
 

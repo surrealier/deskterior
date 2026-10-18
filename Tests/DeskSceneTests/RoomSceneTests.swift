@@ -43,11 +43,14 @@ struct RoomSceneTests {
         #expect(hit("chair")?.element == "chair")
         #expect(hit("clock")?.element == "clock")
         #expect(scene.hitTest(scene.layout!.point(ArtPoint(170, 192)))?.part == "mat.default")
-        // Bare wall answers with the room itself; empty pixels inside a sprite's box fall through.
+        // Bare wall answers with the room itself; empty pixels inside a sprite's box fall through: beside the lamp's
+        // arm to the partition's felt behind it (Erratum 31), above the felt to the wall.
         let wall = scene.hitTest(ArtPoint(scene.layout!.coreOrigin.x + 260, scene.layout!.coreOrigin.y + 4))
         #expect(wall?.element == "room" && wall?.part == nil)
         let besideLampArm = scene.layout!.point(ArtPoint(150, 140))
-        #expect(scene.hitTest(besideLampArm)?.element == "room")
+        #expect(scene.hitTest(besideLampArm)?.element == "partition")
+        let besideLampHead = scene.layout!.point(ArtPoint(110, 100))
+        #expect(scene.hitTest(besideLampHead)?.element == "room")
     }
 
     @Test("Hover changes are reported once; the wall clears the ring")

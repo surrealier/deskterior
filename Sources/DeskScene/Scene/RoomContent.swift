@@ -37,6 +37,25 @@ public final class SceneContext {
     /// What the lamp, room switch and clock show before the model or the clock catch up (flicker, time preview).
     let lightOverrides = SceneLightOverrides()
 
+    // MARK: memos (0.3.0)
+    /// The desk menu's extras from the app (pause state, undo labels, today); elements' own menus take them too.
+    var menuContext = MenuSpec.Context()
+    /// The time the room shows (the clock's preview while one runs): the calendar's month, the pad's day.
+    var shownTime = WallTime(hour: 0, minute: 0)
+    /// Whether something drawn in a canvas rect can be seen under the room's light now (`DarkHit`): unlit notes, the
+    /// pad and the calendar keep the user's text to themselves (Erratum 31).
+    var isLit: (ArtRect) -> Bool = { _ in true }
+
+    /// Today on the room's clock (its real time at the last refresh): the day memo actions name.
+    var today: DayKey { DayKey(lightOverrides.clockTime) }
+
+    /// `menuContext` with today filled in when the app has not said.
+    var menuContextNow: MenuSpec.Context {
+        var c = menuContext
+        if c.today == nil { c.today = today }
+        return c
+    }
+
     init(layout: SceneLayout, font: PixelFont?) {
         self.layout = layout
         space = ArtSpace(canvas: layout.canvas)
@@ -66,7 +85,10 @@ public final class SceneContext {
 /// element takes (clicks on the bare wall clear the selection; its right-click is the desk menu).
 final class RoomContent: GestureTarget {
     let root = SKNode()
+    /// The room as shown: `solvedLayout` without the wall decor that is put away (Erratum 30).
     private(set) var layout: SceneLayout
+    /// The layout as `LayoutSolver` solved it for the grid and the avoid rects.
+    private(set) var solvedLayout: SceneLayout
     private(set) var state: RoomState
     private(set) var elements: [PlacedElement] = []
     private(set) var hovered: Hit?
@@ -78,8 +100,10 @@ final class RoomContent: GestureTarget {
     private(set) var router: InputRouter!
     let tooltip = TooltipView(z: CGFloat(RoomLayer.ui.rawValue * 1000 + 10))
     let toast = ToastView(z: CGFloat(RoomLayer.ui.rawValue * 1000 + 20))
-    /// The desk menu's extras (pause state, undo labels), from the app.
-    var menuContext = MenuSpec.Context()
+    /// The desk menu's extras (pause state, undo labels, today), from the app.
+    var menuContext = MenuSpec.Context() {
+        didSet { context.menuContext = menuContext }
+    }
 
     private var space: ArtSpace
     private var byID: [String: PlacedElement] = [:]
@@ -96,6 +120,13 @@ final class RoomContent: GestureTarget {
     private var installed: [(slot: String, elements: [any DeskElement])] = []
     /// Every installed element.
     var extras: [any DeskElement] { installed.flatMap(\.elements) }
+    // MARK: tidy (0.3.0)
+    /// The installed elements whose placed object is in the room. A put-away object's slot is dormant (Erratum 30):
+    /// its elements are hidden and unrouted, get no frames, offer no accessibility items and take no knocks; they
+    /// still adopt state (`apply` reaches every element).
+    var activeExtras: [any DeskElement] {
+        installed.filter { byID[$0.slot] != nil }.flatMap(\.elements)
+    }
 
     static let hoverInk = Role.selection
 
@@ -108,13 +139,16 @@ final class RoomContent: GestureTarget {
     ]
 
     init(grid: PixelGrid, state: RoomState, avoid: [ArtRect] = []) {
-        layout = LayoutSolver.solve(grid: grid, avoid: avoid)
+        solvedLayout = LayoutSolver.solve(grid: grid, avoid: avoid)
+        layout = solvedLayout.hiding(StowCatalog.decorKinds(hiddenBy: state.stowed))
         self.state = state
         space = ArtSpace(canvas: grid.artSize)
         lightMask = LightMask(size: grid.artSize)
         ambient = .identity
         context = SceneContext(layout: layout, font: PixelFont.galmuri9)
         context.sky = state.sky
+        context.shownTime = state.time
+        context.lightOverrides.clockTime = state.time
         screen = ScreenElement(context: context)
         monitor = MonitorElement(context: context, screen: screen)
         context.screen = screen
@@ -128,12 +162,14 @@ final class RoomContent: GestureTarget {
         router = InputRouter(target: self)
         context.dropOrder = { [unowned self] in routing }
         context.onToast = { [unowned self] key in showToast(key) }
+        context.isLit = { [unowned self] in isTokenLit($0) }
         install([screen, monitor], inSlotOf: "monitor")
         installContainers()
         installRoomControls()
         installPhysics()
         installMat()  // MARK: mat
         installFiles() // MARK: files
+        installPartition() // MARK: memos (0.3.0)
         rebuild()
     }
 
@@ -149,6 +185,16 @@ final class RoomContent: GestureTarget {
             for e in elements { e.layout(layout) }
             if let s = context.state { for e in elements { e.apply(s) } }
             rebuildRouting()
+            syncDormant()
+        }
+    }
+
+    // MARK: tidy (0.3.0)
+    /// Hides the elements of every installed slot whose placed object is gone (put away) and shows the rest.
+    func syncDormant() {
+        for slot in installed {
+            let dormant = byID[slot.slot] == nil
+            for e in slot.elements { e.root.isHidden = dormant }
         }
     }
 
@@ -185,6 +231,7 @@ final class RoomContent: GestureTarget {
         context.fx.space = space
         for e in extras { e.layout(layout) }
         rebuildRouting()
+        syncDormant()
         updateLighting()
         setHover(nil, element: nil)
         router.resetHover()
@@ -266,7 +313,8 @@ final class RoomContent: GestureTarget {
     func relayout(grid: PixelGrid, avoid: [ArtRect]) {
         router.cancelAll()
         finishSettling()
-        layout = LayoutSolver.solve(grid: grid, avoid: avoid)
+        solvedLayout = LayoutSolver.solve(grid: grid, avoid: avoid)
+        layout = solvedLayout.hiding(StowCatalog.decorKinds(hiddenBy: state.stowed))
         space = ArtSpace(canvas: grid.artSize)
         rebuild()
         if let s = context.state { apply(s) }
@@ -278,18 +326,38 @@ final class RoomContent: GestureTarget {
         guard new != state else { return false }
         let old = state
         state = new
+        context.shownTime = new.time
         let skyChanged = context.sky != new.sky
         context.sky = new.sky
+        // MARK: tidy (0.3.0)
+        // A change of the put-away set rebuilds the room once (Erratum 30): placements come and go, the wall decor
+        // follows `SceneLayout.hiding`, and the slots of what left go dormant (what came back wakes up).
+        if old.stowed != new.stowed {
+            router.cancelAll()
+            finishSettling()
+            layout = solvedLayout.hiding(StowCatalog.decorKinds(hiddenBy: new.stowed))
+            rebuild()
+            if skyChanged, let s = context.state { monitor.apply(s) }
+            relit()
+            roomTimeChanged(from: old)
+            return true
+        }
         let a = old.timeOfDay, b = new.timeOfDay
         let sameLight = a.sky == b.sky && a.ambientLevel == b.ambientLevel && a.ambientTint == b.ambientTint
             && old.effectiveLights == new.effectiveLights && old.lightsMode == new.lightsMode
         let sameRest = old.riserOpen == new.riserOpen && old.cabinetOpen == new.cabinetOpen
             && old.chairX == new.chairX && old.chairFacing == new.chairFacing
         let minuteOnly = sameLight && sameRest
-        refresh(minuteOnly ? RoomPlan.minuteIDs : RoomPlan.stateDependentIDs, relight: !minuteOnly)
+        var ids = minuteOnly ? RoomPlan.minuteIDs : RoomPlan.stateDependentIDs
+        // MARK: memos (0.3.0): the calendar's marks, the pad's page and the D-Day card follow the memos.
+        if old.calendarMarks != new.calendarMarks || old.padWritten != new.padWritten || old.dDayDays != new.dDayDays {
+            ids.formUnion(RoomPlan.memoIDs)
+        }
+        refresh(ids, relight: !minuteOnly)
         if skyChanged, let s = context.state { monitor.apply(s) }
         // The light moved under a resting pointer: a token it reached or left is hovered (or not) anew (`DarkHit`).
         if !minuteOnly { relit() }
+        roomTimeChanged(from: old)
         return true
     }
 
@@ -307,7 +375,7 @@ final class RoomContent: GestureTarget {
     /// the light no longer reaches (`darkTokens`).
     func pruneSelection() {
         guard !context.selection.isEmpty else { return }
-        let shown = extras.reduce(into: Set<TokenKey>()) { $0.formUnion($1.shownTokens) }
+        let shown = activeExtras.reduce(into: Set<TokenKey>()) { $0.formUnion($1.shownTokens) }
         context.selection.restrict(to: shown.subtracting(darkTokens()))
         screen.refreshIfSelectionChanged()
     }
@@ -322,6 +390,7 @@ final class RoomContent: GestureTarget {
 
     /// Plays a model-requested animation (`Effect.play`).
     func play(_ id: AnimationID, _ target: AnimTarget) {
+        if playPartition(id, target) { return } // MARK: tidy and memos (0.3.0)
         if playPhysics(id, target) { return }
         if playMat(id, target) { return }  // MARK: mat
         if playFiles(id, target) { return } // MARK: files
@@ -379,7 +448,7 @@ final class RoomContent: GestureTarget {
 
     /// Everything that moves here is scripted and bounded, or a drag in hand.
     var scriptedAnimating: Bool {
-        extras.contains { $0.needsFrames } || router.drag != nil || !settling.isEmpty
+        activeExtras.contains { $0.needsFrames } || router.drag != nil || !settling.isEmpty
             || context.fx.needsFrames || toast.needsFrames || context.shakeFrames > 0
             || elements.contains { $0.needsFrames }
     }
@@ -388,7 +457,7 @@ final class RoomContent: GestureTarget {
     /// The AV logo's frame interval while it is the only thing moving (the loop may tick at that rate); else nil.
     var slowFrameInterval: Double? {
         guard let interval = monitor.slowFrameInterval else { return nil }
-        let busy = extras.contains { $0 !== monitor && $0.needsFrames } || router.drag != nil || !settling.isEmpty
+        let busy = activeExtras.contains { $0 !== monitor && $0.needsFrames } || router.drag != nil || !settling.isEmpty
             || context.fx.needsFrames || toast.needsFrames || context.shakeFrames > 0
             || elements.contains { $0.needsFrames }
         return busy ? nil : interval
@@ -398,7 +467,7 @@ final class RoomContent: GestureTarget {
         router.drag?.step(dt)
         for d in settling { d.step(dt) }
         settling.removeAll { $0.isFinished }
-        for e in extras { e.step(dt) }
+        for e in activeExtras { e.step(dt) }
         pruneSelection()
         for e in elements where e.needsFrames { e.step(dt) }
         context.fx.step(dt)
@@ -412,7 +481,7 @@ final class RoomContent: GestureTarget {
     /// Hard sleep: every animation jumps to its end.
     func forceRest() {
         finishSettling()
-        for e in extras { e.settle() }
+        for e in activeExtras { e.settle() }
         for e in elements { e.settle() }
         context.fx.clear()
         toast.hide()
@@ -420,7 +489,10 @@ final class RoomContent: GestureTarget {
     }
 
     private func finishSettling() {
-        for d in settling { (d as? CarrySession)?.finishNow() }
+        for d in settling {
+            (d as? CarrySession)?.finishNow()
+            (d as? NoteDrag)?.finishNow() // MARK: memos (0.3.0)
+        }
         settling.removeAll()
     }
 
@@ -506,9 +578,25 @@ final class RoomContent: GestureTarget {
     }
 
     func menu(at p: SIMD2<Float>, hit: Hit?, element: (any DeskElement)?) {
-        if element is DarkTokenElement { return }
-        let spec = hit.flatMap { h in element?.menu(h) } ?? MenuSpec.desk(context.state ?? DeskState(), menuContext)
+        guard let spec = menuSpec(hit: hit, element: element) else { return }
         context.request(.menu(spec, at: p))
+    }
+
+    /// The menu a right-click on `hit` shows: the element's own, else the desk menu; none over a token in the dark.
+    /// An object that can be put away ends its menu with "Put Away ‹X›" (or "Take Out %d & Put Away ‹X›"), appended
+    /// here for every such object (Erratum 30); one with no menu of its own (the plant, the riser's and cabinet's
+    /// bodies) shows that first, then the desk menu.
+    func menuSpec(hit: Hit?, element: (any DeskElement)?) -> MenuSpec? {
+        if element is DarkTokenElement { return nil }
+        func desk() -> MenuSpec { MenuSpec.desk(context.state ?? DeskState(), menuContext) }
+        guard let hit, let element else { return desk() }
+        let own = element.menu(hit)
+        guard let s = context.state, hit.token == nil, let id = StowCatalog.stowID(forElement: element.id), s.isOut(id)
+        else { return own ?? desk() }
+        let putAway = MenuSpec.objectPutAway(id, s)
+        guard !putAway.isEmpty else { return own ?? desk() }
+        if let own { return MenuSpec(own.items + putAway) }
+        return MenuSpec(Array(putAway.drop(while: \.isSeparator)) + [.separator] + desk().items)
     }
 
     /// A desk key. File keys act only on selected tokens that are on show (`pruneSelection`).

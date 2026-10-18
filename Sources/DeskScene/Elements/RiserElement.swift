@@ -12,6 +12,10 @@ import SpriteKit
 /// - **Cubby**: an open shelf; drops go in; its contents are dim silhouettes you can hover (name), select, open
 ///   and drag out.
 /// - Right-click a drawer or the cubby for its container menu; a mini for the token menu.
+/// - **Sealed** (Erratum 30): while the riser drawers are put away the riser stays, a plain monitor stand drawn by
+///   `StorageArt.riser(sealed: true)`: no drawers, the cubby closed. It stays routed: the whole riser is one part
+///   (`riser.sealed`), its menu brings the drawers back (`MenuSpec.sealedRiser`), and drops on it bonk ("The drawers
+///   are put away.").
 final class RiserElement: ContainerElement, DeskElement {
     let id = "riser"
     let units: [DrawerUnit] = [DrawerUnit(.riserLeft, contentInset: 2), DrawerUnit(.riserRight, contentInset: 2)]
@@ -36,11 +40,17 @@ final class RiserElement: ContainerElement, DeskElement {
     override var drawnPlacements: [String] { ["riser", "riser.drawerL", "riser.drawerR"] }
 
     static let anchorNames: [ContainerID: String] = [.riserLeft: "riser.drawerL", .riserRight: "riser.drawerR"]
+    /// The sealed riser's one part.
+    static let sealedPart = "riser.sealed"
 
     // MARK: Geometry
 
     var riserRect: ArtRect { context.layout.rect(CoreLayout.riser) }
     var cubbyRect: ArtRect { context.layout.rect(CoreLayout.riserCubby) }
+
+    // MARK: tidy (0.3.0)
+    /// The drawers are put away: the riser is a sealed stand.
+    var isSealed: Bool { state?.isAway(.riserLeft) == true }
 
     func unit(_ id: ContainerID) -> DrawerUnit? { units.first { $0.id == id } }
 
@@ -51,8 +61,9 @@ final class RiserElement: ContainerElement, DeskElement {
         return InteriorRaster.cubbyRects(count: cubbyMembers.count).map { $0.offsetBy(o.x, o.y).intersection(clip) }
     }
 
-    /// The live rect of a riser anchor (the pulls and fronts follow the drawers out).
+    /// The live rect of a riser anchor (the pulls and fronts follow the drawers out); none while sealed.
     func liveAnchor(_ name: String) -> ArtRect? {
+        guard !isSealed else { return nil }
         for u in units {
             let base = Self.anchorNames[u.id]!
             switch name {
@@ -67,6 +78,7 @@ final class RiserElement: ContainerElement, DeskElement {
 
     /// Where `key` shows as a mini (the part of it that answers a click, canvas px), if it does.
     func miniRect(of key: TokenKey) -> ArtRect? {
+        guard !isSealed else { return nil }
         var drawn: ArtRect?
         for u in units where u.showsMinis {
             if let i = u.members.firstIndex(of: key) { drawn = u.miniRects()[i].intersection(u.contentClip) }
@@ -99,6 +111,11 @@ final class RiserElement: ContainerElement, DeskElement {
     }
 
     func hitTest(_ p: ArtPoint) -> Hit? {
+        if isSealed {
+            let r = riserRect
+            guard r.contains(p), bodyImage.pixel(p.x - r.x, p.y - r.y).a != 0 else { return nil }
+            return Hit(element: id, part: Self.sealedPart, rect: r)
+        }
         let hidden = carried
         for u in units where u.area.contains(p) {
             let name = Self.anchorNames[u.id]!
@@ -140,7 +157,7 @@ final class RiserElement: ContainerElement, DeskElement {
             }
             return .none
         }
-        guard let part = hit.part else { return Self.outline(bodyImage, at: riserRect.origin) }
+        guard let part = hit.part, part != Self.sealedPart else { return Self.outline(bodyImage, at: riserRect.origin) }
         if part == "riser.cubby" { return Self.ring(around: cubbyRect) }
         if part.hasSuffix(".interior") { return .none }
         let u = units.first { part.hasPrefix(Self.anchorNames[$0.id]!) }
@@ -150,7 +167,9 @@ final class RiserElement: ContainerElement, DeskElement {
     func tooltip(_ hit: Hit) -> TooltipSpec? {
         if let key = hit.token { return miniTooltip(key, anchor: hit.rect) }
         guard let s = state else { return TooltipSpec(title: "Monitor Riser", anchor: hit.rect) }
-        guard let part = hit.part else { return TooltipSpec(title: "Monitor Riser", anchor: riserRect) }
+        guard let part = hit.part, part != Self.sealedPart else {
+            return TooltipSpec(title: "Monitor Riser", anchor: riserRect)
+        }
         let id: ContainerID = part == "riser.cubby"
             ? .riserCubby : (part.hasPrefix("riser.drawerL") ? .riserLeft : .riserRight)
         let detail = Self.countText(s.tokens.count(in: id), cap: id.spec)
@@ -159,6 +178,12 @@ final class RiserElement: ContainerElement, DeskElement {
 
     func handle(_ gesture: Gesture, _ hit: Hit) -> GestureResponse {
         guard state != nil else { return .pass }
+        if hit.part == Self.sealedPart {
+            switch gesture {
+            case .press, .cancelPress: return .handled
+            case .click, .dragBegan, .scroll: return .pass
+            }
+        }
         if let key = hit.token {
             if case .scroll = gesture, let u = units.first(where: { $0.members.contains(key) }) {
                 u.scroll(gesture.scrollDY)
@@ -192,6 +217,7 @@ final class RiserElement: ContainerElement, DeskElement {
 
     func dropVerdict(_ tokens: [TokenKey], at p: ArtPoint) -> DropVerdict? {
         guard let s = state else { return nil }
+        if isSealed { return hitTest(p) == nil ? nil : .bonk(.drawersPutAway) }
         for u in units where u.area.contains(p) {
             return u.fits(tokens) ? .accept(.container(u.id, order: u.members.count)) : .bonk(.containerFull)
         }
@@ -206,6 +232,7 @@ final class RiserElement: ContainerElement, DeskElement {
 
     func menu(_ hit: Hit) -> MenuSpec? {
         guard let s = state else { return nil }
+        if hit.part == Self.sealedPart { return MenuSpec.sealedRiser(s, context.menuContextNow) }
         if let key = hit.token { return miniMenu(key) }
         guard let part = hit.part else { return nil }
         if part == "riser.cubby" { return MenuSpec.container(.riserCubby, s) }
@@ -213,6 +240,7 @@ final class RiserElement: ContainerElement, DeskElement {
     }
 
     var shownTokens: Set<TokenKey> {
+        guard !isSealed else { return [] }
         var out = Set(cubbyMembers)
         for u in units where u.showsMinis { out.formUnion(u.members) }
         return out
@@ -220,6 +248,7 @@ final class RiserElement: ContainerElement, DeskElement {
 
     func accessibilityItems() -> [AXItem] {
         guard let s = state else { return [] }
+        if isSealed { return [AXItem(id: "riser", label: "Monitor Riser", role: .group, frame: riserRect)] }
         var items: [AXItem] = units.map { u in
             AXItem(id: Self.anchorNames[u.id]!, label: Self.containerLabel(u.id, count: u.members.count),
                    role: .container, frame: u.front)
@@ -238,7 +267,7 @@ final class RiserElement: ContainerElement, DeskElement {
     var needsFrames: Bool { units.contains { $0.needsFrames } || pulse != nil }
 
     func step(_ dt: Double) {
-        let carry = carryInHand
+        let carry = isSealed ? nil : carryInHand
         for u in units {
             _ = u.carry(at: carry?.point, accepts: carry.map { u.fits($0.keys) } ?? false, dt: dt)
             handle(u.step(dt), of: u)
@@ -290,14 +319,24 @@ final class RiserElement: ContainerElement, DeskElement {
         let space = context.space
         let hidden = carried
         let selected = drawnSelected
-        let look = CubbyLook(items: cubbyItems, marks: cubbyMarks(hidden: hidden, selected: selected))
+        let sealed = isSealed
+        let look = sealed
+            ? CubbyLook(items: [], marks: .none, sealed: true)
+            : CubbyLook(items: cubbyItems, marks: cubbyMarks(hidden: hidden, selected: selected))
         if look != bodyLook {
             bodyLook = look
-            bodyImage = StorageArt.riser(cubbyContents: InteriorRaster.cubby(cubbyItems, marks: look.marks)).image
+            bodyImage = sealed
+                ? StorageArt.riser(sealed: true).image
+                : StorageArt.riser(cubbyContents: InteriorRaster.cubby(cubbyItems, marks: look.marks)).image
             bodyNode.texture = TextureFactory.texture(bodyImage)
             space.place(bodyNode, at: ArtRect(origin: riserRect.origin, size: bodyImage.size))
             bodyNode.zPosition = context.placementZ("riser")
             bodyNode.isHidden = false
+        }
+        if sealed {
+            for node in drawerNodes { node.isHidden = true }
+            drawerLooks = [nil, nil]
+            return false
         }
         for (i, u) in units.enumerated() {
             let look = u.look(hidden: hidden, selected: selected, raised: raisedKeys, hovered: hoveredKey)
@@ -334,10 +373,11 @@ final class RiserElement: ContainerElement, DeskElement {
     }
 }
 
-/// What the cubby shows (redrawn only when it changes).
+/// What the cubby shows (redrawn only when it changes); `sealed`: none, the drawers are put away.
 struct CubbyLook: Equatable {
     var items: [InteriorRaster.Item]
     var marks: InteriorRaster.Marks
+    var sealed = false
 }
 
 extension Gesture {

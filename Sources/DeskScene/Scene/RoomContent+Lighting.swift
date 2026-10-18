@@ -77,7 +77,8 @@ struct LitOverlay: Equatable {
 }
 
 extension RoomContent {
-    /// The room's lamp, wall switch, clock, keyboard and plant, each in its placed object's hit-test slot.
+    /// The room's lamp, wall switch, clock, keyboard, plant and wall calendar, each in its placed object's hit-test
+    /// slot.
     func installRoomControls() {
         func placed(_ id: String) -> () -> PlacedElement? {
             { [unowned self] in elements.first { $0.id == id } }
@@ -89,6 +90,8 @@ extension RoomContent {
         let plant = PlantElement(context: context, placed: placed("plant"))
         plant.refreshHover = { [unowned self, unowned plant] in restyleHover(plant) }
         install([plant], inSlotOf: "plant")
+        // MARK: memos (0.3.0)
+        install([CalendarElement(context: context, placed: placed("calendar"))], inSlotOf: "calendar")
     }
 
     /// Dark-token hit filtering (`DarkHit`): a token hit (any element's, through `Hit.token`) where the light has
@@ -111,7 +114,7 @@ extension RoomContent {
     func darkTokens() -> Set<TokenKey> {
         guard router.drag == nil, ambient.level < DarkHit.minimumLevel else { return [] }
         var out = Set<TokenKey>()
-        for e in extras {
+        for e in activeExtras {
             for item in e.accessibilityItems() {
                 if let key = item.token, !isTokenLit(item.frame) { out.insert(key) }
             }

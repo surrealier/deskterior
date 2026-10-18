@@ -8,15 +8,17 @@ extension DeskScene {
         room?.liveContainerAnchor(name)
     }
 
-    /// Where `key` shows as a mini in an open drawer, the cubby or the face-up phone (canvas px), if it does.
+    /// Where `key` shows as a mini in an open drawer, the cubby, the face-up phone or the memo clips (canvas px), if
+    /// it does.
     public func miniRect(of key: TokenKey) -> ArtRect? {
         room?.containerMiniRect(of: key)
     }
 
-    /// Tokens the containers show as minis now (open drawers, the cubby, the face-up phone).
+    /// Tokens the containers show as minis now (open drawers, the cubby, the face-up phone, the memo clips).
     public var containerMinis: Set<TokenKey> {
         guard let room else { return [] }
-        let elements: [any DeskElement] = [room.riserElement, room.cabinetElement, room.phoneElement].compactMap { $0 }
+        let elements: [any DeskElement] = [room.riserElement, room.cabinetElement, room.phoneElement,
+                                           room.memoClipsElement].compactMap { $0 }
         return elements.reduce(into: Set<TokenKey>()) { $0.formUnion($1.shownTokens) }
     }
 

@@ -63,7 +63,8 @@ public nonisolated enum HoverStyle: Sendable {
     case image(PixelBuffer, at: ArtPoint)
 }
 
-/// A hover tooltip (DESIGN §2.1): a Galmuri9 title line and an optional detail line.
+/// A hover tooltip (DESIGN §2.1): a Galmuri9 title line, optional body lines (a sticky note's text) and an optional
+/// detail line.
 public nonisolated struct TooltipSpec: Sendable, Equatable {
     public var title: String
     public var detail: String?
@@ -77,9 +78,10 @@ public nonisolated struct TooltipSpec: Sendable, Equatable {
     /// Keep inside this canvas rect (nil: the visible canvas).
     public var bounds: ArtRect?
 
-    public init(title: String, detail: String? = nil, anchor: ArtRect) {
+    public init(title: String, detail: String? = nil, body: [String] = [], anchor: ArtRect) {
         self.title = title
         self.detail = detail
+        self.body = body
         self.anchor = anchor
     }
 }
