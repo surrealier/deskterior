@@ -511,7 +511,8 @@ public struct DeskState: Sendable, Equatable {
     /// Takes `other`'s token layout (root, tokens, piles, tombstones, monitor page) and keeps this desk's element
     /// states, so switching back to a folder mirrored before restores where its files were. What is put away, the
     /// clip light and the memos are element state and stay; an object whose hiding places hold tokens in the adopted
-    /// layout comes back (Erratum 30).
+    /// layout comes back (Erratum 30), and what the adopted layout left where an out object stands (the folder's
+    /// layout was saved while it was away) moves aside, as Bring Back does.
     public mutating func adoptLayout(of other: DeskState, grid: ScreenGrid = .standard) {
         root = other.root
         tokens = other.tokens
@@ -520,6 +521,10 @@ public struct DeskState: Sendable, Equatable {
         memory = MirrorMemory()
         monitor.page = min(max(0, other.monitor.page), pageCount(grid: grid) - 1)
         bringBackOccupied()
+        let standing = StowID.allCases.filter {
+            isOut($0) && (StowCatalog.spec($0).footprint != nil || StowCatalog.spec($0).floorSpan != nil)
+        }
+        _ = Reducer.makeRoom(for: standing, in: &self)
     }
 
     /// Model invariant violations (empty when consistent).

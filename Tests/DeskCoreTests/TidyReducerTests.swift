@@ -404,6 +404,33 @@ struct TidyReducerTests {
         #expect(here.stowed == [.plant] && here.violations().isEmpty)
     }
 
+    @Test("Adopting a layout saved while an object was away moves what stands where it is out now")
+    func adoptLayoutMakesRoom() {
+        // Folder A: the cabinet and the plant away, a file on the floor where the cabinet stood, a pile in the
+        // plant's strip. Folder B brings both back; then A is adopted again.
+        var here = F.mirrored(["a.txt", "b.txt"])
+        _ = reduce(&here, .putAway(.cabinet), env)
+        _ = reduce(&here, .putAway(.plant), env)
+        _ = reduce(&here, .dropOnFloor([F.key(1)], x: CoreLayout.cabinet.midX), env)
+        _ = reduce(&here, .dropOnDesk([F.key(2)], pile: "P1", at: inside("plant")), env)
+        let folderA = here
+        here.adoptLayout(of: F.mirrored(["z.txt"]))
+        _ = reduce(&here, .bringBackAll, env)
+        here.adoptLayout(of: folderA)
+        #expect(here.isOut(.cabinet) && StowCatalog.blockers(of: .cabinet, in: here) == 0)
+        #expect(here.isOut(.plant) && StowCatalog.blockers(of: .plant, in: here) == 0)
+        #expect(here.tokens.location(of: F.key(2)) == .desk(pile: "P1", order: 0) && here.violations().isEmpty)
+        // Through the parked document too (what the state folder keeps aside).
+        var there = F.mirrored(["z.txt"])
+        there.adoptLayout(of: DeskDocument(state: folderA, savedAt: F.t0).makeState())
+        #expect(StowCatalog.blockers(of: .cabinet, in: there) == 0 && StowCatalog.blockers(of: .plant, in: there) == 0)
+        // An object still away leaves the layout as it is.
+        var away = F.mirrored(["z.txt"])
+        for id in [StowID.cabinet, .plant] { _ = reduce(&away, .putAway(id), env) }
+        away.adoptLayout(of: folderA)
+        #expect(away.tokens == folderA.tokens && away.piles == folderA.piles)
+    }
+
     @Test("Take Everything Out includes the memo clips")
     func takeEverythingOutClips() {
         var s = F.mirrored(["a.txt", "b.txt"])
