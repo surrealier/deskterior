@@ -4,8 +4,9 @@ import DeskPixels
 
 /// A display that does not hold the desk, covered by a static wall (DESIGN §4.10 `WallScene`): a `DeskWindow` at the
 /// desk's level whose layer shows `WallArt` rendered once on the CPU at art resolution and magnified by the layer
-/// with nearest filtering at the display's integer scale. It is re-rendered only when its size or the light changes
-/// (`WallArt.signature`), so it costs nothing while idle. Files dropped on it go to the monitor (once dropped files
+/// with nearest filtering at the display's integer scale. It is re-rendered only when its size, the light or the
+/// put-away decor changes (`WallArt.signature` and the model's `stowed`, which the app puts in the `RoomState`;
+/// Erratum 30), so it costs nothing while idle. Files dropped on it go to the monitor (once dropped files
 /// are imported: `acceptsFiles`); a right-click opens the desk menu.
 final class WallController {
     let displayID: UInt32
@@ -35,7 +36,8 @@ final class WallController {
 
     /// Renders the wall for `state` unless it would look the same as what is shown.
     func render(_ state: RoomState) {
-        let sig = WallArt.signature(grid: grid, state: state)
+        let stowed = state.stowed.map(\.rawValue).sorted().joined(separator: ",")
+        let sig = WallArt.signature(grid: grid, state: state) + " " + stowed
         guard sig != signature else { return }
         signature = sig
         view.show(WallArt.render(grid: grid, state: state).makeCGImage(), grid: grid)

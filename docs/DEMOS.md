@@ -58,7 +58,7 @@ Every step is an object with one key.
 | `key` | `{"key": "shift+cmd+z"}` | `space`, `esc`, `left`/`right`/`up`/`down`, `cmd+o`, `cmd+down`, `cmd+c`, `cmd+a`, `cmd+f`, `cmd+z`, `shift+cmd+z`. |
 | `menu` | `{"menu": {"at": "token:a.txt", "item": "copy"}}` | Right-clicks there and picks the item with that `MenuItem.id` (fails if it is disabled). |
 | `fs` | `{"fs": {"touch": "new.txt"}}`, `{"fs": {"mv": ["a.txt", "b.txt"]}}`, `{"fs": {"mkdir": "D"}}`, `{"fs": {"rm": "c.txt"}}` | Changes the fixture through the harness (plain names only). |
-| `action` | `{"action": "accessDenied"}` | Dispatches a model action by name: `powerOn`, `powerOff`, `requestConnect`, `accessDenied`, `accessGranted`, `finderHidesItems`, `cycleInput`, `selectAV`, `page:<n>`, `takeEverythingOut`, `clearDesk`, `undo`, `redo`, `cleanUp:<name\|kind\|dateAdded>`, `lights:<auto\|day\|night\|lamp>`. |
+| `action` | `{"action": "accessDenied"}` | Dispatches a model action by name: `powerOn`, `powerOff`, `requestConnect`, `accessDenied`, `accessGranted`, `finderHidesItems`, `cycleInput`, `selectAV`, `page:<n>`, `takeEverythingOut`, `clearDesk`, `undo`, `redo`, `cleanUp:<name\|kind\|dateAdded>`, `lights:<auto\|day\|night\|lamp>`; Put Away (Erratum 30): `putAway:<StowID>`, `bringBack:<StowID>`, `bringBackAll`, `clipLight:<on\|off>`; memos (Erratum 31): `newNote:<colour>:<text>`, `noteText:<id>:<text>` and `dayMemo:<day>:<text>` (editing session 0), `noteDay:<id>:<day\|none>`, `dDay:<day>:<title>`, `clearDDay`, `tearOff:<day>`, `removeNote:<id>` (days `YYYY-MM-DD`, note ids `N1`…). |
 | `expect` | `{"expect": {"token:a.txt": "cell:0,3,2", "selection": 1}}` | Checks now; every failure is reported (exit 1). |
 | `waitFor` | `{"waitFor": {"expect": {"token:new.txt": "screen"}, "within": 1}}` | Runs until the expectations hold, failing after `within` s (default 3). |
 | `comment` | `{"comment": "…"}` | Printed. |
@@ -78,6 +78,9 @@ Every step is an object with one key.
 | `core:<x>,<y>` / `point:<x>,<y>` | Core px / canvas px. |
 | `pencup`, `pencup.mouth`, `pencup.body`, `wastebasket`, `wastebasket.mouth`, `wastebasket.body` | Where the cup and the basket are now (the cup can be carried; `.body` grabs it rather than a pen). `token:<name>` also finds a token in a desk pile or on the floor. |
 | `mat.center`, `mat.corner.nw\|ne\|se\|sw`, `mat.edge.n\|s\|e\|w`, `mat.flap`, `brush`, `keyboard` | Where the mat's parts are now (just inside each corner and each edge's middle, past the fringe and hem; `n` is the back edge; a folded flap), the brush and the keyboard. `token:<name>` also finds a token in a pile the mat's lifted cloth stands over (its front icon). |
+| `partition`, `partition.tower`, `partition.post`, `partition.cube`, `partition.pad`, `partition.clips`, `partition.dday`, `partition.clipLight`, `calendar` | The desk partition (Erratum 31): its bounds, the tower's felt, the right post (a bare spot for its menu), the sticky-note cube, the daily memo pad, the memo clips, the D-Day card, the clip light; the wall calendar. `token:<name>` also finds a file clipped to the memo clips (its card). |
+| `note:<id>` | Where that sticky note rests now (`note:N2`; it must be on show). |
+| `calendar.day:<d>` | Day `d`'s cell on the wall calendar (the month the room's clock shows). |
 
 ### Expectations
 
@@ -98,7 +101,7 @@ Every step is an object with one key.
 | `tooltip` | `none`, or text the tooltip's title contains (a token's tooltip is its kind and date; its name is on the label). |
 | `hover` | `none`, or the name of the token under the pointer. |
 | `carrying` / `bonks` | A drag in hand; refused drops so far. |
-| `command` | The last app command a scene request or menu asked for (`inventory`…). |
+| `command` | The last app command a scene request or menu asked for (`inventory`…; the memo ones as `MenuCommand.demoName` says them: `newNote`, `editNote:N1`, `openMemos:today`, `openMemos:day:2026-10-30`, `openMemos:note:N1`, `openMemos:notes`, `openMemos:dDay`, `arrangeDesk`). |
 | `drawer:<id>` | A drawer's opening in the model: `closed` (0), `ajar` (under 8 px: a peek, overfull, the chair in the way) or `open`. Ids are `ContainerID`s (`riserLeft`, `cabinetFile`…). |
 | `phone` | `faceUp` / `faceDown` (the model). |
 | `minis` | Count: tokens the containers show as selectable minis (open drawers, the cubby, the face-up phone). |
@@ -119,6 +122,16 @@ Every step is an object with one key.
 | `grid.scale` / `grid.canvas` | The emulated display's integer scale `S` and canvas (`588x383`). |
 | `budget.frameMs` / `budget.peakRssMB` | Budgets (pass at or under the number): the average wall-clock ms of a frame (a fixed step and an offscreen render) over 60 frames run now, and the process's peak resident memory (`getrusage`). The measured values are printed. |
 | `budget.firstFrameMs` | Budget: real ms from the session's start to the first rendered frame that shows the folder's files (the scan, the model, the scene and one offscreen render). |
+| `stowed` | What is put away (Erratum 30): the `StowID`s in alphabetical order, comma-separated (`phoneStand,plant`), or `none`. |
+| `out:<StowID>` | `out` while the object is in the room (an add-on only while the partition is too), `away` otherwise. |
+| `routed:<element>` | `true` while the scene's element of that id takes hits, drops and menus (a put-away object's is dormant; the sealed riser stays routed). |
+| `clear:<StowID>` | `true` when nothing rests where the object stands (piles on its footprint, floor files on its span, notes it would cover: `StowCatalog.blockers`), else `false`. |
+| `notes` | Count: sticky notes (Erratum 31). |
+| `note:<id>` / `note:<id>.pos` / `.text` / `.colour` / `.day` | `present` or `missing`; where it rests (`x,y`, core px, its top-left), its text, its colour (`yellow`, `pink`, `sky`, `lime`, `orange`, `cream`), its date (`YYYY-MM-DD` or `none`); `missing` for a note that is not there. |
+| `page:<YYYY-MM-DD>` | That day's page, or `empty`. |
+| `dDay` | `YYYY-MM-DD title`, or `none`. |
+| `calendar.marks` | Count: days the wall calendar marks (a page, a dated note, the D-Day) in the month it shows. |
+| `clipLight` | The partition's clip light in the model: `on` / `off`. |
 
 ## The demos
 
@@ -138,6 +151,8 @@ Every step is an object with one key.
 | `11-overflow-500` | A 500-file fixture: twelve HDMI pages of 45 (the last holding 5), paging by action and from the monitor's Input menu, a page selected with ⌘A bonking off a drawer ("That's full."), a new file landing on the last page, Clean Up By Kind over all 501; the §5 budgets: first frame with the files (1 s), frame time (4 ms) and peak memory (150 MB). |
 | `12-sizes` | The nine displays of DESIGN §1.2 (scale and canvas checked) by day, at dusk and at night, each with the wall another display of that size would show at night; the portrait display's tall wall with its upper shelf, prints, beamed ceiling and ceiling lamp (Errata 26). |
 | `13-file-actions` | M11 for real on the fixture, with `ls -li` of the fixture, the source folder and the FakeTrash in the log: Move to Trash from a token's menu (the poof) and ⌘Z back under the same inode into the same cell ("Put back from the Trash."); three files into the wastebasket, Empty Wastebasket… cancelled at its sheet (picture `02-sheet.png`, captioned with its default button, since an offscreen window draws none), then confirmed, and undone back into the basket; drop-in from a second scratch folder (a same-volume move into a cell, "Move In", `notes.md` arriving as `notes 2.md`, an ⌥ copy chomped into the left drawer, "Copy In", a new pile on the bare desk); a move whose file the harness then removes, so the next ⌘Z only says "Nothing to undo" and changes no file (`05b-stale-undo.png`); three undos (moved back, the copy trashed, each with its toast); apps as aliases (Erratum 29): a scratch copy of Calculator dropped with no key becomes the alias `Calculator` ("Make Alias", "Made an alias; the app stayed put.", the app still in the source, its real icon with the alias mark, `05c-alias.png`, and a double-click opens it), ⌘⌥ makes an alias of a text file chomped into the left drawer, ⌘ moves the app itself onto the desk (`05d-alias-and-move.png`), and three undos (the app back to the source, each alias to the FakeTrash); a desk item dropped back only moving; the drive hub with five fake volumes (four drives and "+1", hover, Open, Eject refused in demo mode, Show in Finder from the tag) and a bonk on a drive; drag-outs ending in a copy (nothing happens) and on the Dock Trash (trashed after 1.5 s, undoable). |
+| `14-tidy-up` | Put Away and Bring Back (Erratum 30): a photo put in the cabinet, the monitor switched off, then the cabinet's menu takes the photo out first (the monitor comes on with it on HDMI 1; "Took the files out first.") and puts the cabinet away; the chair rolled where it stood, and one ⌘Z brings back both the cabinet and the photo in its drawer, behind the chair; the plant, phone stand (its glow goes too), riser drawers (the riser stays, sealed, under the monitor), string lights and wall shelf put away, by day and in Lamp Only; a drop on the sealed riser bonks ("The drawers are put away."); a file set down where the plant stood is moved aside when the plant comes back ("Moved things aside to make room."); the riser drawers back from the sealed riser's menu; Bring Everything Back from the wall's menu; Arrange Desk…. |
+| `15-partition-memos` | The desk partition (Erratum 31) at night: a click on the sticky-note cube makes a note on the tower and opens its editor (`editNote:N1`); three notes, today's page and a D-Day written; a note's tooltip; a note dragged to the right wing (snapped); a file clipped to the memo clips; today's page torn off the pad into a cream note dated today (the page goes blank); a click on the calendar's 30th; Lamp Only with the lamp's wash on the left wing, an unlit note's anonymous tooltip ("Sticky Note"), the clip light switched on for the tower and right wing; a note dropped in the wastebasket and ⌘Z putting it back; Save as Text File on Desktop from a note's menu (the new file clipped up, `ls` of the fixture) and ⌘Z moving it to the FakeTrash; the partition put away with its clipped file taken out first, and ⌘Z. |
 
 ## File actions (M11)
 

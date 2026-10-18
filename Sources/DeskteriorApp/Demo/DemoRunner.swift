@@ -61,7 +61,7 @@ final class DemoRunner {
             switch request {
             case let .menu(spec, _): self?.lastMenu = spec
             case .inventory: self?.appCommands.append("inventory")
-            case let .command(c): self?.appCommands.append("\(c)")
+            case let .command(c): self?.appCommands.append(c.demoName)  // MARK: memos (0.3.0): "editNote:N1"…
             }
         }
         // MARK: files
@@ -266,6 +266,7 @@ final class DemoRunner {
                 throw ScriptError(description: "step \(index): bad clock '\(c)'")
             }
             host.scene.clock = .fixed(t)
+            session.sync.refreshMenuContext()  // MARK: memos (0.3.0): the menus' today follows the clock.
             frame()
         case let .wall(name):
             try wallSnapshot(name)
@@ -372,7 +373,7 @@ final class DemoRunner {
             pendingConfirm = nil
             pendingSheetName = nil
         }
-        if !session.perform(command, from: .menuItem) { appCommands.append("\(command)") } // MARK: files: a menu pick
+        if !session.perform(command, from: .menuItem) { appCommands.append(command.demoName) } // MARK: files: a menu pick
         frame()
     }
 
@@ -523,6 +524,18 @@ final class DemoRunner {
         if target.hasPrefix("point:") {
             let (x, y) = try pair(target.dropFirst(6))
             return SIMD2(Float(x) + 0.5, Float(y) + 0.5)
+        }
+        // MARK: memos (0.3.0): a sticky note where it rests now, a day's cell on the wall calendar.
+        if target.hasPrefix("note:") {
+            let raw = String(target.dropFirst(5))
+            guard let id = NoteID(raw: raw) else { throw ScriptError(description: "bad note id in '\(target)'") }
+            guard let r = host.scene.noteRect(id) else { throw ScriptError(description: "note '\(raw)' is not on show") }
+            return center(r)
+        }
+        if target.hasPrefix("calendar.day:") {
+            guard let d = Int(target.dropFirst(13)) else { throw ScriptError(description: "bad day in '\(target)'") }
+            guard let r = host.scene.calendarDayRect(d) else { throw ScriptError(description: "no calendar day \(d)") }
+            return center(r)
         }
         if target.hasPrefix("card.") {
             guard let r = host.scene.monitor?.cardButtons[target] else { throw ScriptError(description: "no card button '\(target)'") }
@@ -681,6 +694,20 @@ final class DemoRunner {
                 var st = stat()
                 let there = lstat(folder.appendingPathComponent(name, isDirectory: false).path, &st) == 0
                 check(key, there ? "present" : "missing", value)
+            // MARK: tidy and memos (0.3.0)
+            case "stowed", "notes", "dDay", "calendar.marks", "clipLight":
+                check(key, memoValue(key, s), key == "dDay" ? .string(TextLayout.nfc(value.text)) : value)
+            case let k where k.hasPrefix("out:"):
+                check(key, s.isOut(try stowID(k.dropFirst(4))) ? "out" : "away", value)
+            case let k where k.hasPrefix("routed:"):
+                check(key, String(scene.isRouted(String(k.dropFirst(7)))), value)
+            case let k where k.hasPrefix("clear:"):
+                check(key, String(StowCatalog.blockers(of: try stowID(k.dropFirst(6)), in: s) == 0), value)
+            case let k where k.hasPrefix("note:"):
+                check(key, try noteValue(k.dropFirst(5), s), .string(TextLayout.nfc(value.text)))
+            case let k where k.hasPrefix("page:"):
+                guard let day = DayKey(String(k.dropFirst(5))) else { throw ScriptError(description: "bad day in '\(k)'") }
+                check(key, s.memos.pages[day] ?? "empty", .string(TextLayout.nfc(value.text)))
             default:
                 guard let actual = scene.physicsExpectation(key) ?? scene.matExpectation(key) else {  // MARK: mat
                     throw ScriptError(description: "unknown expectation '\(key)'")
@@ -689,6 +716,43 @@ final class DemoRunner {
             }
         }
         return out
+    }
+
+    // MARK: tidy and memos (0.3.0)
+
+    private func stowID(_ raw: Substring) throws -> StowID {
+        guard let id = StowID(rawValue: String(raw)) else { throw ScriptError(description: "no stowable '\(raw)'") }
+        return id
+    }
+
+    /// `stowed` (sorted raw values, or `none`), `notes`, `dDay` ("YYYY-MM-DD title" or `none`), `calendar.marks` (days
+    /// the wall calendar marks in the month it shows) and `clipLight` (`on`/`off`, the model).
+    private func memoValue(_ key: String, _ s: DeskState) -> String {
+        switch key {
+        case "stowed": s.stowed.isEmpty ? "none" : s.stowed.map(\.rawValue).sorted().joined(separator: ",")
+        case "notes": String(s.memos.notes.count)
+        case "dDay": s.memos.dDay.map { "\($0.day) \($0.title)" } ?? "none"
+        case "calendar.marks": host.scene.roomState.map { String($0.calendarMarks.count) } ?? "none"
+        case "clipLight": s.clipLightOn ? "on" : "off"
+        default: "none"
+        }
+    }
+
+    /// `note:<id>`: `present` or `missing`; `note:<id>.pos` (`x,y`, core px), `.text`, `.colour`, `.day` (or `none`).
+    private func noteValue(_ rest: Substring, _ s: DeskState) throws -> String {
+        let parts = rest.split(separator: ".", maxSplits: 1).map(String.init)
+        guard let raw = parts.first, let id = NoteID(raw: raw) else {
+            throw ScriptError(description: "bad note id in 'note:\(rest)'")
+        }
+        guard parts.count > 1 else { return s.memos.notes[id] == nil ? "missing" : "present" }
+        guard let n = s.memos.notes[id] else { return "missing" }
+        switch parts[1] {
+        case "pos": return "\(n.pos.x),\(n.pos.y)"
+        case "text": return n.text
+        case "colour": return n.colour.rawValue
+        case "day": return n.day.map(\.description) ?? "none"
+        default: throw ScriptError(description: "unknown note field '\(parts[1])'")
+        }
     }
 
     /// The lights, glows, clock and decor the `07-night-lamp` expectations read (model and scene).

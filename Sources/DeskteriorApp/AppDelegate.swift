@@ -5,7 +5,7 @@ import DeskScene
 import Metal
 
 /// The app shell: desk (or `--windowed`) window, the `DeskSession` (store, mirror, effects, scene sync), status
-/// item, context menus, Inventory, system observers, and the dev flags that act after launch
+/// item, context menus, Inventory, Memos and Arrange Desk, system observers, and the dev flags that act after launch
 /// (`--print-window-id`, `--exit-after`). Headless runs and demos never get here (`runHeadless`).
 final class AppDelegate: NSObject, NSApplicationDelegate {
     let options: LaunchOptions
@@ -13,6 +13,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusMenu: StatusMenu?
     private var session: DeskSession?
     private var inventory: InventoryWindowController?
+    // MARK: tidy and memos (0.3.0)
+    private var memos: MemoWindowController?
+    private var arrange: ArrangeDeskWindowController?
     private var resignKeyObserver: (any NSObjectProtocol)?
     private(set) var isUserPaused = false
     // MARK: system (M12)
@@ -100,12 +103,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         integration.isUserPaused = { [weak self] in self?.isUserPaused ?? false }
         integration.setUserPaused = { [weak self] in self?.setUserPaused($0) }
         integration.switchFolder = { [weak self] in self?.switchFolder($0) ?? false }
-        integration.languageChanged = { [weak self] in self?.inventory?.languageChanged() }
+        integration.languageChanged = { [weak self] in
+            self?.inventory?.languageChanged()
+            self?.memos?.languageChanged()
+            self?.arrange?.languageChanged()
+        }
         self.integration = integration
         integration.start()
         if options.mode != .desk, options.show.contains("inventory") { showInventory() }
+        if options.mode != .desk, options.show.contains("memos") { showMemos(.today) }
+        if options.mode != .desk, options.show.contains("arrange") { showArrangeDesk() }
         WindowShots.schedule(options, windows: { [weak self, weak integration] in
-            (integration?.shownWindows ?? []) + (self?.inventory?.shownWindow.map { [("inventory", $0)] } ?? [])
+            (integration?.shownWindows ?? []) + (self?.shownWindows ?? [])
         })
         if let window = displays.window {
             // A gesture whose mouse-up goes to another window or app must not stay in hand.
@@ -130,6 +139,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         integration?.invalidate()
+        memos?.flush()  // MARK: memos (0.3.0): what is being typed reaches the model, then memos.json.
         session?.stop()
         displays?.invalidate()
         if let resignKeyObserver { NotificationCenter.default.removeObserver(resignKeyObserver) }
@@ -157,7 +167,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func statusSpec() -> MenuSpec {
         guard let session else { return MenuSpec([]) }
         let store = session.store
-        return MenuSpec.status(store.state, MenuSpec.Context(paused: isUserPaused, undo: store.undoLabel, redo: store.redoLabel))
+        return MenuSpec.status(store.state, MenuSpec.Context(paused: isUserPaused, undo: store.undoLabel, redo: store.redoLabel,
+                                                             today: session.host.scene.today))
     }
 
     /// Runs a menu command: model commands go to the store (as picked from a menu, or `origin`), the rest are the
@@ -180,6 +191,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             integration?.togglePeek()
         case .settings:
             integration?.showSettings()
+        // MARK: tidy and memos (0.3.0)
+        case .newNote:
+            newNote()
+        case let .editNote(id):
+            showMemos(.note(id))
+        case let .openMemos(target):
+            showMemos(target)
+        case .arrangeDesk:
+            showArrangeDesk()
         default:
             break
         }
@@ -212,6 +232,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             options: o, settings: settingsStore?.settings ?? DeskSettings(), useSavedFolder: false
         ) else { return false }
         configuration.connectImmediately = true
+        memos?.flush()  // MARK: memos (0.3.0): into the old session's store, which saves it as it stops.
         old.stop()
         let new = DeskSession(host: old.host, options: options, configuration: configuration, dryRun: false)
         new.isPaused = { [weak self] in self?.isUserPaused ?? false }
@@ -220,6 +241,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         new.attach(to: displays?.view)
         inventory?.close()
         inventory = nil
+        memos?.close()
+        memos = nil
+        arrange?.close()
+        arrange = nil
         new.start()
         integration?.adopt(new)
         Log.info("mirroring \(configuration.folder.path)")
@@ -241,12 +266,80 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// The monitor's glass in screen coordinates (Show on Desk moves the Inventory off it).
     private func monitorScreenFrame() -> NSRect? {
-        guard let view = displays?.view, let window = view.window, let layout = session?.host.scene.layout else { return nil }
-        let glass = layout.rect(CoreLayout.screen)
-        let a = view.viewPoint(fromArt: SIMD2(Float(glass.minX), Float(glass.minY)))
-        let b = view.viewPoint(fromArt: SIMD2(Float(glass.maxX), Float(glass.maxY)))
-        let local = NSRect(x: min(a.x, b.x), y: min(a.y, b.y), width: abs(b.x - a.x), height: abs(b.y - a.y))
-        return window.convertToScreen(view.convert(local, to: nil))
+        guard let layout = session?.host.scene.layout else { return nil }
+        return screenRect(ofCanvas: layout.rect(CoreLayout.screen))
+    }
+
+    /// A canvas art rect of the desk in screen coordinates.
+    private func screenRect(ofCanvas r: ArtRect) -> NSRect? {
+        guard let view = displays?.view, let window = view.window else { return nil }
+        return window.convertToScreen(view.convert(view.viewRect(fromArt: r), to: nil))
+    }
+
+    // MARK: tidy and memos (0.3.0)
+
+    /// The app's own windows on show (development screenshots, `--window-shots`).
+    private var shownWindows: [(name: String, window: NSWindow)] {
+        var out: [(String, NSWindow)] = []
+        if let w = inventory?.shownWindow { out.append(("inventory", w)) }
+        if let w = memos?.shownWindow { out.append(("memos", w)) }
+        if let w = arrange?.shownWindow { out.append(("arrange", w)) }
+        return out
+    }
+
+    /// The Memos window of this session (made on first use).
+    private func memoWindow() -> MemoWindowController? {
+        guard let session else { return nil }
+        if memos == nil {
+            memos = MemoWindowController(store: session.store, today: { [weak self] in
+                self?.session?.host.scene.today ?? DayKey(SceneClock.live.now())
+            }, perform: { [weak self] in self?.perform($0) })
+        }
+        return memos
+    }
+
+    /// Memos… / Today's Memo… / Edit Note… / a click on a note, the pad or a calendar day: the window opens beside
+    /// what it is about.
+    private func showMemos(_ target: MemoTarget) {
+        guard let memos = memoWindow() else { return }
+        memos.show(target, near: memoTargetFrame(target), session: nil)
+    }
+
+    /// New Sticky Note from a menu: a yellow note on the first free spot, and its editor in the same editing session,
+    /// so the note and the first words typed into it are one undo entry. Nothing opens when the partition is full (its
+    /// toast says so).
+    private func newNote() {
+        guard let session, let memos = memoWindow() else { return }
+        let store = session.store
+        let id = store.state.memos.nextNoteID, editing = memos.nextSession()
+        store.dispatch(.addNote(NewNote(id: id, text: "", colour: .yellow), session: editing))
+        session.sync.refreshMenuContext()
+        guard store.state.memos.notes[id] != nil else { return }
+        memos.show(.note(id), near: memoTargetFrame(.note(id)), session: editing)
+    }
+
+    /// Where on the screen the desk shows what the Memos window opens on: the note, the day's cell on the wall
+    /// calendar (else the calendar), the pad for today (else the calendar), the D-Day card.
+    private func memoTargetFrame(_ target: MemoTarget) -> NSRect? {
+        guard let session, let layout = session.host.scene.layout else { return nil }
+        let scene = session.host.scene, state = session.store.state
+        let art: ArtRect? = switch target {
+        case let .note(id): scene.noteRect(id)
+        case .today where state.isOut(.dailyPad): layout.anchors["partition.pad"]
+        case .today: layout.anchors["calendar"]
+        case let .day(d) where d.year == scene.today.year && d.month == scene.today.month:
+            scene.calendarDayRect(d.day) ?? layout.anchors["calendar"]
+        case .day: layout.anchors["calendar"]
+        case .dDay where state.isOut(.dDayCard) && state.memos.dDay != nil: layout.anchors["partition.dday"]
+        case .dDay, .notes: nil
+        }
+        return art.flatMap(screenRect(ofCanvas:))
+    }
+
+    private func showArrangeDesk() {
+        guard let session else { return }
+        if arrange == nil { arrange = ArrangeDeskWindowController(store: session.store) }
+        arrange?.show()
     }
 
     /// An accessory app shows no menu bar (DESIGN Errata 1); this hidden main menu only routes key equivalents.
@@ -332,7 +425,11 @@ final class DeskSession {
             stateStore = nil
         }
         let saver = stateStore.map { LayoutSaver(store: $0, delay: configuration.persistDelay, maxWait: configuration.persistMaxWait) }
-        store = Store(saver: saver)
+        // MARK: memos (0.3.0): memos.json beside desk.json, armed by the mirror once it was read (Erratum 31).
+        let memoSaver = stateStore.map {
+            MemoSaver(store: $0, delay: configuration.persistDelay, maxWait: configuration.persistMaxWait)
+        }
+        store = Store(saver: saver, memoSaver: memoSaver)
         store.seed = seed ?? options.seed ?? 0
         if options.icons == .live {
             let cache = try? IconCache(directory: configuration.iconCacheDirectory, mirrored: configuration.folder)

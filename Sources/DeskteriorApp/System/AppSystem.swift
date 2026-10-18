@@ -78,7 +78,12 @@ final class AppSystem {
             self.setUserPaused(false)
         }
         displays.settings = { [weak self] in self?.settings.settings ?? DeskSettings() }
-        displays.wallState = { [weak host] in host?.scene.roomState }
+        // MARK: tidy (0.3.0): the walls leave out the decor the model has put away.
+        displays.wallState = { [weak self] in
+            guard let self, var room = self.session.host.scene.roomState else { return nil }
+            room.stowed = self.session.store.state.stowed
+            return room
+        }
         displays.onScreensChanged = { [weak self] in
             guard let self else { return }
             if let window = self.displays.window { self.observers.watchOcclusion(of: window) }
@@ -131,8 +136,8 @@ final class AppSystem {
         guard let view = displays.view else { return }
         accessibility = DeskAccessibility(view: view, store: session.store)
         session.store.observe { [weak self] new, old in
-            guard new.lights != old.lights else { return }
-            self?.settingsModel?.lights = new.lights.mode
+            guard new.lights != old.lights || new.stowed != old.stowed else { return }
+            if new.lights != old.lights { self?.settingsModel?.lights = new.lights.mode }
             self?.displays.renderWalls()
         }
     }
