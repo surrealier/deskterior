@@ -63,7 +63,7 @@ Every step is an object with one key.
 | `waitFor` | `{"waitFor": {"expect": {"token:new.txt": "screen"}, "within": 1}}` | Runs until the expectations hold, failing after `within` s (default 3). |
 | `comment` | `{"comment": "…"}` | Printed. |
 | `display` | `{"display": "1920x1080@1"}` | Switches the emulated display (points, `WxH` or `WxH@scale`): a new grid and layout, as when a display changes (M12). |
-| `clock` | `{"clock": "18:00"}` | Sets the room's fixed time (`HH:MM` or ISO 8601). |
+| `clock` | `{"clock": "18:00"}` | Sets the room's fixed time (`HH:MM` or ISO 8601; a time alone keeps the room's date). |
 | `wall` | `{"wall": "01-wall"}` | Writes the wall another display of this size would show now (`WallArt`; checked for Apollo colours like a snapshot). |
 
 ### Targets

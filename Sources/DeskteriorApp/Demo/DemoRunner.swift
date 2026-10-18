@@ -262,7 +262,9 @@ final class DemoRunner {
             print("demo \(script.name): display \(display), S \(g.scale), canvas \(g.artSize), core \(g.coreRect)")
             frame()
         case let .clock(c):
-            guard let t = WallTime(parsing: c, date: SceneClock.live.now()) else {
+            // A time alone keeps the room's day (the script's date, once it set one), so the pad and the calendar
+            // do not jump to the real date mid-demo.
+            guard let t = WallTime(parsing: c, date: host.scene.clock.now()) else {
                 throw ScriptError(description: "step \(index): bad clock '\(c)'")
             }
             host.scene.clock = .fixed(t)
