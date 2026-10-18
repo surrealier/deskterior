@@ -110,8 +110,15 @@ struct MemoFileNameTests {
         #expect(MemoFileName.contents(.day(day), text: "회의 3시\n자료 준비") == "2026-10-18\n\n회의 3시\n자료 준비\n")
     }
 
-    @Test("A note's day is the UTC day of its creation (the model reads no time zone)")
+    @Test("A note's day is the day of its creation in the user's time zone (an offset; the model reads no time zone)")
     func creationDay() {
+        // 2026-10-18T23:30Z is the 19th in Seoul (+9 h); 2026-10-20T00:30Z is the 19th in California (−7 h).
+        let late = Date(timeIntervalSince1970: 1_792_366_200), early = Date(timeIntervalSince1970: 1_792_456_200)
+        #expect(MemoFileName.day(of: late).description == "2026-10-18")
+        #expect(MemoFileName.day(of: late, utcOffset: 9 * 3600).description == "2026-10-19")
+        #expect(MemoFileName.day(of: early).description == "2026-10-20")
+        #expect(MemoFileName.day(of: early, utcOffset: -7 * 3600).description == "2026-10-19")
+        // With no offset, UTC.
         #expect(MemoFileName.day(of: Date(timeIntervalSince1970: 0)).description == "1970-01-01")
         #expect(MemoFileName.day(of: Date(timeIntervalSince1970: 86_399)).description == "1970-01-01")
         #expect(MemoFileName.day(of: Date(timeIntervalSince1970: 86_400)).description == "1970-01-02")

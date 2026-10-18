@@ -39,10 +39,12 @@ public enum MemoFileName {
         }
     }
 
-    /// The day a note created at `date` was made, by UTC (the model reads no calendar or time zone).
-    public static func day(of date: Date) -> DayKey {
+    /// The day a note created at `date` was made, `utcOffset` seconds east of UTC (`ReduceEnv.utcOffset`: the model
+    /// reads no calendar or time zone). The offset is today's, so near midnight across a daylight-saving change the
+    /// day can be off by one.
+    public static func day(of date: Date, utcOffset: Int = 0) -> DayKey {
         let epoch = DayKey(year: 1970, month: 1, day: 1)!
-        let t = date.timeIntervalSince1970
+        let t = date.timeIntervalSince1970 + Double(utcOffset)
         guard t.isFinite else { return epoch }
         let days = (t / 86400).rounded(.down)
         return epoch.adding(days: Int(max(min(days, 1e7), -1e7)))

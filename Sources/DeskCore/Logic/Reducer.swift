@@ -5,11 +5,15 @@ public struct ReduceEnv: Sendable {
     public var now: Date
     public var seed: UInt64
     public var grid: ScreenGrid
+    /// Seconds east of UTC in the user's time zone at `now` (the store's; 0 in tests and tools), so a date the
+    /// model writes is the user's day while the reducer reads no time zone.
+    public var utcOffset: Int
 
-    public init(now: Date, seed: UInt64 = 0, grid: ScreenGrid = .standard) {
+    public init(now: Date, seed: UInt64 = 0, grid: ScreenGrid = .standard, utcOffset: Int = 0) {
         self.now = now
         self.seed = seed
         self.grid = grid
+        self.utcOffset = utcOffset
     }
 }
 

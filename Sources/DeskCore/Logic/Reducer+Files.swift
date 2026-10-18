@@ -161,7 +161,8 @@ extension Reducer {
         switch ref {
         case let .note(id):
             guard let note = s.memos.notes[id] else { return [] }
-            (text, created, source) = (note.text, MemoFileName.day(of: note.created), "memo:note:\(id)")
+            (text, created, source) = (note.text, MemoFileName.day(of: note.created, utcOffset: env.utcOffset),
+                                       "memo:note:\(id)")
         case let .day(day):
             (text, created, source) = (s.memos.pages[day] ?? "", day, "memo:day:\(day)")
         }

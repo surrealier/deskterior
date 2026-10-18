@@ -51,7 +51,9 @@ final class Store {
         willDispatch?(action, state)
         let before = state
         let labels = (journal.undoLabel, journal.redoLabel, journal.undoStack.count, journal.redoStack.count)
-        let out = Reducer.reduce(&state, journal: &journal, action, ReduceEnv(now: now(), seed: seed))
+        let t = now()
+        let env = ReduceEnv(now: t, seed: seed, utcOffset: TimeZone.current.secondsFromGMT(for: t))
+        let out = Reducer.reduce(&state, journal: &journal, action, env)
         if state != before { notify(before) }
         // MARK: memos (0.3.0): every change to the memos is saved, an undo or redo included; a load (`replace`) never.
         if state.memos != before.memos { memoSaver?.schedule(state.memos) }

@@ -319,13 +319,22 @@ struct FileActionReducerTests {
         var huge = memoDesk(text: String(repeating: "e" + String(repeating: "\u{301}", count: 200), count: 200))
         #expect(reduce(&huge, .requestSaveMemoFile(.note(NoteID(1))), env) == [.toast(.fileFailed)])
         #expect(huge.hints.isEmpty)
-        // A note with no line left for a name is named by the day it was made (UTC).
+        // A note with no line left for a name is named by the day it was made (UTC with no offset).
         var dots = memoDesk(text: "...")
         guard case let .createTextFile(r)? = reduce(&dots, .requestSaveMemoFile(.note(NoteID(1))), env).first else {
             Issue.record("expected a file request")
             return
         }
         #expect(r.name == "Memo 2026-09-21.txt" && r.contents == "...\n")
+        // By the user's day: made at 2026-10-18T23:30Z, it is the 19th in Seoul (the store passes its offset).
+        var seoul = memoDesk(text: "....")
+        seoul.memos.notes[NoteID(1)]?.created = Date(timeIntervalSince1970: 1_792_366_200)
+        let kst = ReduceEnv(now: F.t0, utcOffset: 9 * 3600)
+        guard case let .createTextFile(k)? = reduce(&seoul, .requestSaveMemoFile(.note(NoteID(1))), kst).first else {
+            Issue.record("expected a file request")
+            return
+        }
+        #expect(k.name == "Memo 2026-10-19.txt")
     }
 
     @Test("The hint goes to the monitor when the memo clips are full or put away; a taken name is never taken by name")
