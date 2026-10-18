@@ -454,8 +454,8 @@ Deskterior 是免费的，没有经过 Apple 公证（公证需要付费的开�
 要校验下载的文件，请在你下载这两个文件的文件夹中打开终端（通常是：`cd ~/Downloads`），用同一版本中的 `.sha256` 文件进行比对；或者用 GitHub CLI 验证它是由本仓库的发布工作流构建的（把 OWNER 换成本页网址中的账户名）：
 
 ```sh
-shasum -a 256 -c Deskterior-0.2.0.zip.sha256
-gh attestation verify Deskterior-0.2.0.zip --repo OWNER/deskterior
+shasum -a 256 -c Deskterior-0.3.0.zip.sha256
+gh attestation verify Deskterior-0.3.0.zip --repo OWNER/deskterior
 ```
 
 ## 首次运行
@@ -530,7 +530,7 @@ Settings ▸ **About & Credits…** 显示版本号和致谢信息。
 | `make build` | `swift build` |
 | `make test` | 运行测试套件（`scripts/swift-test.sh`） |
 | `make lint` | 文件安全检查（`scripts/check-file-safety.sh`） |
-| `make app` | 为本机处理器构建 `build/Deskterior.app`，ad-hoc 签名（`VERSION=0.2.0` 设置版本号） |
+| `make app` | 为本机处理器构建 `build/Deskterior.app`，ad-hoc 签名（`VERSION=0.3.0` 设置版本号） |
 | `make universal` | 同上，但构建同时支持 Apple 芯片和 Intel 的单个应用 |
 | `make install` | 先 `make app`，再把应用拷贝到 /Applications |
 | `make run` | 在窗口中运行书桌，使用一个新建的、装有示例文件的临时文件夹 |

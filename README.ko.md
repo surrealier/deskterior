@@ -574,8 +574,8 @@ Deskterior는 무료라서 Apple 공증(notarization)을 받지 않았습니다(
 페이지 주소에 있는 계정 이름으로 바꾸세요).
 
 ```sh
-shasum -a 256 -c Deskterior-0.2.0.zip.sha256
-gh attestation verify Deskterior-0.2.0.zip --repo OWNER/deskterior
+shasum -a 256 -c Deskterior-0.3.0.zip.sha256
+gh attestation verify Deskterior-0.3.0.zip --repo OWNER/deskterior
 ```
 
 ## 처음 실행
@@ -664,7 +664,7 @@ macOS 15.6 이상과 Xcode 26용 Command Line Tools(Swift 6.2, `xcode-select --i
 | `make build` | `swift build` |
 | `make test` | 테스트 실행(`scripts/swift-test.sh`) |
 | `make lint` | 파일 안전 검사(`scripts/check-file-safety.sh`) |
-| `make app` | 이 Mac의 프로세서용 `build/Deskterior.app`, ad-hoc 서명(`VERSION=0.2.0`으로 버전 지정) |
+| `make app` | 이 Mac의 프로세서용 `build/Deskterior.app`, ad-hoc 서명(`VERSION=0.3.0`으로 버전 지정) |
 | `make universal` | 같은 앱을 Apple 실리콘과 Intel 겸용으로 |
 | `make install` | `make app` 후 앱을 /Applications로 복사 |
 | `make run` | 견본 파일이 든 새 임시 폴더로 책상을 창 모드로 실행 |

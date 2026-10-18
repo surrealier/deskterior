@@ -613,8 +613,8 @@ publicación la compiló a partir de este repositorio (con GitHub CLI; sustituye
 de esta página):
 
 ```sh
-shasum -a 256 -c Deskterior-0.2.0.zip.sha256
-gh attestation verify Deskterior-0.2.0.zip --repo OWNER/deskterior
+shasum -a 256 -c Deskterior-0.3.0.zip.sha256
+gh attestation verify Deskterior-0.3.0.zip --repo OWNER/deskterior
 ```
 
 ## Primer inicio
@@ -707,7 +707,7 @@ falta Xcode. La app que compiles funciona en macOS 14 y posteriores. Después, e
 | `make build` | `swift build` |
 | `make test` | las suites de pruebas (`scripts/swift-test.sh`) |
 | `make lint` | el lint de seguridad de archivos (`scripts/check-file-safety.sh`) |
-| `make app` | `build/Deskterior.app` para el procesador de este Mac, con firma ad hoc (`VERSION=0.2.0` fija la versión) |
+| `make app` | `build/Deskterior.app` para el procesador de este Mac, con firma ad hoc (`VERSION=0.3.0` fija la versión) |
 | `make universal` | lo mismo para Apple silicon e Intel en una sola app |
 | `make install` | `make app` y luego copia la app a /Applications |
 | `make run` | ejecuta la mesa en una ventana sobre una carpeta temporal nueva con archivos de ejemplo |
