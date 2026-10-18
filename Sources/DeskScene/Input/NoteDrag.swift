@@ -262,7 +262,7 @@ final class PageTear: NoteDrag {
 
     init(day: DayKey, image: PixelBuffer, pad: ArtRect, pointer: SIMD2<Float>, context: SceneContext,
          onFinish: @escaping () -> Void) {
-        curlOrigin = ArtPoint(pad.x + 2, pad.y + 12)
+        curlOrigin = pad.origin + PartitionArt.padPeelOrigin
         super.init(kind: .tear(day), colour: .cream, image: image, home: ArtPoint(pad.x + 4, pad.y + 14),
                    grab: Self.middle(of: image), pointer: pointer, context: context, onFinish: onFinish)
         curl.zPosition = context.placementZ("partition.pad") + 0.75

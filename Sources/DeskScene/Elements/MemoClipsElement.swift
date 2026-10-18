@@ -28,7 +28,7 @@ final class MemoClipsElement: ContainerElement, DeskElement {
     var railRect: ArtRect { context.layout.rect(CoreLayout.partitionClips) }
     func cardRect(_ i: Int) -> ArtRect { context.layout.rect(CoreLayout.memoClipCard(i)) }
     /// Where a card shows its token's mini, inside the card.
-    static let miniInset = ArtPoint(1, 1)
+    static let miniInset = PartitionArt.clipCardMini
 
     var isOut: Bool { state?.isOut(.memoClips) == true }
 

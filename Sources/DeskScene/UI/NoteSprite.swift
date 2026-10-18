@@ -18,7 +18,7 @@ enum NoteSprite {
         var pinned: Bool
     }
 
-    static let textInk = Ink.neutral2
+    static let textInk = PartitionArt.noteTextInk
     static let scribbleInk = Ink.neutral5
     /// The text band inside the note (`PartitionLayout.textBand` less the note's origin).
     static var band: ArtRect {
@@ -90,8 +90,8 @@ enum NoteSprite {
         return textLine(line, ink: textInk, height: padBand.h, font: font)
     }
 
-    /// Where the pad's line sits on the pad sprite.
-    static let padBand = ArtRect(2, 19, 34, 12)
+    /// Where the pad's line sits on the pad sprite (a text band's height).
+    static let padBand = ArtRect(origin: PartitionArt.padTextOrigin, size: ArtSize(PartitionArt.padTextWidth, 12))
 
     /// A note 1 px bigger on every side (nearest neighbour), for the pop a new note makes.
     static func grown(_ b: PixelBuffer) -> PixelBuffer {

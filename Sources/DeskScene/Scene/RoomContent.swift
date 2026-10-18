@@ -49,10 +49,11 @@ public final class SceneContext {
     /// Today on the room's clock (its real time at the last refresh): the day memo actions name.
     var today: DayKey { DayKey(lightOverrides.clockTime) }
 
-    /// `menuContext` with today filled in when the app has not said.
+    /// `menuContext` with today on the room's clock: the app's day is only as fresh as its last model or journal
+    /// change, and the day can roll over on the minute timer with no change at all.
     var menuContextNow: MenuSpec.Context {
         var c = menuContext
-        if c.today == nil { c.today = today }
+        c.today = today
         return c
     }
 
