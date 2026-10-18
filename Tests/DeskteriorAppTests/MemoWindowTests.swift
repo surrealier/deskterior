@@ -162,6 +162,17 @@ struct MemoWindowTests {
         return tv
     }
 
+    /// The day page's text view, as `noteTextView` does the note's.
+    func dayTextView(_ r: Rig) async throws -> NSTextView {
+        #expect(await eventually {
+            r.controller.window?.contentView?.layoutSubtreeIfNeeded()
+            return r.controller.model.dayEditor.textView?.window != nil
+        })
+        let tv = try #require(r.controller.model.dayEditor.textView)
+        #expect(tv.window?.makeFirstResponder(tv) == true)
+        return tv
+    }
+
     func type(_ text: String, into tv: NSTextView) {
         for c in text { tv.insertText(String(c), replacementRange: tv.selectedRange()) }
     }
@@ -222,6 +233,23 @@ struct MemoWindowTests {
         #expect(r.log.edits.count == 2, "closing commits without waiting")
         #expect(r.log.edits.last?.1.hasSuffix("?ㄱ") == true, "the composition was ended and kept")
         r.controller.close()
+    }
+
+    @Test("Opened on a note, the Calendar tab's page takes typing: today's page, in its own session")
+    func calendarAfterNote() async throws {
+        let r = try await rig()
+        defer { r.controller.close() }
+        r.controller.show(.note(NoteID(1)), near: nil, session: nil)
+        r.controller.model.switchTab(.calendar)
+        let today = DayKey("2026-10-18")!
+        #expect(r.controller.model.dayEditor.target == .day(today) && r.controller.model.day == today)
+        let tv = try await dayTextView(r)
+        #expect(tv.isEditable)
+        type("메모", into: tv)
+        r.controller.flush()
+        let pages = r.log.actions.compactMap { if case let .editDayPage(d, text, _) = $0 { (d, text) } else { nil } }
+        #expect(pages.count == 1 && pages.first?.0 == today && pages.first?.1 == "메모")
+        #expect(r.store.state.memos.pages[today] == "메모")
     }
 
     @Test("Model text never replaces typing that is not committed yet")

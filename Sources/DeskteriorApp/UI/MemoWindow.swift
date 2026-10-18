@@ -211,11 +211,16 @@ final class MemoWindowModel {
         }
     }
 
-    /// A tab switch commits what the editors hold first.
+    /// A tab switch commits what the editors hold first. A window first opened on a note has no day page yet: the
+    /// Calendar tab then edits today's.
     func switchTab(_ new: Tab) {
         guard new != tab else { return }
         flush()
         tab = new
+        if new == .calendar, dayEditor.target == nil {
+            if let todayNow { today = todayNow() }
+            select(day: today)
+        }
     }
 
     /// Edits `d`'s page (and shows its month); choosing the day being edited again changes nothing.
