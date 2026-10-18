@@ -148,6 +148,39 @@ struct NoteDragTests {
         #expect(!store.requests.contains(.command(.editNote(NoteID(2)))), "a peel does not open the editor")
     }
 
+    @Test("On a full partition a peeled or torn note springs back (the reducer refuses it and says so)")
+    func fullSpringsBack() throws {
+        let spots = PartitionLayout.defaultSpots
+        let notes = (1...MemoBook.maxNotes).map { M.note($0, "n\($0)", at: spots[$0 % spots.count]) }
+        let store = SceneStore(M.state(notes, pages: [M.today: "x"]))
+        let scene = store.scene
+        let p = Pointer(scene: scene)
+        let a = try #require(scene.layout).anchors
+        let to = M.point(scene, core: 419, 152)
+        p.drag(F.centre(try #require(a["partition.cube"])), to, hold: true)
+        let peel = try #require(try C.room(scene).router.drag as? CubePeel)
+        _ = p.event(.up, to, count: 1)
+        guard case .springing = peel.phase else {
+            Issue.record("the peeled note springs back onto the cube, not \(peel.phase)")
+            return
+        }
+        #expect(store.state.memos.notes.count == MemoBook.maxNotes)
+        #expect(store.actions.last?.hasPrefix("addNote") == true, "asked all the same, so the toast says why")
+        C.settle(p)
+        #expect(peel.isFinished && !scene.needsFrames)
+        // A torn page springs back to the pad, which shows its page again once it is home.
+        p.drag(F.centre(try #require(a["partition.pad"])), to, hold: true)
+        let tear = try #require(try C.room(scene).router.drag as? PageTear)
+        _ = p.event(.up, to, count: 1)
+        guard case .springing = tear.phase else {
+            Issue.record("the torn page springs back to the pad, not \(tear.phase)")
+            return
+        }
+        #expect(try M.partition(scene).tearing && store.state.memos.pages[M.today] == "x")
+        C.settle(p)
+        #expect(try !M.partition(scene).tearing && tear.isFinished && !scene.needsFrames)
+    }
+
     @Test("A peel shows the note coming off a third at a time; a tear curls the page for three frames")
     func peelFrames() throws {
         let store = SceneStore(M.state(pages: [M.today: "x"]))

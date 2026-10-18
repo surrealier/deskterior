@@ -9,7 +9,8 @@ import SpriteKit
 ///   off (`removeNote`): it balls up and falls in over four 12 fps frames and the toast says so (⌘Z puts it back). A
 ///   new note (peeled or torn) springs back instead.
 /// - Let go with a ghost on show and it rests there: `moveNote` (which brings it to the front), or `addNote` /
-///   `tearOffPage` for a new one.
+///   `tearOffPage` for a new one. A new one on a full partition (24 notes) is asked for all the same, so the reducer
+///   says why it is refused, and springs back.
 /// - Anywhere else, or Esc, it springs back over six frames.
 ///
 /// With Reduce Motion there is no lift, and the spring back and the crumple are instant. It needs frames only while
@@ -111,8 +112,10 @@ class NoteDrag: DragController {
             return springBack()
         }
         guard let spot, let s = context.state else { return springBack() }
+        var refused = s.memos.notes.count >= MemoBook.maxNotes
         switch kind {
         case let .move(id):
+            refused = false
             context.dispatch(.moveNote(id, to: spot))
         case .peel:
             let note = NewNote(id: s.memos.nextNoteID, text: "", colour: .yellow, at: spot)
@@ -120,6 +123,7 @@ class NoteDrag: DragController {
         case let .tear(day):
             context.dispatch(.tearOffPage(day, at: spot))
         }
+        if refused { return springBack() }
         finish()
     }
 
