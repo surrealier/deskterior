@@ -271,17 +271,19 @@ struct IdentityTests {
         }
     }
 
+    // The bounds are about 10× this Mac's debug times (≈0.1 s each), so a busy CI runner (whose whole suite runs about
+    // 3× slower) passes while a quadratic slip, orders of magnitude slower, still fails.
     @Test("Mass vanish and big moves stay fast at 5000 tokens")
     func performance() {
         let names = (0..<5000).map { String(format: "file %05d.txt", $0) }
         var s = F.mirrored(names)
         var t = Date()
         Reconciler.reconcile(&s, F.snapshot([]), now: F.t0)
-        #expect(Date().timeIntervalSince(t) < 0.5)
+        #expect(Date().timeIntervalSince(t) < 1.0)
         Reconciler.reconcile(&s, F.snapshot(names.enumerated().map { F.entry($0.element, UInt64($0.offset + 1)) }, at: F.t0 + 5), now: F.t0 + 5)
         t = Date()
         _ = reduce(&s, .move((1...1000).map { F.key(UInt64($0)) }, to: .screen(page: 3, col: 4, row: 2)), ReduceEnv(now: F.t0))
-        #expect(Date().timeIntervalSince(t) < 0.3)
+        #expect(Date().timeIntervalSince(t) < 1.0)
         #expect(s.violations().isEmpty)
     }
 }
