@@ -434,6 +434,10 @@ struct FileActionReducerTests {
         let saved = FileReport(kind: .createTextFile, count: 1, placed: [.init(source: "memo:note:N1", name: "a.txt")],
                                undo: FileUndoRef(1), done: .savedTextFile)
         #expect(saved.toast == .savedTextFile && saved.undoLabel == "Save as Text File")
+        // A file that landed unverified has no undo step: the toast says it was saved, not copied in.
+        let unverified = FileReport(kind: .createTextFile, count: 1, problems: [.landedUnverified], done: .savedTextFile)
+        #expect(unverified.toast == .savedNoUndo)
+        #expect(FileReport(kind: .importItems, count: 1, problems: [.landedUnverified]).toast == .copiedNoUndo)
     }
 
     // MARK: Menus

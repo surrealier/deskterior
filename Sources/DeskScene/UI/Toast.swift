@@ -64,6 +64,7 @@ extension ToastKey {
         case .noteRemoved: "Note taken off."
         case .savedTextFile: "Saved as a text file."
         case .undidSaveTextFile: "The text file went to the Trash."
+        case .savedNoUndo: "Saved as a text file, but it can't be undone."
         }
     }
 

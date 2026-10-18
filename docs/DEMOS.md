@@ -179,7 +179,7 @@ folder (`SafetyGuard.scratchSource`), since demos move files in from it. File re
 
 | Expectation | Value |
 |---|---|
-| `effect` | Also `trash`, `emptyWastebasket`, `import`, `undo`, `eject` (the file action last asked of `FileOperator`). |
+| `effect` | Also `trash`, `emptyWastebasket`, `import`, `undo`, `eject`, `createTextFile` (Save as Text File; the file action last asked of `FileOperator`). |
 | `fileOps` | Count: `FileOperator` calls finished. |
 | `sheet` | The last confirmation asked for (`emptyWastebasket:<count>`) or `none`. |
 | `key:<name>` | `same` while the token has the identity (volume and inode) it had when the script first named it; `changed`, `missing`. |

@@ -273,8 +273,8 @@ struct MemoWindowTests {
         #expect(r.log.edits.first?.2 == session)
     }
 
-    // Needs Track A's request reducer and Track E's createTextFile (EffectRunner, FileOperator).
-    @Test("The Save button's command runs as a menu pick: the effect runner records createFile and the file appears")
+    // The runner's log word is "createTextFile": the write lint keeps FileManager's `createFile` out of EffectRunner.
+    @Test("The Save button's command runs as a menu pick: the effect runner records createTextFile and the file appears")
     func saveRecordsCreateFile() async throws {
         let r = try await rig(connected: true, started: true, text: "우유 사기", forward: true)
         defer {
@@ -283,7 +283,7 @@ struct MemoWindowTests {
         }
         r.controller.show(.note(NoteID(1)), near: nil, session: nil)
         r.controller.model.saveNote()
-        #expect(await eventually(10) { r.rig.session.effects.fileLog.last == "createFile" })
+        #expect(await eventually(10) { r.rig.session.effects.fileLog.last == "createTextFile" })
         #expect(await eventually(10) { r.rig.names(r.rig.desk).contains("우유 사기.txt") })
     }
 }

@@ -57,7 +57,7 @@
     { "comment": "Save as Text File on Desktop: a new file in the desk folder, clipped to the partition; undo moves it to the FakeTrash." },
     { "menu": { "at": "note:N1", "item": "saveFile" } },
     { "waitFor": { "expect": { "token:우유 사기.txt": "container:memoClips" }, "within": 4 } },
-    { "expect": { "effect": "createFile", "undo": "Save as Text File", "toast": "savedTextFile" } },
+    { "expect": { "effect": "createTextFile", "undo": "Save as Text File", "toast": "savedTextFile" } },
     { "fs": { "ls": "desk" } },
     { "waitIdle": 3 },
     { "snapshot": "05-saved" },

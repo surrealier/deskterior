@@ -159,7 +159,7 @@ public struct FileReport: Sendable, Equatable {
     public var toast: ToastKey? {
         guard let first = problems.first else { return done }
         // MARK: harden
-        if problems.contains(.landedUnverified) { return .copiedNoUndo }
+        if problems.contains(.landedUnverified) { return kind == .createTextFile ? .savedNoUndo : .copiedNoUndo }
         if problems.contains(.aliasUnverified) { return .aliasNoUndo }
         if done == .copiedInstead { return .someCopiedInstead }
         switch kind {
@@ -189,7 +189,7 @@ public struct FileReport: Sendable, Equatable {
         case .gone: return .fileGone
         case .notPermitted: return .fileNotPermitted
         case .locked: return .fileLocked
-        case .landedUnverified: return .copiedNoUndo
+        case .landedUnverified: return kind == .createTextFile ? .savedNoUndo : .copiedNoUndo
         case .aliasUnverified: return .aliasNoUndo
         case .notInTrash: return .usePutBack
         case .noFreeName: return .nameTaken

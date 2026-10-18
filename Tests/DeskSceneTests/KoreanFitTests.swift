@@ -38,11 +38,11 @@ struct KoreanFitTests {
     }
 
     // MARK: tidy and memos (0.3.0)
-    @Test("The nine new toasts (Put Away, the partition, Save as Text File) speak Korean and fit the band")
+    @Test("The new toasts (Put Away, the partition, Save as Text File) speak Korean and fit the band")
     func newToasts() throws {
         let font = try font()
         let keys: [ToastKey] = [.putAwayPlace, .tookFilesOut, .drawersPutAway, .madeRoom, .partitionFull, .memoClipsFull,
-                                .noteRemoved, .savedTextFile, .undidSaveTextFile]
+                                .noteRemoved, .savedTextFile, .undidSaveTextFile, .savedNoUndo]
         for key in keys {
             #expect(L10n.knows(key.english), "\(key) is in the table")
             #expect(key.text(.ko) != key.english, "\(key) has its Korean")
