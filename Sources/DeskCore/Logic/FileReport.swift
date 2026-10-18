@@ -153,8 +153,9 @@ public struct FileReport: Sendable, Equatable {
 
     /// The toast: what did not happen, if anything did not (the first problem's; with others through, "some
     /// stayed" and why), else `done`. A refused undo of a trash points at Finder's Put Back (SPIKES S11); one of a
-    /// drop-in says it could not go back. A move that came in as a copy is never left unsaid (Errata 25): with
-    /// refusals beside it, the toast says both; a copy that landed without an undo step says so first.
+    /// drop-in says it could not go back; one of a saved text file says why the file stayed (it changed, it is gone,
+    /// macOS said no). A move that came in as a copy is never left unsaid (Errata 25): with refusals beside it, the
+    /// toast says both; a copy that landed without an undo step says so first.
     public var toast: ToastKey? {
         guard let first = problems.first else { return done }
         // MARK: harden
@@ -166,6 +167,9 @@ public struct FileReport: Sendable, Equatable {
             return first == .notPermitted ? .fileNotPermitted : .ejectFailed
         case .undo where undoOf == .importItems:
             if first == .notPermitted { return .cantMoveBack }
+        // MARK: files (0.3.0): a text file that did not go to the Trash is still on the desk; Put Back is no help.
+        case .undo where undoOf == .createTextFile:
+            break
         case .undo:
             if first == .notPermitted || first == .notInTrash { return .usePutBack }
         default:
