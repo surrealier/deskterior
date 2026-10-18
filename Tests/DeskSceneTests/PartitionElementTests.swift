@@ -186,7 +186,8 @@ struct PartitionElementTests {
         let scene = store.scene
         let p = Pointer(scene: scene)
         let screen = try #require(scene.screen)
-        let felt = M.point(scene, core: 250, 120)
+        // Bare felt on the right wing, below the D-Day card's hook and right of the clips.
+        let felt = M.point(scene, core: 480, 150)
         p.drag(F.centre(try #require(screen.iconRect(of: F.key(1)))), felt)
         #expect(store.actions.last == "move([\(F.key(1))], to: memoClips#0)")
         let partition = try M.partition(scene)

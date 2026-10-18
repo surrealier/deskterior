@@ -121,14 +121,20 @@ struct MonitorSnapshotTests {
         gpu = try GPU()
     }
 
-    /// Renders `state` (after `frames` steps) and crops the monitor with a margin.
+    /// Renders `state` (after `frames` steps) and crops the monitor with a margin. The desk partition is put away: its
+    /// tower post and low panel reach into the crop (Erratum 31), and these goldens show the monitor alone.
     func monitor(_ state: DeskState, frames: Int = 1, before: ((DeskScene) -> Void)? = nil, change: DeskState? = nil) throws -> PixelBuffer {
+        func monitorOnly(_ s: DeskState) -> DeskState {
+            var s = s
+            s.stowed.insert(.partition)
+            return s
+        }
         let host = try SceneHost(grid: PixelGrid(display: calibrationDisplay), device: gpu.device)
         host.scene.clock = .fixed(WallTime(hour: 10, minute: 0))
         host.scene.connect(presenter: host.presenter)
-        host.scene.apply(state)
+        host.scene.apply(monitorOnly(state))
         before?(host.scene)
-        if let change { host.scene.apply(change) }
+        if let change { host.scene.apply(monitorOnly(change)) }
         let driver = OffscreenDriver(host: host)
         driver.run(frames: frames)
         let frame = try driver.snapshot()
