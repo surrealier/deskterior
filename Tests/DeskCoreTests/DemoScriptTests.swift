@@ -88,4 +88,59 @@ struct DemoScriptTests {
         #expect(LocationPattern("missing")?.matches(nil) == true && LocationPattern("present")?.matches(nil) == false)
         #expect(LocationPattern("container:attic") == nil && LocationPattern("cell:1,2") == nil && LocationPattern("screen:0") == nil)
     }
+
+    // MARK: tidy and memos (0.3.0)
+
+    @Test("Put Away and memo actions by name (demos 14 and 15)")
+    func tidyAndMemoActions() {
+        var s = F.mirrored(["a"])
+        func name(_ n: String) -> String? { DemoStep.action(named: n, in: s).map { "\($0)" } }
+        if case .putAway(.stringLights)? = DemoStep.action(named: "putAway:stringLights", in: s) {} else {
+            Issue.record("putAway")
+        }
+        if case .bringBack(.plant)? = DemoStep.action(named: "bringBack:plant", in: s) {} else { Issue.record("bringBack") }
+        if case .bringBackAll? = DemoStep.action(named: "bringBackAll", in: s) {} else { Issue.record("bringBackAll") }
+        if case .clipLight(true)? = DemoStep.action(named: "clipLight:on", in: s) {} else { Issue.record("clipLight:on") }
+        if case .clipLight(false)? = DemoStep.action(named: "clipLight:off", in: s) {} else { Issue.record("clipLight:off") }
+        // A new note takes the next id; its text runs to the end, colons and newlines included.
+        s.memos.nextNote = 3
+        if case let .addNote(n, session)? = DemoStep.action(named: "newNote:sky:Call mom\nat 3:30", in: s) {
+            #expect(n == NewNote(id: NoteID(3), text: "Call mom\nat 3:30", colour: .sky) && session == nil)
+        } else {
+            Issue.record("newNote")
+        }
+        if case let .editNote(id, text, session)? = DemoStep.action(named: "noteText:N1:우유 사기", in: s) {
+            #expect(id == NoteID(1) && text == "우유 사기" && session == 0)
+        } else {
+            Issue.record("noteText")
+        }
+        let day = DayKey("2026-10-18")!
+        if case let .noteDay(id, d)? = DemoStep.action(named: "noteDay:N2:2026-10-18", in: s) {
+            #expect(id == NoteID(2) && d == day)
+        } else {
+            Issue.record("noteDay")
+        }
+        if case .noteDay(NoteID(2), nil)? = DemoStep.action(named: "noteDay:N2:none", in: s) {} else { Issue.record("none") }
+        if case let .editDayPage(d, text, session)? = DemoStep.action(named: "dayMemo:2026-10-18:회의 3시\n자료 준비", in: s) {
+            #expect(d == day && text == "회의 3시\n자료 준비" && session == 0)
+        } else {
+            Issue.record("dayMemo")
+        }
+        if case let .setDDay(d)? = DemoStep.action(named: "dDay:2026-10-30:중간고사", in: s) {
+            #expect(d == DDay(day: DayKey("2026-10-30")!, title: "중간고사"))
+        } else {
+            Issue.record("dDay")
+        }
+        if case .setDDay(nil)? = DemoStep.action(named: "clearDDay", in: s) {} else { Issue.record("clearDDay") }
+        if case .tearOffPage(day, at: nil)? = DemoStep.action(named: "tearOff:2026-10-18", in: s) {} else {
+            Issue.record("tearOff")
+        }
+        if case .removeNote(NoteID(3))? = DemoStep.action(named: "removeNote:N3", in: s) {} else { Issue.record("removeNote") }
+        // Malformed names are refused.
+        for bad in ["putAway:penCup", "putAway", "bringBack:", "clipLight:dim", "newNote:plaid:x", "newNote:sky",
+                    "noteText:3:x", "noteDay:N1:tomorrow", "dayMemo:2026-02-30:x", "dDay:soon:x", "tearOff:today",
+                    "removeNote:N01", "bringBackAll:now", "clearDDay:x"] {
+            #expect(name(bad) == nil, "\(bad)")
+        }
+    }
 }

@@ -110,9 +110,47 @@ struct L10nTests {
         for id in MenuSpec.drive(stick).ids {
             if let item = MenuSpec.drive(stick).item(id), !item.isSeparator { titles.insert(item.title) }
         }
+        // MARK: tidy and memos (0.3.0): Put Away ▸ and Bring Back ▸ (with files inside, and with things away), the
+        // object menus, the sealed riser and every partition menu (no title carries user text).
+        var t = ModelFixture.mirrored(["a.txt", "b.pdf", "c.png"])
+        let today = DayKey("2026-10-18")!
+        let c = MenuSpec.Context(undo: "Put Away", redo: "Bring Everything Back", today: today)
+        t.memos.notes[NoteID(1)] = StickyNote(id: NoteID(1), text: "note", colour: .yellow, pos: ArtPoint(371, 67), z: 0,
+                                              created: ModelFixture.t0, edited: ModelFixture.t0)
+        t.memos.pages[today] = "page"
+        t.memos.dDay = DDay(day: today, title: "d")
+        for holding in [false, true] {
+            if holding {
+                for (k, id) in zip(t.tokens.sortedKeys, [ContainerID.cabinetTop, .phone, .memoClips]) {
+                    _ = t.tokens.move(k, to: .container(id, order: 0))
+                }
+            }
+            collect(MenuSpec.desk(t, c))
+            collect(MenuSpec.sealedRiser(t, c))
+            for id in StowID.allCases { collect(MenuSpec(MenuSpec.objectPutAway(id, t))) }
+            collect(MenuSpec(MenuSpec.memoClipsExtras(t)))
+            for on in [false, true] {
+                t.clipLightOn = on
+                collect(MenuSpec.partition(t, c))
+                collect(MenuSpec.clipLight(t))
+            }
+            collect(MenuSpec.note(NoteID(1), t))
+            collect(MenuSpec.dailyPad(t, c))
+            collect(MenuSpec.cube(t))
+            collect(MenuSpec.dDayCard(t))
+            collect(MenuSpec.calendar(t, c, day: today))
+        }
+        var away = ModelFixture.mirrored(["a.txt"])
+        for id in [StowID.dailyPad, .clipLight] + StowID.allCases { away.stowed.insert(id) }
+        collect(MenuSpec.desk(away))
+        away.stowed = [.dailyPad, .memoClips, .clipLight, .dDayCard]
+        collect(MenuSpec.desk(away))
+        collect(MenuSpec.partition(away, c))
         for t in UndoJournal.l10nCoverageLabels { titles.insert("Undo \(t)") }
         // File entries' labels (`FileReport`).
-        for t in ["Move to Trash", "Empty Wastebasket", "Move In", "Copy In", "Drop In", "Make Alias"] { titles.insert("Undo \(t)") }
+        for t in ["Move to Trash", "Empty Wastebasket", "Move In", "Copy In", "Drop In", "Make Alias", "Save as Text File"] {
+            titles.insert("Undo \(t)")
+        }
         let missing = titles.filter { !L10n.knows($0) }.sorted()
         #expect(missing.isEmpty, "untranslated menu titles: \(missing)")
     }
@@ -194,9 +232,16 @@ extension UndoJournal {
     /// The labels the journal records (L10n coverage).
     static var l10nCoverageLabels: [String] {
         let k = TokenKey(volume: "v", inode: 1)
+        let n = NoteID(1), day = DayKey(year: 2026, month: 10, day: 18)!
         let actions: [DeskAction] = [
             .move([k], to: .floor(x: 0)), .move([k, k], to: .floor(x: 0)), .takeAllOut(.riserLeft), .takeEverythingOut,
             .cleanUp(.name), .clearDesk,
+            // MARK: tidy and memos (0.3.0)
+            .putAway(.cabinet), .bringBack(.cabinet), .bringBackAll,
+            .addNote(NewNote(id: n, text: "", colour: .yellow), session: nil), .editNote(n, text: "", session: 0),
+            .noteColour(n, .sky), .noteDay(n, day), .moveNote(n, to: ArtPoint(0, 0)), .raiseNote(n), .removeNote(n),
+            .editDayPage(day, text: "", session: 0), .tearOffPage(day, at: nil), .setDDay(DDay(day: day, title: "")),
+            .setDDay(nil),
         ]
         return actions.compactMap { label(for: $0) }
     }

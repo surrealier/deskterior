@@ -164,4 +164,20 @@ struct DeskKnockTests {
         }
         #expect(DeskKnock.slamStrength(600) == 1 && DeskKnock.slamStrength(30) == 0.25)
     }
+
+    // MARK: tidy (0.3.0)
+
+    @Test("A knock leaves what is put away alone: no wobble for an away plant or phone stand, no shut for away drawers")
+    func awayObjectsSkipped() {
+        var s = DeskState()
+        for id in ContainerID.allCases where id.isDrawer { s.drawers[id] = DrawerState(p: 2) }
+        let out = DeskKnock.plan(for: s, origin: SIMD2(256, 0), seed: 1)
+        #expect(out.wobbles[.plant] != nil && out.wobbles[.phone] != nil && out.drawerCloses.contains(.riserLeft))
+        s.stowed = [.plant, .phoneStand, .riserDrawers]
+        let away = DeskKnock.plan(for: s, origin: SIMD2(256, 0), seed: 1)
+        #expect(away.wobbles[.plant] == nil && away.wobbles[.phone] == nil && away.wobbles[.lamp] != nil)
+        #expect(!away.drawerCloses.contains(.riserLeft) && !away.drawerCloses.contains(.riserRight))
+        #expect(away.drawerCloses.contains(.cabinetTop))
+        #expect(DeskKnock.actions(away, state: s).count == away.drawerCloses.count)
+    }
 }

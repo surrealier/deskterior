@@ -52,12 +52,13 @@ extension Reducer {
     }
 
     /// Floor centres for `count` tokens set down at core x `x` (`FloorLine`): a row 18 px apart from the free spot
-    /// nearest `x`, stepping over the basket (where it stands or lies), the cabinet and the tokens already there
-    /// (`occupied`, their centres), continuing on the other side when the floor ends; tokens that still do not fit
-    /// share the last spot.
-    public static func floorSpots(near x: Int, count: Int, basket: BasketState = BasketState(), occupied: [Int] = []) -> [Int] {
+    /// nearest `x`, stepping over the basket (where it stands or lies), the cabinet (unless it is put away, `stowed`)
+    /// and the tokens already there (`occupied`, their centres), continuing on the other side when the floor ends;
+    /// tokens that still do not fit share the last spot.
+    public static func floorSpots(near x: Int, count: Int, basket: BasketState = BasketState(), occupied: [Int] = [],
+                                  stowed: Set<StowID> = []) -> [Int] {
         guard count > 0 else { return [] }
-        let avoid = FloorLine.furniture(basket: basket) + FloorLine.spans(occupied)
+        let avoid = FloorLine.furniture(basket: basket, stowed: stowed) + FloorLine.spans(occupied)
         let start = FloorLine.freeSpot(near: Float(x), avoiding: avoid)
         let pitch = Placement.floorSpacing
         var spots = FloorLine.row(from: start, direction: 1, pitch: pitch, count: count, avoiding: avoid)

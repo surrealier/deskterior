@@ -508,7 +508,9 @@ public struct DeskState: Sendable, Equatable {
     }
 
     /// Takes `other`'s token layout (root, tokens, piles, tombstones, monitor page) and keeps this desk's element
-    /// states, so switching back to a folder mirrored before restores where its files were.
+    /// states, so switching back to a folder mirrored before restores where its files were. What is put away, the
+    /// clip light and the memos are element state and stay; an object whose hiding places hold tokens in the adopted
+    /// layout comes back (Erratum 30).
     public mutating func adoptLayout(of other: DeskState, grid: ScreenGrid = .standard) {
         root = other.root
         tokens = other.tokens
@@ -516,6 +518,7 @@ public struct DeskState: Sendable, Equatable {
         tombstones = other.tombstones
         memory = MirrorMemory()
         monitor.page = min(max(0, other.monitor.page), pageCount(grid: grid) - 1)
+        bringBackOccupied()
     }
 
     /// Model invariant violations (empty when consistent).
@@ -527,6 +530,10 @@ public struct DeskState: Sendable, Equatable {
         for p in piles.keys where !used.contains(p) && !origins.contains(p) { out.append("pile \(p) is empty") }
         for t in tombstones where tokens.contains(t.key) { out.append("tombstone for live token \(t.key)") }
         if monitor.page < 0 || monitor.page >= pageCount(grid: grid) { out.append("monitor page \(monitor.page) out of range") }
+        // MARK: tidy (0.3.0)
+        for c in ContainerID.allCases where isAway(c) && tokens.count(in: c) > 0 {
+            out.append("away container \(c) holds \(tokens.count(in: c)) tokens")
+        }
         return out
     }
 }

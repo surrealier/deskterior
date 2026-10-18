@@ -176,6 +176,23 @@ struct FileJournalTests {
         #expect(j.undoLabel == nil, "nothing came in: no entry")
     }
 
+    // MARK: files (0.3.0)
+
+    @Test("Save as Text File: running, then ready under its label; ⌘Z replays its record; one that made nothing goes")
+    func textFileEntry() {
+        var s = F.mirrored(["a"])
+        var j = UndoJournal()
+        start(&s, &j, 1, .createTextFile)
+        #expect(j.undoStack.last?.file?.phase == .running && j.undoLabel == "Save as Text File")
+        #expect(run(&s, &j, .undo) == [.toast(.fileBusy)], "still writing")
+        finish(&s, &j, 1, .createTextFile, placed: [.init(source: "memo:note:N1", name: "a 2.txt")])
+        #expect(j.undoStack.last?.file?.phase == .ready && j.undoLabel == "Save as Text File")
+        #expect(run(&s, &j, .undo) == [.undoFiles(FileUndoRef(1))])
+        start(&s, &j, 2, .createTextFile)
+        finish(&s, &j, 2, .createTextFile, undoable: false)
+        #expect(!j.undoStack.contains { $0.file?.ref == FileUndoRef(2) })
+    }
+
     @Test("A drop-in's label says what it did: Move In, Copy In, or Drop In for both")
     func importLabels() {
         let moved = FileReport.Placed(source: "/s/a", name: "a")

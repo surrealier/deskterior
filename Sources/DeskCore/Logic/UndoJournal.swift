@@ -1,13 +1,16 @@
 import Foundation
 
-/// The layout an undoable action can change: where every token rests, pile positions, and the element states a
-/// global action touches (monitor, phone, drawers).
+/// The layout an undoable action can change: where every token rests, pile positions, the element states a
+/// global action touches (monitor, phone, drawers), what is put away, and the memos.
 public struct LayoutSnapshot: Sendable, Equatable {
     public var locations: [TokenKey: Location]
     public var piles: [PileID: SIMD2<Float>]
     public var monitor: MonitorState
     public var phone: PhoneState
     public var drawers: [ContainerID: DrawerState]
+    // MARK: tidy and memos (0.3.0)
+    public var stowed: Set<StowID>
+    public var memos: MemoBook
 
     public init(_ s: DeskState) {
         var locations: [TokenKey: Location] = [:]
@@ -19,6 +22,8 @@ public struct LayoutSnapshot: Sendable, Equatable {
         monitor = s.monitor
         phone = s.phone
         drawers = s.drawers
+        stowed = s.stowed
+        memos = s.memos
     }
 }
 
@@ -37,6 +42,11 @@ public struct LayoutSnapshot: Sendable, Equatable {
 /// never jumps over moves made meanwhile, and its result clears no redo. ⌘Z replays a file entry only while it is
 /// the entry on top, the one the menus name: it never steps past a stale layout step into one (that ⌘Z only drops
 /// the stale steps and says so).
+///
+/// Put Away and the memos (0.3.0): undo restores objects leaving the put-away set before it moves tokens, and puts
+/// objects away only once their places are empty; memos come back per note and per day page, never as a whole. One
+/// editing session of a note or a day page is one entry (`coalesceKey(for:)`), so typing never pushes a Move to
+/// Trash out of the journal.
 public struct UndoJournal: Sendable, Equatable {
     public struct Entry: Sendable, Equatable {
         /// "Move", "Take Everything Out"… (menus show "Undo <label>").
@@ -46,6 +56,9 @@ public struct UndoJournal: Sendable, Equatable {
         // MARK: files
         /// A file action's entry (the snapshots are then unused).
         public var file: FileEntry? = nil
+        // MARK: memos (0.3.0)
+        /// The editing session this entry gathers ("note:N3:7", "day:2026-10-18:7"); nil for one action.
+        public var coalesce: String? = nil
     }
 
     // MARK: files
@@ -87,14 +100,57 @@ public struct UndoJournal: Sendable, Equatable {
         case .clearDesk: "Clear the Desk"
         // MARK: files
         case .requestDropIn, .importDropped: "Move" // desk items dropped back move; files from outside are a file entry
+        // MARK: tidy (0.3.0); the clip light is not journaled, like the lamp
+        case .putAway: "Put Away"
+        case .bringBack: "Bring Back"
+        case .bringBackAll: "Bring Everything Back"
+        // MARK: memos (0.3.0)
+        case .addNote: "New Sticky Note"
+        case .editNote: "Edit Note"
+        case .noteColour: "Note Colour"
+        case .noteDay: "Note Date"
+        case .moveNote: "Move Note"
+        case .raiseNote: "Bring to Front"
+        case .removeNote: "Remove Note"
+        case .editDayPage: "Edit Memo"
+        case .tearOffPage: "Tear Off Page"
+        case let .setDDay(d): d == nil ? "Clear D-Day" : "Set D-Day"
         default: nil
         }
     }
 
-    /// Records one change (clearing redo); a no-op change is not recorded.
-    public mutating func record(_ label: String, before: LayoutSnapshot, after: LayoutSnapshot) {
+    /// The editing session a text edit belongs to: every commit of one session (and the New Sticky Note that
+    /// started it) is one entry. Nil for every other action.
+    public static func coalesceKey(for action: DeskAction) -> String? {
+        switch action {
+        case let .editNote(id, _, session): "note:\(id):\(session)"
+        case let .addNote(n, session?): "note:\(n.id):\(session)"
+        case let .editDayPage(day, _, session): "day:\(day):\(session)"
+        default: nil
+        }
+    }
+
+    /// Records one change (clearing redo); a no-op change is not recorded. With `coalesce` equal to the top entry's
+    /// (a layout entry), the change joins that entry instead: its `after` takes this change, and an entry that ends
+    /// where it began goes.
+    public mutating func record(
+        _ label: String, before: LayoutSnapshot, after: LayoutSnapshot, coalesce: String? = nil
+    ) {
         guard before != after else { return }
-        undoStack.append(Entry(label: label, before: before, after: after))
+        if let coalesce, let top = undoStack.last, top.coalesce == coalesce, top.file == nil {
+            // A coalesced action changes only the memos: its change is laid over the entry's `after`, so a file
+            // that arrived or a pile that settled meanwhile never joins the entry.
+            var merged = top.after
+            Self.applyMemos(from: before.memos, to: after.memos, onto: &merged.memos)
+            if merged == top.before {
+                undoStack.removeLast()
+            } else {
+                undoStack[undoStack.count - 1].after = merged
+            }
+            redoStack.removeAll()
+            return
+        }
+        undoStack.append(Entry(label: label, before: before, after: after, coalesce: coalesce))
         if undoStack.count > Self.capacity { undoStack.removeFirst(undoStack.count - Self.capacity) }
         redoStack.removeAll()
     }
@@ -176,8 +232,12 @@ public struct UndoJournal: Sendable, Equatable {
         return []
     }
 
-    /// Re-applies the difference `from → to` onto `s`.
+    /// Re-applies the difference `from → to` onto `s`. Objects coming out come back first, so files can go back
+    /// into them; objects going away go last, and only once their places are empty (Erratum 30).
     static func apply(from: LayoutSnapshot, to: LayoutSnapshot, onto s: inout DeskState, grid: ScreenGrid) {
+        // MARK: tidy (0.3.0)
+        s.stowed.subtract(from.stowed.subtracting(to.stowed))
+
         // Tokens the change moved (present on both sides), now under their current keys.
         var targets: [(key: TokenKey, to: Location)] = []
         var seen = Set<TokenKey>()
@@ -208,6 +268,27 @@ public struct UndoJournal: Sendable, Equatable {
         for (id, d) in to.drawers where from.drawers[id] != d { s.drawers[id] = d }
         Placement.pruneEmptyPiles(&s)
         s.monitor.page = min(max(0, s.monitor.page), s.pageCount(grid: grid) - 1)
+
+        // MARK: tidy and memos (0.3.0)
+        for id in to.stowed.subtracting(from.stowed).sorted() where s.tokensInside(id).isEmpty {
+            s.stowed.insert(id)
+        }
+        applyMemos(from: from.memos, to: to.memos, onto: &s.memos)
+    }
+
+    /// Re-applies the memo change `from → to` onto `m`, note by note and page by page: notes and pages the change
+    /// did not touch keep what happened to them since. A note coming back into a full partition (24) stays out;
+    /// note numbers never go back, so an id is never reused.
+    static func applyMemos(from: MemoBook, to: MemoBook, onto m: inout MemoBook) {
+        for id in Set(from.notes.keys).union(to.notes.keys).sorted() where from.notes[id] != to.notes[id] {
+            if to.notes[id] != nil, m.notes[id] == nil, m.notes.count >= MemoBook.maxNotes { continue }
+            m.notes[id] = to.notes[id]
+        }
+        for day in Set(from.pages.keys).union(to.pages.keys).sorted() where from.pages[day] != to.pages[day] {
+            m.pages[day] = to.pages[day]
+        }
+        if from.dDay != to.dDay { m.dDay = to.dDay }
+        m.nextNote = max(m.nextNote, from.nextNote, to.nextNote)
     }
 
     /// Screen cells in reading order, then containers and piles by order, so restored orders come out dense and
@@ -257,7 +338,7 @@ extension Reducer {
             guard let label = UndoJournal.label(for: a) else { return reduce(&s, a, env) }
             let before = LayoutSnapshot(s)
             let effects = reduce(&s, a, env)
-            journal.record(label, before: before, after: LayoutSnapshot(s))
+            journal.record(label, before: before, after: LayoutSnapshot(s), coalesce: UndoJournal.coalesceKey(for: a))
             return effects
         }
     }

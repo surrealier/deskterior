@@ -99,4 +99,15 @@ struct VisibilityTests {
         #expect(InventoryQuery.items(s, search: "보고".decomposedStringWithCanonicalMapping).count == 1)
         #expect(InventoryQuery.items(s, search: "  ").count == 5)
     }
+
+    // MARK: memos (0.3.0)
+
+    @Test("Memo clips show their cards as minis that take clicks; in the dark they are silhouettes without")
+    func memoClips() {
+        let s = ModelFixture.mirrored(["a.txt", "b.txt"])
+        #expect(v(.container(.memoClips, order: 0), s) == (.mini, true))
+        #expect(v(.container(.memoClips, order: 1), s) == (.mini, true), "every card, not only the top one")
+        #expect(v(.container(.memoClips, order: 0), s, .init(dark: true)) == (.silhouette, false))
+        #expect(!Visibility.of(.container(.memoClips, order: 0), s).isHidden && ContainerID.memoClips.spec.concealment == .shown)
+    }
 }

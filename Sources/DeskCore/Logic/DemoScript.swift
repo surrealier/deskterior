@@ -415,8 +415,15 @@ public enum DemoStep: Codable, Sendable, Equatable {
     /// Model actions a script may name: `powerOn`, `powerOff`, `requestConnect`, `accessDenied`, `accessGranted`,
     /// `finderHidesItems`, `cycleInput`, `selectAV`, `page:<n>` (HDMI n), `takeEverythingOut`, `clearDesk`, `undo`,
     /// `redo`, `cleanUp:<name|kind|dateAdded>`, `lights:<auto|day|night|lamp>`.
+    ///
+    /// Put Away and the memos (0.3.0): `putAway:<StowID>`, `bringBack:<StowID>`, `bringBackAll`,
+    /// `clipLight:<on|off>`, `newNote:<colour>:<text>` (the next note id, at the first free spot),
+    /// `noteText:<id>:<text>` and `dayMemo:<YYYY-MM-DD>:<text>` (editing session 0), `noteDay:<id>:<day|none>`,
+    /// `dDay:<day>:<title>`, `clearDDay`, `tearOff:<day>` and `removeNote:<id>`. Text runs to the end of the name, so
+    /// it may hold colons and newlines.
     public static func action(named name: String, in s: DeskState) -> DeskAction? {
         let parts = name.split(separator: ":", maxSplits: 1).map(String.init)
+        if let memo = memoAction(parts[0], parts.count > 1 ? parts[1] : nil, in: s) { return memo }
         switch (parts[0], parts.count > 1 ? parts[1] : nil) {
         case ("powerOn", nil): return .power(true)
         case ("powerOff", nil): return .power(false)
@@ -434,6 +441,42 @@ public enum DemoStep: Codable, Sendable, Equatable {
         case let ("cleanUp", k?): return ScreenGrid.SortKey(rawValue: k).map { .cleanUp($0) }
         case let ("lights", m?):
             return LightsMode(rawValue: m).map { .lights(LightsState(mode: $0, room: s.lights.room, lamp: s.lights.lamp)) }
+        default: return nil
+        }
+    }
+
+    /// The Put Away and memo actions of `action(named:in:)` (nil for any other name).
+    private static func memoAction(_ verb: String, _ arg: String?, in s: DeskState) -> DeskAction? {
+        // "<head>:<rest>", the rest running to the end (text may hold colons).
+        func split(_ a: String) -> (String, String)? {
+            guard let i = a.firstIndex(of: ":") else { return nil }
+            return (String(a[..<i]), String(a[a.index(after: i)...]))
+        }
+        switch (verb, arg) {
+        case let ("putAway", id?): return StowID(rawValue: id).map { .putAway($0) }
+        case let ("bringBack", id?): return StowID(rawValue: id).map { .bringBack($0) }
+        case ("bringBackAll", nil): return .bringBackAll
+        case ("clipLight", "on"): return .clipLight(true)
+        case ("clipLight", "off"): return .clipLight(false)
+        case let ("newNote", a?):
+            guard let (c, text) = split(a), let colour = NoteColour(rawValue: c) else { return nil }
+            return .addNote(NewNote(id: s.memos.nextNoteID, text: text, colour: colour), session: nil)
+        case let ("noteText", a?):
+            guard let (id, text) = split(a), let note = NoteID(raw: id) else { return nil }
+            return .editNote(note, text: text, session: 0)
+        case let ("noteDay", a?):
+            guard let (id, day) = split(a), let note = NoteID(raw: id) else { return nil }
+            if day == "none" { return .noteDay(note, nil) }
+            return DayKey(day).map { .noteDay(note, $0) }
+        case let ("dayMemo", a?):
+            guard let (d, text) = split(a), let day = DayKey(d) else { return nil }
+            return .editDayPage(day, text: text, session: 0)
+        case let ("dDay", a?):
+            guard let (d, title) = split(a), let day = DayKey(d) else { return nil }
+            return .setDDay(DDay(day: day, title: title))
+        case ("clearDDay", nil): return .setDDay(nil)
+        case let ("tearOff", d?): return DayKey(d).map { .tearOffPage($0, at: nil) }
+        case let ("removeNote", id?): return NoteID(raw: id).map { .removeNote($0) }
         default: return nil
         }
     }

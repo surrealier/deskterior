@@ -47,6 +47,12 @@ public struct DeskDocument: Codable, Sendable, Equatable {
     public var tokens: [TokenEntry] = []
     public var tombstones: [Tombstone] = []
     public var flags = DeskFlags()
+    // MARK: tidy (0.3.0)
+    /// What is put away (`StowID` raw values, sorted; Erratum 30). Always written; unknown values are skipped when
+    /// read, so a newer build's objects do not stop this one loading.
+    public var stowed: [String] = []
+    /// The partition's clip light is switched on (Erratum 31).
+    public var clipLight = false
 
     public init() {}
 
@@ -91,6 +97,8 @@ public struct DeskDocument: Codable, Sendable, Equatable {
             return t
         }
         flags = state.flags
+        stowed = state.stowed.map(\.rawValue).sorted()
+        clipLight = state.clipLightOn
     }
 
     /// Rebuilds the model. Tokens are re-inserted in container/pile order (closing gaps); tokens whose saved
@@ -112,6 +120,8 @@ public struct DeskDocument: Codable, Sendable, Equatable {
         s.brush = brush
         s.mat = mat
         s.flags = flags
+        s.stowed = Set(stowed.compactMap(StowID.init(rawValue:)))
+        s.clipLightOn = clipLight
         for p in piles { s.piles[p.id] = p.pos }
 
         let ordered = tokens.sorted { a, b in
@@ -130,6 +140,8 @@ public struct DeskDocument: Codable, Sendable, Equatable {
         Placement.pruneEmptyPiles(&s)
         s.tombstones = tombstones.filter { !s.tokens.contains($0.key) }
         s.monitor.page = min(max(0, s.monitor.page), s.pageCount(grid: grid) - 1)
+        // A place that holds files is out (sanitize does this for a decoded file; this covers any document).
+        s.bringBackOccupied()
         return s
     }
 
@@ -176,6 +188,7 @@ public struct DeskDocument: Codable, Sendable, Equatable {
     private enum CodingKeys: String, CodingKey {
         case schema, layoutVersion, app, savedAt, root, hostDisplayUUID, monitor, drawers, phone, penCup,
              wastebasket, chair, lights, brush, mat, piles, tokens, tombstones, undo, flags
+        case stowed, clipLight // MARK: tidy (0.3.0)
     }
 
     public init(from decoder: Decoder) throws {
@@ -206,6 +219,9 @@ public struct DeskDocument: Codable, Sendable, Equatable {
         tokens = list?.elements ?? []
         tombstones = c.lenient(.tombstones, default: Lossy<Tombstone>()).elements
         flags = c.lenient(.flags, default: d.flags)
+        // MARK: tidy (0.3.0): additive keys; a 0.2.0 file has neither (everything out, the clip light off).
+        stowed = Set(c.lenient(.stowed, default: Lossy<StowID>()).elements.map(\.rawValue)).sorted()
+        clipLight = c.lenient(.clipLight, default: false)
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -231,6 +247,8 @@ public struct DeskDocument: Codable, Sendable, Equatable {
         // TODO(M5): UndoJournal entries.
         try c.encode([String](), forKey: .undo)
         try c.encode(flags, forKey: .flags)
+        try c.encode(stowed, forKey: .stowed)
+        try c.encode(clipLight, forKey: .clipLight)
     }
 }
 

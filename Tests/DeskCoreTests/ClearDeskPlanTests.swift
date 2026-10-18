@@ -163,4 +163,21 @@ struct ClearDeskPlanTests {
             }
         }
     }
+
+    // MARK: tidy (0.3.0)
+
+    @Test("Clear the Desk leaves what is put away alone: an away phone is not turned over, away drawers are not shut")
+    func awayObjects() {
+        var s = ModelFixture.mirrored(["a"])
+        s.drawers[.riserLeft] = DrawerState(p: 6)
+        s.drawers[.cabinetTop] = DrawerState(p: 6)
+        s.stowed = [.phoneStand, .riserDrawers]
+        let plan = ClearDeskPlan.make(s)
+        #expect(!plan.phoneDown && plan.shutDrawers.keys.sorted() == [.cabinetTop])
+        var after = s
+        plan.apply(to: &after)
+        #expect(!after.phone.faceDown)
+        s.stowed = []
+        #expect(ClearDeskPlan.make(s).phoneDown && ClearDeskPlan.make(s).shutDrawers.count == 2)
+    }
 }

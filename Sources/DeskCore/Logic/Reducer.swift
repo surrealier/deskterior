@@ -269,12 +269,14 @@ public enum Reducer {
     /// Moves `keys` to `target`, in order. Several tokens pour into the cells nearest a screen target, stack
     /// in order into a container or pile, or spread along the floor. A single token dropped on an occupied
     /// cell swaps with its occupant when it came from another cell. A container that cannot take them all
-    /// refuses the whole move (bonk).
+    /// refuses the whole move (bonk), and so does a put-away one (Erratum 30: nothing hides inside it).
     private static func move(_ s: inout DeskState, _ keys: [TokenKey], to target: Location, grid: ScreenGrid) -> [Effect] {
         var seen = Set<TokenKey>()
         let movers = keys.filter { s.tokens.contains($0) && seen.insert($0).inserted }
         guard !movers.isEmpty else { return [] }
 
+        // MARK: tidy (0.3.0)
+        if let id = target.container, s.isAway(id) { return [.toast(.putAwayPlace)] }
         if case let .container(id, _) = target {
             let staying = s.tokens.members(of: id).filter { !seen.contains($0) }.count
             guard staying + movers.count <= id.spec.hardCap else {
@@ -313,7 +315,8 @@ public enum Reducer {
         case let .floor(x):
             let others = s.tokens.keys { if case .floor = $0 { true } else { false } }.filter { !seen.contains($0) }
                 .compactMap { k -> Int? in if case let .floor(x)? = s.tokens.location(of: k) { x } else { nil } }
-            let spots = floorSpots(near: x, count: movers.count, basket: s.wastebasket, occupied: others)
+            let spots = floorSpots(near: x, count: movers.count, basket: s.wastebasket, occupied: others,
+                                   stowed: s.stowed)
             for (k, spot) in zip(movers, spots) { s.tokens.move(k, to: .floor(x: spot)) }
         case .carried:
             break

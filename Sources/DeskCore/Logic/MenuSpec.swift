@@ -256,8 +256,8 @@ extension MenuSpec {
     /// Every milestone has landed: nothing waits.
     public static let pending: Set<String> = []
 
-    /// Right-click on tokens (the selection): open, look, reveal, copy, move to another page or a hiding place,
-    /// trash.
+    /// Right-click on tokens (the selection): open, look, reveal, copy, move to another page or a hiding place
+    /// (not a put-away one), trash.
     public static func token(_ keys: [TokenKey], _ s: DeskState) -> MenuSpec {
         let live = keys.filter { s.tokens.contains($0) }
         let any = !live.isEmpty
@@ -270,7 +270,7 @@ extension MenuSpec {
             moveTo += pageItems(live, s)
         }
         moveTo.append(.separator)
-        for id in ContainerID.allCases {
+        for id in ContainerID.allCases where !s.isAway(id) {
             let staying = s.tokens.members(of: id).filter { !live.contains($0) }.count
             let fits = staying + live.count <= id.spec.hardCap
             // Where they all are already: ticked, and off (it would only reorder them).
@@ -372,7 +372,7 @@ extension MenuSpec {
         MenuSpec(deskItems(s, c))
     }
 
-    private static func deskItems(_ s: DeskState, _ c: Context) -> [MenuItem] {
+    static func deskItems(_ s: DeskState, _ c: Context) -> [MenuItem] {
         let on = s.monitor.power == .on
         let hidden = s.tokens.keys { !$0.isScreen }.count
         let binned = s.tokens.count(in: .wastebasket)
@@ -390,6 +390,8 @@ extension MenuSpec {
             MenuItem("emptyWastebasket", binned > 0 ? "Empty Wastebasket… (\(binned))" : "Empty Wastebasket…",
                      .emptyWastebasket, enabled: binned > 0 && !pending.contains("emptyWastebasket")),
         ]
+        // MARK: tidy and memos (0.3.0)
+        items += [.separator] + memoDeskItems(s) + tidyDeskItems(s)
         items += [
             .separator,
             MenuItem("undo", c.undo.map { "Undo \($0)" } ?? "Undo", .undo, enabled: c.undo != nil),

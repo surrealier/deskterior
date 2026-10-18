@@ -129,4 +129,224 @@ struct MenuSpecTests {
             }
         }
     }
+
+    // MARK: tidy (0.3.0)
+
+    /// The children of a submenu item, separators as "-".
+    func children(_ spec: MenuSpec, _ id: String) -> [MenuItem] {
+        if case let .submenu(items)? = spec.item(id)?.content { return items }
+        return []
+    }
+
+    @Test("Desk and status menus: New Sticky Note, Memos…, Put Away ▸, Bring Back ▸ and Arrange Desk… before Undo")
+    func deskMenuTidyItems() {
+        let s = F.mirrored(["a", "b"])
+        let ids = MenuSpec.desk(s).items.map(\.id)
+        let i = ids.firstIndex(of: "emptyWastebasket")!
+        #expect(Array(ids[i...].prefix(9)) == ["emptyWastebasket", "-", "newNote", "memos", "putAway", "bringBack", "arrangeDesk", "-", "undo"])
+        let desk = MenuSpec.desk(s)
+        #expect(desk.item("newNote")?.command == .newNote && desk.item("memos")?.command == .openMemos(.today))
+        #expect(desk.item("arrangeDesk")?.command == .arrangeDesk && desk.item("arrangeDesk")?.title == "Arrange Desk…")
+        #expect(MenuSpec.status(s).ids == desk.ids)
+    }
+
+    @Test("Put Away ▸: what is out, in catalog order with groups apart; a place with files says it takes them out")
+    func putAwaySubmenu() {
+        var s = F.mirrored(["a", "b", "c"])
+        s.tokens.move(F.key(2), to: .container(.cabinetMiddle, order: 0))
+        s.tokens.move(F.key(3), to: .container(.cabinetFile, order: 0))
+        let items = children(MenuSpec.desk(s), "putAway")
+        #expect(items.map(\.id) == [
+            "putAway.riserDrawers", "putAway.cabinet", "-", "putAway.phoneStand", "putAway.plant", "-", "putAway.partition",
+            "putAway.dailyPad", "putAway.memoClips", "putAway.clipLight", "putAway.dDayCard", "-", "putAway.wallShelf",
+            "putAway.pegboard", "putAway.stringLights", "putAway.floorPlant", "putAway.wallArt",
+        ])
+        let put = MenuSpec(items)
+        #expect(put.item("putAway.cabinet")?.title == "Take Out 2 & Put Away Cabinet")
+        #expect(put.item("putAway.cabinet")?.command == .putAway(.cabinet))
+        #expect(put.item("putAway.plant")?.title == "Plant" && put.item("putAway.dDayCard")?.title == "D-Day Card")
+        // An away partition takes its add-ons out of the list; everything away leaves it empty, and off.
+        s.tokens.move(F.key(2), to: .container(.memoClips, order: 0))
+        #expect(MenuSpec(children(MenuSpec.desk(s), "putAway")).item("putAway.partition")?.title
+            == "Take Out 1 & Put Away Desk Partition")
+        s.stowed = [.partition]
+        let ids = MenuSpec.desk(s).ids
+        #expect(!ids.contains("putAway.partition") && !ids.contains("putAway.memoClips") && ids.contains("putAway.plant"))
+        s.stowed = Set(StowID.allCases)
+        #expect(MenuSpec.desk(s).item("putAway")?.isEnabled == false && children(MenuSpec.desk(s), "putAway").isEmpty)
+    }
+
+    @Test("Bring Back ▸: disabled, never hidden, when nothing is away; lists what comes back on its own, then all")
+    func bringBackSubmenu() {
+        var s = F.mirrored(["a"])
+        let none = MenuSpec.desk(s)
+        #expect(none.item("bringBack")?.isEnabled == false)
+        #expect(children(none, "bringBack").map(\.id) == ["bringBackAll"] && none.item("bringBackAll")?.isEnabled == false)
+        s.stowed = [.cabinet, .partition, .clipLight, .stringLights]
+        let some = MenuSpec.desk(s)
+        #expect(some.item("bringBack")?.isEnabled == true)
+        #expect(children(some, "bringBack").map(\.id)
+            == ["bringBack.cabinet", "bringBack.partition", "bringBack.stringLights", "-", "bringBackAll"])
+        #expect(some.item("bringBack.partition")?.title == "Desk Partition" && some.item("bringBackAll")?.isEnabled == true)
+        #expect(some.item("bringBack.cabinet")?.command == .bringBack(.cabinet))
+        #expect(some.item("bringBackAll")?.command == .bringBackAll && some.item("bringBackAll")?.title == "Bring Everything Back")
+        // An add-on away on its own flag, with its partition out, comes back by itself.
+        s.stowed = [.clipLight]
+        #expect(children(MenuSpec.desk(s), "bringBack").first?.id == "bringBack.clipLight")
+    }
+
+    @Test("Object menus end with Put Away ‹X› (or Take Out n & …); the sealed riser offers Bring Back Riser Drawers")
+    func objectMenus() {
+        var s = F.mirrored(["a", "b"])
+        let plain = MenuSpec.objectPutAway(.cabinet, s)
+        #expect(plain.map(\.id) == ["-", "putAway"] && plain.last?.title == "Put Away Cabinet")
+        #expect(plain.last?.command == .putAway(.cabinet))
+        s.tokens.move(F.key(1), to: .container(.phone, order: 0))
+        #expect(MenuSpec.objectPutAway(.phoneStand, s).last?.title == "Take Out 1 & Put Away Phone Stand")
+        #expect(MenuSpec.objectPutAway(.plant, s).last?.title == "Put Away Plant")
+        #expect(MenuSpec.objectPutAway(.riserDrawers, s).last?.title == "Put Away Riser Drawers")
+        s.stowed = [.riserDrawers]
+        #expect(MenuSpec.objectPutAway(.riserDrawers, s).isEmpty, "nothing to put away while it is away")
+        let sealed = MenuSpec.sealedRiser(s, MenuSpec.Context(undo: "Put Away"))
+        #expect(sealed.items.first?.id == "bringBack" && sealed.items.first?.title == "Bring Back Riser Drawers")
+        #expect(sealed.items.first?.command == .bringBack(.riserDrawers) && sealed.items[1].isSeparator)
+        #expect(Array(sealed.items.dropFirst(2)).map(\.id) == MenuSpec.desk(s).items.map(\.id))
+        #expect(sealed.item("undo")?.title == "Undo Put Away")
+        // The memo clips' container menu gains the same line.
+        s.stowed = []
+        s.tokens.move(F.key(2), to: .container(.memoClips, order: 0))
+        #expect(MenuSpec.memoClipsExtras(s).map(\.title) == ["", "Take Out 1 & Put Away Memo Clips"])
+    }
+
+    // MARK: memos (0.3.0)
+
+    @Test("Partition menu: notes, today, calendar, add-ons, the clip light, the D-Day, Put Away")
+    func partitionMenu() {
+        var s = F.mirrored(["a", "b"])
+        let c = MenuSpec.Context(today: DayKey("2026-10-18"))
+        let m = MenuSpec.partition(s, c)
+        #expect(m.items.map(\.id) == ["newNote", "todayMemo", "calendar", "-", "addOns", "clipLight.toggle", "setDDay", "-", "putAway"])
+        #expect(m.item("newNote")?.command == .newNote && m.item("todayMemo")?.command == .openMemos(.today))
+        #expect(m.item("setDDay")?.command == .openMemos(.dDay) && m.item("setDDay")?.title == "Set D-Day…")
+        #expect(m.item("clipLight.toggle")?.title == "Turn Clip Light On" && m.item("clipLight.toggle")?.command == .clipLight(true))
+        #expect(m.item("putAway")?.title == "Put Away Desk Partition" && m.item("putAway")?.command == .putAway(.partition))
+        #expect(children(m, "addOns").map(\.id) == ["addOn.dailyPad", "addOn.memoClips", "addOn.clipLight", "addOn.dDayCard"])
+        #expect(children(m, "addOns").filter(\.isChecked).count == 4)
+        #expect(m.item("addOn.dailyPad")?.command == .putAway(.dailyPad) && m.item("addOn.dailyPad")?.title == "Daily Memo Pad")
+        // Files in the clips; the clip light on, then put away; the pad away.
+        s.tokens.move(F.key(2), to: .container(.memoClips, order: 0))
+        s.clipLightOn = true
+        let on = MenuSpec.partition(s, c)
+        #expect(on.item("addOn.memoClips")?.title == "Take Out 1 & Put Away Memo Clips")
+        #expect(on.item("putAway")?.title == "Take Out 1 & Put Away Desk Partition")
+        #expect(on.item("clipLight.toggle")?.title == "Turn Clip Light Off" && on.item("clipLight.toggle")?.command == .clipLight(false))
+        s.stowed = [.clipLight, .dailyPad]
+        let away = MenuSpec.partition(s, c)
+        #expect(away.item("clipLight.toggle") == nil)
+        #expect(away.item("addOn.clipLight")?.isChecked == false && away.item("addOn.clipLight")?.command == .bringBack(.clipLight))
+        #expect(away.item("addOn.dailyPad")?.title == "Daily Memo Pad")
+        // A full partition takes no new note.
+        for i in 1...MemoBook.maxNotes {
+            s.memos.notes[NoteID(i)] = StickyNote(id: NoteID(i), text: "", colour: .yellow, pos: ArtPoint(371, 67), z: i,
+                                                  created: F.t0, edited: F.t0)
+        }
+        #expect(MenuSpec.partition(s, c).item("newNote")?.isEnabled == false && MenuSpec.cube(s).item("newNote")?.isEnabled == false)
+        #expect(MenuSpec.desk(s).item("newNote")?.isEnabled == false)
+    }
+
+    @Test("Note menu: edit, colour (current ticked), front, save (connected and written), remove; no user text")
+    func noteMenu() {
+        var s = F.mirrored(["a"])
+        let a = NoteID(1), b = NoteID(2)
+        s.memos.notes[a] = StickyNote(id: a, text: "우유 사기", colour: .pink, pos: ArtPoint(371, 67), z: 0, created: F.t0, edited: F.t0)
+        s.memos.notes[b] = StickyNote(id: b, text: "", colour: .sky, pos: ArtPoint(401, 67), z: 1, created: F.t0, edited: F.t0)
+        let m = MenuSpec.note(a, s)
+        #expect(m.items.map(\.id) == ["editNote", "colour", "raiseNote", "saveFile", "-", "removeNote"])
+        #expect(m.item("editNote")?.command == .editNote(a) && m.item("removeNote")?.command == .removeNote(a))
+        #expect(children(m, "colour").map(\.title) == ["Yellow", "Pink", "Sky", "Lime", "Orange", "Cream"])
+        #expect(children(m, "colour").filter(\.isChecked).map(\.id) == ["colour.pink"])
+        #expect(m.item("colour.cream")?.command == .noteColour(a, .cream))
+        #expect(m.item("raiseNote")?.isEnabled == true && MenuSpec.note(b, s).item("raiseNote")?.isEnabled == false)
+        #expect(m.item("saveFile")?.isEnabled == true && m.item("saveFile")?.command == .saveMemoFile(.note(a)))
+        #expect(MenuSpec.note(b, s).item("saveFile")?.isEnabled == false, "an empty note has nothing to save")
+        s.access = .notConnected
+        #expect(MenuSpec.note(a, s).item("saveFile")?.isEnabled == false)
+        #expect(!MenuSpec.note(a, s).ids.compactMap { MenuSpec.note(a, s).item($0)?.title }.contains { $0.contains("우유") })
+        #expect(MenuSpec.note(NoteID(9), s).items.isEmpty)
+        if case .requestSaveMemoFile(.note(a))? = MenuCommand.saveMemoFile(.note(a)).action(s) {} else {
+            Issue.record("Save as Text File is a request")
+        }
+    }
+
+    @Test("Pad, cube, D-Day card, clip light and calendar menus")
+    func smallMenus() {
+        var s = F.mirrored(["a"])
+        let today = DayKey("2026-10-18")!
+        let c = MenuSpec.Context(today: today)
+        let blank = MenuSpec.dailyPad(s, c)
+        #expect(blank.items.map(\.id) == ["todayMemo", "tearOff", "saveFile", "-", "putAway"])
+        #expect(blank.item("tearOff")?.isEnabled == false && blank.item("saveFile")?.isEnabled == false)
+        #expect(blank.item("putAway")?.title == "Put Away Daily Memo Pad")
+        s.memos.pages[today] = "회의"
+        let written = MenuSpec.dailyPad(s, c)
+        #expect(written.item("tearOff")?.isEnabled == true && written.item("tearOff")?.command == .tearOffPage(today))
+        #expect(written.item("saveFile")?.isEnabled == true && written.item("saveFile")?.command == .saveMemoFile(.day(today)))
+        #expect(MenuSpec.dailyPad(s, MenuSpec.Context()).item("tearOff")?.isEnabled == false, "no day, nothing to tear")
+        if case .tearOffPage(today, at: nil)? = MenuCommand.tearOffPage(today).action(s) {} else { Issue.record("tear off") }
+
+        #expect(MenuSpec.cube(s).items.map(\.id) == ["newNote"])
+        let card = MenuSpec.dDayCard(s)
+        #expect(card.items.map(\.id) == ["setDDay", "clearDDay", "-", "putAway"] && card.item("clearDDay")?.isEnabled == false)
+        s.memos.dDay = DDay(day: today, title: "x")
+        #expect(MenuSpec.dDayCard(s).item("clearDDay")?.isEnabled == true)
+        if case .setDDay(nil)? = MenuCommand.clearDDay.action(s) {} else { Issue.record("Clear D-Day clears it") }
+        let light = MenuSpec.clipLight(s)
+        #expect(light.items.map(\.id) == ["clipLight.toggle", "-", "putAway"] && light.item("putAway")?.title == "Put Away Clip Light")
+
+        let day = DayKey("2026-10-30")!
+        let cal = MenuSpec.calendar(s, c, day: day)
+        #expect(cal.items.map(\.id) == ["dayMemo", "todayMemo", "calendar"] && cal.item("dayMemo")?.command == .openMemos(.day(day)))
+        #expect(MenuSpec.calendar(s, c, day: nil).items.map(\.id) == ["todayMemo", "calendar"])
+    }
+
+    @Test("The memo and tidy commands: model ones dispatch, app ones do not; demo names")
+    func tidyCommands() {
+        let s = F.mirrored(["a"])
+        let n = NoteID(1)
+        for c: MenuCommand in [.newNote, .editNote(n), .openMemos(.today), .arrangeDesk] { #expect(c.action(s) == nil, "\(c)") }
+        if case .putAway(.plant)? = MenuCommand.putAway(.plant).action(s) {} else { Issue.record("put away") }
+        if case .bringBack(.plant)? = MenuCommand.bringBack(.plant).action(s) {} else { Issue.record("bring back") }
+        if case .bringBackAll? = MenuCommand.bringBackAll.action(s) {} else { Issue.record("bring back all") }
+        if case .clipLight(true)? = MenuCommand.clipLight(true).action(s) {} else { Issue.record("clip light") }
+        if case .noteColour(n, .lime)? = MenuCommand.noteColour(n, .lime).action(s) {} else { Issue.record("colour") }
+        if case .raiseNote(n)? = MenuCommand.raiseNote(n).action(s) {} else { Issue.record("raise") }
+        if case .removeNote(n)? = MenuCommand.removeNote(n).action(s) {} else { Issue.record("remove") }
+        #expect(MenuCommand.newNote.demoName == "newNote" && MenuCommand.editNote(n).demoName == "editNote:N1")
+        #expect(MenuCommand.openMemos(.today).demoName == "openMemos:today")
+        #expect(MenuCommand.openMemos(.day(DayKey("2026-10-30")!)).demoName == "openMemos:day:2026-10-30")
+        #expect(MenuCommand.openMemos(.note(n)).demoName == "openMemos:note:N1")
+        #expect(MenuCommand.openMemos(.notes).demoName == "openMemos:notes" && MenuCommand.openMemos(.dDay).demoName == "openMemos:dDay")
+        #expect(MenuCommand.arrangeDesk.demoName == "arrangeDesk" && MenuCommand.inventory.demoName == "inventory")
+        #expect(MenuCommand.putAway(.cabinet).demoName == "\(MenuCommand.putAway(.cabinet))", "the rest as Swift prints them")
+    }
+
+    @Test("Nothing on the 0.3.0 menus changes files except Save as Text File, which is a request")
+    func tidyMenusChangeNoFiles() {
+        var s = F.mirrored(["a", "b"])
+        s.tokens.move(F.key(2), to: .container(.cabinetTop, order: 0))
+        s.memos.notes[NoteID(1)] = StickyNote(id: NoteID(1), text: "x", colour: .yellow, pos: ArtPoint(371, 67), z: 0,
+                                              created: F.t0, edited: F.t0)
+        let c = MenuSpec.Context(today: DayKey("2026-10-18"))
+        let specs = [MenuSpec.desk(s, c), MenuSpec.partition(s, c), MenuSpec.note(NoteID(1), s), MenuSpec.dailyPad(s, c),
+                     MenuSpec.dDayCard(s), MenuSpec.clipLight(s), MenuSpec(MenuSpec.objectPutAway(.cabinet, s))]
+        for spec in specs {
+            for id in spec.ids {
+                guard let action = spec.item(id)?.command?.action(s) else { continue }
+                var copy = s
+                let effects = reduce(&copy, action, ReduceEnv(now: F.t0))
+                if !action.isRequest { #expect(!effects.contains { $0.touchesFiles }, "\(id) touches files") }
+                #expect(copy.violations().isEmpty, "\(id)")
+            }
+        }
+    }
 }

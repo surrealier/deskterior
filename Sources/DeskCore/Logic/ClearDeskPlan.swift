@@ -90,12 +90,12 @@ public struct ClearDeskPlan: Sendable, Equatable {
 
     // MARK: Planning
 
-    /// The plan for desk `s`.
+    /// The plan for desk `s`. A put-away phone stand or drawer is not in the room: it is left as it is.
     public static func make(_ s: DeskState) -> ClearDeskPlan {
         var plan = ClearDeskPlan()
         plan.powerOff = s.monitor.power == .on
-        plan.phoneDown = !s.phone.faceDown
-        for id in ContainerID.allCases where id.isDrawer {
+        plan.phoneDown = !s.phone.faceDown && !s.isAway(.phone)
+        for id in ContainerID.allCases where id.isDrawer && !s.isAway(id) {
             let rest = Reducer.restingGap(id, s)
             if s.drawerOpening(id) > rest { plan.shutDrawers[id] = rest }
         }
