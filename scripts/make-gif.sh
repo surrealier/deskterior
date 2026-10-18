@@ -14,7 +14,8 @@
 # apps' document icons. Frames are art px with the demo's pointer drawn in; the GIF is nearest-neighbour ×2 with a palette of
 # the frames' own (Apollo) colours, no dithering, looping. The stills come from the demo's snapshots: desk.png (the
 # room by day, ×2), mat-peel.png (the desk around the mat, its edge peeled off a pile, a ×4 crop), hiding.png (the
-# riser, pen cup, phone and filing cabinet in use, a ×4 crop) and lamp-only.png (Lamp Only at night, ×2). The README
+# riser, pen cup, phone and filing cabinet in use, a ×4 crop), lamp-only.png (Lamp Only at night, ×2) and
+# partition.png (the desk partition with notes, the memo pad, memo clips and the D-Day card, a ×2 crop). The README
 # shows each at half its width, so every art pixel is a whole number of screen pixels (1 or 2 for the ×2 images, 2 or
 # 4 for the crops).
 set -euo pipefail
@@ -68,10 +69,13 @@ ffmpeg -v error -y -i "$WORK/hero/still-peel.png" -vf "crop=288:96:150:204,scale
   "$OUT/mat-peel.png"
 ffmpeg -v error -y -i "$WORK/hero/still-hiding.png" -vf "crop=300:182:212:201,scale=iw*4:ih*4:flags=neighbor" \
   "$OUT/hiding.png"
+# The partition from the wall calendar down to the desk's back edge (core 8…504 × 20…176), nearest ×2.
+ffmpeg -v error -y -i "$WORK/hero/still-partition.png" -vf "crop=496:156:46:77,scale=iw*2:ih*2:flags=neighbor" \
+  "$OUT/partition.png"
 
 BYTES="$(wc -c < "$GIF" | tr -d ' ')"
 echo "make-gif: $GIF ($COUNT frames at $((60 / EVERY)) fps, $(awk "BEGIN { printf \"%.1f\", $COUNT * $EVERY / 60 }") s, $BYTES bytes)"
-for still in desk mat-peel hiding lamp-only; do echo "make-gif: $OUT/$still.png ($(wc -c < "$OUT/$still.png" | tr -d ' ') bytes)"; done
+for still in desk mat-peel hiding lamp-only partition; do echo "make-gif: $OUT/$still.png ($(wc -c < "$OUT/$still.png" | tr -d ' ') bytes)"; done
 if [ "$BYTES" -gt "$MAX_BYTES" ]; then
   echo "make-gif: $GIF is over $MAX_BYTES bytes" >&2
   exit 1
