@@ -57,7 +57,8 @@ enum PixelText {
 }
 
 /// The hover tooltip art (DESIGN §2.1): a dark rounded box with a lit rim and a 1-px shadow, the title in
-/// Galmuri9 (middle-truncated to 200 art px, extension kept) and an optional dimmer detail line.
+/// Galmuri9 (middle-truncated to 200 art px, extension kept), body lines in neutral8 below it (a sticky note's text,
+/// Erratum 31) and an optional dimmer detail line last.
 enum TooltipArt {
     static let maxTextWidth = 200
     static let padding = ArtSize(4, 3)
@@ -65,11 +66,16 @@ enum TooltipArt {
 
     static func render(_ spec: TooltipSpec, font: PixelFont) -> PixelBuffer {
         let title = PixelText.line(PixelText.truncated(spec.title, maxWidth: maxTextWidth, font: font), .neutral9, font: font)
+        // MARK: memos (0.3.0)
+        let body = spec.body.map {
+            PixelText.line(PixelText.truncated($0, maxWidth: maxTextWidth, font: font), .neutral8, font: font)
+        }
         let detail = spec.detail.map {
             PixelText.line(PixelText.truncated($0, maxWidth: maxTextWidth, font: font), .neutral7, font: font)
         }
-        let textW = max(title.width, detail?.width ?? 0)
-        let textH = title.height + (detail.map { $0.height + lineGap } ?? 0)
+        let below = body + (detail.map { [$0] } ?? [])
+        let textW = max(title.width, below.map(\.width).max() ?? 0)
+        let textH = title.height + below.reduce(0) { $0 + $1.height + lineGap }
         let w = textW + 2 * padding.w + 1, h = textH + 2 * padding.h + 1
         var c = PixelCanvas(width: w, height: h)
         let box = ArtRect(0, 0, w - 1, h - 1)
@@ -78,7 +84,12 @@ enum TooltipArt {
         c.roundedRectFill(box.insetBy(1, 1), radius: 1, .neutral1)
         c.hline(x: 2, y: 1, length: box.w - 4, .neutral3)
         c.blit(title, at: ArtPoint(padding.w, padding.h))
-        if let detail { c.blit(detail, at: ArtPoint(padding.w, padding.h + title.height + lineGap)) }
+        var y = padding.h + title.height
+        for line in below {
+            y += lineGap
+            c.blit(line, at: ArtPoint(padding.w, y))
+            y += line.height
+        }
         return c.buffer
     }
 
