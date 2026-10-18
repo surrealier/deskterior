@@ -14,7 +14,8 @@ nonisolated final class MemoSaver: @unchecked Sendable {
     let store: StateStore
     let delay: TimeInterval
     let maxWait: TimeInterval
-    /// Called on the saver's queue when memo changes stop being saved (the file turned newer or unreadable).
+    /// Called on the saver's queue when memo changes stop being saved (the file turned newer or unreadable), or when
+    /// the book is too large to be written.
     private let onRefusal: (@Sendable () -> Void)?
     private let queue = DispatchQueue(label: "deskterior.memos", qos: .utility)
     // Confined to `queue`.
@@ -82,6 +83,15 @@ nonisolated final class MemoSaver: @unchecked Sendable {
             armed = false
             FileHandle.standardError.write(Data("Deskterior: \(failure); memo changes are not saved this time\n".utf8))
             onRefusal?()
+        } catch StateStore.Failure.memosTooLarge {
+            // Too large to be read back: the old file stays, and this book is not tried again (a smaller one, after
+            // the next change, is saved). Logged and told once, until a save goes through.
+            let message = "\(StateStore.memosFileName) would be more than \(StateStore.maxMemosBytes) bytes; not saving it"
+            if message != lastError {
+                FileHandle.standardError.write(Data("Deskterior: \(message)\n".utf8))
+                onRefusal?()
+            }
+            lastError = message
         } catch {
             let message = "could not save the memos: \(error)"
             if message != lastError { FileHandle.standardError.write(Data("Deskterior: \(message)\n".utf8)) }
@@ -105,7 +115,7 @@ private extension StateStore.Failure {
     nonisolated var stopsMemoSaves: Bool {
         switch self {
         case .newerMemos, .memosUnreadable: true
-        case .newerSchema, .writeFailed: false
+        case .newerSchema, .writeFailed, .memosTooLarge: false
         }
     }
 }

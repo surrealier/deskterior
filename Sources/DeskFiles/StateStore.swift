@@ -28,6 +28,9 @@ public struct StateStore: Sendable {
         case newerMemos(Int)
         /// `memos.json` is there but could not be read (or kept aside when corrupt): it is never written over.
         case memosUnreadable(String)
+        /// The book would make a `memos.json` of this many bytes, more than `maxMemosBytes` (it could not be read
+        /// back): the old file is kept.
+        case memosTooLarge(Int)
 
         public var description: String {
             switch self {
@@ -36,6 +39,8 @@ public struct StateStore: Sendable {
             case let .newerMemos(n):
                 "\(StateStore.memosFileName) uses schema \(n), newer than \(MemoDocument.currentSchema); not overwriting it"
             case let .memosUnreadable(why): "\(StateStore.memosFileName) \(why); not overwriting it"
+            case let .memosTooLarge(n):
+                "\(StateStore.memosFileName) would be \(n) bytes, more than \(StateStore.maxMemosBytes); not writing it"
             }
         }
     }
@@ -381,9 +386,11 @@ extension StateStore {
     /// Saves `memos.json` atomically, refreshing its backup generations by age as `save` does `desk.json`'s, and
     /// writes nothing else (and nothing outside the state folder: `SafetyGuard.checkOwnWrite`). Throws instead of
     /// writing over a `memos.json` from a newer Deskterior (`.newerMemos`) or one it cannot read
-    /// (`.memosUnreadable`); a corrupt one found here is kept aside first, as `loadMemos` does.
+    /// (`.memosUnreadable`); a corrupt one found here is kept aside first, as `loadMemos` does. A book too large to
+    /// be read back (`.memosTooLarge`) is not written: the old file stays.
     public func saveMemos(_ book: MemoBook, now: Date = Date()) throws {
         let data = try MemoDocument(book: book, savedAt: now).encoded()
+        guard data.count <= Self.maxMemosBytes else { throw Failure.memosTooLarge(data.count) }
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         var current: Data?
         if !memosMemo.matches(memosURL) {

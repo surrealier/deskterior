@@ -82,6 +82,28 @@ struct MemoReducerTests {
         #expect(reduce(&s, .tearOffPage(day, at: nil), env) == [.toast(.partitionFull)] && s.memos.pages[day] != nil)
     }
 
+    @Test("One text keeps at most 32 KiB of UTF-8, cut between graphemes: a grapheme can be any length")
+    func byteCap() {
+        // One grapheme: a letter under 900,000 combining acute accents (1.8 MB).
+        let stacked = "e" + String(repeating: "\u{301}", count: 900_000)
+        #expect(stacked.count == 1)
+        #expect(MemoBook.clean(stacked).isEmpty, "the one grapheme alone is over the cap")
+        let mixed = MemoBook.clean("메모 " + stacked)
+        #expect(mixed == "메모 " && mixed.utf8.count <= MemoBook.maxTextBytes)
+        // Ordinary text at the grapheme cap is far under it: 1000 family emoji (25 bytes each) are kept whole.
+        let family = String(repeating: "👨‍👩‍👧‍👦", count: MemoBook.maxText)
+        #expect(MemoBook.clean(family) == family)
+        var s = F.mirrored(["a.txt"])
+        add(&s)
+        _ = reduce(&s, .editNote(NoteID(1), text: String(repeating: "a" + String(repeating: "\u{301}", count: 100), count: 900),
+                                 session: 0), env)
+        let text = s.memos.notes[NoteID(1)]?.text ?? ""
+        #expect(text.utf8.count <= MemoBook.maxTextBytes && text.utf8.count + 201 > MemoBook.maxTextBytes,
+                "cut after the last grapheme that fits")
+        _ = reduce(&s, .editDayPage(day, text: stacked, session: 0), env)
+        #expect(s.memos.pages[day] == nil, "nothing left of it: no page")
+    }
+
     @Test("Edit, colour, date, front, remove: each changes only when it changes something")
     func noteEdits() {
         var s = F.mirrored(["a.txt"])

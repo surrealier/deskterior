@@ -115,6 +115,26 @@ struct MemoSaverTests {
         #expect(store.loadMemos().book == memoBook("typed while the disk was full"))
     }
 
+    @Test("A book too large to read back is not written and not retried, the user is told once; a smaller one saves")
+    func tooLarge() throws {
+        let temp = try AppTemp()
+        let dir = try temp.dir("State")
+        let store = try StateStore(directory: dir, mirrored: try temp.dir("Desk"))
+        let refusals = CallCount()
+        let saver = MemoSaver(store: store, delay: 0.01, maxWait: 0.05, onRefusal: { refusals.bump() })
+        saver.arm()
+        saver.flush(memoBook("first"))
+        var huge = memoBook("first")
+        huge.pages[DayKey("2026-10-19")!] = String(repeating: "x", count: StateStore.maxMemosBytes)
+        saver.flush(huge)
+        saver.flush(huge)
+        Thread.sleep(forTimeInterval: 0.2)
+        #expect(saver.isArmed && saver.saveCount == 1 && refusals.value == 1)
+        #expect(store.loadMemos().book == memoBook("first"))
+        saver.flush(memoBook("smaller"))
+        #expect(saver.saveCount == 2 && store.loadMemos().book == memoBook("smaller"))
+    }
+
     @Test("A memos.json that a newer Deskterior wrote mid-session stops the saves: it is never written over")
     func newerFileDisarms() throws {
         let temp = try AppTemp()

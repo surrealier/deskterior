@@ -190,12 +190,13 @@ struct NoteTextView: NSViewRepresentable {
         }
     }
 
-    /// Whether replacing `range` of `current` with `replacement` keeps the text within `limit` graphemes (a change
-    /// that shortens it always does).
+    /// Whether replacing `range` of `current` with `replacement` keeps the text within `limit` graphemes and
+    /// `MemoBook.maxTextBytes` of UTF-8, as the model keeps it (a change that shortens it always does).
     static func fits(_ current: String, replacing range: NSRange, with replacement: String,
                      limit: Int = MemoBook.maxText) -> Bool {
         let next = (current as NSString).replacingCharacters(in: range, with: replacement)
-        return next.count <= limit || next.count <= current.count
+        let shorter = next.count <= current.count && next.utf8.count <= current.utf8.count
+        return shorter || (next.count <= limit && next.utf8.count <= MemoBook.maxTextBytes)
     }
 
     final class Coordinator: NSObject, NSTextViewDelegate {

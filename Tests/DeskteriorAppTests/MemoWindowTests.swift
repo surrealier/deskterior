@@ -77,6 +77,14 @@ struct MemoWindowModelTests {
         #expect(!NoteTextView.fits("", replacing: NSRange(location: 0, length: 0), with: String(repeating: "x", count: 1001)))
         let over = String(repeating: "x", count: 1200)
         #expect(NoteTextView.fits(over, replacing: NSRange(location: 0, length: 10), with: ""), "a deletion goes through")
+        // The model's 32 KiB of UTF-8 too: one grapheme can be any length (a letter under stacked combining marks).
+        let stacked = "e" + String(repeating: "\u{301}", count: 900_000)
+        #expect(!NoteTextView.fits("", replacing: NSRange(location: 0, length: 0), with: stacked))
+        let nearly = String(repeating: "x", count: 10) + "e" + String(repeating: "\u{301}", count: (MemoBook.maxTextBytes - 12) / 2)
+        let at = (nearly as NSString).length
+        #expect(NoteTextView.fits(nearly, replacing: NSRange(location: at, length: 0), with: "y"))
+        #expect(!NoteTextView.fits(nearly, replacing: NSRange(location: at, length: 0), with: "\u{301}\u{301}"))
+        #expect(NoteTextView.fits(stacked, replacing: NSRange(location: 1, length: 2), with: ""), "shortening fits")
     }
 }
 

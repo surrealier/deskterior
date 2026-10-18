@@ -156,6 +156,25 @@ struct StateStoreMemosTests {
         #expect(l2.book == nil && l2.problems.count == 2)
     }
 
+    @Test("A book too large to read back is never written: the old memos.json stays, byte for byte, and loads")
+    func tooLarge() throws {
+        let d = try TempDesk()
+        let store = try StateStore(directory: d.root)
+        try store.saveMemos(Self.book(1), now: Self.t0)
+        let before = try Data(contentsOf: store.memosURL)
+        var huge = Self.book(1)
+        huge.pages[DayKey("2026-10-19")!] = String(repeating: "x", count: StateStore.maxMemosBytes)
+        #expect {
+            try store.saveMemos(huge, now: Self.t0 + 1)
+        } throws: { error in
+            guard case let .memosTooLarge(n)? = error as? StateStore.Failure else { return false }
+            return n > StateStore.maxMemosBytes
+        }
+        #expect(try Data(contentsOf: store.memosURL) == before)
+        let loaded = store.loadMemos()
+        #expect(loaded.writable && loaded.book == Self.book(1))
+    }
+
     @Test("A memos.json that cannot be read is never written over",
           arguments: ["folder", "symlink", "fifo", "unreadable", "huge"])
     func unreadable(kind: String) throws {

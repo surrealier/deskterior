@@ -251,6 +251,10 @@ public struct CalendarMark: OptionSet, Hashable, Sendable {
 /// Every sticky note, day page and the D-Day (`DeskState.memos`, saved to `memos.json`, Erratum 31).
 public struct MemoBook: Sendable, Equatable {
     public static let maxNotes = 24, maxText = 1000, maxTitle = 24
+    /// The most UTF-8 one text keeps: a grapheme can be any length (a letter under thousands of combining marks), so
+    /// `maxText` alone does not bound the file. Ample for 1000 graphemes of any script or emoji, and it keeps a memo
+    /// under Save as Text File's 64 KB.
+    public static let maxTextBytes = 32 << 10
 
     public var notes: [NoteID: StickyNote] = [:]
     /// Day pages; only non-empty ones are kept.
@@ -289,14 +293,23 @@ public struct MemoBook: Sendable, Equatable {
     }
 
     /// Text as the book keeps it: NFC; CRLF and CR as LF; Unicode control characters (Cc) removed except newline
-    /// and tab; at most `limit` graphemes.
+    /// and tab; at most `limit` graphemes and `maxTextBytes` of UTF-8 (cut between graphemes).
     public static func clean(_ text: String, limit: Int = maxText) -> String {
         let lines = text.replacingOccurrences(of: "\r\n", with: "\n").replacingOccurrences(of: "\r", with: "\n")
         var scalars = String.UnicodeScalarView()
         for u in lines.unicodeScalars where u == "\n" || u == "\t" || u.properties.generalCategory != .control {
             scalars.append(u)
         }
-        return String(TextLayout.nfc(String(scalars)).prefix(max(0, limit)))
+        let kept = TextLayout.nfc(String(scalars)).prefix(max(0, limit))
+        guard kept.utf8.count > maxTextBytes else { return String(kept) }
+        var end = kept.startIndex, bytes = 0
+        while end < kept.endIndex {
+            let next = kept.index(after: end)
+            bytes += kept[end..<next].utf8.count
+            if bytes > maxTextBytes { break }
+            end = next
+        }
+        return String(kept[..<end])
     }
 }
 
