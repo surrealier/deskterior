@@ -446,7 +446,11 @@ struct MemoWindowTests {
             r.controller.close()
             r.rig.session.stop()
         }
+        // On the test's held clock, so a starved runner cannot let the intent go stale before the operator's call.
+        let uptime = HeldUptime()
+        r.rig.session.effects.files = try heldFileActions(desk: r.rig.desk, state: r.rig.state, uptime: uptime)
         r.controller.show(.note(NoteID(1)), near: nil, session: nil)
+        uptime.hold()
         r.controller.model.saveNote()
         #expect(await eventually { r.rig.session.effects.fileLog.last == "createTextFile" })
         #expect(await eventually { r.rig.names(r.rig.desk).contains("우유 사기.txt") })
