@@ -15,9 +15,10 @@
 #     split across lines, so this holds for every spelling of a call; the one-line `ExplicitIntent(` patterns
 #     below are a second net. FileOperator also refuses intents its ledger never issued or already spent;
 #   - only DesktopLocator.swift names the Desktop path;
-#   - file requests (Move to Trash, Empty Wastebasket, Eject, drop-in) are built only in the reducer, the menus and
-#     the drop-in and drag-out controllers, and only gesture handlers name the gesture a request came from
-#     (`withOrigin`, `perform(…, from: .menuItem)`): EffectRunner mints an intent only for a named gesture.
+#   - file requests (Move to Trash, Empty Wastebasket, Eject, drop-in, Save as Text File) are built only in the
+#     reducer, the menus and the drop-in and drag-out controllers, and only gesture handlers name the gesture a
+#     request came from (`withOrigin`, `perform(…, from: .menuItem)`): EffectRunner mints an intent only for a
+#     named gesture.
 # Tests are checked for the Desktop path, minting intents, SPI imports, shelling out and the network; scripts
 # for killall, defaults write, osascript and the Desktop path. Patterns allow whitespace before "(" and
 # module-qualified C calls. A whole-line comment is skipped (`//` in Swift, `#` in shell scripts; a Swift line
@@ -121,6 +122,7 @@ take(.init(origin: .dragToTrash))
 effects.withOrigin(.drop) { }
 store.dispatch(.requestTrash(keys))
 store.dispatch(.requestEmptyWastebasket)
+store.dispatch(.requestSaveMemoFile(.note(id)))
 _ = DeskAction.importDropped(urls, at: .floor(x: 0), op: .move)
 session.perform(.moveToTrash(keys), from: .inventory)
 @_spi(IntentMinting) import DeskFiles
@@ -362,7 +364,7 @@ INTENT_PATTERNS='\bExplicitIntent[[:space:]]*(\.init)?[[:space:]]*\(
 \bExplicitIntent[[:space:]]*\.[[:space:]]*(init|self)\b
 \.init[[:space:]]*\([[:space:]]*origin:[[:space:]]*\.(menuItem|sheetConfirm|drop|dragToTrash|undo|inventory)\b'
 # File requests built (or bound in a pattern) and gestures named.
-FILE_REQUEST_PATTERNS='\.(requestTrash|requestEject|requestDropIn|importDropped)[[:space:]]*\(
+FILE_REQUEST_PATTERNS='\.(requestTrash|requestEject|requestDropIn|importDropped|requestSaveMemoFile)[[:space:]]*\(
 \.requestEmptyWastebasket\b'
 ORIGIN_PATTERNS='\bwithOrigin[[:space:]]*\(
 \bfrom:[[:space:]]*\.(menuItem|sheetConfirm|drop|dragToTrash|undo|inventory)\b'
