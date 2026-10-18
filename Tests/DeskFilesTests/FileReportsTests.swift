@@ -36,9 +36,15 @@ struct FileReportsTests {
         for e: Effect in [.open(u), .reveal(u), .quickLook(u), .copy(u), .persist, .connectDesktop, .cancelFiles(FileUndoRef(1))] {
             #expect(O.minted(for: e, requestedVia: .menuItem) == nil, "\(e) changes no file")
         }
+        // MARK: files (0.3.0): Save as Text File only from a menu item (the Memos window's button goes through one).
+        let save = Effect.createTextFile(TextFileRequest(name: "a.txt", contents: "a\n", source: "memo:note:N1"))
+        #expect(O.minted(for: save, requestedVia: .menuItem) == .menuItem)
+        for o in O.allCases where o != .menuItem { #expect(O.minted(for: save, requestedVia: o) == nil, "\(o)") }
+        #expect(O.minted(for: save, requestedVia: nil) == nil && O.minted(for: save, requestedVia: .menuItem, confirmed: true) == .menuItem)
         // Every minted origin is one FileOperator accepts for that method (Errata 14).
         #expect(FileOperator.Method.trash.origins.contains(.sheetConfirm))
         #expect(FileOperator.Method.importItems.origins == [.drop] && FileOperator.Method.undo.origins == [.undo])
+        #expect(FileOperator.Method.createFile.origins == [.menuItem])
     }
 
     @Test("Only desk mode uses the real Trash; every other mode the FakeTrash in the state folder, confined")
@@ -63,7 +69,7 @@ struct FileReportsTests {
             (.noFreeName, .noFreeName), (.containsDesktop, .holdsDesk), (.volumeRoot, .wholeVolume),
             (.outsideRoot, .outside), (.outsideSandbox, .outside), (.notEjectable, .outside), (.staleIntent, .expired),
             (.spentIntent, .expired), (.cancelled, .expired), (.unknownRecord, .expired), (.wrongOrigin, .failed),
-            (.mismatchedRequest, .failed), (.failed(5), .failed),
+            (.mismatchedRequest, .failed), (.failed(5), .failed), (.invalidName, .failed), (.invalidContents, .failed),
         ]
         for (refusal, problem) in cases { #expect(FileProblem(refusal) == problem, "\(refusal)") }
     }
@@ -151,6 +157,36 @@ struct FileReportsTests {
         #expect(copy.placed.first?.key == rig.key(rig.at(rig.desk, "copy.txt")))
         #expect(copy.placed.first?.key?.inode != rig.inode(copied))
         #expect(copy.placed.first?.copied == true && copy.undoLabel == "Copy In")
+    }
+
+    @Test("A saved text file is placed under the name it landed, with the identity it was written with; undo toasts")
+    func createReports() async throws {
+        let rig = try FileRig()
+        try rig.file(rig.desk, "Memo.txt", "mine")
+        let result = await rig.op.createTextFile(named: "Memo.txt", contents: Data("우유 사기\n".utf8), rig.intent())
+        let report = FileReport(create: result, source: "memo:note:N3", undo: FileUndoRef(4))
+        let landed = rig.at(rig.desk, "Memo 2.txt")
+        #expect(report.kind == .createTextFile && report.count == 1 && report.undo == FileUndoRef(4))
+        #expect(report.placed == [FileReport.Placed(source: "memo:note:N3", name: "Memo 2.txt", key: rig.key(landed))])
+        #expect(report.refused.isEmpty && report.problems.isEmpty && report.toast == .savedTextFile)
+        #expect(report.undoLabel == "Save as Text File")
+        let undone = await rig.op.undo(try #require(result.undo), rig.intent(.undo))
+        let undoReport = FileReport(undo: undone, of: .createTextFile, ticket: FileUndoRef(4))
+        #expect(undoReport.toast == .undidSaveTextFile && undoReport.problems.isEmpty && !undoReport.kept)
+
+        let refused = await rig.op.createTextFile(named: ".hidden.txt", contents: Data("x".utf8), rig.intent())
+        let no = FileReport(create: refused, source: "memo:day:2026-10-18", undo: nil)
+        #expect(no.placed.isEmpty && no.refused == ["memo:day:2026-10-18"] && no.problems == [.failed])
+        #expect(no.toast == .fileFailed)
+        let full = FileReport(create: FileResult(outcomes: [.refused(landed, .noFreeName)], undo: nil), source: "s", undo: nil)
+        #expect(full.toast == .nameTaken)
+        let unverified = FileReport(create: FileResult(outcomes: [.refused(landed, .landedUnverified)], undo: nil),
+                                    source: "s", undo: nil)
+        #expect(unverified.toast == .copiedNoUndo, "it says it can't be undone")
+        // The name the hint follows is NFC, as the model's names are (a file URL spells it decomposed).
+        let korean = await rig.op.createTextFile(named: "우유 사기.txt", contents: Data("우유 사기\n".utf8), rig.intent())
+        let named = FileReport(create: korean, source: "memo:note:N1", undo: nil)
+        #expect(named.placed.first?.name == "우유 사기.txt" && named.placed.first?.name.unicodeScalars.count == 9)
     }
 
     @Test("An eject refused outside desk mode reports a problem; nothing is unmounted")

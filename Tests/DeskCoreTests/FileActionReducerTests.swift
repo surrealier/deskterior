@@ -264,6 +264,178 @@ struct FileActionReducerTests {
         #expect(DropIn.dragOperation(bonks: false, forcedCopy: true, crossesVolumes: false) == .copy)
     }
 
+    // MARK: Save as Text File (0.3.0)
+
+    /// A desk mirroring `names` with the sticky note N1 (`text`) and the day page of 2026-10-18 (`page`).
+    func memoDesk(_ names: [String] = ["a.txt"], text: String = "우유 사기", page: String? = nil) -> DeskState {
+        var s = F.mirrored(names)
+        s.memos.notes[NoteID(1)] = StickyNote(
+            id: NoteID(1), text: text, colour: .yellow, pos: ArtPoint(371, 67), z: 0, created: F.t0, edited: F.t0
+        )
+        s.memos.nextNote = 2
+        if let page { s.memos.pages[DayKey("2026-10-18")!] = page }
+        return s
+    }
+
+    @Test("Save as Text File asks for one new file named by the memo, with a hint that clips it to the partition")
+    func saveMemoRequest() {
+        var s = memoDesk(page: "회의 3시\n자료 준비")
+        let before = s.tokens
+        let effects = reduce(&s, .requestSaveMemoFile(.note(NoteID(1))), env)
+        #expect(effects == [.createTextFile(TextFileRequest(name: "우유 사기.txt", contents: "우유 사기\n",
+                                                             source: "memo:note:N1"))])
+        #expect(!effects.contains { $0 == .persist }, "nothing in the layout changed")
+        #expect(s.tokens == before && s.memos.notes.count == 1)
+        let hint = s.hints.last
+        #expect(hint?.name == "우유 사기.txt" && hint?.location == .container(.memoClips, order: 0))
+        #expect(hint?.source == "memo:note:N1" && hint?.matchesName == true && hint?.key == nil)
+        #expect(hint?.expires == env.now.addingTimeInterval(Reducer.dropHintLifetime))
+        // A day page: under its day, with the day as its first line.
+        let day = reduce(&s, .requestSaveMemoFile(.day(DayKey("2026-10-18")!)), env)
+        #expect(day == [.createTextFile(TextFileRequest(
+            name: "2026-10-18 회의 3시.txt", contents: "2026-10-18\n\n회의 3시\n자료 준비\n", source: "memo:day:2026-10-18"
+        ))])
+        #expect(s.hints.map(\.source) == ["memo:note:N1", "memo:day:2026-10-18"])
+        #expect(DeskAction.requestSaveMemoFile(.note(NoteID(1))).isRequest)
+        #expect(effects.allSatisfy { $0.touchesFiles && $0.mutatesFiles })
+    }
+
+    @Test("Nothing to save asks nothing; with the folder not connected a toast says why and no file is asked for")
+    func saveMemoRefused() {
+        var s = memoDesk(text: " \n\t ")
+        #expect(reduce(&s, .requestSaveMemoFile(.note(NoteID(1))), env).isEmpty, "a blank note")
+        #expect(reduce(&s, .requestSaveMemoFile(.note(NoteID(9))), env).isEmpty, "no such note")
+        #expect(reduce(&s, .requestSaveMemoFile(.day(DayKey("2026-10-19")!)), env).isEmpty, "no page that day")
+        #expect(s.hints.isEmpty)
+        var t = memoDesk()
+        for access in [DesktopAccess.notConnected, .connecting, .finderHidden] {
+            t.access = access
+            #expect(reduce(&t, .requestSaveMemoFile(.note(NoteID(1))), env) == [.toast(.filesUnavailable)])
+        }
+        t.access = .denied
+        #expect(reduce(&t, .requestSaveMemoFile(.note(NoteID(1))), env) == [.toast(.accessDenied)])
+        #expect(t.hints.isEmpty)
+        // Text past what the file operator writes (64 KB) is refused here already.
+        var huge = memoDesk(text: String(repeating: "e" + String(repeating: "\u{301}", count: 200), count: 200))
+        #expect(reduce(&huge, .requestSaveMemoFile(.note(NoteID(1))), env) == [.toast(.fileFailed)])
+        #expect(huge.hints.isEmpty)
+        // A note with no line left for a name is named by the day it was made (UTC).
+        var dots = memoDesk(text: "...")
+        guard case let .createTextFile(r)? = reduce(&dots, .requestSaveMemoFile(.note(NoteID(1))), env).first else {
+            Issue.record("expected a file request")
+            return
+        }
+        #expect(r.name == "Memo 2026-09-21.txt" && r.contents == "...\n")
+    }
+
+    @Test("The hint goes to the monitor when the memo clips are full or put away; a taken name is never taken by name")
+    func saveMemoHint() {
+        var s = memoDesk(["c1", "c2", "c3", "c4", "c5", "우유 사기.TXT"])
+        _ = reduce(&s, .move((1...5).map { F.key(UInt64($0)) }, to: .container(.memoClips, order: 0)), env)
+        #expect(s.tokens.count(in: .memoClips) == 5)
+        _ = reduce(&s, .requestSaveMemoFile(.note(NoteID(1))), env)
+        let full = s.hints.last
+        #expect(full?.location.isScreen == true && full?.location != s.tokens.location(of: F.key(6)))
+        #expect(full?.matchesName == false, "the desk's volume folds case: 우유 사기.TXT is the same name")
+
+        var away = memoDesk()
+        away.stowed.insert(.memoClips)
+        _ = reduce(&away, .requestSaveMemoFile(.note(NoteID(1))), env)
+        #expect(away.hints.last?.location.isScreen == true)
+        var partition = memoDesk()
+        partition.stowed.insert(.partition)
+        _ = reduce(&partition, .requestSaveMemoFile(.note(NoteID(1))), env)
+        #expect(partition.hints.last?.location.isScreen == true, "the clips go with the partition")
+
+        // A second save before the first has landed: its name is taken by the file on its way.
+        var twice = memoDesk()
+        _ = reduce(&twice, .requestSaveMemoFile(.note(NoteID(1))), env)
+        _ = reduce(&twice, .requestSaveMemoFile(.note(NoteID(1))), env)
+        #expect(twice.hints.map(\.matchesName) == [true, false])
+    }
+
+    @Test("The saved file lands in the memo clips: by its name, or by identity when the mirror saw it first")
+    func saveMemoResult() {
+        var s = memoDesk()
+        var journal = UndoJournal()
+        _ = Reducer.reduce(&s, journal: &journal, .requestSaveMemoFile(.note(NoteID(1))), env)
+        started(&s, &journal, 5, .createTextFile)
+        #expect(journal.undoLabel == "Save as Text File")
+        let placed = FileReport.Placed(source: "memo:note:N1", name: "우유 사기.txt", key: F.key(40))
+        let report = FileReport(kind: .createTextFile, count: 1, placed: [placed], undo: FileUndoRef(5),
+                                done: .savedTextFile)
+        let effects = Reducer.reduce(&s, journal: &journal, .fileResult(report), env)
+        #expect(effects == [.toast(.savedTextFile)])
+        #expect(s.hints.map(\.name) == ["우유 사기.txt"] && s.hints[0].key == F.key(40) && s.hints[0].source == nil)
+        #expect(journal.undoLabel == "Save as Text File")
+        Reconciler.reconcile(&s, F.snapshot([F.entry("a.txt", 1), F.entry("우유 사기.txt", 40)]), now: F.t0)
+        #expect(s.tokens.location(of: F.key(40)) == .container(.memoClips, order: 0))
+        #expect(s.violations().isEmpty)
+        // ⌘Z asks the app to replay the record (the file goes to the Trash only while unchanged).
+        #expect(Reducer.reduce(&s, journal: &journal, .undo, env) == [.undoFiles(FileUndoRef(5))])
+
+        // The mirror saw the file before the result came in: it moves from the monitor to the clips by identity.
+        var t = memoDesk()
+        _ = reduce(&t, .requestSaveMemoFile(.note(NoteID(1))), env)
+        let other = t.hints
+        Reconciler.reconcile(&t, F.snapshot([F.entry("a.txt", 1), F.entry("x.txt", 41)]), now: F.t0)
+        #expect(t.hints == other)
+        Reconciler.reconcile(&t, F.snapshot([F.entry("a.txt", 1), F.entry("x.txt", 41), F.entry("우유 사기 2.txt", 42)]),
+                             now: F.t0)
+        #expect(t.tokens.location(of: F.key(42))?.isScreen == true, "a name it did not ask for: the monitor")
+        let renamed = FileReport.Placed(source: "memo:note:N1", name: "우유 사기 2.txt", key: F.key(42))
+        _ = reduce(&t, .fileResult(FileReport(kind: .createTextFile, count: 1, placed: [renamed], undo: FileUndoRef(6),
+                                              done: .savedTextFile)), env)
+        #expect(t.tokens.location(of: F.key(42))?.container == .memoClips)
+        #expect(t.hints.allSatisfy { $0.source != "memo:note:N1" } && t.violations().isEmpty)
+    }
+
+    @Test("A save that landed as \" 2\" re-aims its hint at that name; the file there already stays where it is")
+    func saveMemoRenamed() {
+        var s = memoDesk(["우유 사기.txt"])
+        _ = reduce(&s, .requestSaveMemoFile(.note(NoteID(1))), env)
+        #expect(s.hints.last?.matchesName == false)
+        let cell = s.tokens.location(of: F.key(1))
+        let renamed = FileReport.Placed(source: "memo:note:N1", name: "우유 사기 2.txt", key: F.key(9))
+        _ = reduce(&s, .fileResult(FileReport(kind: .createTextFile, count: 1, placed: [renamed], undo: FileUndoRef(2),
+                                              done: .savedTextFile)), env)
+        #expect(s.hints.map(\.name) == ["우유 사기 2.txt"] && s.hints[0].key == F.key(9))
+        Reconciler.reconcile(&s, F.snapshot([F.entry("우유 사기.txt", 1), F.entry("우유 사기 2.txt", 9)]), now: F.t0)
+        #expect(s.tokens.location(of: F.key(9)) == .container(.memoClips, order: 0))
+        #expect(s.tokens.location(of: F.key(1)) == cell, "the file that had the name is not moved")
+        #expect(s.violations().isEmpty)
+    }
+
+    @Test("A refused save drops its hint and says why; nothing lands in the clips")
+    func saveMemoRefusedResult() {
+        var s = memoDesk()
+        var journal = UndoJournal()
+        _ = Reducer.reduce(&s, journal: &journal, .requestSaveMemoFile(.note(NoteID(1))), env)
+        started(&s, &journal, 3, .createTextFile)
+        let report = FileReport(kind: .createTextFile, count: 1, refused: ["memo:note:N1"], problems: [.noFreeName],
+                                ticket: FileUndoRef(3))
+        let effects = Reducer.reduce(&s, journal: &journal, .fileResult(report), env)
+        #expect(effects == [.toast(.nameTaken)])
+        #expect(s.hints.isEmpty && journal.undoLabel == nil, "no file, no undo entry")
+        // A later file of that name (someone else's) is not clipped.
+        Reconciler.reconcile(&s, F.snapshot([F.entry("a.txt", 1), F.entry("우유 사기.txt", 7)]), now: F.t0)
+        #expect(s.tokens.location(of: F.key(7))?.isScreen == true)
+    }
+
+    @Test("Undoing a saved text file says where it went, or why it stayed (never Finder's Put Back)")
+    func saveMemoUndoToasts() {
+        func undo(_ problems: [FileProblem], done: ToastKey? = nil) -> ToastKey? {
+            FileReport(kind: .undo, count: 1, problems: problems, undoOf: .createTextFile, done: done).toast
+        }
+        #expect(undo([], done: .undidSaveTextFile) == .undidSaveTextFile)
+        #expect(undo([.changed]) == .fileChanged && undo([.gone]) == .fileGone)
+        #expect(undo([.notPermitted]) == .fileNotPermitted, "the file is still on the desk: Put Back is no help")
+        #expect(FileReport.Kind.createTextFile.undoLabel() == "Save as Text File")
+        let saved = FileReport(kind: .createTextFile, count: 1, placed: [.init(source: "memo:note:N1", name: "a.txt")],
+                               undo: FileUndoRef(1), done: .savedTextFile)
+        #expect(saved.toast == .savedTextFile && saved.undoLabel == "Save as Text File")
+    }
+
     // MARK: Menus
 
     @Test("Move to Trash and Empty Wastebasket are live; the drive menu offers Open, Show in Finder, Eject")

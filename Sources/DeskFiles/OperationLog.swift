@@ -28,6 +28,11 @@ public final class OperationLog: @unchecked Sendable {
             /// Undo of a drop-in alias.
             case trashAlias = "trash-alias"
             case eject
+            // MARK: files (0.3.0)
+            /// Save as Text File on Desktop: one new file written (Erratum 31).
+            case createFile = "create-file"
+            /// Undo of it: the file, unchanged since, went to the trash.
+            case trashCreated = "trash-created"
         }
 
         public var time: Date

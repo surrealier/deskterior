@@ -33,8 +33,8 @@ extension Reducer {
             return applyFileResult(&s, report, env)
         case .fileStarted:
             return [] // The journal's (`Reducer.reduce(_:journal:_:_:)`).
-        case .requestSaveMemoFile:
-            return [] // Step 0 stub: Track E (the hint, `MemoFileName`, `.createTextFile`).
+        case let .requestSaveMemoFile(ref):
+            return saveMemoFile(&s, ref, env)
         default:
             return []
         }
@@ -143,6 +143,45 @@ extension Reducer {
         default:
             return reduce(&s, .move(keys, to: d.location), env)
         }
+    }
+
+    // MARK: files (0.3.0)
+
+    /// Save as Text File on Desktop (Erratum 31): asks for one new text file in the desk folder holding the memo
+    /// (`MemoFileName` names it and writes its contents), and registers a hint that clips it to the memo clips when
+    /// they are out and have room, else to the first free monitor cell. Nothing is written here and nothing on the
+    /// desk is ever written over: `FileOperator.createTextFile` writes a new file only. An empty memo asks nothing;
+    /// with the desk folder not connected, a toast says why. The hint is named by the memo ("memo:note:N3",
+    /// "memo:day:2026-10-18"), so the result re-aims it at the name the file landed under (" 2" after a clash); a
+    /// name taken already (on the desk, or by another file still on its way) is never taken by name.
+    static func saveMemoFile(_ s: inout DeskState, _ ref: MemoRef, _ env: ReduceEnv) -> [Effect] {
+        let text: String
+        let created: DayKey
+        let source: String
+        switch ref {
+        case let .note(id):
+            guard let note = s.memos.notes[id] else { return [] }
+            (text, created, source) = (note.text, MemoFileName.day(of: note.created), "memo:note:\(id)")
+        case let .day(day):
+            (text, created, source) = (s.memos.pages[day] ?? "", day, "memo:day:\(day)")
+        }
+        guard !text.allSatisfy(\.isWhitespace) else { return [] }
+        if let toast = unavailable(s) { return [.toast(toast)] }
+        let contents = MemoFileName.contents(ref, text: text)
+        guard contents.utf8.count <= MemoFileName.maxContentBytes else { return [.toast(.fileFailed)] }
+        let name = TextLayout.nfc(MemoFileName.make(ref, text: text, created: created))
+        let clips = ContainerID.memoClips
+        let clipped = s.tokens.count(in: clips)
+        var monitor = ScreenGrid.Allocator(grid: env.grid, occupied: s.tokens.occupiedCells)
+        let location: Location = !s.isAway(clips) && clipped < clips.spec.capacity
+            ? .container(clips, order: clipped) : monitor.next().location
+        var taken = Set(s.tokens.sortedKeys.compactMap { s.tokens.meta(of: $0).map { folded($0.displayName) } })
+        taken.formUnion(s.hints.filter { $0.source != nil && $0.matchesName }.map { folded($0.name) })
+        s.hints.append(PlacementHint(
+            name: name, location: location, expires: env.now.addingTimeInterval(dropHintLifetime), source: source,
+            matchesName: !taken.contains(folded(name))
+        ))
+        return [.createTextFile(TextFileRequest(name: name, contents: contents, source: source))]
     }
 
     // MARK: Results

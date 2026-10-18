@@ -11,7 +11,8 @@ import Foundation
 /// `desk.json` to `.bak1`, `.bak2`, `.bak3`, then a fresh desk, and keeps a corrupt file as
 /// `desk.corrupt-<date>.json`. Only a missing `desk.json` is a fresh desk (that is how a reset looks), and a
 /// `desk.json` from a newer Deskterior is never overwritten. The layout of a folder that is no longer mirrored
-/// is kept aside per folder, so it comes back with the folder.
+/// is kept aside per folder, so it comes back with the folder. `memos.json` (Erratum 31: notes, day pages, the
+/// D-Day) is kept the same way beside it, and Reset Layout leaves it alone.
 public struct StateStore: Sendable {
     public static let fileName = "desk.json"
     /// Minimum age of each backup generation before it is refreshed.
@@ -22,11 +23,19 @@ public struct StateStore: Sendable {
         /// `desk.json` was written by a newer Deskterior: it is left as it is.
         case newerSchema(Int)
         case writeFailed(String)
+        // MARK: memos (0.3.0)
+        /// `memos.json` was written by a newer Deskterior: it is left as it is.
+        case newerMemos(Int)
+        /// `memos.json` is there but could not be read (or kept aside when corrupt): it is never written over.
+        case memosUnreadable(String)
 
         public var description: String {
             switch self {
             case let .newerSchema(n): "desk.json uses schema \(n), newer than \(Migrations.currentSchema); not overwriting it"
             case let .writeFailed(path): "could not write \(path)"
+            case let .newerMemos(n):
+                "\(StateStore.memosFileName) uses schema \(n), newer than \(MemoDocument.currentSchema); not overwriting it"
+            case let .memosUnreadable(why): "\(StateStore.memosFileName) \(why); not overwriting it"
             }
         }
     }
@@ -51,6 +60,8 @@ public struct StateStore: Sendable {
     private let mirrored: URL?
     /// What `desk.json` looked like after our last write or check, so most saves need not read it back.
     private let memo = Memo()
+    /// The same for `memos.json`.
+    private let memosMemo = Memo()
 
     /// Refuses a directory inside the desktop folder or the mirrored folder; creates it otherwise.
     public init(directory: URL, desktop: URL = DesktopLocator.defaultDesktopURL(), mirrored: URL? = nil) throws {
@@ -96,7 +107,7 @@ public struct StateStore: Sendable {
                 problems.append("\(Self.fileName): written by a newer Deskterior (schema \(n)); left untouched")
             } catch {
                 problems.append("\(Self.fileName): \(error)")
-                corruptCopy = keepCorrupt(data, now: now)
+                corruptCopy = keepCorrupt(data, now: now, stem: "desk")
             }
         } catch {
             guard !Self.isMissing(error) else {
@@ -139,7 +150,7 @@ public struct StateStore: Sendable {
                 throw Failure.newerSchema(n)
             }
         }
-        try rotateBackups(now: now) {
+        try rotateBackups(of: backupURL, now: now) {
             let primary = current ?? (try? Data(contentsOf: fileURL))
             // Only a readable document of a schema we know becomes a backup.
             guard let primary, let n = try? Migrations.schema(of: primary), n <= Migrations.currentSchema else {
@@ -201,9 +212,14 @@ public struct StateStore: Sendable {
 
     // MARK: Private
 
-    /// Shifts due generations down (`.bak3` ← `.bak2` ← `.bak1` ← `desk.json`), oldest first. A generation's
-    /// modification date is when it was last refreshed.
-    private func rotateBackups(now: Date, primary: () -> Data?) throws {
+    /// Shifts due generations down (`.bak3` ← `.bak2` ← `.bak1` ← the file), oldest first. A generation's
+    /// modification date is when it was last refreshed. `backupURL(n)` names generation `n` (`desk.json`'s or
+    /// `memos.json`'s), and `read` reads one. Not `strict`, a generation that cannot be written (a symlink planted
+    /// there, which `checkOwnWrite` refuses to follow) is skipped instead of stopping the save.
+    private func rotateBackups(
+        of backupURL: (Int) -> URL, now: Date, read: (URL) -> Data? = { try? Data(contentsOf: $0) },
+        strict: Bool = true, primary: () -> Data?
+    ) throws {
         func isDue(_ n: Int) -> Bool {
             guard let date = (try? backupURL(n).resourceValues(forKeys: [.contentModificationDateKey]))?
                 .contentModificationDate
@@ -211,10 +227,17 @@ public struct StateStore: Sendable {
             let age = now.timeIntervalSince(date)
             return age < 0 || age >= Self.backupIntervals[n - 1]
         }
-        for n in stride(from: Self.backupCount, to: 1, by: -1) where isDue(n) {
-            if let older = try? Data(contentsOf: backupURL(n - 1)) { try write(older, to: backupURL(n), stamped: now) }
+        func refresh(_ n: Int, with data: Data) throws {
+            do {
+                try write(data, to: backupURL(n), stamped: now)
+            } catch {
+                if strict { throw error }
+            }
         }
-        if isDue(1), let data = primary() { try write(data, to: backupURL(1), stamped: now) }
+        for n in stride(from: Self.backupCount, to: 1, by: -1) where isDue(n) {
+            if let older = read(backupURL(n - 1)) { try refresh(n, with: older) }
+        }
+        if isDue(1), let data = primary() { try refresh(1, with: data) }
     }
 
     /// Atomic replace with fresh permissions, so a file someone made unreadable heals on the next save.
@@ -234,15 +257,15 @@ public struct StateStore: Sendable {
         return underlying?.domain == NSPOSIXErrorDomain && underlying?.code == Int(ENOENT)
     }
 
-    /// Copies a corrupt file aside as `desk.corrupt-<UTC date>[-n].json`.
-    private func keepCorrupt(_ data: Data, now: Date) -> URL? {
+    /// Copies a corrupt file aside as `<stem>.corrupt-<UTC date>[-n].json` (`desk` or `memos`).
+    private func keepCorrupt(_ data: Data, now: Date, stem: String) -> URL? {
         let c = Calendar(identifier: .gregorian).dateComponents(in: TimeZone(identifier: "UTC")!, from: now)
         let stamp = String(
             format: "%04d%02d%02d-%02d%02d%02d", c.year ?? 0, c.month ?? 0, c.day ?? 0, c.hour ?? 0, c.minute ?? 0,
             c.second ?? 0
         )
         for n in 1...100 {
-            let name = n == 1 ? "desk.corrupt-\(stamp).json" : "desk.corrupt-\(stamp)-\(n).json"
+            let name = n == 1 ? "\(stem).corrupt-\(stamp).json" : "\(stem).corrupt-\(stamp)-\(n).json"
             let url = directory.appendingPathComponent(name, isDirectory: false)
             if let existing = try? Data(contentsOf: url) {
                 if existing == data { return url }
@@ -281,6 +304,8 @@ public struct StateStore: Sendable {
 extension StateStore {
     /// The sticky notes, day pages and D-Day, beside `desk.json` (Erratum 31).
     public static let memosFileName = "memos.json"
+    /// The most of a memos file that is read: a runaway or planted file is not loaded whole (it is left untouched).
+    public static let maxMemosBytes = 32 << 20
 
     /// What `loadMemos` found: the book (nil: none could be read), whether `saveMemos` may write (false when the
     /// file came from a newer Deskterior), and why files were skipped.
@@ -299,14 +324,164 @@ extension StateStore {
         }
     }
 
-    /// Loads `memos.json` (falling back to its backups).
-    public func loadMemos(now: Date = Date()) -> MemosLoaded {
-        // Step 0 stub: Track E (spec §4.5): reads nothing, and says not to write.
-        MemosLoaded(book: nil, writable: false)
+    public var memosURL: URL { directory.appendingPathComponent(Self.memosFileName, isDirectory: false) }
+
+    public func memosBackupURL(_ n: Int) -> URL {
+        directory.appendingPathComponent("\(Self.memosFileName).bak\(n)", isDirectory: false)
     }
 
-    /// Saves `memos.json` atomically, with backups by age.
+    /// Loads `memos.json`, as `load` does `desk.json`: a missing file is a fresh book (nil, writable); an unreadable
+    /// or corrupt one falls back to `.bak1`, `.bak2`, `.bak3`, and a corrupt one is kept as
+    /// `memos.corrupt-<UTC date>.json` first. Never writable over what must not be lost: a file from a newer
+    /// Deskterior, one that could not be read (not a regular file, no permission, past `maxMemosBytes`) or a corrupt
+    /// one that could not be kept aside; then the book shown is a backup's, or none, and nothing is saved over it.
+    /// Reads go through no symlink and never block on a planted FIFO.
+    public func loadMemos(now: Date = Date()) -> MemosLoaded {
+        var problems: [String] = []
+        var corruptCopy: URL?
+        var writable = true
+        let name = Self.memosFileName
+        switch Self.readOwnFile(memosURL) {
+        case .missing:
+            return MemosLoaded(book: nil, writable: true)
+        case let .data(data):
+            switch Self.decodeMemos(data) {
+            case let .success(doc):
+                memosMemo.remember(memosURL, schemaOK: true)
+                return MemosLoaded(book: doc.makeBook(), writable: true)
+            case let .failure(.newer(n)):
+                problems.append("\(name): written by a newer Deskterior (schema \(n)); left untouched")
+                writable = false
+            case let .failure(.corrupt(why)):
+                problems.append("\(name): \(why)")
+                corruptCopy = keepCorrupt(data, now: now, stem: "memos")
+                if corruptCopy == nil {
+                    problems.append("\(name): could not be kept aside; left untouched")
+                    writable = false
+                } else {
+                    memosMemo.remember(memosURL, schemaOK: true) // Kept aside: a save may replace it.
+                }
+            }
+        case let .unreadable(why):
+            problems.append("\(name): \(why); left untouched")
+            writable = false
+        }
+        for n in 1...Self.backupCount {
+            guard case let .data(data) = Self.readOwnFile(memosBackupURL(n)) else { continue }
+            switch Self.decodeMemos(data) {
+            case let .success(doc):
+                return MemosLoaded(book: doc.makeBook(), writable: writable, problems: problems, corruptCopy: corruptCopy)
+            case let .failure(f):
+                problems.append("\(name).bak\(n): \(f)")
+            }
+        }
+        return MemosLoaded(book: nil, writable: writable, problems: problems, corruptCopy: corruptCopy)
+    }
+
+    /// Saves `memos.json` atomically, refreshing its backup generations by age as `save` does `desk.json`'s, and
+    /// writes nothing else (and nothing outside the state folder: `SafetyGuard.checkOwnWrite`). Throws instead of
+    /// writing over a `memos.json` from a newer Deskterior (`.newerMemos`) or one it cannot read
+    /// (`.memosUnreadable`); a corrupt one found here is kept aside first, as `loadMemos` does.
     public func saveMemos(_ book: MemoBook, now: Date = Date()) throws {
-        // Step 0 stub: Track E (spec §4.5): writes nothing.
+        let data = try MemoDocument(book: book, savedAt: now).encoded()
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        var current: Data?
+        if !memosMemo.matches(memosURL) {
+            switch Self.readOwnFile(memosURL) {
+            case .missing:
+                break
+            case let .data(found):
+                switch Self.decodeMemos(found) {
+                case .success:
+                    current = found
+                case let .failure(.newer(n)):
+                    throw Failure.newerMemos(n)
+                case .failure(.corrupt):
+                    guard keepCorrupt(found, now: now, stem: "memos") != nil else {
+                        throw Failure.memosUnreadable("is corrupt and could not be kept aside")
+                    }
+                }
+            case let .unreadable(why):
+                throw Failure.memosUnreadable(why)
+            }
+        }
+        // Backups are read as `memos.json` is (never through a symlink, never blocking on a FIFO), and one that cannot
+        // be refreshed never keeps the user's text from being saved.
+        let readOwn = { (url: URL) -> Data? in if case let .data(d) = Self.readOwnFile(url) { d } else { nil } }
+        try rotateBackups(of: memosBackupURL, now: now, read: readOwn, strict: false) {
+            // Only a readable document of a schema we know becomes a backup.
+            guard case let .data(primary) = current.map(OwnFile.data) ?? Self.readOwnFile(memosURL),
+                  case .success = Self.decodeMemos(primary)
+            else { return nil }
+            return primary
+        }
+        try write(data, to: memosURL)
+        memosMemo.remember(memosURL, schemaOK: true)
+    }
+
+    // MARK: Memos inside
+
+    /// What reading one of our own files found.
+    enum OwnFile: Equatable {
+        case missing
+        case data(Data)
+        /// There, but not read: why.
+        case unreadable(String)
+    }
+
+    /// Reads the regular file at `url` itself: not through a symlink (`O_NOFOLLOW`), without blocking on a FIFO
+    /// (`O_NONBLOCK`), and at most `maxBytes` of it.
+    static func readOwnFile(_ url: URL, maxBytes: Int = StateStore.maxMemosBytes) -> OwnFile {
+        var failure: Int32 = 0
+        let fd: Int32 = url.withUnsafeFileSystemRepresentation { p in
+            guard let p else {
+                failure = EINVAL
+                return -1
+            }
+            let fd = open(p, O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC)
+            if fd < 0 { failure = errno }
+            return fd
+        }
+        guard fd >= 0 else {
+            return failure == ENOENT ? .missing : .unreadable("unreadable (\(String(cString: strerror(failure))))")
+        }
+        let handle = FileHandle(fileDescriptor: fd, closeOnDealloc: true)
+        var st = stat()
+        guard fstat(fd, &st) == 0 else { return .unreadable("unreadable (\(String(cString: strerror(errno))))") }
+        guard st.st_mode & S_IFMT == S_IFREG else { return .unreadable("is not a regular file") }
+        guard st.st_size <= maxBytes else { return .unreadable("is \(st.st_size) bytes, more than \(maxBytes)") }
+        do {
+            let data = try handle.read(upToCount: maxBytes + 1) ?? Data()
+            return data.count <= maxBytes ? .data(data) : .unreadable("is more than \(maxBytes) bytes")
+        } catch {
+            return .unreadable("unreadable (\(error.localizedDescription))")
+        }
+    }
+
+    /// Why a memos document was not taken.
+    enum MemosProblem: Error, Equatable, CustomStringConvertible {
+        /// Written by a newer Deskterior (its schema).
+        case newer(Int)
+        case corrupt(String)
+
+        var description: String {
+            switch self {
+            case let .newer(n): "written by a newer Deskterior (schema \(n))"
+            case let .corrupt(why): why
+            }
+        }
+    }
+
+    /// `data` as a memos document: refused when its schema is newer than this build's (checked here as well as by
+    /// `MemoDocument.decode`), or when it does not decode.
+    static func decodeMemos(_ data: Data) -> Result<MemoDocument, MemosProblem> {
+        if let n = try? Migrations.schema(of: data), n > MemoDocument.currentSchema { return .failure(.newer(n)) }
+        do {
+            return .success(try MemoDocument.decode(data))
+        } catch let Migrations.Failure.newerSchema(n) {
+            return .failure(.newer(n))
+        } catch {
+            return .failure(.corrupt("\(error)"))
+        }
     }
 }

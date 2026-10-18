@@ -48,6 +48,12 @@ public enum FileRefusal: Error, Sendable, Equatable, CustomStringConvertible {
     /// in at once, or the volume numbers items by where they are: an empty file on FAT, some network shares). It is
     /// left there, untouched, and has no undo step.
     case landedUnverified
+    // MARK: files (0.3.0)
+    /// Save as Text File: not a plain, visible ".txt" name (a "/" or ":", a leading dot, a control or format
+    /// character, more than 255 bytes).
+    case invalidName
+    /// Save as Text File: the text is not UTF-8, or longer than `FileOperator.maxTextFileBytes`.
+    case invalidContents
     /// Any other failure: an errno, or a Cocoa error code.
     case failed(Int)
 
@@ -71,6 +77,8 @@ public enum FileRefusal: Error, Sendable, Equatable, CustomStringConvertible {
         case .notPermitted: "not-permitted"
         case .locked: "locked"
         case .landedUnverified: "landed-unverified"
+        case .invalidName: "invalid-name"
+        case .invalidContents: "invalid-contents"
         case let .failed(code): "failed(\(code))"
         }
     }
@@ -117,22 +125,27 @@ public enum FileOutcome: Sendable, Equatable {
     /// Already a direct child of the desktop folder: placement only, no file change.
     case unchanged(URL)
     case ejected(URL)
+    // MARK: files (0.3.0)
+    /// A new text file was written at this URL in the desktop folder; `renamed`: under a free numbered name ("Memo
+    /// 2.txt") because the name asked for was taken.
+    case created(URL, renamed: Bool)
     case refused(URL, FileRefusal)
 
-    /// The URL the request named.
+    /// The URL the request named (a new file's: where it was written).
     public var source: URL {
         switch self {
         case let .trashed(u, _), let .moved(u, _), let .copied(u, _), let .renamed(u, _, _), let .unchanged(u),
-             let .ejected(u), let .refused(u, _), let .aliased(u, _):
+             let .ejected(u), let .refused(u, _), let .aliased(u, _), let .created(u, _):
             u
         }
     }
 
-    /// Where the item is now, when it moved.
+    /// Where the item is now, when it moved (or was written).
     public var destination: URL? {
         switch self {
         case let .trashed(_, to): to
         case let .moved(_, to), let .copied(_, to), let .renamed(_, to, _), let .aliased(_, to): to
+        case let .created(u, _): u
         case .unchanged, .ejected, .refused: nil
         }
     }
@@ -144,10 +157,10 @@ public enum FileOutcome: Sendable, Equatable {
 
     var logOutcome: String {
         switch self {
-        case .renamed: "renamed"
+        case .renamed, .created(_, renamed: true): "renamed"
         case .unchanged: "unchanged"
         case let .refused(_, r): "refused: \(r)"
-        case .trashed, .moved, .copied, .ejected, .aliased: "ok"
+        case .trashed, .moved, .copied, .ejected, .aliased, .created: "ok"
         }
     }
 }
@@ -177,6 +190,8 @@ public struct FileResult: Sendable, Equatable {
 /// - renames with `renamex_np(RENAME_EXCL)`, so nothing is ever replaced: a taken name becomes "name 2" … "name 100";
 /// - trashes, never deletes. The only removal is of its own staging folders for copies and aliases;
 /// - never changes a drop's source when it makes an alias of it (Erratum 29): it only reads it;
+/// - never opens a file on the desk for writing: Save as Text File (Erratum 31) writes a new file in a staging
+///   folder of its own and renames it in, like a copy;
 /// - logs the outcome to `OperationLog`.
 /// Undo replays only records this operator issued, once each.
 public actor FileOperator {
@@ -200,6 +215,9 @@ public actor FileOperator {
     /// The user actions each request answers to.
     enum Method {
         case trash, importItems, undo, eject
+        // MARK: files (0.3.0)
+        /// Save as Text File on Desktop: a menu item, or the Memos window's button (which goes through one).
+        case createFile
 
         var origins: Set<ExplicitIntent.Origin> {
             switch self {
@@ -207,6 +225,7 @@ public actor FileOperator {
             case .importItems: [.drop]
             case .undo: [.undo]
             case .eject: [.menuItem, .inventory]
+            case .createFile: [.menuItem]
             }
         }
     }
@@ -233,7 +252,7 @@ public actor FileOperator {
         var beforeRename: (@Sendable (URL) -> Void)?
         /// Runs right before the time-of-check re-stat of an item.
         var beforeCheck: (@Sendable (URL) -> Void)?
-        /// Runs right after a copy finishes (or an alias file is written), with the staged copy or alias.
+        /// Runs right after a copy finishes (or an alias or a text file is written), with what was staged.
         var afterCopy: (@Sendable (URL) -> Void)?
         // MARK: alias (Erratum 29)
         /// Runs on the alias's own thread (off the actor), right before the source's bookmark data is made.
@@ -247,6 +266,9 @@ public actor FileOperator {
         /// Stand-ins for the volume checks and the unmount itself (an eject in tests, which never reach a volume).
         var ejectable: (@Sendable (URL) -> Bool)?
         var unmount: (@Sendable (URL) throws -> Void)?
+        // MARK: files (0.3.0)
+        /// Runs right before an item that passed its checks goes to the trash.
+        var beforeTrash: (@Sendable (URL) -> Void)?
     }
 
     /// `sandboxRoots` is non-nil in demo, headless and test modes: then every path touched (the desktop folder,
@@ -334,11 +356,14 @@ public actor FileOperator {
         }
     }
 
-    /// Trashes `item`, then checks the trash got the item expected.
-    private func trashChecked(_ item: URL, is key: TokenKey) async -> Result<URL?, FileRefusal> {
+    /// Trashes `item`, then checks the trash got the item expected (and, with `unchanged`, a file we wrote as it was
+    /// written: one edited between the check and the trash goes straight back).
+    private func trashChecked(_ item: URL, is key: TokenKey, unchanged: Stamp? = nil) async -> Result<URL?, FileRefusal> {
+        hooks.beforeTrash?(item)
         do {
             let trashed = try await trasher.trash(item)
             if let trashed, let r = verify(trashed, is: key, elseReturnTo: item) { return .failure(r) }
+            if let trashed, let unchanged, let r = verify(trashed, is: unchanged, elseReturnTo: item) { return .failure(r) }
             return .success(trashed)
         } catch {
             return .failure(FileRefusal.from(error))
@@ -674,10 +699,11 @@ public actor FileOperator {
 
     // MARK: Undo
 
-    /// Takes back a trash or an import, newest step first: renames out of the trash or back to the drop source
-    /// (`RENAME_EXCL`; a taken name becomes "name 2"), or trashes our copy or our alias (never what it points to). Takes an `.undo` intent and a record
-    /// this operator issued and has not replayed yet (a refused intent leaves the record usable). Every step
-    /// re-checks the item's identity first. A step the system refuses (the real Trash under privacy protection,
+    /// Takes back a trash, an import or a saved text file, newest step first: renames out of the trash or back to the
+    /// drop source (`RENAME_EXCL`; a taken name becomes "name 2"), or trashes our copy or our alias (never what it
+    /// points to), or the text file we wrote while it is still as written (never deleted). Takes an `.undo` intent
+    /// and a record this operator issued and has not replayed yet (a refused intent leaves the record usable). Every
+    /// step re-checks the item's identity first. A step the system refuses (the real Trash under privacy protection,
     /// S11) is refused with `.notPermitted`; Finder's Put Back still works then.
     public func undo(_ record: FileUndoRecord, _ intent: ExplicitIntent) async -> FileResult {
         let steps = Array(record.steps.reversed())
@@ -720,6 +746,16 @@ public actor FileOperator {
             case let .success(to): return .trashed(url, to: to)
             case let .failure(r): return .refused(url, r)
             }
+        // MARK: files (0.3.0): a text file we wrote goes to the trash only as it was written; never deleted.
+        case let .trashCreated(url, key, size, modified):
+            if let r = trashRefusal() { return .refused(url, r) }
+            guard let item = deskChild(url) else { return .refused(url, .outsideRoot) }
+            let written = Stamp(key: key, size: size, modified: modified)
+            if let r = checkUnchanged(item, is: written) { return .refused(url, r) }
+            switch await trashChecked(item, is: key, unchanged: written) {
+            case let .success(to): return .trashed(url, to: to)
+            case let .failure(r): return .refused(url, r)
+            }
         }
     }
 
@@ -756,7 +792,7 @@ public actor FileOperator {
         switch step {
         case let .putBack(trashed, original, _): trashed ?? original
         case let .moveBack(current, _, _): current
-        case let .trashCopy(url, _), let .trashAlias(url, _): url
+        case let .trashCopy(url, _), let .trashAlias(url, _), let .trashCreated(url, _, _, _): url
         }
     }
 
@@ -766,16 +802,169 @@ public actor FileOperator {
         case .moveBack: .moveBack
         case .trashCopy: .trashCopy
         case .trashAlias: .trashAlias
+        case .trashCreated: .trashCreated
         }
     }
 
     // MARK: Create (0.3.0)
 
-    /// Save as Text File on Desktop (Erratum 31): writes `contents` as a new file `name` in the desktop folder, never
-    /// over an existing one. Takes a `.menuItem` intent.
+    /// The most a text file written by `createTextFile` may hold.
+    public static let maxTextFileBytes = 64 * 1024
+
+    /// Save as Text File on Desktop (Erratum 31): writes `contents` (UTF-8 text, at most `maxTextFileBytes`) as a
+    /// new file `name` in the desktop folder, or as "name 2.txt"… when that is taken. Takes a `.menuItem` intent.
+    /// It never opens a file on the desk for writing: the text goes into a new file in a fresh staging folder of our
+    /// own (`O_CREAT | O_EXCL | O_NOFOLLOW`, flushed to disk, off the actor), whose identity is read, and that file is
+    /// renamed in with `RENAME_EXCL`, so the desk never shows a partial file and nothing there is replaced; then its
+    /// landing is checked like a copy's (`landed`). `name` must be a plain, visible ".txt" name (`isTextFileName`).
+    /// The undo step trashes the file only while its identity, size and modification date are the ones it was
+    /// written with: a file the user edited or swapped meanwhile stays on the desk.
     public func createTextFile(named name: String, contents: Data, _ intent: ExplicitIntent) async -> FileResult {
-        // Step 0 stub: Track E (spec §6). Refuses without touching anything.
-        FileResult(outcomes: [.refused(root.appendingPathComponent(name), .wrongOrigin)], undo: nil)
+        let asked = root.appendingPathComponent(name, isDirectory: false)
+        if let r = refusal(for: intent, .createFile) ?? rootRefusal() ?? Self.textFileRefusal(name: name, contents)
+            ?? (deskChild(asked) == nil ? .outsideRoot : nil)
+        {
+            let outcome = FileOutcome.refused(asked, r)
+            record(.createFile, outcome, inodes: [], intent: intent, names: [name])
+            return FileResult(outcomes: [outcome], undo: nil)
+        }
+        let (outcome, step) = await createIn(name, contents)
+        var names = [name]
+        if let to = outcome.destination?.lastPathComponent, to != name { names.append(to) }
+        record(.createFile, outcome, inodes: step.map { [$0.key.inode] } ?? [], intent: intent, names: names)
+        return FileResult(outcomes: [outcome], undo: issue(.createTextFile, step.map { [$0] } ?? []))
+    }
+
+    /// Why `createTextFile` will not write `contents` as `name`, if it will not.
+    static func textFileRefusal(name: String, _ contents: Data) -> FileRefusal? {
+        guard isTextFileName(name) else { return .invalidName }
+        guard contents.count <= maxTextFileBytes, String(data: contents, encoding: .utf8) != nil else {
+            return .invalidContents
+        }
+        return nil
+    }
+
+    /// A name `createTextFile` writes: one plain path component of at most 255 UTF-8 bytes, ending ".txt" after a
+    /// stem, visible (no leading dot), with no ":" (Finder shows it as "/") and no control or format character (a
+    /// newline, NUL, a bidi override that would make "txt.exe" read backwards). Checked by scalar and byte, never by
+    /// grapheme: a "/" or a leading "." carrying a combining mark is still one.
+    static func isTextFileName(_ name: String) -> Bool {
+        let scalars = name.unicodeScalars
+        guard DeskState.isPlainName(name), !scalars.contains("/"), !scalars.contains(":"), name.utf8.count <= 255,
+              name.utf8.first != UInt8(ascii: "."), name.utf8.count > 4, name.utf8.suffix(4).elementsEqual(".txt".utf8)
+        else { return false }
+        return !scalars.contains { [.control, .format].contains($0.properties.generalCategory) }
+    }
+
+    /// Writes the new file in a fresh staging folder, then renames it into the desktop folder under `name` or the
+    /// first free numbered name. The staging folder goes in every case, so a failed write leaves nothing behind.
+    private func createIn(_ name: String, _ contents: Data) async -> (FileOutcome, FileUndoRecord.Step?) {
+        let asked = root.appendingPathComponent(name, isDirectory: false)
+        let staging: URL
+        do {
+            staging = try makeStaging()
+        } catch {
+            return (.refused(asked, FileRefusal.from(error)), nil)
+        }
+        defer { removeStaging(staging) }
+        let staged = staging.appendingPathComponent(name, isDirectory: false)
+        do {
+            try await Self.writeNewFile(contents, to: staged)
+        } catch {
+            return (.refused(asked, FileRefusal.from(error)), nil)
+        }
+        hooks.afterCopy?(staged)
+        // As written: the undo step trashes only this (renaming in changes neither size nor modification date).
+        let written: Stamp
+        switch stamp(of: staged) {
+        case let .success(st) where st.size == Int64(contents.count): written = st
+        case .success: return (.refused(asked, .identityChanged), nil)
+        case let .failure(r): return (.refused(asked, r), nil)
+        }
+        switch FileMoves.renameToFreeName(staged, in: root, name: name, splitsExtension: true, before: hooks.beforeRename) {
+        case let .success(placed):
+            hooks.afterPlace?(placed.url)
+            if let r = landed(placed.url, is: written.key) { return (.refused(asked, r), nil) }
+            let step = FileUndoRecord.Step.trashCreated(
+                placed.url, key: written.key, size: written.size, modified: written.modified
+            )
+            return (.created(placed.url, renamed: placed.renamed), step)
+        case let .failure(f):
+            return (.refused(asked, f.refusal), nil)
+        }
+    }
+
+    /// Writes `data` as a new regular file at `url`, on a GCD thread (a desk folder on a slow volume holds up no
+    /// other request). Never an existing file and never through a symlink (`O_CREAT | O_EXCL | O_NOFOLLOW`); every
+    /// byte is written and flushed (`fsync`) before it returns, so what lands on the desk is whole.
+    private nonisolated static func writeNewFile(_ data: Data, to url: URL) async throws {
+        try await withCheckedThrowingContinuation { (done: CheckedContinuation<Void, any Error>) in
+            DispatchQueue.global(qos: .userInitiated).async {
+                done.resume(with: Result { try writeNewFileNow(data, to: url) })
+            }
+        }
+    }
+
+    private nonisolated static func writeNewFileNow(_ data: Data, to url: URL) throws {
+        var failure: Int32 = 0
+        let fd: Int32 = url.withUnsafeFileSystemRepresentation { p in
+            guard let p else {
+                failure = EINVAL
+                return -1
+            }
+            let fd = open(p, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0o644)
+            if fd < 0 { failure = errno }
+            return fd
+        }
+        guard fd >= 0 else { throw FileRefusal.from(errno: failure) }
+        data.withUnsafeBytes { (raw: UnsafeRawBufferPointer) in
+            var offset = 0
+            while offset < raw.count {
+                let n = Darwin.write(fd, raw.baseAddress! + offset, raw.count - offset)
+                if n < 0 {
+                    if errno == EINTR { continue }
+                    failure = errno
+                    return
+                }
+                offset += n
+            }
+        }
+        if failure == 0, fsync(fd) != 0 { failure = errno }
+        if close(fd) != 0, failure == 0 { failure = errno }
+        if failure != 0 { throw FileRefusal.from(errno: failure) }
+    }
+
+    /// An item's identity with its size and modification date, from one `lstat`.
+    struct Stamp: Equatable {
+        var key: TokenKey
+        var size: Int64
+        var modified: Date
+    }
+
+    /// The `Stamp` of the item at `url` itself (a symlink is not followed).
+    func stamp(of url: URL) -> Result<Stamp, FileRefusal> {
+        var st = stat()
+        let e: Int32 = url.withUnsafeFileSystemRepresentation { p in
+            guard let p else { return EINVAL }
+            return lstat(p, &st) == 0 ? 0 : errno
+        }
+        guard e == 0 else { return .failure(FileRefusal.from(errno: e)) }
+        let volume = volumeID(url) ?? volumeID(root) ?? "unknown"
+        let m = st.st_mtimespec
+        return .success(Stamp(
+            key: TokenKey(volume: volume, inode: UInt64(st.st_ino)), size: Int64(st.st_size),
+            modified: Date(timeIntervalSince1970: Double(m.tv_sec) + Double(m.tv_nsec) / 1e9)
+        ))
+    }
+
+    /// Time of check for a file we wrote: the item at `url` is the one written (`check`), with the size and
+    /// modification date it was written with; otherwise it changed (an edit, a sync client) and is not ours to trash.
+    private func checkUnchanged(_ url: URL, is written: Stamp) -> FileRefusal? {
+        if let r = check(url, is: written.key) { return r }
+        switch stamp(of: url) {
+        case let .success(now): return now == written ? nil : .identityChanged
+        case let .failure(r): return r
+        }
     }
 
     // MARK: Eject
@@ -923,6 +1112,18 @@ public actor FileOperator {
         return .identityChanged
     }
 
+    /// `verify` for a file we wrote, after trashing it: the item in the trash is still as written. One edited between
+    /// the check and the trash goes straight back to `original` (under a free numbered name if that is taken now),
+    /// and the trash is refused. One that cannot be stat'ed there is taken as it is, as `verify` does.
+    private func verify(_ placed: URL, is written: Stamp, elseReturnTo original: URL) -> FileRefusal? {
+        guard case let .success(found) = stamp(of: placed), found != written else { return nil }
+        _ = FileMoves.renameToFreeName(
+            placed, in: original.deletingLastPathComponent(), name: original.lastPathComponent,
+            splitsExtension: FileMoves.splitsExtension(placed)
+        )
+        return .identityChanged
+    }
+
     /// The volume and inode of the item at `url` itself (`lstat`; a symlink is not followed). An item whose
     /// volume cannot be read takes the desktop folder's, as the scanner does.
     func identity(of url: URL) -> Result<TokenKey, FileRefusal> {
@@ -946,10 +1147,15 @@ public actor FileOperator {
         return FileResult(outcomes: outcomes, undo: nil)
     }
 
-    /// A failed log write never undoes or blocks the operation; the unified log still has the line.
-    private func record(_ op: OperationLog.Entry.Op, _ outcome: FileOutcome, inodes: [UInt64], intent: ExplicitIntent) {
+    /// A failed log write never undoes or blocks the operation; the unified log still has the line. `names`, when
+    /// given, stands for the item's name and its new name (a text file's: the name asked for, then where it landed).
+    private func record(
+        _ op: OperationLog.Entry.Op, _ outcome: FileOutcome, inodes: [UInt64], intent: ExplicitIntent,
+        names given: [String]? = nil
+    ) {
         var names = [outcome.source.lastPathComponent]
         if let to = outcome.destination?.lastPathComponent, to != names[0] { names.append(to) }
+        if let given { names = given }
         let entry = OperationLog.Entry(
             time: clock(), op: op, origin: intent.origin, names: names, inodes: inodes, outcome: outcome.logOutcome
         )

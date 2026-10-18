@@ -107,6 +107,45 @@ struct FileSafetyLintTests {
         #expect(!strict.contains { $0.label == "bookmark" && $0.file != "DeskFiles/FileOperator.swift" })
     }
 
+    @Test("Save as Text File is a file request: built only in the menus and matched only in the reducer (Erratum 31)")
+    func saveMemoFileRequest() throws {
+        let script = try String(contentsOf: Self.scriptURL, encoding: .utf8)
+        let lint = try Lint(script: script)
+        let patterns = try #require(lint.vars["FILE_REQUEST_PATTERNS"])
+        #expect(patterns.contains("requestSaveMemoFile"))
+        // The script's self-test plants the dispatch in its Bypass fixture.
+        let bypass = try #require(Self.heredocs(in: script).first { $0.0 == "Sources/DeskCore/Bypass.swift" }?.1)
+        #expect(bypass.contains("store.dispatch(.requestSaveMemoFile(.note(id)))\n"))
+        let planted = """
+            store.dispatch(.requestSaveMemoFile(.note(id)))
+            perform(.saveMemoFile(.day(day)))
+            case let .requestSaveMemoFile(ref): return save(ref)
+            let a = DeskAction.requestSaveMemoFile (.note(n))
+            if case .requestSaveMemoFile = action { return }
+            """
+        func flagged(_ file: String) -> [Int] {
+            lint.violations(dirVar: "SRC", files: [(file, planted)]).filter { $0.label == "file-request" }.map(\.line)
+                .uniqued()
+        }
+        for file in ["DeskteriorApp/UI/MemoWindow.swift", "DeskteriorApp/Demo/DemoRunner.swift",
+                     "DeskScene/Elements/PartitionElement.swift", "DeskCore/Logic/Reducer+Memos.swift",
+                     "DeskCore/Logic/MenuSpec+Memos.swift", "DeskteriorApp/AppDelegate.swift"] {
+            #expect(flagged(file) == [1, 3, 4], "\(file): the menu command and a bare match are fine; building it is not")
+        }
+        for file in ["DeskCore/Logic/MenuSpec.swift", "DeskCore/Logic/Reducer+Files.swift", "DeskCore/Logic/DeskAction.swift"] {
+            #expect(flagged(file).isEmpty, "\(file)")
+        }
+        // In the repository: built in MenuSpec.swift (the menu command's mapping), matched in Reducer+Files.swift, and
+        // nowhere outside the allowlist (the Memos window calls an injected closure; Erratum 31).
+        let allow = Set(try #require(lint.vars["FILE_REQUEST_ALLOW"]).split(separator: " ").map(String.init))
+        let sources = Self.files(under: Self.repo.appendingPathComponent("Sources"))
+        let found = Set(lint.violations(dirVar: "SRC", files: sources.filter { $0.1.contains("requestSaveMemoFile") },
+                                        ignoringAllowlists: true)
+            .filter { $0.label == "file-request" }.map(\.file))
+        #expect(found.isSuperset(of: ["DeskCore/Logic/MenuSpec.swift", "DeskCore/Logic/Reducer+Files.swift"]))
+        #expect(found.isSubset(of: allow), "\(found.subtracting(allow))")
+    }
+
     // MARK: Files
 
     /// The `.swift` and `.sh` files under `dir`, as (path relative to `dir`, text).
