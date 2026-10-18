@@ -432,7 +432,6 @@ public enum RoomArt {
     /// The hanging wall calendar for `date`'s month, with today's cell ringed. `marks`: days with a page, a dated
     /// note or the D-Day (Erratum 31).
     public static func calendar(_ date: WallTime, marks: [Int: CalendarMark] = [:]) -> SpriteAsset {
-        // Step 0 stub: Track B (`marks` are not drawn yet).
         let r = CoreLayout.calendar
         var c = PixelCanvas(width: r.w, height: r.h)
         // Paper with a lifted bottom-right corner.
@@ -454,21 +453,25 @@ public enum RoomArt {
             c.plot(x, 1, .neutral6)
         }
         c.fill(ArtRect(r.w / 2 - 1, 0, 2, 2), .neutral3)
-        // Day grid: 7 columns × up to 6 rows of 4-px cells.
-        let first = WallTime(year: date.year, month: date.month, day: 1, hour: 0, minute: 0).weekday
-        let rows = (first + date.daysInMonth + 6) / 7
-        let pitchY = rows > 5 ? 3 : 4
+        // Day grid: 7 columns × up to 6 rows of 4-px cells. A day with a page or a dated note is blue, the D-Day
+        // purple (Erratum 31); today keeps its red block.
+        let grid = calendarGrid(date)
         for day in 1...date.daysInMonth {
-            let i = first + day - 1
-            let col = i % 7, row = i / 7
-            let x = 2 + col * 4, y = 16 + row * pitchY
+            let cell = grid.cell(day)
+            let x = cell.x + 1, y = cell.y + 1
+            let col = (cell.x - calendarGridOrigin.x) / 4
             let weekend = col == 0 || col == 6
+            let mark = marks[day] ?? []
             if day == date.day {
-                c.fill(ArtRect(x - 1, y - 1, 4, pitchY == 4 ? 4 : 3), .red4)
+                c.fill(cell, .red4)
                 c.hline(x: x, y: y, length: 2, .neutral9)
+            } else if !mark.isEmpty {
+                let dDay = mark.contains(.dDay)
+                c.hline(x: x, y: y, length: 2, dDay ? .purple3 : .blue3)
+                if grid.pitch == 4 { c.plot(x, y + 1, dDay ? .purple2 : .blue2) }
             } else {
                 c.hline(x: x, y: y, length: 2, weekend ? .red4 : .neutral5)
-                if pitchY == 4 { c.plot(x, y + 1, weekend ? .red3 : .neutral7) }
+                if grid.pitch == 4 { c.plot(x, y + 1, weekend ? .red3 : .neutral7) }
             }
         }
         // Curled corner.
@@ -481,14 +484,44 @@ public enum RoomArt {
         return SpriteAsset("calendar", c, anchor: .zero)
     }
 
+    /// Top-left of the calendar's day grid (calendar-local px): the first column's cells start here.
+    static let calendarGridOrigin = ArtPoint(1, 15)
+
+    /// The month's day grid as the calendar draws it: Sunday first, 4-px columns, rows 4 px apart (3 px when the month
+    /// needs six rows). Day cells tile it with no gaps.
+    struct CalendarGrid {
+        /// Weekday of the 1st (0 = Sunday), the days in the month, the row pitch.
+        let first: Int, days: Int, pitch: Int
+
+        /// Day `day`'s cell: 4 px wide, `pitch` tall, its 2-px dash one px in from its top-left.
+        func cell(_ day: Int) -> ArtRect {
+            let i = first + day - 1
+            return ArtRect(calendarGridOrigin.x + i % 7 * 4, calendarGridOrigin.y + i / 7 * pitch, 4, pitch)
+        }
+
+        /// The day whose cell holds `p`, if any.
+        func day(at p: ArtPoint) -> Int? {
+            let dx = p.x - calendarGridOrigin.x, dy = p.y - calendarGridOrigin.y
+            guard dx >= 0, dx < 28, dy >= 0 else { return nil }
+            let day = dy / pitch * 7 + dx / 4 - first + 1
+            return (1...days).contains(day) ? day : nil
+        }
+    }
+
+    static func calendarGrid(_ date: WallTime) -> CalendarGrid {
+        let first = WallTime(year: date.year, month: date.month, day: 1, hour: 0, minute: 0).weekday
+        let rows = (first + date.daysInMonth + 6) / 7
+        return CalendarGrid(first: first, days: date.daysInMonth, pitch: rows > 5 ? 3 : 4)
+    }
+
     /// Day `day`'s hit cell in the calendar for `date`'s month (calendar-local px); nil for a day not in it.
     public static func calendarDayRect(day: Int, in date: WallTime) -> ArtRect? {
-        nil // Step 0 stub: Track B (the drawing's cell geometry).
+        (1...date.daysInMonth).contains(day) ? calendarGrid(date).cell(day) : nil
     }
 
     /// The day whose cell holds the calendar-local point `p` in `date`'s month (the inverse of `calendarDayRect`).
     public static func calendarDay(at p: ArtPoint, in date: WallTime) -> Int? {
-        nil // Step 0 stub: Track B.
+        calendarGrid(date).day(at: p)
     }
 
     // MARK: String lights
