@@ -670,7 +670,9 @@
       "Moved things aside to make room." The chair is not moved: it stands in front of the cabinet and blocks its
       drawers as E5 says. Bringing back an add-on brings back the partition with it. Bring Everything Back is one
       entry. `adoptLayout` and sanitize bring back any object whose containers hold tokens in the adopted or loaded
-      layout (nothing becomes visible: drawers stay shut, the phone keeps its face).
+      layout (nothing becomes visible: drawers stay shut, the phone keeps its face). The same room is made wherever an
+      object comes back or a file lands: undo and redo of Put Away and Bring Back, `adoptLayout`, and files arriving
+      from tombstones, hints and drops (`Placement.clearOfOutFurniture`).
     - **The scene.** `RoomPlan` skips an away object's placements (the riser swaps in its sealed sprite and drops its
       drawer fronts); the decor follows `SceneLayout.hiding(_:)`, a filtered copy, so wall shadows, the light mask
       (string lights) and `WallArt` on other displays agree; the backdrop drops the cabinet's floor shadow and the
@@ -721,9 +723,11 @@
       (`TooltipSpec.body`) and its date.
     - **Editing** happens only in the Memos window (메모; tabs Calendar and Sticky Notes), never inside the scene. Its
       text views (`NoteTextView`) commit 0.8 s after the last keystroke while no IME composition is open, and on blur,
-      tab switch, close, resign-key and quit; they never take model text while focused. One editing session (with the
-      New Sticky Note that began it) is one undo entry (`UndoJournal.record(…, coalesce:)`). Undo restores notes per id
-      and pages per day.
+      tab switch, close, resign-key and quit; they never take model text while focused, and a clean editor reloads
+      after an undo or redo. The window follows midnight, clock and time-zone changes while open (notifications, no
+      timer). Each text keeps at most 1,000 graphemes and 32 KiB of UTF-8 (a D-Day title 24). One editing session
+      (with the New Sticky Note that began it) is one undo entry (`UndoJournal.record(…, coalesce:)`). Undo restores
+      notes per id and pages per day.
     - **The daily memo pad** (데일리 메모지, 38×44 under the desk lamp): a red header with "OCT 18", the weekday (Sunday
       red, Saturday blue), the first line of today's page, and page edges. Click opens today; drag tears the page off
       into a cream note dated that day (the page goes blank; "Tear Off Page"; the pad's menu has Tear Off as Sticky
@@ -746,7 +750,8 @@
       before the call; the text (UTF-8, LF, a final newline, a day page under its date; at most 64 KB) is written in a
       staging folder and renamed in with `RENAME_EXCL` (" 2"… on a clash), its landing checked; it never writes into an
       existing file. The name is the first line (NFC, "/" and ":" as "-", no leading dot, ≤ 40 graphemes) + ".txt",
-      "Memo YYYY-MM-DD.txt" for an empty first line, "YYYY-MM-DD <first line>.txt" for a day page (`MemoFileName`). A
+      "Memo YYYY-MM-DD.txt" (the local day the note was made) for an empty first line, "YYYY-MM-DD <first line>.txt"
+      for a day page (`MemoFileName`). A
       hint clips the new file to the memo clips while they are out and have room, else to the first free monitor
       cell. Toast "Saved as a text file."; a file that landed
       but is not provably the one written gets no undo step ("Saved, but it can't be undone."). Undo ("Save as Text
@@ -757,7 +762,10 @@
     - **memos.json** (state folder, `StateStore.loadMemos`/`saveMemos`, schema 1, sorted keys, `.bak1`–`.bak3` by age,
       corrupt copy, never overwritten when newer) holds notes, pages and the D-Day. It is loaded after every desk load
       (launch, folder switch, after Safe Mode), saved by `MemoSaver` (1 s debounce, ≤ 5 s behind, flushed on quit) only
-      after that load, also with no folder connected, and Reset Layout leaves it alone.
+      after that load, also with no folder connected, and Reset Layout leaves it alone. A failed write keeps the book
+      and tries again (quit and sleep flush it). A newer or unreadable memos.json is never written, and a book that
+      would encode past the 32 MiB the loader reads is not written either; each tells the user once: "Memos can't be
+      saved this time." ("이번에는 메모를 저장할 수 없어요.").
     - **Words** (Korean included): the new scene tooltips and VoiceOver labels go through `L10n.tr` (an exception to
       Errata 21/23 for these items only); user text never appears in a menu title.
     - **Lint.** `requestSaveMemoFile` joins `FILE_REQUEST_PATTERNS` (with a Bypass self-test line); allowlists unchanged.
