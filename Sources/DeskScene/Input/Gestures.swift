@@ -67,6 +67,9 @@ public nonisolated enum HoverStyle: Sendable {
 public nonisolated struct TooltipSpec: Sendable, Equatable {
     public var title: String
     public var detail: String?
+    // MARK: memos (0.3.0)
+    /// Lines between the title and the detail (a note's text, Erratum 31); `TooltipArt.render` draws them.
+    public var body: [String] = []
     /// The canvas rect the tooltip points at (it sits below it, or above near the bottom edge).
     public var anchor: ArtRect
     /// Sit above the anchor when that fits (below otherwise).

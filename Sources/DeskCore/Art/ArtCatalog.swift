@@ -141,6 +141,15 @@ public struct RoomState: Equatable, Sendable {
     public var cabinetOpen: [Int]
     public var chairX: Int
     public var chairFacing: PropArt.ChairFacing
+    // MARK: tidy and memos (0.3.0)
+    /// Objects put away (Erratum 30): their placements are skipped.
+    public var stowed: Set<StowID> = []
+    /// The wall calendar's marks for the month shown, by day (Erratum 31).
+    public var calendarMarks: [Int: CalendarMark] = [:]
+    /// Today's page has text (the pad shows scribbles).
+    public var padWritten = false
+    /// Days to the D-Day (negative after it); nil while none is set.
+    public var dDayDays: Int?
 
     public init(
         time: WallTime, lightsMode: LightsMode = .auto, lights: RoomLightState = RoomLightState(),
@@ -201,6 +210,9 @@ public enum RoomPlan {
     public static let glowIDs: Set<String> = ["glow.lampHalo", "glow.lampPool"]
     /// Ids that change from minute to minute within one light phase.
     public static let minuteIDs: Set<String> = ["window", "clock", "calendar"]
+    // MARK: memos (0.3.0)
+    /// Ids that follow the memos (the calendar's marks, the pad's page, the D-Day card).
+    public static let memoIDs: Set<String> = ["calendar", "partition.pad", "partition.dday"]
 
     /// The placements, back to front. With `only`, builds just those ids ("decor" stands for every decor piece).
     public static func placements(_ layout: SceneLayout, _ state: RoomState, only: Set<String>? = nil) -> [RoomPlacement] {

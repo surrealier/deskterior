@@ -363,6 +363,7 @@ final class RoomContent: GestureTarget {
         case .penCup: "pencup"
         case .phone: "phone"
         case .wastebasket: "wastebasket.mouth"
+        case .memoClips: "partition.clips"
         }
     }
 

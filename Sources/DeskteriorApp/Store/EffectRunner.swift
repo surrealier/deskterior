@@ -65,7 +65,7 @@ final class EffectRunner {
                 pb.clearContents()
                 pb.writeObjects(urls.map { $0 as NSURL })
             }
-        case .trash, .importFiles, .eject, .undoFiles:
+        case .trash, .importFiles, .eject, .undoFiles, .createTextFile:
             runFileEffect(effect)
         case let .cancelFiles(ref):
             files?.cancel(ref)
@@ -182,6 +182,8 @@ extension EffectRunner {
             let intent = ExplicitIntent(origin: origin)
             let volume = URL(fileURLWithPath: path, isDirectory: true)
             files.runEject { await $0.eject(volume, intent) }
+        case .createTextFile:
+            break // Step 0 stub: Track E (mint `.menuItem` and call `FileOperator.createTextFile`).
         default:
             break
         }

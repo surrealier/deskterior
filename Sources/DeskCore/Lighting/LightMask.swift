@@ -195,6 +195,11 @@ public struct RoomLightState: Hashable, Sendable {
     public var monitorGlows: Bool
     public var phoneFaceUp: Bool
     public var roomLightOn: Bool
+    // MARK: tidy and memos (0.3.0)
+    /// The desk partition is out (the lamp washes its left wing; Erratum 31).
+    public var partitionOut = true
+    /// The partition's clip light is out and on.
+    public var clipLightOn = false
 
     public init(lampOn: Bool = true, monitorOn: Bool = true, phoneFaceUp: Bool = true, roomLightOn: Bool = true,
                 monitorGlows: Bool? = nil) {

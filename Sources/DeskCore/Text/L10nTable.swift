@@ -84,6 +84,26 @@ public enum L10nKey: String, CaseIterable, Sendable {
     case undoMakeAlias, toastAliasMade, toastAliasesMade, toastAliasMadeOriginal, toastAliasesMadeOriginals
     case toastAppAliasedRestIn, toastAppsAliasedRestIn, toastAliasNoUndo, toastUndidAlias, toastUndidAliases
     case toastUndidAliasMix, toastUndidAliasesMix, kindAlias
+    // MARK: tidy (0.3.0): Put Away and Bring Back (Erratum 30): menus, object names, undo labels, toasts, Arrange Desk
+    case putAwayMenu, bringBackMenu, bringBackAll, arrangeDesk, putAwayNamed, takeOutPutAway, bringBackNamed
+    case stowRiserDrawers, stowCabinet, stowPhoneStand, stowPlant, stowPartition, stowDailyPad, stowMemoClips
+    case stowClipLight, stowDDayCard, stowWallShelf, stowPegboard, stowStringLights, stowFloorPlant, stowWallArt
+    case undoPutAway, undoBringBack, undoBringBackAll
+    case toastPutAwayPlace, toastTookFilesOut, toastDrawersPutAway, toastMadeRoom
+    case arrangeTitle, groupStorage, groupDesk, groupPartition, groupWall, onTheDesk, inside, takesOut, withPartition
+    case arrangeFooter
+    // MARK: memos (0.3.0): the partition, sticky notes, the daily memo pad, the calendar and memo files (Erratum 31)
+    case newNote, memos, todayMemo, calendarItem, addOns, clipLightOn, clipLightOff, setDDay, clearDDay, editNote
+    case colourMenu, colourYellow, colourPink, colourSky, colourLime, colourOrange, colourCream, bringToFront
+    case saveTextFile, saveTodayFile, removeNote, tearOff, dayMemo, locMemoClips
+    case undoAddNote, undoEditNote, undoNoteColour, undoNoteDay, undoMoveNote, undoRaiseNote, undoRemoveNote
+    case undoEditDayPage, undoTearOffPage, undoSetDDay, undoClearDDay, undoSaveTextFile
+    case toastPartitionFull, toastMemoClipsFull, toastNoteRemoved, toastSavedTextFile, toastUndidSaveTextFile
+    case stickyNote, stickyCube, stickyCubeHelp, padHelp, dDayNamed, daysLeft, dDayToday, daysAgo
+    case clipLightHelpOn, clipLightHelpOff, memoWord, notesCount, oneNote
+    case axStickyNote, axDailyPad, axHasMemo, axCalendar, axMemoClips, axPartition, axClipLight, on, off
+    case memosTitle, tabCalendar, tabNotes, today, dayPlaceholder, notesForDay, newNoteForDay, setAsDDay, dDayTitle
+    case dateToggle, noNotes, emptyNote, partitionAway, noteGone, connectToSave
 
     public var en: String { Self.table[self]?.en ?? rawValue }
     public var ko: String { Self.table[self]?.ko ?? rawValue }
@@ -423,5 +443,133 @@ public enum L10nKey: String, CaseIterable, Sendable {
         .toastUndidAliasesMix: p("Undone; the aliases went to the Trash.", "되돌리고 별칭은 모두 휴지통으로 옮겼어요."),
         // Find Item's Kind column for an alias (a Finder alias or a symbolic link).
         .kindAlias: p("Alias", "별칭"),
+
+        // MARK: tidy (0.3.0)
+        // 넣어 두기 / 다시 놓기: 치우기 is Clear the Desk's and 꺼내기 Take Out's. Object names fill the %T templates.
+        .putAwayMenu: p("Put Away", "넣어 두기"),
+        .bringBackMenu: p("Bring Back", "다시 놓기"),
+        .bringBackAll: p("Bring Everything Back", "모두 다시 놓기"),
+        .arrangeDesk: p("Arrange Desk…", "소품 정리…"),
+        .putAwayNamed: p("Put Away %T", "%T 넣어 두기"),
+        .takeOutPutAway: p("Take Out %d & Put Away %T", "%d개 꺼내고 %T 넣어 두기"),
+        .bringBackNamed: p("Bring Back %T", "%T 다시 놓기"),
+        .stowRiserDrawers: p("Riser Drawers", "받침대 서랍"),
+        .stowCabinet: p("Cabinet", "서랍장"),
+        .stowPhoneStand: p("Phone Stand", "휴대폰 거치대"),
+        .stowPlant: p("Plant", "화분"),
+        .stowPartition: p("Desk Partition", "데스크 파티션"),
+        .stowDailyPad: p("Daily Memo Pad", "데일리 메모지"),
+        .stowMemoClips: p("Memo Clips", "메모 집게"),
+        .stowClipLight: p("Clip Light", "클립 조명"),
+        .stowDDayCard: p("D-Day Card", "디데이 카드"),
+        .stowWallShelf: p("Wall Shelf", "벽 선반"),
+        .stowPegboard: p("Pegboard", "타공판"),
+        .stowStringLights: p("String Lights", "줄전구"),
+        .stowFloorPlant: p("Floor Plant", "바닥 화분"),
+        .stowWallArt: p("Wall Art", "벽 장식"),
+        .undoPutAway: p("Put Away", "넣어 두기"),
+        .undoBringBack: p("Bring Back", "다시 놓기"),
+        .undoBringBackAll: p("Bring Everything Back", "모두 다시 놓기"),
+        .toastPutAwayPlace: p("That's put away.", "넣어 둔 물건이에요."),
+        .toastTookFilesOut: p("Took the files out first.", "먼저 파일을 꺼냈어요."),
+        .toastDrawersPutAway: p("The drawers are put away.", "서랍은 넣어 뒀어요."),
+        .toastMadeRoom: p("Moved things aside to make room.", "자리를 비우려고 옆으로 옮겼어요."),
+        // The Arrange Desk window.
+        .arrangeTitle: p("Arrange Desk", "소품 정리"),
+        .groupStorage: p("Storage", "수납"),
+        .groupDesk: p("Desk", "책상"),
+        .groupPartition: p("Partition", "파티션"),
+        .groupWall: p("Wall", "벽"),
+        .onTheDesk: p("On the Desk", "책상에 두기"),
+        .inside: p("%d inside", "%d개 들어 있음"),
+        .takesOut: p("Putting it away takes %d files out to the monitor.", "넣어 두면 파일 %d개를 모니터로 꺼내요."),
+        .withPartition: p("Comes back with the partition.", "파티션과 함께 돌아와요."),
+        .arrangeFooter: p("Put-away things leave the room. Files never stay inside them, and ⌘Z brings them back.",
+                          "넣어 둔 물건은 방에서 사라져요. 그 안에 파일은 남지 않고, ⌘Z로 되돌릴 수 있어요."),
+
+        // MARK: memos (0.3.0)
+        // Menus and titles (user text never appears in a menu title).
+        .newNote: p("New Sticky Note", "새 메모지"),
+        .memos: p("Memos…", "메모…"),
+        .todayMemo: p("Today's Memo…", "오늘 메모…"),
+        .calendarItem: p("Calendar…", "캘린더…"),
+        .addOns: p("Add-ons", "부속품"),
+        .clipLightOn: p("Turn Clip Light On", "클립 조명 켜기"),
+        .clipLightOff: p("Turn Clip Light Off", "클립 조명 끄기"),
+        .setDDay: p("Set D-Day…", "디데이 설정…"),
+        .clearDDay: p("Clear D-Day", "디데이 지우기"),
+        .editNote: p("Edit Note…", "메모지 편집…"),
+        .colourMenu: p("Colour", "색"),
+        .colourYellow: p("Yellow", "노랑"),
+        .colourPink: p("Pink", "분홍"),
+        .colourSky: p("Sky", "하늘"),
+        .colourLime: p("Lime", "연두"),
+        .colourOrange: p("Orange", "주황"),
+        .colourCream: p("Cream", "크림"),
+        .bringToFront: p("Bring to Front", "맨 앞으로"),
+        .saveTextFile: p("Save as Text File on Desktop", "바탕화면에 텍스트 파일로 저장"),
+        .saveTodayFile: p("Save Today's Memo as Text File", "오늘 메모를 텍스트 파일로 저장"),
+        .removeNote: p("Remove Note", "메모지 떼기"),
+        .tearOff: p("Tear Off as Sticky Note", "뜯어서 메모지로 붙이기"),
+        .dayMemo: p("Open Memo for This Day…", "이날 메모 열기…"),
+        .locMemoClips: p("Partition ▸ memo clips", "파티션 ▸ 메모 집게"),
+        // Undo labels.
+        .undoAddNote: p("New Sticky Note", "새 메모지"),
+        .undoEditNote: p("Edit Note", "메모지 편집"),
+        .undoNoteColour: p("Note Colour", "메모지 색"),
+        .undoNoteDay: p("Note Date", "메모지 날짜"),
+        .undoMoveNote: p("Move Note", "메모지 옮기기"),
+        .undoRaiseNote: p("Bring to Front", "맨 앞으로"),
+        .undoRemoveNote: p("Remove Note", "메모지 떼기"),
+        .undoEditDayPage: p("Edit Memo", "메모 편집"),
+        .undoTearOffPage: p("Tear Off Page", "한 장 뜯기"),
+        .undoSetDDay: p("Set D-Day", "디데이 설정"),
+        .undoClearDDay: p("Clear D-Day", "디데이 지우기"),
+        .undoSaveTextFile: p("Save as Text File", "텍스트 파일로 저장"),
+        // Toasts.
+        .toastPartitionFull: p("The partition is full.", "파티션이 가득 찼어요."),
+        .toastMemoClipsFull: p("The memo clips are full.", "메모 집게가 가득 찼어요."),
+        .toastNoteRemoved: p("Note taken off.", "메모지를 뗐어요."),
+        .toastSavedTextFile: p("Saved as a text file.", "텍스트 파일로 저장했어요."),
+        .toastUndidSaveTextFile: p("The text file went to the Trash.", "텍스트 파일을 휴지통으로 옮겼어요."),
+        // Scene tooltips and VoiceOver (through `L10n.tr`; an exception to Errata 21/23 for these items only).
+        .stickyNote: p("Sticky Note", "메모지"),
+        .stickyCube: p("Sticky Note Cube", "메모지 큐브"),
+        .stickyCubeHelp: p("Click for a new note · drag to peel one off", "클릭: 새 메모지 · 드래그: 한 장 떼기"),
+        .padHelp: p("Click to write today's memo", "눌러서 오늘 메모 쓰기"),
+        .dDayNamed: p("D-Day: %@", "디데이: %@"),
+        .daysLeft: p("%d days left", "%d일 남음"),
+        .dDayToday: p("Today", "오늘"),
+        .daysAgo: p("%d days ago", "%d일 지남"),
+        .clipLightHelpOn: p("Click to turn it on", "눌러서 켜기"),
+        .clipLightHelpOff: p("Click to turn it off", "눌러서 끄기"),
+        .memoWord: p("memo", "메모"),
+        .notesCount: p("%d notes", "메모지 %d장"),
+        .oneNote: p("1 note", "메모지 1장"),
+        .axStickyNote: p("Sticky note: %@", "메모지: %@"),
+        .axDailyPad: p("Daily memo pad, %@", "데일리 메모지, %@"),
+        .axHasMemo: p("has a memo", "메모 있음"),
+        .axCalendar: p("Calendar, %@, %d days with memos", "캘린더, %@, 메모가 있는 날 %d일"),
+        .axMemoClips: p("Memo clips, %d files", "메모 집게, 파일 %d개"),
+        .axPartition: p("Desk partition", "데스크 파티션"),
+        .axClipLight: p("Clip light, %T", "클립 조명, %T"),
+        .on: p("On", "켜짐"),
+        .off: p("Off", "꺼짐"),
+        // The Memos window.
+        .memosTitle: p("Memos", "메모"),
+        .tabCalendar: p("Calendar", "캘린더"),
+        .tabNotes: p("Sticky Notes", "메모지"),
+        .today: p("Today", "오늘"),
+        .dayPlaceholder: p("Write a memo for this day", "이 날의 메모를 적어 보세요"),
+        .notesForDay: p("Notes for This Day", "이날의 메모지"),
+        .newNoteForDay: p("New Note for This Day", "이날 메모지 추가"),
+        .setAsDDay: p("Set as D-Day…", "이 날을 디데이로…"),
+        .dDayTitle: p("D-Day title", "디데이 이름"),
+        .dateToggle: p("Date", "날짜"),
+        .noNotes: p("No sticky notes yet.", "아직 메모지가 없어요."),
+        .emptyNote: p("Empty note", "빈 메모지"),
+        .partitionAway: p("The partition is put away.", "파티션을 넣어 뒀어요."),
+        .noteGone: p("This note was taken off.", "이 메모지는 떼어졌어요."),
+        .connectToSave: p("Connect the Desktop folder to save files.", "파일로 저장하려면 바탕화면 폴더를 연결하세요."),
     ]
 }

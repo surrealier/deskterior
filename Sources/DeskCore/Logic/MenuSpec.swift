@@ -142,6 +142,25 @@ public enum MenuCommand: Sendable, Equatable {
     case openVolume(String)
     case revealVolume(String)
     case ejectVolume(String)
+    // MARK: tidy (0.3.0)
+    case putAway(StowID)
+    case bringBack(StowID)
+    case bringBackAll
+    case clipLight(Bool)
+    // MARK: memos (0.3.0)
+    case noteColour(NoteID, NoteColour)
+    case raiseNote(NoteID)
+    case removeNote(NoteID)
+    /// Tear Off as Sticky Note (today's page, to the first free spot).
+    case tearOffPage(DayKey)
+    case clearDDay
+    /// Save as Text File on Desktop (explicit; through `FileOperator`).
+    case saveMemoFile(MemoRef)
+    /// App commands: a new note in the Memos window, a note's editor, the Memos window, the Arrange Desk window.
+    case newNote
+    case editNote(NoteID)
+    case openMemos(MemoTarget)
+    case arrangeDesk
 
     /// The model action this command dispatches; nil for app commands.
     public func action(_ s: DeskState) -> DeskAction? {
@@ -179,6 +198,35 @@ public enum MenuCommand: Sendable, Equatable {
         case let .openVolume(id): .requestOpenVolume(id)
         case let .revealVolume(id): .requestRevealVolume(id)
         case let .ejectVolume(id): .requestEject(id)
+        // MARK: tidy (0.3.0)
+        case let .putAway(id): .putAway(id)
+        case let .bringBack(id): .bringBack(id)
+        case .bringBackAll: .bringBackAll
+        case let .clipLight(on): .clipLight(on)
+        // MARK: memos (0.3.0)
+        case let .noteColour(id, colour): .noteColour(id, colour)
+        case let .raiseNote(id): .raiseNote(id)
+        case let .removeNote(id): .removeNote(id)
+        case let .tearOffPage(day): .tearOffPage(day, at: nil)
+        case .clearDDay: .setDDay(nil)
+        case let .saveMemoFile(ref): .requestSaveMemoFile(ref)
+        case .newNote, .editNote, .openMemos, .arrangeDesk: nil
+        }
+    }
+
+    /// The command as demo scripts and their expectations name it: the memo commands in a short form
+    /// ("editNote:N1", "openMemos:day:2026-10-30"), every other as Swift prints it.
+    public var demoName: String {
+        switch self {
+        case .newNote: "newNote"
+        case let .editNote(id): "editNote:\(id)"
+        case .openMemos(.today): "openMemos:today"
+        case let .openMemos(.day(day)): "openMemos:day:\(day)"
+        case let .openMemos(.note(id)): "openMemos:note:\(id)"
+        case .openMemos(.notes): "openMemos:notes"
+        case .openMemos(.dDay): "openMemos:dDay"
+        case .arrangeDesk: "arrangeDesk"
+        default: "\(self)"
         }
     }
 }
@@ -192,11 +240,15 @@ extension MenuSpec {
         /// "Move", "Take Everything Out"… (nil: nothing to undo).
         public var undo: String?
         public var redo: String?
+        // MARK: memos (0.3.0)
+        /// Today on the room's clock (the pad's and Today's Memo's day); nil when unknown.
+        public var today: DayKey?
 
-        public init(paused: Bool = false, undo: String? = nil, redo: String? = nil) {
+        public init(paused: Bool = false, undo: String? = nil, redo: String? = nil, today: DayKey? = nil) {
             self.paused = paused
             self.undo = undo
             self.redo = redo
+            self.today = today
         }
     }
 
@@ -267,6 +319,7 @@ extension MenuSpec {
         case .penCup: "Pen Cup"
         case .phone: "Phone"
         case .wastebasket: "Wastebasket"
+        case .memoClips: "Memo Clips"
         }
     }
 

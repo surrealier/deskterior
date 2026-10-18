@@ -199,9 +199,9 @@ public struct PenCupMachine: Sendable, Equatable {
         return DeskPlaneRect(x: right ? pos.x + near : pos.x - far, d: up.d, width: far - near, depth: up.depth)
     }
 
-    static func isClear(_ pos: SIMD2<Float>) -> Bool {
+    static func isClear(_ pos: SIMD2<Float>, stowed: Set<StowID> = []) -> Bool {
         let f = DeskPlanePhysics.penCupFootprint(at: pos)
-        return !DeskPlanePhysics.footprints.values.contains { $0.intersects(f) }
+        return !DeskPlanePhysics.footprints(stowed: stowed).values.contains { $0.intersects(f) }
     }
 
     /// While carried as a prop: follows `position` as far as the desk and the furniture let it (sliding along
@@ -329,7 +329,7 @@ public struct PenCupMachine: Sendable, Equatable {
             var reach = speed / max(params.spillDamping, 0.01)
             func blocked(_ q: SIMD2<Float>, moved: Float) -> Bool {
                 let body = DeskPlaneRect.centred(at: q, size: DeskPlanePhysics.pileSize)
-                return DeskPlanePhysics.footprints.values.contains { $0.intersects(body) }
+                return DeskPlanePhysics.footprints(stowed: []).values.contains { $0.intersects(body) }
                     || (moved > 2 && own.intersects(body))
             }
             var p = mouth

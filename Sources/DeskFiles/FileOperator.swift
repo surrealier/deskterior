@@ -769,6 +769,15 @@ public actor FileOperator {
         }
     }
 
+    // MARK: Create (0.3.0)
+
+    /// Save as Text File on Desktop (Erratum 31): writes `contents` as a new file `name` in the desktop folder, never
+    /// over an existing one. Takes a `.menuItem` intent.
+    public func createTextFile(named name: String, contents: Data, _ intent: ExplicitIntent) async -> FileResult {
+        // Step 0 stub: Track E (spec §6). Refuses without touching anything.
+        FileResult(outcomes: [.refused(root.appendingPathComponent(name), .wrongOrigin)], undo: nil)
+    }
+
     // MARK: Eject
 
     /// Unmounts and ejects the volume mounted at `volume`. Takes a `.menuItem` or `.inventory` intent. Never in

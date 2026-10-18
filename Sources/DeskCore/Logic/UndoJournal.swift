@@ -119,7 +119,7 @@ public struct UndoJournal: Sendable, Equatable {
         switch (report.kind, file.phase) {
         case (.undo, .undoing):
             if report.kept { undoStack[i].file?.phase = .ready } else { undoStack.remove(at: i) }
-        case (.trash, .running), (.emptyWastebasket, .running), (.importItems, .running):
+        case (.trash, .running), (.emptyWastebasket, .running), (.importItems, .running), (.createTextFile, .running):
             if report.undo != nil {
                 undoStack[i].file?.phase = .ready
                 undoStack[i].label = report.undoLabel

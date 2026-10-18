@@ -455,6 +455,14 @@ public struct DeskState: Sendable, Equatable {
     public var tokens = TokenStore()
     public var tombstones: [Tombstone] = []
     public var flags = DeskFlags()
+    // MARK: tidy (0.3.0)
+    /// Objects put away (Erratum 30; `StowCatalog`). Element state: kept when another folder's layout is adopted.
+    public var stowed: Set<StowID> = []
+    /// The partition's clip light is switched on (Erratum 31; not journaled, like the lamp).
+    public var clipLightOn = false
+    // MARK: memos (0.3.0)
+    /// Sticky notes, day pages and the D-Day: saved to `memos.json`, not `desk.json` (Erratum 31).
+    public var memos = MemoBook()
 
     public var access: DesktopAccess = .notConnected
     /// Placement hints registered by our own operations (name → location, 10 s TTL).

@@ -57,8 +57,8 @@ public enum DeskPlanePhysics {
     /// Depth at which back-strip footprints start.
     public static let backStripD: Float = 112
 
-    /// Static back-strip footprints (furniture), by name.
-    public static let footprints: [String: DeskPlaneRect] = {
+    /// Static back-strip footprints (furniture), by name, with everything out. Read through `footprints(stowed:)`.
+    private static let allFootprints: [String: DeskPlaneRect] = {
         func strip(_ r: ArtRect) -> DeskPlaneRect {
             DeskPlaneRect(x: Float(r.minX), d: backStripD, width: Float(r.w), depth: desk.depth - backStripD)
         }
@@ -67,6 +67,13 @@ public enum DeskPlanePhysics {
             "phone": strip(CoreLayout.phone), "hub": strip(CoreLayout.driveHub),
         ]
     }()
+
+    /// The back-strip footprints (furniture) by name, without those of put-away objects (an away plant or phone
+    /// stand, Erratum 30).
+    public static func footprints(stowed: Set<StowID>) -> [String: DeskPlaneRect] {
+        let away = Set(stowed.compactMap { StowCatalog.spec($0).footprint })
+        return away.isEmpty ? allFootprints : allFootprints.filter { !away.contains($0.key) }
+    }
 
     /// The pen cup's footprint around its desk position (`PenCupState.pos`).
     public static func penCupFootprint(at pos: SIMD2<Float>) -> DeskPlaneRect {

@@ -183,6 +183,9 @@ public struct PileWatchdog: Sendable, Equatable {
     }
 
     public var params: Params
+    // MARK: tidy (0.3.0)
+    /// Put-away objects, whose footprints piles need not keep clear of (Erratum 30).
+    public var stowed: Set<StowID> = []
     /// Seconds each pile has been awake.
     public private(set) var awake: [PileID: Float] = [:]
     /// Last finite, in-bounds position per pile.
@@ -233,7 +236,7 @@ public struct PileWatchdog: Sendable, Equatable {
         guard isOnDesk(p) else { return true }
         let size = params.pileSize - inset
         let body = DeskPlaneRect.centred(at: p, size: size)
-        if DeskPlanePhysics.footprints.values.contains(where: { $0.intersects(body) }) { return true }
+        if DeskPlanePhysics.footprints(stowed: stowed).values.contains(where: { $0.intersects(body) }) { return true }
         if obstacles.contains(where: { $0.intersects(body) }) { return true }
         return others.contains { q in q.isFinite && abs(q.x - p.x) < size.x && abs(q.y - p.y) < size.y }
     }
@@ -260,7 +263,7 @@ public struct PileWatchdog: Sendable, Equatable {
     public func isValidSpot(_ p: SIMD2<Float>, others: [SIMD2<Float>], obstacles: [DeskPlaneRect] = []) -> Bool {
         guard p.isFinite, inBounds(p) else { return false }
         let body = DeskPlaneRect.centred(at: p, size: params.pileSize)
-        for f in DeskPlanePhysics.footprints.values where f.intersects(body) { return false }
+        for f in DeskPlanePhysics.footprints(stowed: stowed).values where f.intersects(body) { return false }
         for o in obstacles where o.intersects(body) { return false }
         for q in others where q.isFinite && DeskPlaneRect.centred(at: q, size: params.pileSize).intersects(body) {
             return false

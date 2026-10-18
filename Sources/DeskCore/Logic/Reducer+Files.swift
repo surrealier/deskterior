@@ -33,6 +33,8 @@ extension Reducer {
             return applyFileResult(&s, report, env)
         case .fileStarted:
             return [] // The journal's (`Reducer.reduce(_:journal:_:_:)`).
+        case .requestSaveMemoFile:
+            return [] // Step 0 stub: Track E (the hint, `MemoFileName`, `.createTextFile`).
         default:
             return []
         }
@@ -156,7 +158,7 @@ extension Reducer {
         switch r.kind {
         case .trash, .emptyWastebasket:
             effects += removeTrashed(&s, r.trashed, now: env.now, grid: env.grid)
-        case .importItems:
+        case .importItems, .createTextFile:
             effects += followDropped(&s, r, env)
         case .undo, .eject:
             break

@@ -411,3 +411,26 @@ public final class DeskScene: SKScene {
         syncLighting()
     }
 }
+
+// MARK: memos (0.3.0)
+
+extension DeskScene {
+    /// Today on the room's clock: the day the pad shows and Today's Memo opens (Erratum 31).
+    public var today: DayKey { DayKey(clock.now()) }
+
+    /// A sticky note's canvas rect, while the partition shows it.
+    public func noteRect(_ id: NoteID) -> ArtRect? {
+        nil // Step 0 stub: Track C (spec §5.9).
+    }
+
+    /// Day `day`'s cell on the wall calendar, in canvas px.
+    public func calendarDayRect(_ day: Int) -> ArtRect? {
+        nil // Step 0 stub: Track C (spec §5.9).
+    }
+
+    /// Whether the element `element` takes hits, drops and menus now (a put-away object's is dormant, Erratum 30).
+    public func isRouted(_ element: String) -> Bool {
+        // Step 0 stub: Track C (dormant slots, spec §5.9). Until then: whether an element of that id is routed.
+        room?.routing.contains { $0.id == element } ?? false
+    }
+}

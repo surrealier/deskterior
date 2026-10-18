@@ -65,6 +65,43 @@ public enum CoreLayout {
     public static let phone = ArtRect(384, 144, 16, 28)
     public static let driveHub = ArtRect(408, 162, 24, 8)
 
+    // MARK: Desk partition (Erratum 31)
+
+    /// Sprite bounds of `partition.panel`: the low panel, the tower and the clamps (transparent elsewhere).
+    public static let partition = ArtRect(12, 64, 488, 108)
+    /// The low panel across the desk's back edge: top rail rows 112–114, posts x12–14 and x497–499, bottom rail
+    /// rows 164–167.
+    public static let partitionLow = ArtRect(12, 112, 488, 56)
+    /// The raised tower between the monitor and the right-wall shelf: top rail rows 64–66, posts x368–370 and
+    /// x431–433; the low panel's top rail runs under it as a crossbar.
+    public static let partitionTower = ArtRect(368, 64, 66, 48)
+    /// The felt faces notes rest on.
+    public static let partitionFelt = ArtRect(15, 115, 482, 49)
+    public static let partitionTowerFelt = ArtRect(371, 67, 60, 45)
+    /// The clamps on the free back strip.
+    public static let partitionClamps = [ArtRect(80, 168, 8, 4), ArtRect(470, 168, 8, 4)]
+    /// The sticky-note cube on its ledge (ledge rows 160–163), left of the plant.
+    public static let partitionCube = ArtRect(16, 146, 18, 18)
+    /// The daily memo pad, between the plant and the lamp.
+    public static let partitionPad = ArtRect(66, 117, 38, 44)
+    /// The memo-clip wire with its five clips (cards `memoClipCard(i)`).
+    public static let partitionClips = ArtRect(374, 116, 80, 22)
+    public static let partitionDDay = ArtRect(468, 118, 24, 20)
+    /// The clip light clamped on the tower's top rail, and its bulb's face.
+    public static let partitionClipLight = ArtRect(370, 50, 18, 16)
+    public static let partitionClipBulb = ArtRect(382, 57, 4, 2)
+    /// The lamp's wash on the left wing (an ellipse) and the rect it is clipped to.
+    public static let partitionLampWash = ArtRect(36, 108, 124, 64)
+    public static let partitionLampWashClip = ArtRect(12, 112, 148, 56)
+    /// The clip light's wash on the tower and the right wing, and its clip.
+    public static let partitionClipWash = ArtRect(352, 56, 168, 120)
+    public static let partitionClipWashClip = ArtRect(366, 56, 134, 112)
+
+    /// Memo-clip card `i` (0..<5).
+    public static func memoClipCard(_ i: Int) -> ArtRect {
+        ArtRect(376 + 16 * i, 120, 14, 16)
+    }
+
     // MARK: Desk
 
     public static let deskTop = ArtRect(12, 168, 488, 64)

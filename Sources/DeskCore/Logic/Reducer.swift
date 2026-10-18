@@ -148,14 +148,7 @@ public enum Reducer {
             return moved.isEmpty ? [] : [.play(.parade, .tokens(moved)), .persist, .wakeLoop]
 
         case .takeEverythingOut:
-            var effects: [Effect] = s.monitor.power == .off ? [.play(.crtOn, .monitor)] : []
-            let moved = parade(&s, s.tokens.keys { !$0.isScreen }, grid: env.grid)
-            s.monitor.power = .on
-            s.monitor.av = false
-            s.monitor.pendingNew = 0
-            if let first = moved.first, let c = s.tokens.location(of: first)?.cell { s.monitor.page = c.page }
-            if !moved.isEmpty { effects.append(.play(.parade, .tokens(moved))) }
-            return effects + [.persist, .wakeLoop]
+            return paradeToMonitor(&s, s.tokens.keys { !$0.isScreen }, grid: env.grid) + [.persist, .wakeLoop]
 
         case let .showOnDesk(key):
             return showOnDesk(&s, s.currentKey(for: key))
@@ -216,6 +209,15 @@ public enum Reducer {
             return reduceMat(&s, a, env)
         // MARK: files
         case .fileResult, .requestDropIn, .requestOpenVolume, .requestRevealVolume, .fileStarted:
+            return reduceFiles(&s, a, env)
+        // MARK: tidy (0.3.0)
+        case .putAway, .bringBack, .bringBackAll, .clipLight:
+            return reduceTidy(&s, a, env)
+        // MARK: memos (0.3.0)
+        case .addNote, .editNote, .noteColour, .noteDay, .moveNote, .raiseNote, .removeNote, .editDayPage, .tearOffPage,
+             .setDDay:
+            return reduceMemos(&s, a, env)
+        case .requestSaveMemoFile:
             return reduceFiles(&s, a, env)
         }
     }
@@ -324,13 +326,27 @@ public enum Reducer {
     }
 
     /// Sends `keys` to the first free monitor cells (from HDMI 1) in name order; returns them in that order.
-    private static func parade(_ s: inout DeskState, _ keys: [TokenKey], grid: ScreenGrid) -> [TokenKey] {
+    static func parade(_ s: inout DeskState, _ keys: [TokenKey], grid: ScreenGrid) -> [TokenKey] {
         let ordered = Placement.byName(keys, in: s.tokens)
         for k in ordered { s.tokens.move(k, to: .carried) }
         var allocator = ScreenGrid.Allocator(grid: grid, occupied: s.tokens.occupiedCells)
         for k in ordered { s.tokens.move(k, to: allocator.next().location, grid: grid) }
         Placement.pruneEmptyPiles(&s)
         return ordered
+    }
+
+    /// Take Everything Out's parade, which Put Away uses too (Erratum 30): `keys` go to the monitor, which comes on
+    /// (a CRT warm-up when it was off) on its desktop input (AV off, no "+N" badge), showing the page of the first.
+    /// The caller adds `.persist` and `.wakeLoop`.
+    static func paradeToMonitor(_ s: inout DeskState, _ keys: [TokenKey], grid: ScreenGrid) -> [Effect] {
+        var effects: [Effect] = s.monitor.power == .off ? [.play(.crtOn, .monitor)] : []
+        let moved = parade(&s, keys, grid: grid)
+        s.monitor.power = .on
+        s.monitor.av = false
+        s.monitor.pendingNew = 0
+        if let first = moved.first, let c = s.tokens.location(of: first)?.cell { s.monitor.page = c.page }
+        if !moved.isEmpty { effects.append(.play(.parade, .tokens(moved))) }
+        return effects
     }
 
     private static func setPiles(_ s: inout DeskState, _ positions: [PileID: SIMD2<Float>]) -> Bool {

@@ -53,6 +53,17 @@ extension ToastKey {
         case .undidAliases: "The aliases went to the Trash."
         case .undidAliasMix: "Undone; the alias went to the Trash."
         case .undidAliasesMix: "Undone; the aliases went to the Trash."
+        // MARK: tidy (0.3.0)
+        case .putAwayPlace: "That's put away."
+        case .tookFilesOut: "Took the files out first."
+        case .drawersPutAway: "The drawers are put away."
+        case .madeRoom: "Moved things aside to make room."
+        // MARK: memos (0.3.0)
+        case .partitionFull: "The partition is full."
+        case .memoClipsFull: "The memo clips are full."
+        case .noteRemoved: "Note taken off."
+        case .savedTextFile: "Saved as a text file."
+        case .undidSaveTextFile: "The text file went to the Trash."
         }
     }
 

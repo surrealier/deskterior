@@ -131,7 +131,7 @@ struct PenCupMachineTests {
                              (SIMD2<Float>(250, 60), false)] {
             for s in PenCupMachine.spill(count: 6, from: pos, right: right, seed: 42) {
                 let body = DeskPlaneRect.centred(at: s.start, size: DeskPlanePhysics.pileSize)
-                #expect(!DeskPlanePhysics.footprints.values.contains { $0.intersects(body) }, "\(pos) \(right): \(s.start)")
+                #expect(!DeskPlanePhysics.footprints(stowed: []).values.contains { $0.intersects(body) }, "\(pos) \(right): \(s.start)")
             }
         }
     }

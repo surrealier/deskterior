@@ -60,6 +60,10 @@ public struct FileReport: Sendable, Equatable {
         /// Undo of one of the above.
         case undo
         case eject
+        // MARK: files (0.3.0)
+        /// Save as Text File on Desktop: one new text file (Erratum 31). Not named `createFile`: the file-safety
+        /// lint keeps that word to the writers.
+        case createTextFile
 
         /// "Undo <label>" in the menus while the action runs: a drop-in by what it asks for ("Copy In" for a copy,
         /// "Make Alias" for aliases, else "Move In"; its result may say "Drop In" when it did several).
@@ -70,6 +74,7 @@ public struct FileReport: Sendable, Equatable {
             case .importItems: op == .copy ? "Copy In" : op == .alias ? "Make Alias" : "Move In"
             case .undo: "Undo"
             case .eject: "Eject"
+            case .createTextFile: "Save as Text File"
             }
         }
     }

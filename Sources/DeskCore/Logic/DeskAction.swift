@@ -107,6 +107,32 @@ public enum DeskAction: Sendable {
     /// the journal keeps its place from now, and its `.fileResult` (the same ref as `FileReport.ticket`) fills it.
     /// Changes nothing else; never a file effect.
     case fileStarted(FileUndoRef, FileReport.Kind, op: ImportOp?)
+    // MARK: tidy (0.3.0)
+    /// Put Away (Erratum 30): an object leaves the room; files in its hiding places go to the monitor first, in the
+    /// same journaled step.
+    case putAway(StowID)
+    /// Bring Back: the object (and the partition, for an add-on) returns, and what rests where it stands moves aside.
+    case bringBack(StowID)
+    case bringBackAll
+    /// The partition's clip light on or off (not journaled, like the lamp).
+    case clipLight(Bool)
+    // MARK: memos (0.3.0)
+    /// Sticky notes, the day pages and the D-Day (Erratum 31). Text edits carry the editing session they belong to,
+    /// so one session is one undo entry (`UndoJournal.coalesceKey(for:)`).
+    case addNote(NewNote, session: Int?)
+    case editNote(NoteID, text: String, session: Int)
+    case noteColour(NoteID, NoteColour)
+    case noteDay(NoteID, DayKey?)
+    case moveNote(NoteID, to: ArtPoint)
+    case raiseNote(NoteID)
+    case removeNote(NoteID)
+    case editDayPage(DayKey, text: String, session: Int)
+    /// The day's page becomes a cream note dated that day (dropped at `at`, else the first free spot); the page goes.
+    case tearOffPage(DayKey, at: ArtPoint?)
+    case setDDay(DDay?)
+    // MARK: files (0.3.0)
+    /// Save as Text File on Desktop: a new text file in the desk folder, from a note or a day page.
+    case requestSaveMemoFile(MemoRef)
 
     /// Explicit user requests. Only these may produce file effects (`Effect.touchesFiles`).
     public var isRequest: Bool {
@@ -116,6 +142,9 @@ public enum DeskAction: Sendable {
             true
         // MARK: files: ⌘Z / Undo replays a file action's record when that is the newest entry (redo never does).
         case .requestDropIn, .requestOpenVolume, .requestRevealVolume, .undo:
+            true
+        // MARK: files (0.3.0)
+        case .requestSaveMemoFile:
             true
         default:
             false

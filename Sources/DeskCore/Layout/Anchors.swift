@@ -87,6 +87,16 @@ public struct Anchors: Hashable, Sendable {
             "wastebasket": L.wastebasket,
             "wastebasket.mouth": L.wastebasketMouth,
             "floor": ArtRect(0, L.floorY, L.size.w, L.size.h - L.floorY),
+
+            // MARK: memos (0.3.0): the desk partition (Erratum 31); the right post is a bare target (menus, demos).
+            "partition": L.partition,
+            "partition.tower": L.partitionTowerFelt,
+            "partition.post": ArtRect(496, 112, 4, 56),
+            "partition.cube": L.partitionCube,
+            "partition.pad": L.partitionPad,
+            "partition.clips": L.partitionClips,
+            "partition.dday": L.partitionDDay,
+            "partition.clipLight": L.partitionClipLight,
         ]
         for (i, name) in cabinetDrawerNames.enumerated() {
             let front = L.cabinetFront(i)
@@ -106,6 +116,8 @@ public struct Anchors: Hashable, Sendable {
         "riser.drawerL", "riser.cubby", "riser.drawerR", "lamp.base", "lamp.head", "plant", "pencup", "phone",
         "hub", "mat.default", "keyboard", "brush", "apron", "chair", "cabinet.top", "cabinet.middle",
         "cabinet.file", "wastebasket.mouth",
+        // MARK: memos (0.3.0)
+        "partition.cube", "partition.pad", "partition.clips", "partition.dday", "partition.clipLight", "calendar",
     ]
 
     /// Overlaps between interactive anchors that the composition intends (unordered pairs).

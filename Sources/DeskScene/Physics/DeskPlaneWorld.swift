@@ -35,7 +35,9 @@ final class DeskPlaneWorld {
         wall.physicsBody = edge
         root.addChild(wall)
         furniture["wall"] = wall
-        for (name, rect) in DeskPlanePhysics.footprints.sorted(by: { $0.key < $1.key }) { setFurniture(name, rect) }
+        for (name, rect) in DeskPlanePhysics.footprints(stowed: []).sorted(by: { $0.key < $1.key }) {
+            setFurniture(name, rect)
+        }
         setFurniture("keyboard", Self.keyboardFootprint(nil))
     }
 
@@ -92,7 +94,7 @@ final class DeskPlaneWorld {
 
     /// Footprints the piles keep clear of (for valid-spot searches), except the back wall.
     var obstacles: [DeskPlaneRect] {
-        furnitureRects.filter { DeskPlanePhysics.footprints[$0.key] == nil }.map(\.value)
+        furnitureRects.filter { DeskPlanePhysics.footprints(stowed: [])[$0.key] == nil }.map(\.value)
     }
 
     static func configureFurniture(_ body: SKPhysicsBody) {

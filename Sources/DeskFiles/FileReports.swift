@@ -178,6 +178,8 @@ extension FileReport {
             } else {
                 done = trashed && moved ? .undidDropIn : trashed ? .undidCopyIn : .undidMoveIn
             }
+        case .createTextFile:
+            done = .undidSaveTextFile // Step 0 stub: Track E (spec §6).
         default:
             done = .undidTrash
         }
@@ -194,6 +196,14 @@ extension FileReport {
             guard case let .refused(_, r) = $0 else { return false }
             return [.staleIntent, .spentIntent, .wrongOrigin, .outsideSandbox].contains(r)
         }
+    }
+
+    /// A Save as Text File on Desktop result (Erratum 31): the new file, named by its `source` ("memo:note:N3"), so
+    /// its placement hint follows the name it landed under.
+    public init(create result: FileResult, source: String, undo: FileUndoRef?) {
+        // Step 0 stub: Track E (spec §6: `placed`, the `.savedTextFile` toast).
+        self.init(kind: .createTextFile, count: result.outcomes.count, problems: result.refusals.map(FileProblem.init),
+                  undo: undo)
     }
 
     public init(eject outcome: FileOutcome) {

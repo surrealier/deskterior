@@ -28,12 +28,16 @@ public enum Effect: Sendable, Equatable {
     /// ⌘Z on a drop-in still running: stop its copy (items not started stay where they are; what landed can be
     /// undone once its result is in). Changes no file itself.
     case cancelFiles(FileUndoRef)
+    // MARK: files (0.3.0)
+    /// Save as Text File on Desktop (Erratum 31): create one new text file in the desk folder, never over another.
+    case createTextFile(TextFileRequest)
 
     /// Effects that open, read, hand off or change user files.
     public var touchesFiles: Bool {
         switch self {
         case .open, .reveal, .quickLook, .copy, .eject, .trash, .importFiles, .connectDesktop: true
         case .undoFiles: true // MARK: files
+        case .createTextFile: true
         default: false
         }
     }
@@ -43,8 +47,23 @@ public enum Effect: Sendable, Equatable {
         switch self {
         case .trash, .importFiles, .eject: true
         case .undoFiles: true // MARK: files
+        case .createTextFile: true
         default: false
         }
+    }
+}
+
+/// The text file Save as Text File on Desktop asks for: its name (`MemoFileName`), its UTF-8 text, and the memo it
+/// came from ("memo:note:N3", "memo:day:2026-10-18"; the placement hint's source).
+public struct TextFileRequest: Sendable, Equatable {
+    public var name: String
+    public var contents: String
+    public var source: String
+
+    public init(name: String, contents: String, source: String) {
+        self.name = name
+        self.contents = contents
+        self.source = source
     }
 }
 
@@ -78,6 +97,9 @@ public enum AnimationID: String, Sendable {
     // MARK: mat
     /// A mat command for the scene's cloth (`.mat`); Clear the Desk's brush pass and tucks (`.clearDesk`).
     case matCommand, clearDesk
+    // MARK: tidy and memos (0.3.0)
+    /// A dust puff where a put-away object stood or a returning one appears (`.stowable`); a new note pops (`.note`).
+    case putAway, bringBack, notePop
 }
 
 public enum AnimTarget: Sendable, Equatable {
@@ -90,6 +112,9 @@ public enum AnimTarget: Sendable, Equatable {
     // MARK: mat
     case mat(MatCommand)
     case clearDesk(ClearDeskPlan)
+    // MARK: tidy and memos (0.3.0)
+    case stowable(StowID)
+    case note(NoteID)
 }
 
 /// Pixel toasts. (English strings live in DeskScene's `Toast`, translated through `L10n.tr`.)
@@ -133,4 +158,11 @@ public enum ToastKey: String, Sendable, CaseIterable {
     /// An undo of a drop that made aliases: one alias trashed, several; one alias or several beside items sent back
     /// or trashed.
     case undidAlias, undidAliases, undidAliasMix, undidAliasesMix
+    // MARK: tidy (0.3.0)
+    /// A move into a put-away place; Put Away took files out to the monitor first; a drop on the sealed riser; Bring
+    /// Back moved things aside.
+    case putAwayPlace, tookFilesOut, drawersPutAway, madeRoom
+    // MARK: memos (0.3.0)
+    /// 24 notes are up; the memo clips hold 5; a note went into the wastebasket; Save as Text File and its undo.
+    case partitionFull, memoClipsFull, noteRemoved, savedTextFile, undidSaveTextFile
 }

@@ -275,3 +275,38 @@ public struct StateStore: Sendable {
         }
     }
 }
+
+// MARK: memos (0.3.0)
+
+extension StateStore {
+    /// The sticky notes, day pages and D-Day, beside `desk.json` (Erratum 31).
+    public static let memosFileName = "memos.json"
+
+    /// What `loadMemos` found: the book (nil: none could be read), whether `saveMemos` may write (false when the
+    /// file came from a newer Deskterior), and why files were skipped.
+    public struct MemosLoaded: Sendable {
+        public var book: MemoBook?
+        public var writable: Bool
+        public var problems: [String]
+        /// Where a corrupt `memos.json` was kept.
+        public var corruptCopy: URL?
+
+        public init(book: MemoBook?, writable: Bool, problems: [String] = [], corruptCopy: URL? = nil) {
+            self.book = book
+            self.writable = writable
+            self.problems = problems
+            self.corruptCopy = corruptCopy
+        }
+    }
+
+    /// Loads `memos.json` (falling back to its backups).
+    public func loadMemos(now: Date = Date()) -> MemosLoaded {
+        // Step 0 stub: Track E (spec §4.5): reads nothing, and says not to write.
+        MemosLoaded(book: nil, writable: false)
+    }
+
+    /// Saves `memos.json` atomically, with backups by age.
+    public func saveMemos(_ book: MemoBook, now: Date = Date()) throws {
+        // Step 0 stub: Track E (spec §4.5): writes nothing.
+    }
+}

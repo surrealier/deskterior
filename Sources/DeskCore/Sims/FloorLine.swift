@@ -21,15 +21,18 @@ public enum FloorLine {
     }
 
     /// The floor furniture for a basket in `basket`'s state: tipped, it lies beside its upright spot
-    /// (`WastebasketMachine.tippedRect`), and that spot stays clear too, so standing it back up covers nothing.
-    public static func furniture(basket: BasketState) -> [Range<Int>] {
+    /// (`WastebasketMachine.tippedRect`), and that spot stays clear too, so standing it back up covers nothing. A
+    /// put-away cabinet leaves its span free (Erratum 30).
+    public static func furniture(basket: BasketState, stowed: Set<StowID> = []) -> [Range<Int>] {
+        let away = Set(stowed.compactMap { StowCatalog.spec($0).floorSpan })
+        let standing = away.isEmpty ? furniture : furniture.filter { !away.contains($0) }
         let lying: ArtRect
         switch basket.state {
         case WastebasketMachine.tippedLeftName: lying = WastebasketMachine.tippedRect(right: false)
         case WastebasketMachine.tippedRightName: lying = WastebasketMachine.tippedRect(right: true)
-        default: return furniture
+        default: return standing
         }
-        return [lying.minX..<lying.maxX] + furniture
+        return [lying.minX..<lying.maxX] + standing
     }
 
     /// The spans floor tokens centred at `centres` stand on (so others land beside them).

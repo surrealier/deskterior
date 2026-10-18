@@ -86,7 +86,7 @@ struct PileRestTests {
     @Test("Valid spots avoid furniture footprints, obstacles and other piles; a full desk sends piles to the monitor")
     func spots() {
         let w = PileWatchdog()
-        let riser = DeskPlanePhysics.footprints["riser"]!
+        let riser = DeskPlanePhysics.footprints(stowed: [])["riser"]!
         let inRiser = SIMD2<Float>(riser.center.x, riser.center.y)
         let spot = w.nearestValidSpot(to: inRiser, others: [])!
         #expect(w.isValidSpot(spot, others: []))
@@ -124,6 +124,6 @@ struct PileRestTests {
         let c = DeskPlanePhysics.clampPileVelocity([3000, 4000])
         #expect(abs(c.x - 720) < 0.01 && abs(c.y - 960) < 0.01)
         #expect(DeskPlanePhysics.clampPileVelocity([.nan, 1]) == .zero)
-        for f in DeskPlanePhysics.footprints.values { #expect(f.d == 112 && f.d + f.depth == 128) }
+        for f in DeskPlanePhysics.footprints(stowed: []).values { #expect(f.d == 112 && f.d + f.depth == 128) }
     }
 }

@@ -1,6 +1,8 @@
 /// Every hiding place that holds tokens in an ordered list (DESIGN §2.2).
 public enum ContainerID: String, Codable, CaseIterable, Sendable, Comparable {
     case riserLeft, riserRight, riserCubby, cabinetTop, cabinetMiddle, cabinetFile, penCup, phone, wastebasket
+    /// The partition's memo clips (Erratum 31). Appended last: sort order and drawer seeds stay.
+    case memoClips
 
     public static func < (a: ContainerID, b: ContainerID) -> Bool {
         allCases.firstIndex(of: a)! < allCases.firstIndex(of: b)!

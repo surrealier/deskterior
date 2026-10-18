@@ -11,7 +11,9 @@ public enum StorageArt {
     static var riserCubbyLocal: ArtRect { CoreLayout.riserCubby.offsetBy(-CoreLayout.riser.x, -CoreLayout.riser.y) }
 
     /// The riser frame: top face, front with dark drawer openings, and the cubby (drawer fronts are separate).
-    public static func riser(cubbyContents: PixelBuffer? = nil) -> SpriteAsset {
+    /// `sealed`: the drawers are put away and the riser is one closed front, a plain monitor stand (Erratum 30).
+    public static func riser(cubbyContents: PixelBuffer? = nil, sealed: Bool = false) -> SpriteAsset {
+        // Step 0 stub: Track B (`sealed` is not drawn yet).
         let r = CoreLayout.riser
         var c = PixelCanvas(width: r.w, height: r.h)
         // Top face.

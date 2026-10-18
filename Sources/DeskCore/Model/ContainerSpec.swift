@@ -6,6 +6,8 @@ public enum Concealment: String, Sendable, Codable {
     case partial
     /// Shown only as anonymous shapes (pen caps, crumpled balls).
     case anonymized
+    /// Not a hiding place: files in it stay in sight (the memo clips' cards, Erratum 31).
+    case shown
 }
 
 /// Capacity rules for one container (DESIGN §2.2). Past `capacity` a container shows that it is full (a
@@ -39,6 +41,8 @@ public struct ContainerSpec: Sendable, Equatable {
     public static let phone = ContainerSpec(capacity: 6, hardCap: 6, concealment: .hidden)
     /// Wastebasket: heaps above the rim at 11, bonks at 24 (E8).
     public static let wastebasket = ContainerSpec(capacity: 24, hardCap: 24, concealment: .anonymized)
+    /// Memo clips: five cards on the partition (Erratum 31).
+    public static let memoClips = ContainerSpec(capacity: 5, hardCap: 5, concealment: .shown)
 
     public static func of(_ id: ContainerID) -> ContainerSpec {
         switch id {
@@ -50,6 +54,7 @@ public struct ContainerSpec: Sendable, Equatable {
         case .penCup: penCup
         case .phone: phone
         case .wastebasket: wastebasket
+        case .memoClips: memoClips
         }
     }
 

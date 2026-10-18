@@ -97,8 +97,8 @@ struct PlacementTests {
     @Test("Container specs follow DESIGN §2.2")
     func containerSpecs() {
         let caps = ContainerID.allCases.map { ($0, $0.spec.capacity, $0.spec.hardCap) }
-        #expect(caps.map(\.1) == [8, 8, 12, 8, 12, 20, 6, 6, 24])
-        #expect(caps.map(\.2) == [14, 14, 12, 14, 18, 26, 6, 6, 24])
+        #expect(caps.map(\.1) == [8, 8, 12, 8, 12, 20, 6, 6, 24, 5])
+        #expect(caps.map(\.2) == [14, 14, 12, 14, 18, 26, 6, 6, 24, 5])
         #expect(ContainerSpec.riserDrawer.closedLimit(count: 8) == 0)
         #expect(ContainerSpec.riserDrawer.closedLimit(count: 11) == 3)
         #expect(ContainerSpec.riserDrawer.closedLimit(count: 14) == 6)

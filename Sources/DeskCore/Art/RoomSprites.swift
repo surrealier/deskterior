@@ -20,8 +20,10 @@ public enum RoomArt {
     // MARK: Backdrop
 
     /// Everything static behind the room's objects, canvas-sized: wall, wainscot, baseboard, floor, rug, the
-    /// desk top face, and the soft shadows that wall pieces, back-strip props and floor furniture cast.
-    public static func backdrop(_ layout: SceneLayout) -> PixelBuffer {
+    /// desk top face, and the soft shadows that wall pieces, back-strip props and floor furniture cast. `stowed`:
+    /// the objects put away, whose shadows go with them (Erratum 30).
+    public static func backdrop(_ layout: SceneLayout, stowed: Set<StowID> = []) -> PixelBuffer {
+        // Step 0 stub: Track B (`stowed` is not read yet: the cabinet's, plant's and phone's shadows, the tower's).
         let w = layout.canvas.w, h = layout.canvas.h
         var c = PixelCanvas(width: w, height: h, fill: wall)
         let base = layout.wallBaseY
@@ -427,8 +429,10 @@ public enum RoomArt {
 
     static let monthNames = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"]
 
-    /// The hanging wall calendar for `date`'s month, with today's cell ringed.
-    public static func calendar(_ date: WallTime) -> SpriteAsset {
+    /// The hanging wall calendar for `date`'s month, with today's cell ringed. `marks`: days with a page, a dated
+    /// note or the D-Day (Erratum 31).
+    public static func calendar(_ date: WallTime, marks: [Int: CalendarMark] = [:]) -> SpriteAsset {
+        // Step 0 stub: Track B (`marks` are not drawn yet).
         let r = CoreLayout.calendar
         var c = PixelCanvas(width: r.w, height: r.h)
         // Paper with a lifted bottom-right corner.
@@ -475,6 +479,16 @@ public enum RoomArt {
         c.plot(r.w - 3, r.h - 2, .neutral7)
         c.plot(r.w - 2, r.h - 3, .neutral7)
         return SpriteAsset("calendar", c, anchor: .zero)
+    }
+
+    /// Day `day`'s hit cell in the calendar for `date`'s month (calendar-local px); nil for a day not in it.
+    public static func calendarDayRect(day: Int, in date: WallTime) -> ArtRect? {
+        nil // Step 0 stub: Track B (the drawing's cell geometry).
+    }
+
+    /// The day whose cell holds the calendar-local point `p` in `date`'s month (the inverse of `calendarDayRect`).
+    public static func calendarDay(at p: ArtPoint, in date: WallTime) -> Int? {
+        nil // Step 0 stub: Track B.
     }
 
     // MARK: String lights

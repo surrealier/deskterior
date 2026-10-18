@@ -321,7 +321,7 @@ final class DeskPilesElement: DeskElement, Knockable {
         let q = hub.plane(SIMD2(Float(p.x) + 0.5, Float(p.y) + 0.5))
         let desk = DeskPlanePhysics.desk
         guard q.x >= desk.x, q.x <= desk.x + desk.width, q.y >= desk.d, q.y <= desk.d + desk.depth else { return nil }
-        let inFurniture = DeskPlanePhysics.footprints.values.contains { f in
+        let inFurniture = DeskPlanePhysics.footprints(stowed: []).values.contains { f in
             q.x >= f.x && q.x < f.x + f.width && q.y >= f.d && q.y < f.d + f.depth
         }
         guard !inFurniture else { return nil }

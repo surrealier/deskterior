@@ -146,3 +146,15 @@ public enum Placement {
         state.piles = state.piles.filter { used.contains($0.key) }
     }
 }
+
+// MARK: tidy (0.3.0)
+
+extension Placement {
+    /// Where a returning file (a tombstone, a hint, an undo) aimed at the put-away container `id` goes instead
+    /// (Erratum 30): the first of the riser drawers, the cabinet drawers and a face-down phone that is out, below
+    /// its hard cap and hidden now, so a hidden file stays hidden; nil for a shown place (the memo clips) or when
+    /// there is none (then the monitor).
+    public static func awaySubstitute(for id: ContainerID, in s: DeskState) -> ContainerID? {
+        nil // Step 0 stub: Track A (spec §4.3; `resolve` does not call it yet).
+    }
+}

@@ -62,6 +62,7 @@ public enum InventoryQuery {
         case .penCup: "Pen cup"
         case .phone: "Phone"
         case .wastebasket: "Wastebasket"
+        case .memoClips: "Partition ▸ memo clips"
         }
     }
 }

@@ -91,6 +91,9 @@ public struct Visibility: Sendable, Equatable, CustomStringConvertible {
         case .wastebasket:
             // Digging takes the top ball.
             return Visibility(.ball, hitTestable: order == state.tokens.count(in: .wastebasket) - 1)
+        case .memoClips:
+            // Cards clipped up in sight, each with its mini (Erratum 31).
+            return Visibility(.mini, hitTestable: true)
         }
     }
 }

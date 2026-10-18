@@ -80,6 +80,15 @@ public struct SceneLayout: Hashable, Sendable {
     public var wallBaseY: Int { y(CoreLayout.wallBaseY) }
 
     public func decor(_ kind: WallDecor.Kind) -> [WallDecor] { decor.filter { $0.kind == kind } }
+
+    // MARK: tidy (0.3.0)
+    /// The same room without the decor of `kinds` (put-away wall decor, Erratum 30); the grid, anchors and lift stay.
+    /// Idempotent.
+    public func hiding(_ kinds: Set<WallDecor.Kind>) -> SceneLayout {
+        guard decor.contains(where: { kinds.contains($0.kind) }) else { return self }
+        return SceneLayout(grid: grid, avoid: avoid, decor: decor.filter { !kinds.contains($0.kind) }, anchors: anchors,
+                           avoidUnresolved: avoidUnresolved, floorLift: floorLift)
+    }
 }
 
 /// Places the 512×320 core on the canvas (DESIGN §1.2 widget nudge) and fills the margins with decor that
