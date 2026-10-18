@@ -43,7 +43,12 @@ struct MemoClipsElementTests {
         #expect(clips.tooltip(hit)?.title == F.names[1])
         let wire = Hit(element: clips.id, part: "partition.clips", rect: clips.railRect)
         #expect(clips.tooltip(wire)?.title == "Memo Clips" && clips.tooltip(wire)?.detail == "1 item")
-        #expect(clips.accessibilityItems().map(\.label) == ["Memo clips, 1 files", F.names[1]])
+        #expect(clips.accessibilityItems().map(\.label) == ["Memo clips, 1 file", F.names[1]])
+        // The detail speaks the app's language, as the title does (English as the older containers say it).
+        let counts = [0, 1, 2, ContainerID.memoClips.spec.hardCap]
+        #expect(counts.map { MemoClipsElement.countDetail($0, .ko) } == ["비어 있음", "1개", "2개", "가득 참 · 5개"])
+        #expect(counts.map { MemoClipsElement.countDetail($0, .en) }
+            == counts.map { MemoClipsElement.countText($0, cap: ContainerID.memoClips.spec) })
     }
 
     @Test("Through the pointer: hover names a card, a double-click opens it, a drag takes it back to the monitor")

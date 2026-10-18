@@ -70,8 +70,7 @@ final class MemoClipsElement: ContainerElement, DeskElement {
 
     func tooltip(_ hit: Hit) -> TooltipSpec? {
         if let key = hit.token { return miniTooltip(key, anchor: hit.rect) }
-        var spec = TooltipSpec(title: L10n.text(.stowMemoClips),
-                               detail: Self.countText(members.count, cap: ContainerID.memoClips.spec), anchor: hit.rect)
+        var spec = TooltipSpec(title: L10n.text(.stowMemoClips), detail: Self.countDetail(members.count), anchor: hit.rect)
         spec.prefersAbove = true
         return spec
     }
@@ -108,10 +107,19 @@ final class MemoClipsElement: ContainerElement, DeskElement {
 
     var shownTokens: Set<TokenKey> { Set(cards.map(\.key)) }
 
+    /// The wire's tooltip detail in the app's language (or `language`): "Empty", "1 item", "3 items", "Full · 5
+    /// items", as `countText` says it for the older containers, which stay English.
+    static func countDetail(_ n: Int, _ language: Language? = nil) -> String {
+        if n == 0 { return L10n.text(.clipsEmpty, language) }
+        if n >= ContainerID.memoClips.spec.hardCap { return L10n.format(.clipsFull, [n], language) }
+        return n == 1 ? L10n.text(.clipsOne, language) : L10n.format(.clipsCount, [n], language)
+    }
+
     func accessibilityItems() -> [AXItem] {
         guard let s = state, isOut else { return [] }
-        var out = [AXItem(id: id, label: L10n.format(.axMemoClips, [members.count]), role: .container,
-                          frame: railRect)]
+        let n = members.count
+        let label = n == 1 ? L10n.text(.axMemoClipsOne) : L10n.format(.axMemoClips, [n])
+        var out = [AXItem(id: id, label: label, role: .container, frame: railRect)]
         for c in cards {
             guard let meta = s.tokens.meta(of: c.key) else { continue }
             out.append(AXItem(id: "token.\(c.key.inode)", label: meta.displayName, role: .token, frame: c.rect,

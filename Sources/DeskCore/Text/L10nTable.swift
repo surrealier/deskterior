@@ -103,6 +103,7 @@ public enum L10nKey: String, CaseIterable, Sendable {
     case stickyNote, stickyCube, stickyCubeHelp, padHelp, dDayNamed, daysLeft, dDayToday, daysAgo
     case clipLightHelpOn, clipLightHelpOff, memoWord, notesCount, oneNote
     case axStickyNote, axDailyPad, axHasMemo, axCalendar, axMemoClips, axPartition, axClipLight, on, off
+    case axMemoClipsOne, clipsEmpty, clipsOne, clipsCount, clipsFull
     case memosTitle, tabCalendar, tabNotes, today, dayPlaceholder, notesForDay, newNoteForDay, setAsDDay, dDayTitle
     case dateToggle, noNotes, emptyNote, partitionAway, noteGone, connectToSave
 
@@ -554,6 +555,12 @@ public enum L10nKey: String, CaseIterable, Sendable {
         .axHasMemo: p("has a memo", "메모 있음"),
         .axCalendar: p("Calendar, %@, %d days with memos", "캘린더, %@, 메모가 있는 날 %d일"),
         .axMemoClips: p("Memo clips, %d files", "메모 집게, 파일 %d개"),
+        .axMemoClipsOne: p("Memo clips, 1 file", "메모 집게, 파일 1개"),
+        // The memo clips' tooltip detail (the older containers' stay English, Errata 21/23).
+        .clipsEmpty: p("Empty", "비어 있음"),
+        .clipsOne: p("1 item", "1개"),
+        .clipsCount: p("%d items", "%d개"),
+        .clipsFull: p("Full · %d items", "가득 참 · %d개"),
         .axPartition: p("Desk partition", "데스크 파티션"),
         .axClipLight: p("Clip light, %T", "클립 조명, %T"),
         .on: p("On", "켜짐"),
