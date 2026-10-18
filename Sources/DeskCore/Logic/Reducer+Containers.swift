@@ -4,16 +4,16 @@ import Foundation
 /// the phone's face (committed by `PhoneMachine` at the start of a flip), and the reveal Show on Desk does. Each
 /// only sets where an element should come to rest; the scene animates there (a drawer slides, the chair rolls,
 /// the phone flips) and its own settle commits agree with it. None of these is journaled: opening a drawer is
-/// not a layout change to undo.
+/// not a layout change to undo. A put-away place (Erratum 30) neither opens nor closes: it is not in the room.
 extension Reducer {
     static func reduceContainer(_ s: inout DeskState, _ a: DeskAction) -> [Effect] {
         let changed: Bool
         switch a {
-        case let .openContainer(id):
+        case let .openContainer(id) where !s.isAway(id):
             changed = revealContainer(&s, id)
-        case let .closeContainer(id):
+        case let .closeContainer(id) where !s.isAway(id):
             changed = shutContainer(&s, id)
-        case let .phoneFace(down):
+        case let .phoneFace(down) where !s.isAway(.phone):
             changed = s.phone.faceDown != down
             s.phone.faceDown = down
         default:

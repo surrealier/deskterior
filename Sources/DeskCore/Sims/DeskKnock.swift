@@ -140,7 +140,8 @@ public struct DeskKnock: Sendable, Equatable {
     }
 
     /// The plan for a knock at desk-plane `origin` (pure). Drawers are judged by their live sims in `drawers`
-    /// (where they are this frame, held or not), else by the saved openings.
+    /// (where they are this frame, held or not), else by the saved openings. A put-away plant, phone stand or
+    /// drawer is not in the room, so it neither wobbles nor shuts (Erratum 30).
     public static func plan(
         for state: DeskState, drawers: [ContainerID: DrawerSim] = [:], origin: SIMD2<Float>, strength: Float = 1,
         seed: UInt64, params: Params = .standard
@@ -167,10 +168,11 @@ public struct DeskKnock: Sendable, Equatable {
             // Floor tokens are farther from the desk top: they hop half as high.
             plan.floorHops[key] = hop(at: SIMD2(Float(x), -40), frames: params.hopFrames, height: max(1, height / 2))
         }
-        for w in Wobbler.allCases {
+        let away = Set(StowID.allCases.filter { !state.isOut($0) }.compactMap { StowCatalog.spec($0).wobbler })
+        for w in Wobbler.allCases where !away.contains(w) {
             plan.wobbles[w] = hop(at: wobblerPosition(w, state: state), frames: params.wobbleFrames, height: 1)
         }
-        for id in ContainerID.allCases where id.isDrawer {
+        for id in ContainerID.allCases where id.isDrawer && !state.isAway(id) {
             var sim = drawers[id] ?? DrawerSim(id, p: state.drawerOpening(id), count: state.tokens.count(in: id))
             if sim.knock() { plan.drawerCloses.append(id) }
             if state.tokens.count(in: id) > 0 { plan.drawerJostle.append(id) }

@@ -75,14 +75,18 @@ public struct PenCupMachine: Sendable, Equatable {
     public private(set) var position: SIMD2<Float>
     /// Lean while carried (−2…2 frames).
     public private(set) var carryLean = 0
+    // MARK: tidy (0.3.0)
+    /// Put-away objects, whose footprints the cup need not keep clear of (an away plant or phone stand, Erratum 30).
+    public var stowed: Set<StowID> = []
 
     /// Persisted `state` strings.
     public static let uprightName = "upright", lyingLeftName = "lyingLeft", lyingRightName = "lyingRight"
 
-    public init(_ state: PenCupState = PenCupState(), params: Params = .standard) {
+    public init(_ state: PenCupState = PenCupState(), params: Params = .standard, stowed: Set<StowID> = []) {
         self.params = params
+        self.stowed = stowed
         let pos = Self.onDesk(state.pos.isFinite ? state.pos : PenCupState().pos)
-        self.position = Self.isClear(pos) ? pos : PenCupState().pos
+        self.position = Self.isClear(pos, stowed: stowed) ? pos : PenCupState().pos
         switch state.state {
         case Self.lyingLeftName: phase = .lying(right: false)
         case Self.lyingRightName: phase = .lying(right: true)
@@ -171,9 +175,9 @@ public struct PenCupMachine: Sendable, Equatable {
         return [.wobble]
     }
 
-    /// Whether the cup's footprint at `pos` lies on the desk, clear of the furniture.
-    public static func isValidPosition(_ pos: SIMD2<Float>) -> Bool {
-        pos.isFinite && onDesk(pos) == pos && isClear(pos)
+    /// Whether the cup's footprint at `pos` lies on the desk, clear of the furniture (but for put-away objects').
+    public static func isValidPosition(_ pos: SIMD2<Float>, stowed: Set<StowID> = []) -> Bool {
+        pos.isFinite && onDesk(pos) == pos && isClear(pos, stowed: stowed)
     }
 
     /// `pos` moved onto the desk so the whole footprint stands on it.
@@ -199,6 +203,7 @@ public struct PenCupMachine: Sendable, Equatable {
         return DeskPlaneRect(x: right ? pos.x + near : pos.x - far, d: up.d, width: far - near, depth: up.depth)
     }
 
+    /// Whether the cup's footprint at `pos` keeps clear of the furniture that is out.
     static func isClear(_ pos: SIMD2<Float>, stowed: Set<StowID> = []) -> Bool {
         let f = DeskPlanePhysics.penCupFootprint(at: pos)
         return !DeskPlanePhysics.footprints(stowed: stowed).values.contains { $0.intersects(f) }
@@ -209,11 +214,11 @@ public struct PenCupMachine: Sendable, Equatable {
     public mutating func carry(to position: SIMD2<Float>, acceleration: SIMD2<Float>) {
         guard isUpright, position.isFinite else { return }
         let target = Self.onDesk(position)
-        if Self.isClear(target) {
+        if Self.isClear(target, stowed: stowed) {
             self.position = target
-        } else if Self.isClear(SIMD2(target.x, self.position.y)) {
+        } else if Self.isClear(SIMD2(target.x, self.position.y), stowed: stowed) {
             self.position.x = target.x
-        } else if Self.isClear(SIMD2(self.position.x, target.y)) {
+        } else if Self.isClear(SIMD2(self.position.x, target.y), stowed: stowed) {
             self.position.y = target.y
         }
         let a = acceleration.isFinite ? acceleration.x : 0
@@ -255,7 +260,7 @@ public struct PenCupMachine: Sendable, Equatable {
     /// The model changed under the machine (undo): jump to it.
     public mutating func sync(_ state: PenCupState) {
         guard state != self.state else { return }
-        self = PenCupMachine(state, params: params)
+        self = PenCupMachine(state, params: params, stowed: stowed)
     }
 
     mutating func startTip(right: Bool) -> [Event] {
@@ -297,11 +302,11 @@ public struct PenCupMachine: Sendable, Equatable {
     /// Where `count` pens go when the cup at `position` tips toward the right (`right`) or left: each leaves the
     /// mouth with a seeded impulse of `spillSpeed` within ±`spillSpreadDegrees` of `direction` (the flick that
     /// tipped it, plane px/s; nil or zero: straight out of the mouth) and slides as a pile would (stopping at the
-    /// back wall's line and short of furniture and the cup); pens that cross the desk's front or side edge fly off
-    /// on a `Ballistics` arc. Deterministic for a seed.
+    /// back wall's line and short of furniture and the cup; an away plant's or phone stand's strip is free, `stowed`);
+    /// pens that cross the desk's front or side edge fly off on a `Ballistics` arc. Deterministic for a seed.
     public static func spill(
         count: Int, from position: SIMD2<Float>, right: Bool, seed: UInt64, direction: SIMD2<Float>? = nil,
-        params: Params = .standard, ballistics: Ballistics.Params = .standard
+        params: Params = .standard, ballistics: Ballistics.Params = .standard, stowed: Set<StowID> = []
     ) -> [Spill] {
         guard count > 0, position.isFinite else { return [] }
         var rng = SplitMix64(seed: seed)
@@ -329,7 +334,7 @@ public struct PenCupMachine: Sendable, Equatable {
             var reach = speed / max(params.spillDamping, 0.01)
             func blocked(_ q: SIMD2<Float>, moved: Float) -> Bool {
                 let body = DeskPlaneRect.centred(at: q, size: DeskPlanePhysics.pileSize)
-                return DeskPlanePhysics.footprints(stowed: []).values.contains { $0.intersects(body) }
+                return DeskPlanePhysics.footprints(stowed: stowed).values.contains { $0.intersects(body) }
                     || (moved > 2 && own.intersects(body))
             }
             var p = mouth

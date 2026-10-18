@@ -103,14 +103,18 @@ public enum Placement {
     }
 
     /// A location `state` can take right now, as close to `preferred` as possible: the preferred cell or the
-    /// nearest free one on its page; the container if it is below its hard cap; the pile if it exists (or can
-    /// be recreated at `pilePos`); otherwise the first free cell. Cells handed out are taken in `allocator`,
-    /// whose occupancy must mirror `state.tokens`.
+    /// nearest free one on its page; the container if it is below its hard cap (a put-away one's stand-in,
+    /// `awaySubstitute`); the pile if it exists (or can be recreated at `pilePos`); otherwise the first free cell.
+    /// Cells handed out are taken in `allocator`, whose occupancy must mirror `state.tokens`.
     public static func resolve(
         _ preferred: Location?, pilePos: SIMD2<Float>? = nil, in state: inout DeskState,
         allocator: inout ScreenGrid.Allocator
     ) -> Location {
         switch preferred {
+        // MARK: tidy (0.3.0)
+        case let .container(id, _)? where state.isAway(id):
+            guard let sub = awaySubstitute(for: id, in: state) else { break }
+            return .container(sub, order: state.tokens.count(in: sub))
         case let .screen(page, col, row)?:
             let c = allocator.grid.nearestFree(to: ScreenCell(page: page, col: col, row: row), allocator.occupied)
             allocator.take(c)
@@ -155,6 +159,13 @@ extension Placement {
     /// its hard cap and hidden now, so a hidden file stays hidden; nil for a shown place (the memo clips) or when
     /// there is none (then the monitor).
     public static func awaySubstitute(for id: ContainerID, in s: DeskState) -> ContainerID? {
-        nil // Step 0 stub: Track A (spec §4.3; `resolve` does not call it yet).
+        guard id.spec.concealment != .shown else { return nil }
+        return concealing.first { c in
+            let hidden = c == .phone ? s.phone.faceDown : s.drawerOpening(c) < Visibility.drawerPeek
+            return hidden && !s.isAway(c) && s.tokens.count(in: c) < c.spec.hardCap
+        }
     }
+
+    /// The places that hide what is inside them once shut, in the order a returning file looks for one.
+    static let concealing: [ContainerID] = [.riserLeft, .riserRight, .cabinetTop, .cabinetMiddle, .cabinetFile, .phone]
 }

@@ -130,8 +130,30 @@ public enum StowCatalog {
         return out
     }
 
+    /// Whether `id` is in the room while `stowed` is put away: neither it nor what it hangs on is.
+    public static func isOut(_ id: StowID, stowed: Set<StowID>) -> Bool {
+        lineage(of: id).allSatisfy { !stowed.contains($0) }
+    }
+
+    /// Whether the hiding place `c` belongs to an object that is put away while `stowed` is.
+    public static func isAway(_ c: ContainerID, stowed: Set<StowID>) -> Bool {
+        owner(of: c).map { !isOut($0, stowed: stowed) } ?? false
+    }
+
+    /// `stowed` without every object (and its partition) whose hiding places are among `occupied`: no file ever
+    /// stays inside a put-away place, so a layout that has one there brings its place back (`adoptLayout`, sanitize).
+    /// Nothing else changes, so nothing becomes visible: drawers stay shut, the phone keeps its face.
+    public static func bringingBack(_ occupied: Set<ContainerID>, from stowed: Set<StowID>) -> Set<StowID> {
+        var out = stowed
+        for c in occupied where isAway(c, stowed: out) {
+            if let owner = owner(of: c) { out.subtract(lineage(of: owner)) }
+        }
+        return out
+    }
+
     /// Piles, floor tokens and notes resting where `id` stands (demo `clear:` and make-room): piles whose body meets
-    /// its footprint, floor tokens on its floor span, and notes that would not rest validly with it out.
+    /// its footprint (and the pen cup standing there), floor tokens on its floor span, and notes that would not rest
+    /// validly with it out.
     public static func blockers(of id: StowID, in s: DeskState) -> Int {
         let row = spec(id)
         var n = 0
@@ -139,6 +161,7 @@ public enum StowCatalog {
             n += s.piles.values.filter {
                 DeskPlaneRect.centred(at: $0, size: DeskPlanePhysics.pileSize).intersects(f)
             }.count
+            if PenCupMachine(s.penCup, stowed: s.stowed).footprint.intersects(f) { n += 1 }
         }
         if let span = row.floorSpan {
             let half = FloorLine.tokenWidth / 2
@@ -158,17 +181,23 @@ public enum StowCatalog {
 extension DeskState {
     /// The object is in the room: not put away, and neither is what it hangs on (an add-on's partition).
     public func isOut(_ id: StowID) -> Bool {
-        !stowed.contains(id) && (StowCatalog.spec(id).parent.map(isOut) ?? true)
+        StowCatalog.isOut(id, stowed: stowed)
     }
 
     /// The container belongs to an object that is put away.
     public func isAway(_ c: ContainerID) -> Bool {
-        StowCatalog.owner(of: c).map { !isOut($0) } ?? false
+        StowCatalog.isAway(c, stowed: stowed)
     }
 
     /// The tokens in the object's containers and its add-ons', in container order.
     public func tokensInside(_ id: StowID) -> [TokenKey] {
         let ids = [id] + StowCatalog.children(of: id)
         return ids.flatMap { StowCatalog.spec($0).containers }.sorted().flatMap { tokens.members(of: $0) }
+    }
+
+    /// Brings back every put-away object whose hiding places hold tokens (`StowCatalog.bringingBack`).
+    public mutating func bringBackOccupied() {
+        let occupied = Set(ContainerID.allCases.filter { tokens.count(in: $0) > 0 })
+        stowed = StowCatalog.bringingBack(occupied, from: stowed)
     }
 }
