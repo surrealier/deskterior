@@ -105,7 +105,8 @@ struct LaunchOptions: Equatable {
     var safeMode = false
     /// `--language system|en|ko`: the language outside desk mode (desk mode follows Settings).
     var language: LanguageSetting?
-    /// `--show settings,about,onboarding,translocation,peek,inventory`: windowed only, open these at launch.
+    /// `--show settings,about,onboarding,translocation,peek,inventory,memos,arrange`: windowed only, open these at
+    /// launch.
     var show: Set<String> = []
     /// `--window-shots DIR`: windowed only, write PNGs of the app's open windows (Settings, About…) here.
     var windowShots: String?
@@ -150,7 +151,8 @@ struct LaunchOptions: Equatable {
           --burst-av                 with --burst: end it on the monitor's AV input, its logo bouncing
           --safe-mode                start with the Safe Mode window (also: hold ⌥ while Deskterior launches)
           --language system|en|ko    the language outside desk mode (desk mode follows Settings)
-          --show LIST                windowed: open settings,about,onboarding,translocation,peek,inventory
+          --show LIST                windowed: open settings,about,onboarding,translocation,peek,inventory,
+                                     memos,arrange
           --window-shots DIR         windowed: write PNGs of the open app windows to DIR (with --show)
           --demo-record DIR          with --demo: write frame-NNNNN.png (art px, pointer drawn) to DIR
           --demo-record-every N      with --demo-record: every Nth scene frame (default 3, 20 fps)
@@ -297,7 +299,8 @@ struct LaunchOptions: Equatable {
             o.language = l
         },
         Spec(names: ["--show"], arity: .value) { o, v in
-            let known: Set<String> = ["settings", "about", "onboarding", "translocation", "peek", "inventory"]
+            let known: Set<String> = ["settings", "about", "onboarding", "translocation", "peek", "inventory", "memos",
+                                      "arrange"]
             let names = Set((v ?? "").split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) })
             guard !names.isEmpty, names.isSubset(of: known) else {
                 throw UsageError(description: "--show expects a list of \(known.sorted().joined(separator: ", "))")

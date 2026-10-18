@@ -33,9 +33,11 @@ final class SceneSync {
         push(store.state)
     }
 
-    /// Refreshes the desk menu's labels (after an undo or a pause toggle).
+    /// Refreshes the desk menu's labels (after an undo or a pause toggle) and today's day on the room's clock (the
+    /// pad's and Today's Memo's).
     func refreshMenuContext() {
-        host.scene.menuContext = MenuSpec.Context(paused: isPaused(), undo: store.undoLabel, redo: store.redoLabel)
+        host.scene.menuContext = MenuSpec.Context(paused: isPaused(), undo: store.undoLabel, redo: store.redoLabel,
+                                                  today: host.scene.today)
     }
 
     private func push(_ s: DeskState) {

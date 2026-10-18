@@ -4,22 +4,29 @@ import DeskScene
 
 /// VoiceOver for the desk (DESIGN §4.5, §8.3 item 19), tied into the windows: the desk and wall windows carry
 /// labels, `DeskView`'s elements (built from the scene's `accessibilityItems()`) get custom actions besides Open —
-/// Quick Look, Show in Finder, and Move to Monitor for a file that is hidden away — and VoiceOver is told when the
-/// desk's layout changes (after a model change, never per frame) and hears the pixel toasts it cannot read.
+/// Quick Look, Show in Finder, and Move to Monitor for a file that is hidden away (the memo clips' cards included) —
+/// and VoiceOver is told when the desk's layout changes (after a model change, never per frame: an object put away or
+/// brought back, a note added, edited or taken off; Errata 30, 31) and hears the pixel toasts it cannot read.
 final class DeskAccessibility {
     /// Called by `DeskView` after it rebuilds its elements.
     static var decorate: (([DeskAccessibilityElement]) -> Void)?
 
     private weak var view: DeskView?
     private let store: Store
-    private var lastIDs: [String] = []
+    private var lastItems: [Shown] = []
+
+    /// What VoiceOver has been told about an item: a note's label follows its text.
+    private struct Shown: Equatable {
+        var id: String
+        var label: String
+    }
 
     init(view: DeskView, store: Store) {
         self.view = view
         self.store = store
         Self.decorate = { [weak self] elements in self?.decorate(elements) }
         store.observe { [weak self] _, _ in self?.stateChanged() }
-        lastIDs = ids()
+        lastItems = items()
     }
 
     func invalidate() {
@@ -34,15 +41,15 @@ final class DeskAccessibility {
         ])
     }
 
-    private func ids() -> [String] {
-        view?.host?.scene.accessibilityItems().map(\.id) ?? []
+    private func items() -> [Shown] {
+        view?.host?.scene.accessibilityItems().map { Shown(id: $0.id, label: $0.label) } ?? []
     }
 
-    /// The visible items changed: VoiceOver re-reads the children.
+    /// The visible items or their labels changed: VoiceOver re-reads the children.
     private func stateChanged() {
-        let now = ids()
-        guard now != lastIDs, let view else { return }
-        lastIDs = now
+        let now = items()
+        guard now != lastItems, let view else { return }
+        lastItems = now
         NSAccessibility.post(element: view, notification: .layoutChanged)
     }
 

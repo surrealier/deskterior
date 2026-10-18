@@ -90,6 +90,15 @@ struct LaunchOptionsTests {
         #expect(o.show == ["settings", "about"])
     }
 
+    @Test("--show also opens the Memos and Arrange Desk windows (Errata 30, 31)")
+    func showMemosAndArrange() throws {
+        #expect(try LaunchOptions.parse(["--windowed", "--show", "memos"]).show == ["memos"])
+        #expect(try LaunchOptions.parse(["--show", "memos,arrange,inventory"]).show == ["memos", "arrange", "inventory"])
+        #expect(try LaunchOptions.parse([], environment: ["DESKTERIOR_SHOW": "arrange"]).show == ["arrange"])
+        #expect(throws: LaunchOptions.UsageError.self) { try LaunchOptions.parse(["--show", "memo"]) }
+        #expect(LaunchOptions.usage.contains("memos,arrange"))
+    }
+
     // MARK: The real Desktop is refused (exit 64)
 
     /// A stand-in user: `home/Desk` plays the real desktop, so nothing here names or reads the real one.

@@ -4,7 +4,7 @@ import DeskFiles
 import DeskPixels
 
 /// `--window-shots DIR` (windowed development runs): PNGs of the app's own windows (Settings, About, Safe Mode, the
-/// welcome card, notes) drawn by the windows themselves (`cacheDisplay`, no Screen Recording permission), plus the
+/// welcome card, notes, Find Item, Memos, Arrange Desk) drawn by the windows themselves (`cacheDisplay`, no Screen Recording permission), plus the
 /// Peek "× Done" button's pixels ×3, written 1.5 s after launch through `ArtifactWriter` (never into a desktop).
 enum WindowShots {
     static func schedule(_ options: LaunchOptions, windows: @escaping () -> [(name: String, window: NSWindow)]) {
