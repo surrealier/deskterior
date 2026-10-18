@@ -18,6 +18,8 @@ final class MemoWindowController: NSObject, NSWindowDelegate {
     let model: MemoWindowModel
     private(set) var window: NSWindow?
     private var observer: Int?
+    /// Midnight, a clock change and a time zone change, while the window is open (no timer of its own).
+    private var dayObservers: [NSObjectProtocol] = []
     private unowned let store: Store
     private let today: () -> DayKey
     private var sessions = 0
@@ -45,6 +47,12 @@ final class MemoWindowController: NSObject, NSWindowDelegate {
         if window == nil { makeWindow() }
         if observer == nil {
             observer = store.observe { [weak self] new, _ in self?.model.state = new }
+            let days: [Notification.Name] = [.NSCalendarDayChanged, .NSSystemClockDidChange, .NSSystemTimeZoneDidChange]
+            dayObservers = days.map { name in
+                NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                    MainActor.assumeIsolated { self?.dayMayHaveChanged() }
+                }
+            }
         }
         model.state = store.state
         model.today = today()
@@ -99,6 +107,14 @@ final class MemoWindowController: NSObject, NSWindowDelegate {
     func close() {
         window?.close()
         window = nil
+        stopObserving()
+    }
+
+    /// Today moved on while the window is open (midnight, the clock or the time zone changed): the grid's red ring,
+    /// the D-Day count and a newly dated note follow, as the desk's pad and calendar do. The page being edited stays.
+    func dayMayHaveChanged() {
+        let t = today()
+        if model.today != t { model.today = t }
     }
 
     // MARK: NSWindowDelegate
@@ -113,11 +129,17 @@ final class MemoWindowController: NSObject, NSWindowDelegate {
 
     func windowWillClose(_ notification: Notification) {
         model.flush()
-        if let observer { store.removeObserver(observer) }
-        observer = nil
+        stopObserving()
     }
 
     // MARK: Private
+
+    private func stopObserving() {
+        if let observer { store.removeObserver(observer) }
+        observer = nil
+        for o in dayObservers { NotificationCenter.default.removeObserver(o) }
+        dayObservers = []
+    }
 
     private func makeWindow() {
         let w = NSWindow(

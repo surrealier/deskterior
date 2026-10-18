@@ -410,6 +410,34 @@ struct MemoWindowTests {
         #expect(r.store.state.memos.notes[NoteID(1)]?.text == "우유 사기")
     }
 
+    @Test("Past midnight with the window open, today follows: the red ring, the D-Day count, a newly dated note")
+    func dayChanges() async throws {
+        let r = try await rig()
+        final class Clock { var day = DayKey("2026-10-18")! }
+        let clock = Clock()
+        let controller = MemoWindowController(store: r.store, today: { clock.day }, perform: { _ in })
+        controller.presents = false
+        defer {
+            controller.close()
+            r.controller.close()
+        }
+        r.store.replace { $0.memos.dDay = DDay(day: DayKey("2026-10-30")!, title: "Exam") }
+        controller.show(.note(NoteID(1)), near: nil, session: nil)
+        #expect(controller.model.dDayLine?.hasSuffix("D-12") == true)
+        clock.day = DayKey("2026-10-19")!
+        NotificationCenter.default.post(name: .NSCalendarDayChanged, object: nil)
+        #expect(await eventually { controller.model.today == DayKey("2026-10-19")! })
+        #expect(controller.model.dDayLine?.hasSuffix("D-11") == true)
+        controller.model.setDated(true)
+        #expect(r.store.state.memos.notes[NoteID(1)]?.day == DayKey("2026-10-19")!)
+        // Closed, it no longer listens.
+        controller.close()
+        clock.day = DayKey("2026-10-20")!
+        NotificationCenter.default.post(name: .NSCalendarDayChanged, object: nil)
+        try await Task.sleep(for: .milliseconds(100))
+        #expect(controller.model.today == DayKey("2026-10-19")!)
+    }
+
     // The runner's log word is "createTextFile": the write lint keeps FileManager's `createFile` out of EffectRunner.
     @Test("The Save button's command runs as a menu pick: the effect runner records createTextFile and the file appears")
     func saveRecordsCreateFile() async throws {
