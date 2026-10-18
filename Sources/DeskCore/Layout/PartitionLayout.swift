@@ -13,6 +13,12 @@ public enum PartitionLayout {
         ArtPoint(18, 115),
         ArtPoint(464, 115),
     ]
+    /// The least share of the note, and of its text band, that must show past the props in front (in tenths).
+    public static let minNoteVisibleTenths = 6
+    public static let minTextVisibleTenths = 9
+    /// How far a drop snaps, and the step of the rings it searches.
+    public static let snapRadius = 40
+    public static let snapStep = 2
 
     /// The note resting at `p` (its top-left).
     public static func noteRect(at p: ArtPoint) -> ArtRect {
@@ -27,26 +33,102 @@ public enum PartitionLayout {
     /// Fixtures a note may not meet: the cube; the pad, the clips and the clip light while out; the D-Day card while
     /// out and set.
     public static func blockers(_ s: DeskState) -> [ArtRect] {
-        [] // Step 0 stub: Track B (spec §3.1).
+        var out = [CoreLayout.partitionCube]
+        if s.isOut(.dailyPad) { out.append(CoreLayout.partitionPad) }
+        if s.isOut(.memoClips) { out.append(CoreLayout.partitionClips) }
+        if s.isOut(.clipLight) { out.append(CoreLayout.partitionClipLight) }
+        if s.isOut(.dDayCard), s.memos.dDay != nil { out.append(CoreLayout.partitionDDay) }
+        return out
     }
 
-    /// Props in front of the felt that hide part of a note.
+    /// Props in front of the felt that hide part of a note: the monitor and its stand, the riser, the lamp, the plant
+    /// and the phone stand while out, the drive hub, and the pen cup where it stands (it is not stowable).
     public static func occluders(_ s: DeskState) -> [ArtRect] {
-        [] // Step 0 stub: Track B (spec §3.1).
+        var out = [CoreLayout.monitorBody, MonitorArt.standRect, CoreLayout.riser, PropArt.lampRect]
+        if s.isOut(.plant) { out.append(CoreLayout.plant) }
+        if s.isOut(.phoneStand) { out.append(CoreLayout.phone) }
+        out.append(CoreLayout.driveHub)
+        out.append(CoreLayout.penCup)
+        return out
     }
 
-    /// Whether a note may rest at `p`.
+    /// Whether a note may rest at `p`: on one felt face, clear of every fixture, its text band at least 90 % and the
+    /// note at least 60 % in sight.
     public static func isValidRest(_ p: ArtPoint, in s: DeskState) -> Bool {
-        false // Step 0 stub: Track B (spec §3.1).
+        isValidRest(p, blockers: blockers(s), occluders: occluders(s))
     }
+
+    static func isValidRest(_ p: ArtPoint, blockers: [ArtRect], occluders: [ArtRect]) -> Bool {
+        let note = noteRect(at: p)
+        guard faces.contains(where: { $0.contains(note) }), !blockers.contains(where: { $0.intersects(note) }) else {
+            return false
+        }
+        func shows(_ r: ArtRect, tenths: Int) -> Bool {
+            10 * (r.w * r.h - hiddenPixels(of: r, behind: occluders)) >= tenths * r.w * r.h
+        }
+        return shows(textBand(at: p), tenths: minTextVisibleTenths) && shows(note, tenths: minNoteVisibleTenths)
+    }
+
+    /// The share (0…1) of `r`'s pixels that no rect in `occluders` covers.
+    static func visibleShare(of r: ArtRect, past occluders: [ArtRect]) -> Double {
+        1 - Double(hiddenPixels(of: r, behind: occluders)) / Double(r.w * r.h)
+    }
+
+    /// How many of `r`'s pixels the rects in `occluders` cover (overlapping occluders count once).
+    static func hiddenPixels(of r: ArtRect, behind occluders: [ArtRect]) -> Int {
+        let over = occluders.map { $0.intersection(r) }.filter { !$0.isEmpty }
+        guard !over.isEmpty else { return 0 }
+        var hidden = 0
+        var spans: [(Int, Int)] = []
+        for y in r.minY..<r.maxY {
+            spans.removeAll(keepingCapacity: true)
+            for o in over where o.minY <= y && y < o.maxY { spans.append((o.minX, o.maxX)) }
+            guard !spans.isEmpty else { continue }
+            spans.sort { $0.0 < $1.0 }
+            var (start, end) = spans[0]
+            for (a, b) in spans.dropFirst() {
+                if a > end {
+                    hidden += end - start
+                    (start, end) = (a, b)
+                } else {
+                    end = max(end, b)
+                }
+            }
+            hidden += end - start
+        }
+        return hidden
+    }
+
+    /// Offsets on the `snapStep` lattice within `snapRadius`, nearest first (ties: up before down, left before right),
+    /// so the first valid one is the nearest valid spot.
+    static let snapOffsets: [ArtPoint] = {
+        let n = snapRadius / snapStep
+        var out: [ArtPoint] = []
+        for j in -n...n {
+            for i in -n...n where i * i + j * j <= n * n { out.append(ArtPoint(i * snapStep, j * snapStep)) }
+        }
+        return out.sorted {
+            let (a, b) = ($0.x * $0.x + $0.y * $0.y, $1.x * $1.x + $1.y * $1.y)
+            return a != b ? a < b : ($0.y, $0.x) < ($1.y, $1.x)
+        }
+    }()
 
     /// The valid spot nearest `p` within 40 px (searched in 2-px rings), or nil.
     public static func snap(_ p: ArtPoint, in s: DeskState) -> ArtPoint? {
-        nil // Step 0 stub: Track B (spec §3.1).
+        let blockers = blockers(s), occluders = occluders(s)
+        return snapOffsets.lazy.map { p + $0 }.first { isValidRest($0, blockers: blockers, occluders: occluders) }
     }
 
-    /// The first default spot no note takes (the first one when all are taken).
+    /// The first default spot that is valid and that no note takes (a note covering a quarter of it takes it); the
+    /// first spot when all are taken.
     public static func firstFreeSpot(in s: DeskState) -> ArtPoint {
-        defaultSpots[0] // Step 0 stub: Track B (spec §3.1).
+        let blockers = blockers(s), occluders = occluders(s)
+        let notes = s.memos.notes.values.map { noteRect(at: $0.pos) }
+        let quarter = noteSize.w * noteSize.h / 4
+        return defaultSpots.first { spot in
+            let r = noteRect(at: spot)
+            return isValidRest(spot, blockers: blockers, occluders: occluders)
+                && !notes.contains { $0.intersection(r).size.area >= quarter }
+        } ?? defaultSpots[0]
     }
 }

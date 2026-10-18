@@ -23,7 +23,6 @@ public enum RoomArt {
     /// desk top face, and the soft shadows that wall pieces, back-strip props and floor furniture cast. `stowed`:
     /// the objects put away, whose shadows go with them (Erratum 30).
     public static func backdrop(_ layout: SceneLayout, stowed: Set<StowID> = []) -> PixelBuffer {
-        // Step 0 stub: Track B (`stowed` is not read yet: the cabinet's, plant's and phone's shadows, the tower's).
         let w = layout.canvas.w, h = layout.canvas.h
         var c = PixelCanvas(width: w, height: h, fill: wall)
         let base = layout.wallBaseY
@@ -33,12 +32,12 @@ public enum RoomArt {
         drawFloor(&c, from: base, layout: layout)
         drawUnderDeskShade(&c, layout: layout)
         drawRug(&c, layout: layout)
-        drawFloorShadows(&c, layout: layout)
+        drawFloorShadows(&c, layout: layout, cabinet: !stowed.contains(.cabinet))
 
         // Contact shadow on the wall just above the desk's back edge.
         for x in desk.minX..<desk.maxX where c.ink(at: x, desk.y - 1) == wall { c.plot(x, desk.y - 1, wallShade) }
-        c.blit(deskSurface, at: desk.origin)
-        drawWallShadows(&c, layout)
+        c.blit(deskSurface(skipping: stowed), at: desk.origin)
+        drawWallShadows(&c, layout, partition: !stowed.contains(.partition))
         return c.buffer
     }
 
@@ -71,12 +70,29 @@ public enum RoomArt {
     /// The desk top face in desk-local px, with the contact shadows of the back-strip props (the keyboard's is a
     /// sprite of its own, `keyboardShadow`, since it rides on the mat). It is the same for every layout, so it is
     /// built once.
-    static let deskSurface: PixelBuffer = {
+    static let deskSurface: PixelBuffer = deskSurface(skipping: [])
+
+    // MARK: tidy (0.3.0)
+    /// The desk top face without the shadows of the back-strip props put away (only the plant and the phone stand cast
+    /// one that can go, Erratum 30).
+    static func deskSurface(skipping stowed: Set<StowID>) -> PixelBuffer {
+        deskSurfaces[stowed.intersection(shadowCasters)]!
+    }
+
+    /// The back-strip props that can be put away.
+    static let shadowCasters: Set<StowID> = [.plant, .phoneStand]
+
+    /// The desk top for each subset of `shadowCasters`, built once on first use.
+    private static let deskSurfaces: [Set<StowID>: PixelBuffer] = {
         let d = CoreLayout.deskTop
-        var c = PixelCanvas(width: d.w, height: d.h)
-        drawDeskTop(&c, c.bounds)
-        drawDeskShadows(&c, offset: ArtPoint(-d.x, -d.y))
-        return c.buffer
+        var table: [Set<StowID>: PixelBuffer] = [:]
+        for skipped in [[], [StowID.plant], [.phoneStand], [.plant, .phoneStand]] as [Set<StowID>] {
+            var c = PixelCanvas(width: d.w, height: d.h)
+            drawDeskTop(&c, c.bounds)
+            drawDeskShadows(&c, offset: ArtPoint(-d.x, -d.y), skipping: skipped)
+            table[skipped] = c.buffer
+        }
+        return table
     }()
 
     /// The keyboard's contact shadow on the bare desk (one oak step darker: a row under its front face and a column on
@@ -123,7 +139,7 @@ public enum RoomArt {
 
     /// Contact shadows on the floor (one ramp step darker, offset right of the light) under the wastebasket,
     /// the cabinet's plinth and the floor plant's basket; the chair carries its own.
-    static func drawFloorShadows(_ c: inout PixelCanvas, layout: SceneLayout) {
+    static func drawFloorShadows(_ c: inout PixelCanvas, layout: SceneLayout, cabinet: Bool = true) {
         func shadow(_ r: ArtRect) {
             var e = PixelCanvas(width: r.w, height: r.h)
             e.ellipseFill(e.bounds, .neutral0)
@@ -137,7 +153,7 @@ public enum RoomArt {
         let basket = CoreLayout.wastebasket
         shadow(layout.rect(ArtRect(basket.x - 1, floor - 3, basket.w + 8, 6)))
         let cab = CoreLayout.cabinet
-        shadow(layout.rect(ArtRect(cab.x - 2, floor - 3, cab.w + 10, 6)))
+        if cabinet { shadow(layout.rect(ArtRect(cab.x - 2, floor - 3, cab.w + 10, 6))) }
         for d in layout.decor(.floorPlant) {
             let pot = DecorArt.floorPlantPot(d.rect.size).offsetBy(d.rect.x, d.rect.y)
             shadow(ArtRect(pot.x - 2, pot.maxY - 3, pot.w + 7, 5))
@@ -254,8 +270,8 @@ public enum RoomArt {
         c.plot(d.x, d.maxY - 1, Role.deskHighlight)
     }
 
-    /// Soft wall shadows (down-right of each wall piece and of the monitor).
-    static func drawWallShadows(_ c: inout PixelCanvas, _ layout: SceneLayout) {
+    /// Soft wall shadows (down-right of each wall piece, of the monitor and of the partition's tower).
+    static func drawWallShadows(_ c: inout PixelCanvas, _ layout: SceneLayout, partition: Bool = true) {
         func drop(_ r: ArtRect, dx: Int, dy: Int, ink: Ink = wallShade) {
             let s = r.offsetBy(dx, dy)
             for y in s.minY..<s.maxY {
@@ -277,6 +293,8 @@ public enum RoomArt {
         }
         let mon = layout.rect(CoreLayout.monitorBody)
         drop(ArtRect(mon.x, mon.y, mon.w, mon.h - 6), dx: 5, dy: 4)
+        // MARK: memos (0.3.0)
+        if partition { drop(layout.rect(CoreLayout.partitionTower), dx: 2, dy: 2) }
         for d in layout.decor {
             switch d.kind {
             case .shelf:
@@ -303,13 +321,18 @@ public enum RoomArt {
     /// Contact shadows on the desk top (one oak step darker, onto bare desk only): the back-strip props cast
     /// theirs down-right (the keyboard's is `keyboardShadow`).
     /// `offset` moves core px into the canvas being drawn.
-    static func drawDeskShadows(_ c: inout PixelCanvas, offset: ArtPoint) {
+    /// `skipping`: the plant's or phone stand's shadow is left out while it is put away.
+    static func drawDeskShadows(_ c: inout PixelCanvas, offset: ArtPoint, skipping: Set<StowID> = []) {
         func onDesk(_ i: Ink) -> Bool { i == Role.desk || i == Role.deskHighlight }
-        let props: [(PixelBuffer, ArtRect, ArtPoint)] = [
+        var props: [(PixelBuffer, ArtRect, ArtPoint)] = [
             (StorageArt.riser().image, CoreLayout.riser, ArtPoint(3, 2)),
             (MonitorArt.stand().image, MonitorArt.standRect, ArtPoint(3, 2)),
-            (PropArt.plant().image, CoreLayout.plant, ArtPoint(3, 2)),
-            (PropArt.phoneStand(faceUp: true).image, PropArt.phoneStandRect, ArtPoint(3, 2)),
+        ]
+        if !skipping.contains(.plant) { props.append((PropArt.plant().image, CoreLayout.plant, ArtPoint(3, 2))) }
+        if !skipping.contains(.phoneStand) {
+            props.append((PropArt.phoneStand(faceUp: true).image, PropArt.phoneStandRect, ArtPoint(3, 2)))
+        }
+        props += [
             (PropArt.driveHub().image, CoreLayout.driveHub, ArtPoint(3, 2)),
             (PropArt.lamp(on: false).image, PropArt.lampRect, ArtPoint(3, 2)),
         ]
@@ -432,7 +455,6 @@ public enum RoomArt {
     /// The hanging wall calendar for `date`'s month, with today's cell ringed. `marks`: days with a page, a dated
     /// note or the D-Day (Erratum 31).
     public static func calendar(_ date: WallTime, marks: [Int: CalendarMark] = [:]) -> SpriteAsset {
-        // Step 0 stub: Track B (`marks` are not drawn yet).
         let r = CoreLayout.calendar
         var c = PixelCanvas(width: r.w, height: r.h)
         // Paper with a lifted bottom-right corner.
@@ -454,21 +476,25 @@ public enum RoomArt {
             c.plot(x, 1, .neutral6)
         }
         c.fill(ArtRect(r.w / 2 - 1, 0, 2, 2), .neutral3)
-        // Day grid: 7 columns × up to 6 rows of 4-px cells.
-        let first = WallTime(year: date.year, month: date.month, day: 1, hour: 0, minute: 0).weekday
-        let rows = (first + date.daysInMonth + 6) / 7
-        let pitchY = rows > 5 ? 3 : 4
+        // Day grid: 7 columns × up to 6 rows of 4-px cells. A day with a page or a dated note is blue, the D-Day
+        // purple (Erratum 31); today keeps its red block.
+        let grid = calendarGrid(date)
         for day in 1...date.daysInMonth {
-            let i = first + day - 1
-            let col = i % 7, row = i / 7
-            let x = 2 + col * 4, y = 16 + row * pitchY
+            let cell = grid.cell(day)
+            let x = cell.x + 1, y = cell.y + 1
+            let col = (cell.x - calendarGridOrigin.x) / 4
             let weekend = col == 0 || col == 6
+            let mark = marks[day] ?? []
             if day == date.day {
-                c.fill(ArtRect(x - 1, y - 1, 4, pitchY == 4 ? 4 : 3), .red4)
+                c.fill(cell, .red4)
                 c.hline(x: x, y: y, length: 2, .neutral9)
+            } else if !mark.isEmpty {
+                let dDay = mark.contains(.dDay)
+                c.hline(x: x, y: y, length: 2, dDay ? .purple3 : .blue3)
+                if grid.pitch == 4 { c.plot(x, y + 1, dDay ? .purple2 : .blue2) }
             } else {
                 c.hline(x: x, y: y, length: 2, weekend ? .red4 : .neutral5)
-                if pitchY == 4 { c.plot(x, y + 1, weekend ? .red3 : .neutral7) }
+                if grid.pitch == 4 { c.plot(x, y + 1, weekend ? .red3 : .neutral7) }
             }
         }
         // Curled corner.
@@ -481,14 +507,44 @@ public enum RoomArt {
         return SpriteAsset("calendar", c, anchor: .zero)
     }
 
+    /// Top-left of the calendar's day grid (calendar-local px): the first column's cells start here.
+    static let calendarGridOrigin = ArtPoint(1, 15)
+
+    /// The month's day grid as the calendar draws it: Sunday first, 4-px columns, rows 4 px apart (3 px when the month
+    /// needs six rows). Day cells tile it with no gaps.
+    struct CalendarGrid {
+        /// Weekday of the 1st (0 = Sunday), the days in the month, the row pitch.
+        let first: Int, days: Int, pitch: Int
+
+        /// Day `day`'s cell: 4 px wide, `pitch` tall, its 2-px dash one px in from its top-left.
+        func cell(_ day: Int) -> ArtRect {
+            let i = first + day - 1
+            return ArtRect(calendarGridOrigin.x + i % 7 * 4, calendarGridOrigin.y + i / 7 * pitch, 4, pitch)
+        }
+
+        /// The day whose cell holds `p`, if any.
+        func day(at p: ArtPoint) -> Int? {
+            let dx = p.x - calendarGridOrigin.x, dy = p.y - calendarGridOrigin.y
+            guard dx >= 0, dx < 28, dy >= 0 else { return nil }
+            let day = dy / pitch * 7 + dx / 4 - first + 1
+            return (1...days).contains(day) ? day : nil
+        }
+    }
+
+    static func calendarGrid(_ date: WallTime) -> CalendarGrid {
+        let first = WallTime(year: date.year, month: date.month, day: 1, hour: 0, minute: 0).weekday
+        let rows = (first + date.daysInMonth + 6) / 7
+        return CalendarGrid(first: first, days: date.daysInMonth, pitch: rows > 5 ? 3 : 4)
+    }
+
     /// Day `day`'s hit cell in the calendar for `date`'s month (calendar-local px); nil for a day not in it.
     public static func calendarDayRect(day: Int, in date: WallTime) -> ArtRect? {
-        nil // Step 0 stub: Track B (the drawing's cell geometry).
+        (1...date.daysInMonth).contains(day) ? calendarGrid(date).cell(day) : nil
     }
 
     /// The day whose cell holds the calendar-local point `p` in `date`'s month (the inverse of `calendarDayRect`).
     public static func calendarDay(at p: ArtPoint, in date: WallTime) -> Int? {
-        nil // Step 0 stub: Track B.
+        calendarGrid(date).day(at: p)
     }
 
     // MARK: String lights

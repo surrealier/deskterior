@@ -80,10 +80,113 @@ struct LightMaskTests {
         #expect(Golden.match(m.debugImage(), "lightmask-1470x956@2-day"))
     }
 
-    @Test("Golden: Lamp Only at night (string lights glow, phone face-up)")
+    @Test("Golden: Lamp Only at night (string lights glow, phone face-up, the lamp washes the partition's left wing)")
     func goldenLampOnly() {
         let state = RoomState(time: WallTime(hour: 22, minute: 0), lightsMode: .lampOnly)
         let m = LightMask.room(layout, lights: state.effectiveLights, time: state.timeOfDay)
         #expect(Golden.match(m.debugImage(), "lightmask-1470x956@2-lamp"))
+    }
+
+    // MARK: memos (0.3.0)
+
+    @Test("Golden: Lamp Only with the clip light on (Erratum 31)")
+    func goldenClipLight() {
+        var state = RoomState(time: WallTime(hour: 22, minute: 0), lightsMode: .lampOnly)
+        state.lights.clipLightOn = true
+        let m = LightMask.room(layout, lights: state.effectiveLights, time: state.timeOfDay)
+        #expect(Golden.match(m.debugImage(), "lightmask-1470x956@2-cliplight"))
+    }
+
+    /// The mask the scene builds for `state`: its layout without the decor put away.
+    static func mask(_ state: RoomState, _ layout: SceneLayout) -> LightMask {
+        LightMask.room(layout.hiding(StowCatalog.decorKinds(hiddenBy: state.stowed)), lights: state.effectiveLights,
+                       time: state.timeOfDay)
+    }
+
+    @Test("Lamp wash: only while the lamp glows and the partition is out; it lights the pad, the cube and the left note")
+    func lampWash() {
+        let pad = layout.rect(CoreLayout.partitionPad)
+        let lampOnly = RoomState(time: WallTime(hour: 22, minute: 0), lightsMode: .lampOnly)
+        let m = Self.mask(lampOnly, layout)
+        let ambient = lampOnly.timeOfDay.ambientLevel
+        #expect(m.level(pad.midX, pad.midY) >= 5 && m.tint(pad.midX, pad.midY) == .warm)
+        for r in [CoreLayout.partitionPad, CoreLayout.partitionCube, PartitionLayout.noteRect(at: ArtPoint(18, 115))] {
+            #expect(DarkHit.isLit(layout.rect(r), mask: m, ambient: ambient), "\(r) lit by the lamp")
+        }
+        // Clipped to the left wing: nothing above the panel's top rail, nothing right of the monitor.
+        let wash = layout.rect(CoreLayout.partitionLampWashClip)
+        for x in wash.minX..<wash.maxX { #expect(m.level(x, wash.minY - 1) == Self.mask(Self.unwashed(lampOnly), layout).level(x, wash.minY - 1)) }
+        // Put away, or with the lamp off, or by day: no wash.
+        var away = lampOnly
+        away.stowed = [.partition]
+        #expect(Self.mask(away, layout).level(pad.midX, pad.midY) == 0)
+        var dark = RoomState(time: WallTime(hour: 22, minute: 0), lights: RoomLightState(lampOn: false, roomLightOn: false))
+        #expect(Self.mask(dark, layout).level(pad.midX, pad.midY) == 0)
+        dark.lights.lampOn = true
+        #expect(Self.mask(dark, layout).level(pad.midX, pad.midY) >= 5)
+        #expect(Self.mask(RoomState(time: WallTime(hour: 10, minute: 0)), layout).level(pad.midX, pad.midY) == 0)
+        // The room light on at night (ambient 6): the lamp's light does not show, nor does its wash.
+        #expect(Self.mask(RoomState(time: WallTime(hour: 22, minute: 0)), layout).level(pad.midX, pad.midY) == 0)
+    }
+
+    /// `state` with the partition put away (the mask without the wash, for comparing outside it).
+    static func unwashed(_ state: RoomState) -> RoomState {
+        var s = state
+        s.stowed = [.partition]
+        return s
+    }
+
+    @Test("Clip light: its bulb glows when it is on and out; after dark it lights the tower and the right wing only")
+    func clipLight() {
+        var state = RoomState(time: WallTime(hour: 22, minute: 0), lightsMode: .lampOnly)
+        let bulb = layout.rect(CoreLayout.partitionClipBulb)
+        let ambient = state.timeOfDay.ambientLevel
+        #expect(Self.mask(state, layout).level(bulb.x, bulb.y) == 0, "off by default")
+        state.lights.clipLightOn = true
+        let m = Self.mask(state, layout)
+        #expect(m.level(bulb.x, bulb.y) == 7 && m.tint(bulb.x, bulb.y) == .warm)
+        let clips = layout.rect(CoreLayout.partitionClips)
+        #expect(m.level(clips.midX, clips.midY) >= 5)
+        for p in PartitionLayout.defaultSpots.prefix(7) {
+            #expect(DarkHit.isLit(layout.rect(PartitionLayout.noteRect(at: p)), mask: m, ambient: ambient), "\(p)")
+        }
+        // Not on the wall around the tower: right of it, above it.
+        let tower = layout.rect(CoreLayout.partitionTower)
+        #expect(m.level(tower.maxX + 4, tower.midY) == 0 && m.level(tower.midX, tower.minY - 2) == 0)
+        // Lamp Only leaves it as set; put away (or its partition), it is dark.
+        for away in [StowID.clipLight, .partition] {
+            var s = state
+            s.stowed = [away]
+            #expect(!s.effectiveLights.clipLightOn)
+            #expect(Self.mask(s, layout).level(bulb.x, bulb.y) == 0 && Self.mask(s, layout).level(clips.midX, clips.midY) == 0)
+        }
+        // By day only the bulb glows.
+        var day = RoomState(time: WallTime(hour: 10, minute: 0))
+        day.lights.clipLightOn = true
+        let d = Self.mask(day, layout)
+        #expect(d.level(bulb.x, bulb.y) == 7 && d.level(clips.midX, clips.midY) == 0)
+    }
+
+    @Test("By day the partition lights nothing but a switched-on bulb; put away, its lights are gone at night")
+    func dayUnchanged() {
+        var day = RoomState(time: WallTime(hour: 10, minute: 0))
+        let plain = Self.mask(day, layout)
+        day.stowed = [.partition]
+        #expect(Self.mask(day, layout) == plain)
+        day.stowed = []
+        day.lights.clipLightOn = true
+        var bulbOnly = plain
+        bulbOnly.addRect(layout.rect(CoreLayout.partitionClipBulb), level: 7, tint: .warm)
+        #expect(Self.mask(day, layout) == bulbOnly)
+        var night = RoomState(time: WallTime(hour: 22, minute: 0), lightsMode: .lampOnly)
+        night.lights.clipLightOn = true
+        night.stowed = [.partition, .stringLights, .phoneStand]
+        let m = Self.mask(night, layout)
+        #expect(m.level(layout.rect(CoreLayout.partitionPad).midX, layout.rect(CoreLayout.partitionPad).midY) == 0)
+        for d in layout.decor(.stringLights) {
+            for p in RoomArt.stringLightGlass(in: d.rect) { #expect(m.level(p.x, p.y) == 0) }
+        }
+        let phone = layout.rect(PropArt.phoneScreenRect)
+        #expect(m.level(phone.midX, phone.midY) == 0, "no glow from a phone put away")
     }
 }

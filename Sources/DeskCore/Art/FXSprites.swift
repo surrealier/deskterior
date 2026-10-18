@@ -113,27 +113,39 @@ public enum FXArt {
     /// The onboarding sticky note frame: a yellow square with a curled corner and a strip of tape.
     public static func stickyNote(width: Int = 72, height: Int = 52) -> SpriteAsset {
         var c = PixelCanvas(width: width, height: height)
-        let body = ArtRect(0, 3, width, height - 3)
-        c.fill(body, .walnut5)
-        c.hline(x: 0, y: body.y, length: width, .oak5)
-        c.vline(x: 0, y: body.y, length: body.h, .oak5)
-        c.vline(x: width - 1, y: body.y, length: body.h, .walnut4)
-        c.hline(x: 0, y: height - 1, length: width, .walnut4)
-        // Curled bottom-right corner.
-        for i in 0..<6 {
-            c.hline(x: width - 6 + i, y: height - 1 - i, length: 6 - i, .clear)
-            c.plot(width - 7 + i, height - 1 - i, .walnut3)
-        }
-        c.hline(x: width - 6, y: height - 6, length: 1, .walnut4)
-        for i in 0..<5 { c.hline(x: width - 6, y: height - 6 + i, length: i + 1, .walnut4) }
+        drawStickyNote(&c, top: 3, curl: 6, face: .walnut5, light: .oak5, edge: .walnut4, curlInk: .walnut3)
         // Faint ruled lines.
-        for y in stride(from: body.y + 12, to: height - 6, by: 8) { c.hline(x: 4, y: y, length: width - 12, .walnut4) }
-        // Tape.
-        let tape = ArtRect(width / 2 - 10, 0, 20, 6)
-        c.fill(tape, .neutral8)
-        c.hline(x: tape.x, y: 0, length: tape.w, .neutral9)
-        c.vline(x: tape.x, y: 0, length: tape.h, .neutral7)
-        c.vline(x: tape.maxX - 1, y: 0, length: tape.h, .neutral7)
+        for y in stride(from: 3 + 12, to: height - 6, by: 8) { c.hline(x: 4, y: y, length: width - 12, .walnut4) }
+        drawTape(&c, ArtRect(width / 2 - 10, 0, 20, 6))
         return SpriteAsset("fx.stickyNote", c, anchor: .zero)
+    }
+
+    /// A sticky note's paper filling the canvas below row `top`: the face, a lit top row and left column, a darker
+    /// right column and bottom row, and the bottom-right corner curled up over `curl` px. The onboarding note and the
+    /// partition's notes (`PartitionArt.notePaper`) share it.
+    static func drawStickyNote(_ c: inout PixelCanvas, top: Int, curl n: Int, face: Ink, light: Ink, edge: Ink,
+                               curlInk: Ink) {
+        let width = c.width, height = c.height
+        let body = ArtRect(0, top, width, height - top)
+        c.fill(body, face)
+        c.hline(x: 0, y: body.y, length: width, light)
+        c.vline(x: 0, y: body.y, length: body.h, light)
+        c.vline(x: width - 1, y: body.y, length: body.h, edge)
+        c.hline(x: 0, y: height - 1, length: width, edge)
+        // Curled bottom-right corner.
+        for i in 0..<n {
+            c.hline(x: width - n + i, y: height - 1 - i, length: n - i, .clear)
+            c.plot(width - n - 1 + i, height - 1 - i, curlInk)
+        }
+        c.hline(x: width - n, y: height - n, length: 1, edge)
+        for i in 0..<(n - 1) { c.hline(x: width - n, y: height - n + i, length: i + 1, edge) }
+    }
+
+    /// A strip of tape over `r`: lit along its top, its cut ends a step darker.
+    static func drawTape(_ c: inout PixelCanvas, _ r: ArtRect) {
+        c.fill(r, .neutral8)
+        c.hline(x: r.x, y: r.y, length: r.w, .neutral9)
+        c.vline(x: r.x, y: r.y, length: r.h, .neutral7)
+        c.vline(x: r.maxX - 1, y: r.y, length: r.h, .neutral7)
     }
 }

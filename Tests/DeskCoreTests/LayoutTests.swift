@@ -90,6 +90,67 @@ struct LayoutTests {
         #expect(!layout.decor(.shelf).isEmpty)
     }
 
+    // MARK: memos (0.3.0)
+
+    /// Widgets in the margins and over the screen, so the core nudges left and right of centre.
+    static let avoidSets: [[ArtRect]] = [
+        [], [ArtRect(0, 0, 90, 90)], [ArtRect(500, 0, 140, 140)], [ArtRect(280, 60, 40, 30)], [ArtRect(160, 60, 40, 30)],
+    ]
+
+    @Test("The partition and its pieces are visible and no decor meets it, on every display, Dock and widget nudge",
+          arguments: pixelGridDesignTable, PixelGridDock.allCases)
+    func partitionClearOfDecor(_ row: PixelGridTableRow, _ dock: PixelGridDock) {
+        for avoid in Self.avoidSets {
+            let layout = LayoutSolver.solve(display: row.display(dock: dock), avoid: avoid)
+            for name in ["partition", "partition.tower", "partition.post", "partition.cube", "partition.pad",
+                         "partition.clips", "partition.dday", "partition.clipLight", "calendar"] {
+                #expect(layout.visible.contains(layout.anchors[name]!), "\(row.name) \(dock) \(avoid): \(name)")
+            }
+            let parts = [CoreLayout.partitionLow, CoreLayout.partitionTower, CoreLayout.partitionClipLight]
+                + CoreLayout.partitionClamps
+            for d in layout.decor where ![.ceiling, .crown].contains(d.kind) {
+                for part in parts {
+                    #expect(!d.rect.intersects(layout.rect(part)), "\(row.name) \(dock) \(avoid): \(d) meets \(part)")
+                }
+            }
+        }
+    }
+
+    @Test("The partition's rects: inside the core, clear of the wall pieces, on the desk's back edge")
+    func partitionRects() {
+        typealias L = CoreLayout
+        let core = ArtRect(0, 0, L.size.w, L.size.h)
+        for r in [L.partition, L.partitionLow, L.partitionTower, L.partitionClipLight, L.partitionLampWash]
+            + L.partitionClamps {
+            #expect(core.contains(r), "\(r)")
+        }
+        #expect(L.partitionLow.maxY == L.deskBackY && L.partitionLow.minX == L.deskTop.minX
+            && L.partitionLow.maxX == L.deskTop.maxX)
+        #expect(L.partitionTower.maxY == L.partitionLow.minY && L.partitionTower.minX == L.monitorBody.maxX)
+        for wall in [L.window, L.roomSwitch, L.clock, L.calendar] {
+            for part in [L.partitionLow, L.partitionTower, L.partitionClipLight] { #expect(!wall.intersects(part)) }
+        }
+        #expect(L.partitionClipLight.contains(L.partitionClipBulb))
+        #expect(L.partitionClipWash.contains(L.partitionClipWashClip) && L.partitionClipWashClip.contains(L.partitionTower))
+        #expect(L.partitionLow.contains(L.partitionLampWashClip))
+        // Nothing new is critical: a widget may cover the partition (§1.2), so putting things away never nudges.
+        for r in LayoutSolver.criticalCoreRects { #expect(!r.intersects(L.partitionTower)) }
+        #expect(LayoutSolver.criticalCoreRects.count == 7)
+    }
+
+    @Test("Hiding put-away decor keeps the grid, the anchors and the lift; it is idempotent")
+    func hidingDecor() {
+        for row in pixelGridDesignTable {
+            let layout = LayoutSolver.solve(display: row.display())
+            let kinds = StowCatalog.decorKinds(hiddenBy: [.wallShelf, .stringLights, .wallArt, .floorPlant, .pegboard])
+            let hidden = layout.hiding(kinds)
+            #expect(hidden.grid == layout.grid && hidden.anchors == layout.anchors && hidden.floorLift == layout.floorLift)
+            #expect(hidden.decor.allSatisfy { !kinds.contains($0.kind) })
+            #expect(hidden.decor == layout.decor.filter { !kinds.contains($0.kind) })
+            #expect(hidden.hiding(kinds) == hidden)
+        }
+    }
+
     @Test("This Mac (Dock hidden): the margins fill with decor")
     func thisMacDecor() {
         let layout = LayoutSolver.solve(display: pixelGridDesignTable[0].display(dock: .hidden))
