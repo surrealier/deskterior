@@ -168,4 +168,41 @@ extension Placement {
 
     /// The places that hide what is inside them once shut, in the order a returning file looks for one.
     static let concealing: [ContainerID] = [.riserLeft, .riserRight, .cabinetTop, .cabinetMiddle, .cabinetFile, .phone]
+
+    /// A remembered spot (a tombstone's, a drop's hint) taken while an object was put away, now that the object is
+    /// back where it stood: a floor spot in an out cabinet's span moves to the nearest free floor spot, and a pile to
+    /// be made in an out plant's or phone stand's strip to the nearest valid desk spot, as Bring Back would have
+    /// moved them. Anything else is returned as it is. For arrivals only (the Reconciler, a drop's hint), never for
+    /// an undo: an entry's places stood clear of what it restores when it was recorded.
+    static func clearOfOutFurniture(
+        _ preferred: Location?, pilePos: SIMD2<Float>?, in s: DeskState
+    ) -> (Location?, SIMD2<Float>?) {
+        switch preferred {
+        case let .floor(x)?:
+            let spans = StowID.allCases.compactMap { s.isOut($0) ? StowCatalog.spec($0).floorSpan : nil }
+            guard !FloorLine.isFree(x, avoiding: spans) else { break }
+            let centres = s.tokens.sortedKeys.compactMap { k -> Int? in
+                if case let .floor(c)? = s.tokens.location(of: k) { c } else { nil }
+            }
+            let spot = Reducer.floorSpots(near: x, count: 1, basket: s.wastebasket, occupied: centres, stowed: s.stowed)
+            return (spot.first.map { .floor(x: $0) } ?? preferred, pilePos)
+        case let .desk(pile, _)? where s.piles[pile] == nil:
+            guard let pos = pilePos, pos.isFinite else { break }
+            let footprints = DeskPlanePhysics.footprints(stowed: s.stowed)
+            let strips = StowID.allCases.compactMap { id -> DeskPlaneRect? in
+                guard s.isOut(id), let name = StowCatalog.spec(id).footprint else { return nil }
+                return footprints[name]
+            }
+            let body = DeskPlaneRect.centred(at: pos, size: DeskPlanePhysics.pileSize)
+            guard strips.contains(where: { $0.intersects(body) }) else { break }
+            var watchdog = PileWatchdog()
+            watchdog.stowed = s.stowed
+            let spot = watchdog.nearestValidSpot(to: pos, others: Array(s.piles.values),
+                                                 obstacles: [DeskPlanePhysics.penCupFootprint(at: s.penCup.pos)])
+            return (preferred, spot ?? pos)
+        default:
+            break
+        }
+        return (preferred, pilePos)
+    }
 }

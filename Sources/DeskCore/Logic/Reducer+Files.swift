@@ -132,12 +132,15 @@ extension Reducer {
         return effects
     }
 
-    /// Desk items dropped back onto the desk: the same move a carry there would make.
+    /// Desk items dropped back onto the desk: the same move a carry there would make. A drop's spot that a put-away
+    /// object has come back to since (`followDropped`) keeps clear of it.
     private static func placeDropped(_ s: inout DeskState, _ keys: [TokenKey], _ d: DropIn, _ env: ReduceEnv) -> [Effect] {
-        switch d.location {
+        let (clear, pilePos) = Placement.clearOfOutFurniture(d.location, pilePos: d.pilePos, in: s)
+        let location = clear ?? d.location
+        switch location {
         case let .desk(pile, _):
-            if let at = d.pilePos ?? s.piles[pile] { return reducePhysics(&s, .dropOnDesk(keys, pile: pile, at: at), env) }
-            return reduce(&s, .move(keys, to: d.location), env)
+            if let at = pilePos ?? s.piles[pile] { return reducePhysics(&s, .dropOnDesk(keys, pile: pile, at: at), env) }
+            return reduce(&s, .move(keys, to: location), env)
         case let .floor(x):
             return reducePhysics(&s, .dropOnFloor(keys, x: x), env)
         default:

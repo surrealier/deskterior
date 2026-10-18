@@ -316,6 +316,47 @@ struct TidyReducerTests {
         #expect(r.isOut(.cabinet) && StowCatalog.blockers(of: .cabinet, in: r) == 0 && r.violations().isEmpty)
     }
 
+    @Test("A file put back from the Trash, or a drop's file arriving, keeps clear of an object brought back since")
+    func arrivalsMakeRoom() {
+        let midX = CoreLayout.cabinet.midX
+        // The cabinet is away, a.txt is dropped where it stood and trashed in Finder; the cabinet comes back.
+        var s = F.mirrored(["a.txt", "b.txt"])
+        _ = reduce(&s, .putAway(.cabinet), env)
+        _ = reduce(&s, .dropOnFloor([F.key(1)], x: midX), env)
+        Reconciler.reconcile(&s, F.snapshot([F.entry("b.txt", 2)]), now: F.t0)
+        #expect(s.tombstones.count == 1)
+        #expect(!reduce(&s, .bringBack(.cabinet), env).contains(.toast(.madeRoom)), "nothing in the way yet")
+        // Put Back from the Finder Trash.
+        Reconciler.reconcile(&s, F.snapshot([F.entry("a.txt", 1), F.entry("b.txt", 2)]), now: F.t0 + 60)
+        guard case let .floor(x)? = s.tokens.location(of: F.key(1)) else {
+            Issue.record("expected the floor")
+            return
+        }
+        #expect(x != midX)
+        #expect(StowCatalog.blockers(of: .cabinet, in: s) == 0 && s.violations().isEmpty)
+        // A pile made in an away plant's strip, its only file trashed, the plant back, the file put back.
+        var p = F.mirrored(["a.txt", "b.txt"])
+        _ = reduce(&p, .putAway(.plant), env)
+        _ = reduce(&p, .dropOnDesk([F.key(1)], pile: "P1", at: inside("plant")), env)
+        Reconciler.reconcile(&p, F.snapshot([F.entry("b.txt", 2)]), now: F.t0)
+        #expect(p.tombstones.count == 1 && p.piles.isEmpty)
+        _ = reduce(&p, .bringBack(.plant), env)
+        Reconciler.reconcile(&p, F.snapshot([F.entry("a.txt", 1), F.entry("b.txt", 2)]), now: F.t0 + 60)
+        #expect(p.tokens.location(of: F.key(1)) == .desk(pile: "P1", order: 0))
+        #expect(!meets("plant", p.piles[PileID("P1")]!) && StowCatalog.blockers(of: .plant, in: p) == 0)
+        // A drop's hint aimed at the cabinet's floor while it was away; the file lands after it came back.
+        var h = F.mirrored(["b.txt"])
+        _ = reduce(&h, .putAway(.cabinet), env)
+        h.hints.append(PlacementHint(name: "new.txt", location: .floor(x: midX), expires: F.t0 + 600))
+        _ = reduce(&h, .bringBack(.cabinet), env)
+        Reconciler.reconcile(&h, F.snapshot([F.entry("b.txt", 2), F.entry("new.txt", 3)]), now: F.t0 + 1)
+        guard case .floor? = h.tokens.location(of: F.key(3)) else {
+            Issue.record("expected the floor")
+            return
+        }
+        #expect(StowCatalog.blockers(of: .cabinet, in: h) == 0 && h.violations().isEmpty)
+    }
+
     // MARK: Invariants and the rest of the model
 
     @Test("No put-away place ever holds a token, through random tidying, moves, undo and redo")

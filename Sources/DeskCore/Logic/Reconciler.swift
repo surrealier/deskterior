@@ -225,7 +225,9 @@ public enum Reconciler {
         placed += newcomers.map { ($0, nil, nil, .new) }
 
         var allocator = ScreenGrid.Allocator(grid: grid, occupied: state.tokens.occupiedCells)
-        for (entry, preferred, pilePos, arrival) in placed {
+        for (entry, remembered, rememberedPile, arrival) in placed {
+            // MARK: tidy (0.3.0): a spot remembered while an object was away keeps clear of it now it is back.
+            let (preferred, pilePos) = Placement.clearOfOutFurniture(remembered, pilePos: rememberedPile, in: state)
             let loc = Placement.resolve(preferred, pilePos: pilePos, in: &state, allocator: &allocator)
             if state.tokens.insert(entry.key, meta: entry.meta, at: loc, grid: grid) {
                 let at = state.tokens.location(of: entry.key)!
