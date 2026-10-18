@@ -53,9 +53,10 @@ final class FileActions {
 
     // MARK: Calls
 
-    /// Runs one operator call ⌘Z can take back (a trash, Empty Wastebasket, a drop-in with `op`): the journal takes
-    /// its place now (`.fileStarted`), and `report(result, undo)` fills it, where `undo` names the record the call
-    /// issued (kept here). `call` gets a progress sink for a copy. Returns the call's ref.
+    /// Runs one operator call ⌘Z can take back (a trash, Empty Wastebasket, a drop-in with `op`, a text file saved
+    /// from a memo): the journal takes its place now (`.fileStarted`), and `report(result, undo)` fills it, where
+    /// `undo` names the record the call issued (kept here; a saved file's undo trashes it only while it is unchanged).
+    /// `call` gets a progress sink for a copy (a drop-in's only). Returns the call's ref.
     @discardableResult
     func run(
         _ kind: FileReport.Kind, op: ImportOp? = nil,

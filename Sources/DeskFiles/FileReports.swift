@@ -33,7 +33,9 @@ extension ExplicitIntent.Origin {
     /// gesture the request came from (`EffectRunner.withOrigin`), nil when none was named: then nothing is minted.
     /// A trash takes the origin it was requested from (a menu, the Inventory, the Dock Trash), or `sheetConfirm` once
     /// its sheet (asked for from a menu) was confirmed, never before; a drop-in needs a `drop`; an undo comes from ⌘Z
-    /// (`undo`) or a menu's Undo item; an eject from a menu or the Inventory. Effects that change no file get none.
+    /// (`undo`) or a menu's Undo item; an eject from a menu or the Inventory; Save as Text File from a menu item only
+    /// (the Memos window's button goes through `AppDelegate.perform`, whose origin is a menu item; Erratum 31).
+    /// Effects that change no file get none.
     public static func minted(for effect: Effect, requestedVia requested: Self?, confirmed: Bool = false) -> Self? {
         guard let requested else { return nil }
         switch effect {
@@ -46,6 +48,8 @@ extension ExplicitIntent.Origin {
             return [.undo, .menuItem].contains(requested) ? .undo : nil
         case .eject:
             return [.menuItem, .inventory].contains(requested) ? requested : nil
+        case .createTextFile:
+            return requested == .menuItem ? .menuItem : nil
         default:
             return nil
         }
@@ -68,6 +72,7 @@ extension FileProblem {
         case .outsideRoot, .outsideSandbox, .notEjectable: self = .outside
         case .staleIntent, .spentIntent, .cancelled, .unknownRecord: self = .expired
         case .wrongOrigin, .mismatchedRequest, .failed: self = .failed
+        case .invalidName, .invalidContents: self = .failed
         }
     }
 }
@@ -129,7 +134,7 @@ extension FileReport {
             case let .refused(source, r):
                 refused.append(source.standardizedFileURL.path)
                 problems.append(r == .landedUnverified && asked == .alias ? .aliasUnverified : FileProblem(r))
-            case .trashed, .unchanged, .ejected:
+            case .trashed, .unchanged, .ejected, .created:
                 break
             }
         }
@@ -179,7 +184,8 @@ extension FileReport {
                 done = trashed && moved ? .undidDropIn : trashed ? .undidCopyIn : .undidMoveIn
             }
         case .createTextFile:
-            done = .undidSaveTextFile // Step 0 stub: Track E (spec §6).
+            // MARK: files (0.3.0): the text file went to the Trash (a refusal says why it stayed instead).
+            done = result.outcomes.contains { if case .trashed = $0 { true } else { false } } ? .undidSaveTextFile : nil
         default:
             done = .undidTrash
         }
@@ -198,12 +204,28 @@ extension FileReport {
         }
     }
 
-    /// A Save as Text File on Desktop result (Erratum 31): the new file, named by its `source` ("memo:note:N3"), so
-    /// its placement hint follows the name it landed under.
+    /// A Save as Text File on Desktop result (Erratum 31): the new file, named by the memo it came from (`source`,
+    /// "memo:note:N3", as its placement hint is), so the hint follows the name it landed under (" 2" after a clash),
+    /// with the identity it was written with; refused, its hint goes. Saved, it toasts `savedTextFile`; a file that
+    /// landed unverified stays where it is, with no undo step, and says so.
     public init(create result: FileResult, source: String, undo: FileUndoRef?) {
-        // Step 0 stub: Track E (spec §6: `placed`, the `.savedTextFile` toast).
-        self.init(kind: .createTextFile, count: result.outcomes.count, problems: result.refusals.map(FileProblem.init),
-                  undo: undo)
+        var placed: [Placed] = []
+        var refused: [String] = []
+        for outcome in result.outcomes {
+            switch outcome {
+            case let .created(url, _):
+                placed.append(Placed(source: source, name: TextLayout.nfc(url.lastPathComponent),
+                                     key: result.undo?.createdKey(at: url) ?? FileReport.identity(of: url)))
+            case .refused:
+                refused.append(source)
+            default:
+                break
+            }
+        }
+        self.init(
+            kind: .createTextFile, count: result.outcomes.count, placed: placed, refused: refused,
+            problems: result.refusals.map(FileProblem.init), undo: undo, done: placed.isEmpty ? nil : .savedTextFile
+        )
     }
 
     public init(eject outcome: FileOutcome) {

@@ -9,14 +9,14 @@ import QuickLookUI
 /// mirror connects on ⏻. In dry runs (`--demo`, `--headless`) none of those reaches the system: they are only
 /// recorded.
 ///
-/// File changes (Move to Trash, Empty Wastebasket, drop-in imports and aliases, their undo, Eject) go to
-/// `FileOperator` through `FileActions`, each with one `ExplicitIntent` minted here — the only place intents are
-/// minted (Errata 14) — right before its one call, from the gesture the request came from (`withOrigin`; a request dispatched with no
+/// File changes (Move to Trash, Empty Wastebasket, drop-in imports and aliases, Save as Text File, their undo,
+/// Eject) go to `FileOperator` through `FileActions`, each with one `ExplicitIntent` minted here — the only place
+/// intents are minted (Errata 14) — right before its one call, from the gesture the request came from (`withOrigin`; a request dispatched with no
 /// gesture named mints nothing and only toasts): a trash with the origin it was requested from (a menu, the
 /// Inventory, the Dock Trash), or `sheetConfirm` once Empty Wastebasket's sheet, asked for from a menu, was
 /// confirmed; an import with `drop`; an undo with `undo` from ⌘Z or a menu's Undo (its record from the journal,
-/// redeemed on the operator that issued it); an eject from a menu. Demos run them for real, on the fixture with the
-/// FakeTrash (`FileActionScope`).
+/// redeemed on the operator that issued it); an eject or a saved text file from a menu. Demos run them for real, on
+/// the fixture with the FakeTrash (`FileActionScope`).
 final class EffectRunner {
     let host: SceneHost
     weak var mirror: MirrorController?
@@ -24,7 +24,7 @@ final class EffectRunner {
     let folder: URL
     let dryRun: Bool
     /// Effects that touched files so far, newest last (`open`, `reveal`, `quickLook`, `copy`, `trash`,
-    /// `emptyWastebasket`, `import`, `undo`, `eject`; demo expectations).
+    /// `emptyWastebasket`, `import`, `undo`, `eject`, `createTextFile`; demo expectations).
     private(set) var fileLog: [String] = []
     /// Called after Choose Folder… granted access (the store dispatches `.accessGranted`).
     var onAccessGranted: (() -> Void)?
@@ -182,8 +182,16 @@ extension EffectRunner {
             let intent = ExplicitIntent(origin: origin)
             let volume = URL(fileURLWithPath: path, isDirectory: true)
             files.runEject { await $0.eject(volume, intent) }
-        case .createTextFile:
-            break // Step 0 stub: Track E (mint `.menuItem` and call `FileOperator.createTextFile`).
+        // MARK: files (0.3.0)
+        case let .createTextFile(request):
+            // Save as Text File on Desktop: a menu item only (the Memos window's button goes through one).
+            guard let origin = mintable(effect) else { return }
+            record("createTextFile")
+            let intent = ExplicitIntent(origin: origin)
+            let name = request.name, contents = Data(request.contents.utf8), source = request.source
+            files.run(.createTextFile, { op, _ in await op.createTextFile(named: name, contents: contents, intent) }) {
+                FileReport(create: $0, source: source, undo: $1)
+            }
         default:
             break
         }
