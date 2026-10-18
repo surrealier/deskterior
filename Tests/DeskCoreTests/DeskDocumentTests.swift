@@ -39,6 +39,9 @@ struct DeskDocumentTests {
         s.hostDisplayUUID = "37D8"
         s.flags.onboardingStep = 4
         s.flags.askedCoverDisplays = true
+        // MARK: tidy (0.3.0)
+        s.stowed = [.plant, .wallShelf, .clipLight]
+        s.clipLightOn = true
         s.tombstones = [Tombstone(
             key: F.key(99), name: "gone.png", kind: .image, loc: .container(.riserLeft, order: 0), until: F.t0 + 3600,
             pilePos: [1, 2]
@@ -64,6 +67,8 @@ struct DeskDocumentTests {
         #expect(doc.tokens[1].key == TokenKey(volume: "8F1C…", inode: 2_345_678))
         #expect(doc.tombstones.count == 1 && doc.tombstones[0].loc == .container(.riserLeft, order: 0))
         #expect(doc.flags.onboardingStep == 5 && doc.flags.askedCoverDisplays)
+        // MARK: tidy (0.3.0): a 0.1/0.2 file has everything out and the clip light off.
+        #expect(doc.stowed.isEmpty && !doc.clipLight)
 
         let s = doc.makeState()
         #expect(s.violations().isEmpty)
@@ -243,5 +248,46 @@ struct DeskDocumentTests {
         #expect(ISODate.parse(ISODate.format(ms)) == ms)
         #expect(ISODate.parse("2026-10-01T09:00:00Z") != nil)
         #expect(ISODate.parse("yesterday") == nil)
+    }
+
+    // MARK: tidy (0.3.0)
+
+    @Test("What is put away and the clip light are written always, sorted; unknown values are skipped")
+    func stowedJSON() throws {
+        let doc = DeskDocument(state: Self.richState(), savedAt: F.t0)
+        #expect(doc.stowed == ["clipLight", "plant", "wallShelf"] && doc.clipLight)
+        let text = String(decoding: try DeskDocument(state: F.mirrored(["a"]), savedAt: F.t0).encoded(), as: UTF8.self)
+        #expect(text.contains("\"stowed\" : [") && text.contains("\"clipLight\" : false"))
+        let lenient = try DeskDocument.decode(Self.json(
+            #"{"schema": 1, "stowed": ["plant", "hovercraft", 7, "plant", "cabinet"], "clipLight": "yes"}"#
+        ))
+        #expect(lenient.stowed == ["cabinet", "plant"] && !lenient.clipLight)
+        let notList = try DeskDocument.decode(Self.json(#"{"schema": 1, "stowed": "plant", "clipLight": true}"#))
+        #expect(notList.stowed.isEmpty && notList.clipLight)
+        #expect(notList.makeState().clipLightOn && lenient.makeState().stowed == [.cabinet, .plant])
+    }
+
+    @Test("Loading never leaves a file inside a put-away place: its object comes back, nothing becomes visible")
+    func sanitizeBringsBack() throws {
+        let doc = try DeskDocument.decode(Self.json("""
+            {"schema": 1, "stowed": ["cabinet", "partition", "plant", "dailyPad", "riserDrawers"],
+             "drawers": {"cabinetTop": {"p": 0}, "riserLeft": {"p": 5}, "riserRight": {"p": 0}},
+             "tokens": [
+               {"key": {"volume": "V", "inode": 1}, "meta": {"name": "a.txt", "kind": "text"},
+                "loc": {"container": {"id": "cabinetTop", "order": 0}}},
+               {"key": {"volume": "V", "inode": 2}, "meta": {"name": "b.txt", "kind": "text"},
+                "loc": {"container": {"id": "memoClips", "order": 0}}}
+             ]}
+            """))
+        #expect(doc.stowed == ["dailyPad", "plant", "riserDrawers"], "the add-on keeps its own flag")
+        #expect(doc.drawers["riserLeft"]?.p == 0 && doc.drawers["cabinetTop"]?.p == 0, "an away drawer rests shut")
+        let s = doc.makeState()
+        #expect(s.violations().isEmpty && s.tokens.location(of: TokenKey(volume: "V", inode: 2)) == .container(.memoClips, order: 0))
+        #expect(s.isOut(.partition) && !s.isOut(.dailyPad) && s.isOut(.cabinet))
+        // A document made in code goes through the same rule when it becomes a state.
+        var raw = DeskDocument()
+        raw.stowed = ["phoneStand"]
+        raw.tokens = [.init(key: F.key(1), meta: TokenMeta(name: "p", kind: .text), loc: .container(.phone, order: 0))]
+        #expect(raw.makeState().stowed.isEmpty && raw.makeState().violations().isEmpty)
     }
 }

@@ -43,6 +43,15 @@ extension DeskDocument {
             }
             return t
         }
+        // MARK: tidy (0.3.0): no file stays inside a put-away place (Erratum 30): an object whose places hold tokens
+        // comes back, with nothing made visible; an away object's drawers rest shut at their gap (0: they are empty).
+        let occupied = Set(d.tokens.compactMap(\.loc.container))
+        let away = StowCatalog.bringingBack(occupied, from: Set(d.stowed.compactMap(StowID.init(rawValue:))))
+        d.stowed = away.map(\.rawValue).sorted()
+        for raw in d.drawers.keys {
+            guard let id = ContainerID(rawValue: raw), StowCatalog.isAway(id, stowed: away) else { continue }
+            d.drawers[raw] = DrawerState(p: id.spec.closedLimit(count: 0))
+        }
         return d
     }
 
