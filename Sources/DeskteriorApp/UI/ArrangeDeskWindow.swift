@@ -104,8 +104,9 @@ final class ArrangeDeskModel {
         let holds = ([id] + StowCatalog.children(of: id)).contains { !StowCatalog.spec($0).containers.isEmpty }
         let files = s.tokensInside(id).count
         let parentAway = spec.parent.map { !s.isOut($0) } ?? false
+        // An add-on keeps its own flag while the partition is away: one put away itself stays away when it comes back.
         let caption: String? = if parentAway {
-            L10n.text(.withPartition, language)
+            L10n.text(s.stowed.contains(id) ? .staysAwayWithPartition : .withPartition, language)
         } else if s.isOut(id), files > 0 {
             L10n.format(.takesOut, [files], language)
         } else {

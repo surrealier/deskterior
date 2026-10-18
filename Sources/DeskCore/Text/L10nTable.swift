@@ -91,7 +91,7 @@ public enum L10nKey: String, CaseIterable, Sendable {
     case undoPutAway, undoBringBack, undoBringBackAll
     case toastPutAwayPlace, toastTookFilesOut, toastDrawersPutAway, toastMadeRoom
     case arrangeTitle, groupStorage, groupDesk, groupPartition, groupWall, onTheDesk, inside, takesOut, withPartition
-    case arrangeFooter
+    case arrangeFooter, staysAwayWithPartition
     // MARK: memos (0.3.0): the partition, sticky notes, the daily memo pad, the calendar and memo files (Erratum 31)
     case newNote, memos, todayMemo, calendarItem, addOns, clipLightOn, clipLightOff, setDDay, clearDDay, editNote
     case colourMenu, colourYellow, colourPink, colourSky, colourLime, colourOrange, colourCream, bringToFront
@@ -486,6 +486,7 @@ public enum L10nKey: String, CaseIterable, Sendable {
         .inside: p("%d inside", "%d개 들어 있음"),
         .takesOut: p("Putting it away takes %d files out to the monitor.", "넣어 두면 파일 %d개를 모니터로 꺼내요."),
         .withPartition: p("Comes back with the partition.", "파티션과 함께 돌아와요."),
+        .staysAwayWithPartition: p("Stays put away when the partition comes back.", "파티션을 다시 놓아도 넣어 둔 채로 있어요."),
         .arrangeFooter: p("Put-away things leave the room. Files never stay inside them, and ⌘Z brings them back.",
                           "넣어 둔 물건은 방에서 사라져요. 그 안에 파일은 남지 않고, ⌘Z로 되돌릴 수 있어요."),
 

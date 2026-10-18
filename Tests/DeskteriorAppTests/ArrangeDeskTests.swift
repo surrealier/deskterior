@@ -62,6 +62,10 @@ struct ArrangeDeskTests {
         let pad = ArrangeDeskModel.row(.dailyPad, in: away), light = ArrangeDeskModel.row(.clipLight, in: away)
         #expect(!pad.isEnabled && pad.isOn && pad.caption == "Comes back with the partition.")
         #expect(!light.isEnabled && !light.isOn, "the add-on's own flag shows")
+        #expect(light.caption == "Stays put away when the partition comes back.", "it does not come back with it")
+        var back = away
+        _ = reduce(&back, .bringBack(.partition), ReduceEnv(now: Date(timeIntervalSince1970: 1_792_300_000)))
+        #expect(back.isOut(.dailyPad) && !back.isOut(.clipLight), "as the captions said")
         let partition = ArrangeDeskModel.row(.partition, in: away)
         #expect(partition.isEnabled && !partition.isOn && partition.caption == nil)
     }
@@ -74,6 +78,8 @@ struct ArrangeDeskTests {
         var away = DeskState()
         away.stowed = [.partition]
         #expect(ArrangeDeskModel.row(.memoClips, in: away, language: .ko).caption == "파티션과 함께 돌아와요.")
+        away.stowed.insert(.clipLight)
+        #expect(ArrangeDeskModel.row(.clipLight, in: away, language: .ko).caption == "파티션을 다시 놓아도 넣어 둔 채로 있어요.")
         #expect(ArrangeDeskModel.title(.storage, language: .ko) == "수납" && ArrangeDeskModel.title(.wall, language: .ko) == "벽")
         #expect(L10n.format(.inside, [1], .ko) == "1개 들어 있음")
     }
