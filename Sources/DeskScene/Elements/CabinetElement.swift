@@ -235,6 +235,14 @@ final class CabinetElement: ContainerElement, DeskElement {
         render()
     }
 
+    // MARK: tidy (0.3.0)
+    /// Put away with a drawer still sliding shut: shut at once, with no rest reported (the model shut it already).
+    func restDormant() {
+        for u in units { u.restAtModel() }
+        endPulse(shown: shownTokens)
+        render()
+    }
+
     func handle(_ events: [DrawerSim.Event], of u: DrawerUnit) {
         for e in events {
             switch e {

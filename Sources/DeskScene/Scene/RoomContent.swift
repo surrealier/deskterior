@@ -337,7 +337,12 @@ final class RoomContent: GestureTarget {
             router.cancelAll()
             finishSettling()
             layout = solvedLayout.hiding(StowCatalog.decorKinds(hiddenBy: new.stowed))
+            let wasActive = Set(installed.filter { byID[$0.slot] != nil }.map(\.slot))
             rebuild()
+            // A slot that just went dormant steps no more: its elements come to rest where the model has them.
+            for slot in installed where wasActive.contains(slot.slot) && byID[slot.slot] == nil {
+                for e in slot.elements { e.restDormant() }
+            }
             if skyChanged, let s = context.state { monitor.apply(s) }
             relit()
             roomTimeChanged(from: old)

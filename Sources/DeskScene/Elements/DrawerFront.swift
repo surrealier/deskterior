@@ -250,6 +250,21 @@ final class DrawerUnit {
         return events
     }
 
+    // MARK: tidy (0.3.0)
+    /// Put away: at the model's opening at once (shut), nothing in motion and no events, unlike `settle`'s hard
+    /// sleep, which stops a sliding drawer where it is and reports that as its rest.
+    func restAtModel() {
+        pendingOpen = nil
+        closeIn = nil
+        springOpened = false
+        springTime = 0
+        peekAmount = 0
+        wiggleFrames = 0
+        sim = DrawerSim(id, p: modelP ?? sim.p, count: members.count)
+        jostle.forceRest()
+        entering.removeAll()
+    }
+
     /// Tokens just chomped start at the back wall and slide to the front as the drawer gapes.
     private func slideEntering() {
         let back = jostle.bounds.lowerBound

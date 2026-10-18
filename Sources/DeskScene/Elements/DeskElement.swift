@@ -65,6 +65,10 @@ public protocol DeskElement: AnyObject {
     func step(_ dt: Double)
     /// Hard sleep: jump every animation to its final frame.
     func settle()
+    // MARK: tidy (0.3.0)
+    /// Its placed object was just put away (the slot goes dormant, so it steps no more): every animation ends where
+    /// the model has it, so it comes back at rest. Nothing is dispatched. By default, `settle()`.
+    func restDormant()
     // MARK: mat
     /// Modifier keys went down or up (or the hover moved on) while the pointer rests on `hit` (⌥ over the mat shows
     /// its handles). True when something visible changed.
@@ -86,6 +90,7 @@ extension DeskElement {
     public func modifiersChanged(_ mods: InputEvent.Modifiers, _ hit: Hit) -> Bool { false }
     public func step(_ dt: Double) {}
     public func settle() {}
+    public func restDormant() { settle() }
 }
 
 /// The shared element for the M3 room: it shows the `RoomPlan` placements it owns (one sprite node each, z from

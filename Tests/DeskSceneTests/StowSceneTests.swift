@@ -46,6 +46,28 @@ struct StowSceneTests {
         for element in ["riser", "screen", "monitor", "chair", "hub", "calendar"] { #expect(scene.isRouted(element)) }
     }
 
+    @Test("A cabinet put away with a drawer open comes back shut and still; nothing reports the drawer open")
+    func putAwayOpenDrawer() throws {
+        var s = C.state()
+        s.drawers[.cabinetFile] = DrawerState(p: 18)
+        let store = SceneStore(s)
+        let scene = store.scene
+        let p = Pointer(scene: scene)
+        let cabinet = try #require(try C.room(scene).cabinetElement)
+        C.settle(p)
+        let file = try #require(cabinet.unit(.cabinetFile))
+        #expect(file.pixel > 0)
+        store.dispatch(.putAway(.cabinet))
+        C.settle(p)
+        #expect(file.pixel == 0 && !cabinet.needsFrames && store.state.drawerOpening(.cabinetFile) == 0)
+        #expect(!store.actions.contains { $0.hasPrefix("drawerSettled") }, "\(store.actions)")
+        store.actions.removeAll()
+        store.dispatch(.bringBack(.cabinet))
+        #expect(file.pixel == 0, "it comes back shut, not sliding shut")
+        C.settle(p)
+        #expect(store.actions == ["bringBack(DeskCore.StowID.cabinet)"])
+    }
+
     @Test("Piles still hit where they lie; a pile stays a pile on the strip a put-away plant left")
     func pilesUnchanged() throws {
         var s = Self.state([.plant])
