@@ -158,7 +158,7 @@ struct ArrangeDeskView: View {
     }
 }
 
-/// One object: its name, how many files it holds and its caption, then the "On the Desk" switch.
+/// One object: its name, how many files it holds and its caption, then its "On the Desk" switch.
 struct ArrangeDeskRow: View {
     let row: ArrangeDeskModel.Row
     let set: (Bool) -> Void
@@ -175,9 +175,11 @@ struct ArrangeDeskRow: View {
                 }
             }
             Spacer(minLength: 8)
+            // "On the Desk" is the switch's name for VoiceOver ("Cabinet, On the Desk"); the row shows the object's.
             Toggle(tr(.onTheDesk), isOn: Binding(get: { row.isOn }, set: { set($0) }))
                 .toggleStyle(.switch)
-                .controlSize(.small)
+                .labelsHidden()
+                .help(tr(.onTheDesk))
                 .accessibilityLabel("\(row.title), \(tr(.onTheDesk))")
         }
         .disabled(!row.isEnabled)

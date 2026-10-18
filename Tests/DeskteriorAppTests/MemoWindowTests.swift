@@ -130,6 +130,7 @@ struct MemoWindowTests {
             // What AppDelegate.perform does with it: a menu pick's gesture.
             if forward { session.perform(command, from: .menuItem) }
         })
+        controller.presents = false  // laid out, never on screen
         return Rig(rig: rig, controller: controller, log: log)
     }
 

@@ -20,6 +20,8 @@ final class MemoWindowController: NSObject, NSWindowDelegate {
     private unowned let store: Store
     private let today: () -> DayKey
     private var sessions = 0
+    /// False in tests: the window is built and laid out but never put on screen (nor the app activated).
+    var presents = true
 
     static let contentSize = NSSize(width: 560, height: 420)
 
@@ -49,7 +51,7 @@ final class MemoWindowController: NSObject, NSWindowDelegate {
         model.open(target, session: session)
         guard let window else { return }
         if let near, !wasShown || window.frame.intersects(near) { place(window, beside: near) }
-        AppWindow.present(window)
+        if presents { AppWindow.present(window) }
     }
 
     /// A new editing session (each editor attach starts one).
@@ -482,18 +484,24 @@ extension Ink {
 
 // MARK: - Views
 
+/// The two tabs under a segmented control (a plain hosted window gets no tab bar from `TabView`).
 struct MemoWindowView: View {
     @Bindable var model: MemoWindowModel
 
     var body: some View {
         let _ = model.language
-        TabView(selection: Binding(get: { model.tab }, set: { model.switchTab($0) })) {
-            MemoCalendarTab(model: model)
-                .tabItem { Text(tr(.tabCalendar)) }
-                .tag(MemoWindowModel.Tab.calendar)
-            MemoNotesTab(model: model)
-                .tabItem { Text(tr(.tabNotes)) }
-                .tag(MemoWindowModel.Tab.notes)
+        VStack(spacing: 10) {
+            Picker(tr(.memosTitle), selection: Binding(get: { model.tab }, set: { model.switchTab($0) })) {
+                Text(tr(.tabCalendar)).tag(MemoWindowModel.Tab.calendar)
+                Text(tr(.tabNotes)).tag(MemoWindowModel.Tab.notes)
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .fixedSize()
+            switch model.tab {
+            case .calendar: MemoCalendarTab(model: model)
+            case .notes: MemoNotesTab(model: model)
+            }
         }
         .padding(12)
         .frame(width: MemoWindowController.contentSize.width, height: MemoWindowController.contentSize.height)
@@ -516,7 +524,6 @@ struct MemoCalendarTab: View {
             Divider()
             MemoDayPage(model: model)
         }
-        .padding(.top, 4)
     }
 }
 
@@ -635,7 +642,7 @@ struct MemoDayNotes: View {
                         }
                     }
                 }
-                .frame(maxHeight: 56)
+                .frame(height: min(CGFloat(notes.count) * 20, 60))
             }
             Button(tr(.newNoteForDay)) { model.newNote(day: model.day) }
                 .controlSize(.small)
@@ -655,7 +662,7 @@ struct MemoDayPage: View {
             HStack(alignment: .firstTextBaseline) {
                 Text(model.dayHeading).font(.title3.weight(.semibold)).lineLimit(1)
                 Spacer(minLength: 4)
-                Text("\(model.dayEditor.count)/\(MemoBook.maxText)")
+                Text(verbatim: "\(model.dayEditor.count)/\(MemoBook.maxText)")
                     .font(.caption.monospacedDigit())
                     .foregroundStyle(.secondary)
             }
@@ -741,6 +748,7 @@ struct MemoNotesTab: View {
                         .tag(n.id)
                     }
                 }
+                .listStyle(.bordered(alternatesRowBackgrounds: false))
                 .overlay {
                     if notes.isEmpty { Text(tr(.noNotes)).foregroundStyle(.secondary) }
                 }
@@ -751,7 +759,6 @@ struct MemoNotesTab: View {
             Divider()
             MemoNoteEditor(model: model)
         }
-        .padding(.top, 4)
     }
 }
 
@@ -805,13 +812,13 @@ struct MemoNoteEditor: View {
                 .accessibilityAddTraits(n.colour == c ? .isSelected : [])
             }
             Spacer(minLength: 4)
-            Text("\(model.noteEditor.count)/\(MemoBook.maxText)")
+            Text(verbatim: "\(model.noteEditor.count)/\(MemoBook.maxText)")
                 .font(.caption.monospacedDigit())
                 .foregroundStyle(.secondary)
         }
         NoteTextView(editor: model.noteEditor, text: n.text)
             .memoEditorFrame()
-            .frame(height: 124)
+            .frame(height: 150)
         HStack(spacing: 8) {
             Toggle(tr(.dateToggle), isOn: Binding(get: { n.day != nil }, set: { model.setDated($0) }))
             if let d = n.day {
