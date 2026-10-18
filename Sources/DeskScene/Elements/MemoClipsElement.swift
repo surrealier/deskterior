@@ -6,8 +6,8 @@ import SpriteKit
 /// place of the room's clip rail once a model arrives. Layout only, like every hiding place, but nothing hides: the
 /// cards are on show (`Concealment.shown`). Hover a card for its name, click to select, double-click to open, drag
 /// one out; a drop on the wire (or on the felt, `PartitionElement`) clips files up while there is room, else bonks
-/// ("The memo clips are full."). A carry in hand over the wire rings the next free clip. The menu is the container
-/// menu with Put Away Memo Clips. Nothing while they are put away.
+/// ("The memo clips are full."). A carry in hand that would clip up rings the next free clip. The menu is the
+/// container menu with Put Away Memo Clips. Nothing while they are put away.
 final class MemoClipsElement: ContainerElement, DeskElement {
     let id = "partition.clips"
     private(set) var members: [TokenKey] = []
@@ -138,9 +138,10 @@ final class MemoClipsElement: ContainerElement, DeskElement {
 
     // MARK: Drawing
 
-    /// The next free clip rings while a carry that may clip up here is over the wire.
+    /// The next free clip rings while a carry in hand would clip up here (over the wire, or anywhere on the felt).
     private var highlight: Int? {
-        guard let carry = carryInHand, railRect.contains(carry.point), fits(carry.keys),
+        guard let carry = activeCarry(), carry.phase == .carrying,
+              case .accept(.container(.memoClips, _))? = carry.verdict?.verdict,
               members.count < ContainerID.memoClips.spec.hardCap
         else { return nil }
         return members.count

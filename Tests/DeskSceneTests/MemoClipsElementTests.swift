@@ -84,6 +84,16 @@ struct MemoClipsElementTests {
         let screen = try #require(store.scene.screen)
         p.drag(F.centre(try #require(screen.iconRect(of: F.key(6)))), F.centre(try Self.clips(store.scene).railRect))
         #expect(store.scene.bonkCount == 1 && store.scene.toastShown == .memoClipsFull)
+        // With room, a carry over the felt rings the next free clip.
+        let open = SceneStore(M.state(clips: [1]))
+        let q = Pointer(scene: open.scene)
+        let openClips = try Self.clips(open.scene)
+        let plain = try #require(openClips.drawnImage)
+        let icon = try #require(open.scene.screen?.iconRect(of: F.key(6)))
+        q.drag(F.centre(icon), M.point(open.scene, core: 480, 150), hold: true)
+        #expect(try #require(openClips.drawnImage) != plain)
+        _ = q.event(.up, M.point(open.scene, core: 480, 150), count: 1)
+        #expect(open.actions.last == "move([\(F.key(6))], to: memoClips#1)")
         #expect(store.state.tokens.location(of: F.key(6))?.isScreen == true)
     }
 
