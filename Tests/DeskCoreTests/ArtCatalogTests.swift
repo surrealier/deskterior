@@ -62,6 +62,99 @@ struct ArtCatalogTests {
         #expect(PropArt.PhoneFace.allCases.count == 5)
     }
 
+    // MARK: memos (0.3.0)
+
+    @Test("Partition sprites: each placed one is its rect's size; notes, cards, peel and crumple frames as specified")
+    func partitionSizes() {
+        let day = WallTime(year: 2026, month: 10, day: 18, hour: 10, minute: 0)
+        #expect(PartitionArt.panel().size == CoreLayout.partition.size)
+        #expect(PartitionArt.cube().size == CoreLayout.partitionCube.size)
+        #expect(PartitionArt.dailyPad(day, written: false).size == CoreLayout.partitionPad.size)
+        #expect(PartitionArt.dailyPad(day, written: true).size == CoreLayout.partitionPad.size)
+        #expect(PartitionArt.clipsRail().size == CoreLayout.partitionClips.size)
+        #expect(PartitionArt.dDayCard(days: 12).size == CoreLayout.partitionDDay.size)
+        #expect(PartitionArt.dDayCard(days: nil).size == ArtSize(1, 1))
+        #expect(PartitionArt.dDayCard(days: nil).image.opaqueBounds() == .zero)
+        for on in [false, true] { #expect(PartitionArt.clipLight(on: on).size == CoreLayout.partitionClipLight.size) }
+        for image in [false, true] {
+            #expect(PartitionArt.clipCard(image: image).size == CoreLayout.memoClipCard(0).size)
+        }
+        for f in 0..<3 { #expect(PartitionArt.padPeel(f).size == ArtSize(34, 26)) }
+        let crumples = [ArtSize(12, 10), ArtSize(10, 9), ArtSize(8, 8), ArtSize(6, 6)]
+        for c in NoteColour.allCases {
+            for dated in [false, true] {
+                for pinned in [false, true] {
+                    #expect(PartitionArt.notePaper(c, dated: dated, pinned: pinned).size == PartitionLayout.noteSize)
+                }
+            }
+            for (f, size) in crumples.enumerated() { #expect(PartitionArt.noteCrumple(c, frame: f).size == size) }
+        }
+        #expect(StorageArt.riser(sealed: true).size == CoreLayout.riser.size)
+        // The panel is transparent outside the low panel, the tower and the clamps.
+        let panel = PartitionArt.panel().image
+        let o = CoreLayout.partition.origin
+        let solid = [CoreLayout.partitionLow, CoreLayout.partitionTower] + CoreLayout.partitionClamps
+        for y in 0..<panel.height {
+            for x in 0..<panel.width where panel.pixel(x, y).a != 0 {
+                #expect(solid.contains { $0.contains(ArtPoint(x + o.x, y + o.y)) }, "(\(x + o.x),\(y + o.y))")
+            }
+        }
+        // The felt is solid wherever notes rest.
+        for face in PartitionLayout.faces {
+            #expect(panel.cropped(to: face.offsetBy(-o.x, -o.y)).pixels.allSatisfy { $0.a == 255 })
+        }
+    }
+
+    @Test("Partition states: pad written or not and by weekday, D-Day near or far, clip light on or off, note colours")
+    func partitionStates() {
+        let sunday = WallTime(year: 2026, month: 10, day: 18, hour: 10, minute: 0)
+        let monday = WallTime(year: 2026, month: 10, day: 19, hour: 10, minute: 0)
+        #expect(PartitionArt.dailyPad(sunday, written: false).image != PartitionArt.dailyPad(sunday, written: true).image)
+        #expect(PartitionArt.dailyPad(sunday, written: false).image != PartitionArt.dailyPad(monday, written: false).image)
+        // Sunday's weekday is red, Saturday's blue, other days grey.
+        func weekdayInks(_ t: WallTime) -> Set<RGBA8> {
+            let img = PartitionArt.dailyPad(t, written: false).image.cropped(to: ArtRect(2, 13, 20, 5))
+            return Set(img.pixels).subtracting([Ink.neutral9.color])
+        }
+        #expect(weekdayInks(sunday) == [Ink.red4.color] && weekdayInks(monday) == [Ink.neutral4.color])
+        #expect(weekdayInks(WallTime(year: 2026, month: 10, day: 24, hour: 10, minute: 0)) == [Ink.blue3.color])
+        // The D-Day count turns red within a week.
+        func has(_ s: SpriteAsset, _ ink: Ink) -> Bool { s.image.pixels.contains(ink.color) }
+        let far = PartitionArt.dDayCard(days: 12), near = PartitionArt.dDayCard(days: 3)
+        #expect(has(far, .neutral2) && !has(near, .neutral2))
+        #expect(PartitionArt.dDayCard(days: 0).name != PartitionArt.dDayCard(days: -1).name)
+        #expect(has(PartitionArt.dDayCard(days: -1), .neutral2), "after the day the count is grey again")
+        // The clip light's bulb is lit only when on.
+        let bulb = CoreLayout.partitionClipBulb.offsetBy(-CoreLayout.partitionClipLight.x, -CoreLayout.partitionClipLight.y)
+        #expect(PartitionArt.clipLight(on: true).image.pixel(bulb.x + 1, bulb.y) == Ink.walnut5.color)
+        #expect(PartitionArt.clipLight(on: false).image.pixel(bulb.x + 1, bulb.y) == Ink.neutral7.color)
+        // Each colour has its own paper; dated notes carry a flag, odd ids a pin, even ids tape.
+        let faces = Set(NoteColour.allCases.map { PartitionArt.notePaper($0, dated: false, pinned: false).image.pixel(15, 12) })
+        #expect(faces.count == NoteColour.allCases.count)
+        let plain = PartitionArt.notePaper(.sky, dated: false, pinned: false).image
+        #expect(PartitionArt.notePaper(.sky, dated: true, pinned: false).image.pixel(26, 18) == Ink.red4.color)
+        #expect(plain.pixel(26, 18) == Ink.blue5.color && plain.pixel(14, 1) == Ink.neutral8.color)
+        #expect(PartitionArt.notePaper(.sky, dated: false, pinned: true).image.pixel(14, 1) == Ink.red4.color)
+        // Text goes on the paper: its band is plain face colour.
+        let band = PartitionLayout.textBand(at: .zero)
+        for c in NoteColour.allCases {
+            let face = PartitionArt.notePaper(c, dated: true, pinned: true).image.pixel(15, 12)
+            #expect(PartitionArt.notePaper(c, dated: true, pinned: true).image.cropped(to: band.insetBy(0, 0))
+                .pixels.allSatisfy { $0 == face || $0 == PartitionArt.inks(c).light.color })
+        }
+        // The onboarding note keeps its construction.
+        #expect(FXArt.stickyNote().size == ArtSize(72, 52))
+    }
+
+    @Test("The sealed riser: the riser's outline, no drawer bays or cubby")
+    func sealedRiser() {
+        let open = StorageArt.riser().image, sealed = StorageArt.riser(sealed: true).image
+        #expect(open != sealed)
+        #expect(zip(open.pixels, sealed.pixels).allSatisfy { ($0.a == 0) == ($1.a == 0) }, "same silhouette")
+        #expect(!sealed.pixels.contains(Ink.neutral1.color), "no dark openings")
+        #expect(StorageArt.riser(sealed: true).hitRects["drawerL"] == nil)
+    }
+
     @Test("State changes the pixels: clock hands, LED, lamp, drawers, phone, sky")
     func statesDiffer() {
         #expect(RoomArt.clock(hour: 10, minute: 0).image != RoomArt.clock(hour: 10, minute: 1).image)

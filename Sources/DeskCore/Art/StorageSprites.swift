@@ -13,7 +13,6 @@ public enum StorageArt {
     /// The riser frame: top face, front with dark drawer openings, and the cubby (drawer fronts are separate).
     /// `sealed`: the drawers are put away and the riser is one closed front, a plain monitor stand (Erratum 30).
     public static func riser(cubbyContents: PixelBuffer? = nil, sealed: Bool = false) -> SpriteAsset {
-        // Step 0 stub: Track B (`sealed` is not drawn yet).
         let r = CoreLayout.riser
         var c = PixelCanvas(width: r.w, height: r.h)
         // Top face.
@@ -35,6 +34,15 @@ public enum StorageArt {
         c.vline(x: r.w - 1, y: 0, length: r.h, .walnut0)
         c.plot(0, 0, .clear)
         c.plot(r.w - 1, 0, .clear)
+        if sealed {
+            // One closed front in the riser's own walnut, a groove across its middle lit along its lower lip
+            // (Erratum 30).
+            let groove = riserDrawerLLocal.midY
+            c.hline(x: 4, y: groove, length: r.w - 8, .walnut1)
+            c.hline(x: 4, y: groove + 1, length: r.w - 8, .walnut3)
+            c.plot(3, groove, .walnut1)
+            return SpriteAsset("riser.sealed", c, anchor: ArtPoint(r.w / 2, r.h), hitRects: ["sealed": front])
+        }
         for opening in [riserDrawerLLocal, riserDrawerRLocal] {
             c.fill(opening.insetBy(-1, -1), .walnut0)
             c.fill(opening, .neutral1)

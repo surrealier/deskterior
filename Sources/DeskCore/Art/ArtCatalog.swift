@@ -6,7 +6,7 @@ public enum ArtCatalog {
     }
 
     public static func sections() -> [Section] {
-        [room(), decor(), monitor(), storage(), props(), icons(), fx()]
+        [room(), decor(), monitor(), storage(), props(), icons(), fx(), partition()]
     }
 
     /// All sprites, in section order.
@@ -120,6 +120,38 @@ public enum ArtCatalog {
         s.append(SpriteAsset("digits", Digits.render("0123456789+-", .neutral9), anchor: .zero))
         s.append(SpriteAsset("letters", Digits.render("ABCDEFGHIJKLMNOPRSTUVWY", .neutral9), anchor: .zero))
         return Section(title: "fx", sprites: s)
+    }
+
+    // MARK: memos (0.3.0)
+    /// The desk partition and what hangs on it (Erratum 31), the sealed riser and the marked calendar (Erratum 30).
+    static func partition() -> Section {
+        let sunday = WallTime(year: 2026, month: 10, day: 18, hour: 10, minute: 0)
+        let saturday = WallTime(year: 2026, month: 10, day: 24, hour: 10, minute: 0)
+        let tuesday = WallTime(year: 2026, month: 12, day: 1, hour: 10, minute: 0)
+        var s: [SpriteAsset] = [PartitionArt.panel(), PartitionArt.cube()]
+        s.append(PartitionArt.dailyPad(sunday, written: false))
+        s.append(PartitionArt.dailyPad(saturday, written: true))
+        s.append(PartitionArt.dailyPad(tuesday, written: true))
+        s.append(SpriteAsset("partition.padPeel", frames: (0..<3).map { PartitionArt.padPeel($0).image }, anchor: .zero))
+        s.append(PartitionArt.clipsRail())
+        s.append(PartitionArt.clipCard(image: false))
+        s.append(PartitionArt.clipCard(image: true))
+        for days in [12, 3, 0, -3, 999] { s.append(PartitionArt.dDayCard(days: days)) }
+        s.append(PartitionArt.clipLight(on: false))
+        s.append(PartitionArt.clipLight(on: true))
+        for c in NoteColour.allCases {
+            s.append(PartitionArt.notePaper(c, dated: false, pinned: false))
+            s.append(PartitionArt.notePaper(c, dated: true, pinned: true))
+        }
+        for c in NoteColour.allCases {
+            for f in 0..<4 { s.append(PartitionArt.noteCrumple(c, frame: f)) }
+        }
+        s.append(StorageArt.riser(sealed: true))
+        let marks: [Int: CalendarMark] = [3: .memo, 9: .note, 18: .memo, 21: [.memo, .note], 30: .dDay]
+        s.append(RoomArt.calendar(sunday, marks: marks).renamed("calendar.marks"))
+        s.append(RoomArt.calendar(WallTime(year: 2026, month: 8, day: 31, hour: 10, minute: 0), marks: [5: .note, 22: .dDay])
+            .renamed("calendar.marks.aug"))
+        return Section(title: "partition", sprites: s)
     }
 }
 
