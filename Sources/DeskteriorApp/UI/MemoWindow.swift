@@ -1,5 +1,6 @@
 import AppKit
 import DeskCore
+import DeskScene
 import Observation
 import SwiftUI
 
@@ -436,19 +437,13 @@ final class MemoWindowModel {
 extension DayKey {
     /// Noon of the day in this Mac's time zone (formatting and the date picker).
     var date: Date {
-        var c = DateComponents()
-        c.year = year
-        c.month = month
-        c.day = day
-        c.hour = 12
-        return MemoWindowModel.calendar.date(from: c) ?? Date(timeIntervalSince1970: 0)
+        DateComponents(calendar: MemoWindowModel.calendar, timeZone: .current, year: year, month: month, day: day,
+                       hour: 12).date ?? Date(timeIntervalSince1970: 0)
     }
 
-    /// The day `date` falls on in this Mac's time zone.
+    /// The day `date` falls on in this Mac's time zone (the room clock's reading of it).
     init(date: Date) {
-        let c = MemoWindowModel.calendar.dateComponents([.year, .month, .day], from: date)
-        self = DayKey(year: c.year ?? 0, month: c.month ?? 0, day: c.day ?? 0)
-            ?? DayKey(WallTime(year: c.year ?? 2026, month: c.month ?? 1, day: c.day ?? 1, hour: 0, minute: 0))
+        self.init(SceneClock.wallTime(date, calendar: MemoWindowModel.calendar))
     }
 }
 

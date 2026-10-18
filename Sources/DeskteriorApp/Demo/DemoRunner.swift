@@ -698,11 +698,11 @@ final class DemoRunner {
             case "stowed", "notes", "dDay", "calendar.marks", "clipLight":
                 check(key, memoValue(key, s), key == "dDay" ? .string(TextLayout.nfc(value.text)) : value)
             case let k where k.hasPrefix("out:"):
-                check(key, try stowID(k.dropFirst(4)).map { s.isOut($0) ? "out" : "away" } ?? "none", value)
+                check(key, s.isOut(try stowID(k.dropFirst(4))) ? "out" : "away", value)
             case let k where k.hasPrefix("routed:"):
                 check(key, String(scene.isRouted(String(k.dropFirst(7)))), value)
             case let k where k.hasPrefix("clear:"):
-                check(key, try stowID(k.dropFirst(6)).map { String(StowCatalog.blockers(of: $0, in: s) == 0) } ?? "none", value)
+                check(key, String(StowCatalog.blockers(of: try stowID(k.dropFirst(6)), in: s) == 0), value)
             case let k where k.hasPrefix("note:"):
                 check(key, try noteValue(k.dropFirst(5), s), .string(TextLayout.nfc(value.text)))
             case let k where k.hasPrefix("page:"):
@@ -720,7 +720,7 @@ final class DemoRunner {
 
     // MARK: tidy and memos (0.3.0)
 
-    private func stowID(_ raw: Substring) throws -> StowID? {
+    private func stowID(_ raw: Substring) throws -> StowID {
         guard let id = StowID(rawValue: String(raw)) else { throw ScriptError(description: "no stowable '\(raw)'") }
         return id
     }

@@ -43,7 +43,7 @@ struct MemoSaverTests {
                               delay: 0.05, maxWait: 1)
         saver.arm()
         for i in 0..<5 { saver.schedule(memoBook("note \(i)")) }
-        #expect(await eventually(5) { saver.saveCount == 1 })
+        #expect(await eventually(10) { saver.saveCount == 1 })
         try await Task.sleep(for: .milliseconds(200))
         #expect(saver.saveCount == 1, "five changes in a row, one write")
         saver.flush()

@@ -87,11 +87,18 @@ struct MemoWindowModelTests {
 struct MemoWindowTests {
     final class Log {
         var actions: [DeskAction] = []
+        /// When each action was sent.
+        var times: [Date] = []
         var commands: [MenuCommand] = []
 
         /// The `editNote` actions sent: (id, text, session).
         var edits: [(NoteID, String, Int)] {
             actions.compactMap { if case let .editNote(id, text, s) = $0 { (id, text, s) } else { nil } }
+        }
+
+        /// When the first `editNote` was sent.
+        var firstEditTime: Date? {
+            zip(actions, times).first { if case .editNote = $0.0 { true } else { false } }?.1
         }
     }
 
@@ -117,6 +124,7 @@ struct MemoWindowTests {
         store.willDispatch = { action, state in
             previous?(action, state)
             log.actions.append(action)
+            log.times.append(Date())
         }
         store.replace {
             let t = Date(timeIntervalSince1970: 1_792_300_000)
@@ -137,7 +145,7 @@ struct MemoWindowTests {
     /// The note editor's text view, once SwiftUI has made it, with the keyboard (typing goes to the first responder;
     /// AppKit ends the editing of a text view that is not, which is a blur).
     func noteTextView(_ r: Rig) async throws -> NSTextView {
-        #expect(await eventually(5) {
+        #expect(await eventually(10) {
             r.controller.window?.contentView?.layoutSubtreeIfNeeded()
             return r.controller.model.noteEditor.textView?.window != nil
         })
@@ -158,10 +166,12 @@ struct MemoWindowTests {
         let tv = try await noteTextView(r)
         #expect(tv.string == "우유")
         type(" 사기", into: tv)
-        try await Task.sleep(for: .milliseconds(400))
-        #expect(r.log.edits.isEmpty, "still typing")
-        #expect(await eventually(3) { !r.log.edits.isEmpty })
-        try await Task.sleep(for: .milliseconds(1200))
+        let typed = Date()
+        #expect(await eventually(10) { !r.log.edits.isEmpty })
+        // Measured, not slept: the tests share the main queue, so a busy run only makes the commit later.
+        let delay = try #require(r.log.firstEditTime).timeIntervalSince(typed)
+        #expect(delay >= 0.75, "no commit until 0.8 s after the last keystroke (\(delay) s)")
+        try await Task.sleep(for: .milliseconds(1500))
         #expect(r.log.edits.count == 1)
         #expect(r.log.edits.first?.0 == NoteID(1) && r.log.edits.first?.1 == "우유 사기")
         #expect(r.log.edits.first?.2 == 7, "show(_:near:session:) continues the session it was given")
@@ -181,8 +191,8 @@ struct MemoWindowTests {
         try await Task.sleep(for: .milliseconds(2000))
         #expect(r.log.edits.isEmpty, "never mid-composition")
         tv.unmarkText()
-        #expect(await eventually(3) { r.log.edits.count == 1 })
-        try await Task.sleep(for: .milliseconds(1000))
+        #expect(await eventually(10) { r.log.edits.count == 1 })
+        try await Task.sleep(for: .milliseconds(1500))
         #expect(r.log.edits.count == 1)
         #expect(tv.string == "우유 사" && r.log.edits.first?.1 == "우유 사")
     }
@@ -210,16 +220,18 @@ struct MemoWindowTests {
     func neverOverwritesTyping() async throws {
         let r = try await rig()
         defer { r.controller.close() }
+        r.controller.model.noteEditor.delay = 60  // no debounced commit during the test, however busy the run
         r.controller.show(.note(NoteID(1)), near: nil, session: nil)
         let tv = try await noteTextView(r)
         type("~", into: tv)
         r.store.replace { $0.memos.notes[NoteID(1)]?.text = "from the desk" }
         r.controller.window?.contentView?.layoutSubtreeIfNeeded()
-        try await Task.sleep(for: .milliseconds(100))
+        try await Task.sleep(for: .milliseconds(300))
         r.controller.window?.contentView?.layoutSubtreeIfNeeded()
         #expect(tv.string == "우유~")
-        #expect(await eventually(3) { r.log.edits.count == 1 })
-        #expect(r.log.edits.first?.1 == "우유~")
+        #expect(r.log.edits.isEmpty)
+        r.controller.flush()
+        #expect(r.log.edits.map(\.1) == ["우유~"], "what was typed is what is committed")
     }
 
     @Test("Save as Text File goes out through the injected perform closure, after the editor is committed")
@@ -252,7 +264,7 @@ struct MemoWindowTests {
         #expect(r.controller.model.note == id && r.controller.model.tab == .notes)
         let tv = try await noteTextView(r)
         type("새 메모", into: tv)
-        #expect(await eventually(3) { r.log.edits.count == 1 })
+        #expect(await eventually(10) { r.log.edits.count == 1 })
         #expect(r.store.state.memos.notes[id]?.text == "새 메모")
         #expect(r.store.journal.undoStack.count == before + 1)
         #expect(r.store.undoLabel == "New Sticky Note")
