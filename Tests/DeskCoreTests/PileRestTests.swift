@@ -126,4 +126,24 @@ struct PileRestTests {
         #expect(DeskPlanePhysics.clampPileVelocity([.nan, 1]) == .zero)
         for f in DeskPlanePhysics.footprints(stowed: []).values { #expect(f.d == 112 && f.d + f.depth == 128) }
     }
+
+    // MARK: tidy (0.3.0)
+
+    @Test("A put-away plant or phone stand leaves its strip to the piles; the others stay furniture")
+    func awayFootprints() {
+        let all = DeskPlanePhysics.footprints(stowed: [])
+        for (name, id) in [("plant", StowID.plant), ("phone", .phoneStand)] {
+            let f = all[name]!
+            let p = SIMD2<Float>(f.x + f.width / 2, f.d + DeskPlanePhysics.pileSize.y / 2)
+            var w = PileWatchdog()
+            #expect(!w.isValidSpot(p, others: []) && w.isCrowded(p, others: []), "\(name)")
+            w.stowed = [id]
+            #expect(w.isValidSpot(p, others: []) && !w.isCrowded(p, others: []), "\(name)")
+            #expect(w.nearestValidSpot(to: p, others: []) == p, "\(name)")
+        }
+        var w = PileWatchdog()
+        w.stowed = Set(StowID.allCases)
+        let riser = all["riser"]!
+        #expect(!w.isValidSpot(SIMD2(riser.x + riser.width / 2, riser.d + 5), others: []), "the riser stays as a stand")
+    }
 }

@@ -159,4 +159,31 @@ struct PenCupMachineTests {
         #expect(PenCupMachine(PenCupState(state: "upright", pos: [900, 300])).position == [493, 120])
         #expect(PenCupMachine(PenCupState(state: "upright", pos: [260, 120])).position == PenCupState().pos)
     }
+
+    // MARK: tidy (0.3.0)
+
+    @Test("A put-away plant or phone stand leaves its strip to the cup: it may stand and slide there, and spill into it")
+    func awayFootprints() {
+        let plant = DeskPlanePhysics.footprints(stowed: [])["plant"]!
+        let spot = SIMD2<Float>(plant.x + plant.width / 2, 116)
+        #expect(!PenCupMachine.isValidPosition(spot) && PenCupMachine.isValidPosition(spot, stowed: [.plant]))
+        #expect(PenCupMachine(PenCupState(pos: spot)).position == PenCupState().pos, "out, the plant's strip is taken")
+        var away = PenCupMachine(PenCupState(pos: spot), stowed: [.plant])
+        #expect(away.position == spot)
+        away.carry(to: spot + SIMD2(4, 2), acceleration: .zero)
+        #expect(away.position == spot + SIMD2(4, 2))
+        var out = PenCupMachine(PenCupState(pos: [90, 116]))
+        out.carry(to: spot, acceleration: .zero)
+        #expect(!plant.intersects(out.footprint), "with the plant out the cup slides along it")
+        // sync keeps the put-away set.
+        away.sync(PenCupState(state: "upright", pos: spot + SIMD2(1, 0)))
+        #expect(away.position == spot + SIMD2(1, 0) && away.stowed == [.plant])
+        // Pens spilled toward an away plant can slide where it stood.
+        let toward = PenCupMachine.spill(count: 6, from: [100, 116], right: false, seed: 4, stowed: [.plant])
+        let blocked = PenCupMachine.spill(count: 6, from: [100, 116], right: false, seed: 4)
+        func reaches(_ spills: [PenCupMachine.Spill]) -> Bool {
+            spills.contains { if case let .desk(p) = $0.landing { p.x < plant.x + plant.width } else { false } }
+        }
+        #expect(reaches(toward) && toward != blocked)
+    }
 }

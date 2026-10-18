@@ -107,4 +107,39 @@ struct PlacementTests {
         #expect(ContainerID.penCup.spec.concealment == .anonymized)
         #expect(ContainerID.allCases.filter(\.isDrawer).allSatisfy { $0.spec.travel != nil })
     }
+
+    // MARK: tidy (0.3.0)
+
+    @Test("awaySubstitute: the first shut, out, non-full concealing place; none for the shown memo clips")
+    func awaySubstitute() {
+        var s = ModelFixture.mirrored((1...20).map { "f\($0)" })
+        s.stowed = [.cabinet]
+        #expect(Placement.awaySubstitute(for: .cabinetTop, in: s) == .riserLeft)
+        #expect(Placement.awaySubstitute(for: .memoClips, in: s) == nil, "a shown place's file stays in sight")
+        // An open or peeking drawer is passed over, and so is a full one.
+        s.drawers[.riserLeft] = DrawerState(p: 10)
+        #expect(Placement.awaySubstitute(for: .cabinetFile, in: s) == .riserRight)
+        s.drawers[.riserRight] = DrawerState(p: 1)
+        s.phone.faceDown = true
+        #expect(Placement.awaySubstitute(for: .cabinetFile, in: s) == .phone)
+        s.drawers[.riserRight] = DrawerState()
+        for i in 1...14 { s.tokens.move(ModelFixture.key(UInt64(i)), to: .container(.riserRight, order: 0)) }
+        #expect(Placement.awaySubstitute(for: .cabinetMiddle, in: s) == .phone)
+        // Away drawers are no stand-ins; a face-up phone hides nothing.
+        s.stowed = [.cabinet, .riserDrawers]
+        s.phone.faceDown = false
+        #expect(Placement.awaySubstitute(for: .riserCubby, in: s) == nil)
+        s.stowed = [.riserDrawers]
+        #expect(Placement.awaySubstitute(for: .riserLeft, in: s) == .cabinetTop)
+    }
+
+    @Test("resolve sends a place that is put away to its stand-in, else the first free cell")
+    func resolveAway() {
+        var s = ModelFixture.mirrored(["a"])
+        s.stowed = [.phoneStand, .partition]
+        var alloc = ScreenGrid.Allocator(grid: .standard, occupied: s.tokens.occupiedCells)
+        #expect(Placement.resolve(.container(.phone, order: 3), in: &s, allocator: &alloc) == .container(.riserLeft, order: 0))
+        #expect(Placement.resolve(.container(.memoClips, order: 0), in: &s, allocator: &alloc) == .screen(page: 0, col: 1, row: 0))
+        #expect(Placement.resolve(.container(.cabinetTop, order: 2), in: &s, allocator: &alloc) == .container(.cabinetTop, order: 0))
+    }
 }

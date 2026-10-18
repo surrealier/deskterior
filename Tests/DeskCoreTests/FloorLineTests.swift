@@ -30,4 +30,31 @@ struct FloorLineTests {
         #expect(FloorLine.row(from: 300, direction: 1, pitch: 10, count: 3) == [300, 310, 320])
         #expect(FloorLine.row(from: 600, direction: 1, pitch: 10, count: 3).isEmpty)
     }
+
+    // MARK: tidy (0.3.0): with the cabinet put away its span is free floor, for landings, moves and spills.
+
+    @Test("A put-away cabinet's span drops out of the furniture, whichever way the basket stands")
+    func furnitureWithCabinetAway() {
+        let cabinet = CoreLayout.cabinet.minX..<CoreLayout.cabinet.maxX
+        for basket in [BasketState(), BasketState(state: WastebasketMachine.tippedLeftName),
+                       BasketState(state: WastebasketMachine.tippedRightName)] {
+            let out = FloorLine.furniture(basket: basket)
+            let away = FloorLine.furniture(basket: basket, stowed: [.cabinet])
+            #expect(out.contains(cabinet) && !away.contains(cabinet) && away.count == out.count - 1, "\(basket.state)")
+            #expect(FloorLine.furniture(basket: basket, stowed: Set(StowID.allCases).subtracting([.cabinet])) == out)
+        }
+    }
+
+    @Test("Floor spots and floor moves use the cabinet's span while it is away")
+    func spotsWithCabinetAway() {
+        let cabinet = CoreLayout.cabinet.minX..<CoreLayout.cabinet.maxX, mid = CoreLayout.cabinet.midX
+        #expect(!cabinet.contains(Reducer.floorSpots(near: mid, count: 1)[0]))
+        #expect(Reducer.floorSpots(near: mid, count: 1, stowed: [.cabinet]) == [mid])
+        var s = ModelFixture.mirrored(["a", "b"])
+        let env = ReduceEnv(now: ModelFixture.t0)
+        _ = reduce(&s, .putAway(.cabinet), env)
+        _ = reduce(&s, .move([ModelFixture.key(1), ModelFixture.key(2)], to: .floor(x: mid)), env)
+        #expect(s.tokens.location(of: ModelFixture.key(1)) == .floor(x: mid))
+        #expect(s.tokens.location(of: ModelFixture.key(2)) == .floor(x: mid + Placement.floorSpacing))
+    }
 }
