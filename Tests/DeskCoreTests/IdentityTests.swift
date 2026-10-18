@@ -262,7 +262,8 @@ struct IdentityTests {
         s.access = .connecting
         #expect(s.url(of: F.key(1)) == nil)
         s.access = .connected
-        for bad in ["../escape", "a/b", "..", ".", ""] {
+        // "a/\u{301}b": the slash hides inside one Character with its combining mark, so it is checked by scalar.
+        for bad in ["../escape", "a/b", "..", ".", "", "a/\u{301}b"] {
             var meta = s.tokens.meta(of: F.key(1))!
             meta.name = bad
             s.tokens.updateMeta(F.key(1), meta)

@@ -488,9 +488,10 @@ public struct DeskState: Sendable, Equatable {
             .appendingPathComponent(meta.name, isDirectory: meta.kind == .folder)
     }
 
-    /// A single, non-empty path component.
+    /// A single, non-empty path component. "/" and NUL are checked by scalar: a "/" carrying a combining mark hides
+    /// inside one Character.
     public static func isPlainName(_ name: String) -> Bool {
-        !name.isEmpty && name != "." && name != ".." && !name.contains("/") && !name.unicodeScalars.contains("\0")
+        !name.isEmpty && name != "." && name != ".." && !name.unicodeScalars.contains { $0 == "/" || $0 == "\0" }
     }
 
     /// The live key for `key`, following recent re-keys (a gesture that started before a safe-save).
