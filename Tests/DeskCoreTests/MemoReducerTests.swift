@@ -2,10 +2,6 @@ import Foundation
 import Testing
 @testable import DeskCore
 
-/// Whether `PartitionLayout` says where notes may rest. Step 0's stub says nowhere (every drop springs back, every new
-/// note takes the first default spot); the tests that need real spots run once Track B's layout is in.
-let partitionLayoutReady = PartitionLayout.isValidRest(PartitionLayout.defaultSpots[0], in: DeskState())
-
 /// Sticky notes, the day pages and the D-Day in the reducer (Erratum 31): caps, clean text, ids never reused, where
 /// notes rest, and undo per note and per day page.
 @Suite("Memos in the reducer")
@@ -124,8 +120,7 @@ struct MemoReducerTests {
         }
     }
 
-    @Test("Where notes rest: new ones take the default spots in order; a drop snaps to the nearest valid spot",
-          .enabled(if: partitionLayoutReady))
+    @Test("Where notes rest: new ones take the default spots in order; a drop snaps to the nearest valid spot")
     func whereNotesRest() {
         var s = F.mirrored(["a.txt"])
         let ids = (0..<3).map { _ in add(&s) }

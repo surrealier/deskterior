@@ -249,7 +249,7 @@ struct TidyReducerTests {
         #expect(s.piles[PileID("P1")] == [200, 40])
     }
 
-    @Test("Bring Back snaps a note a returning fixture would cover", .enabled(if: partitionLayoutReady))
+    @Test("Bring Back snaps a note a returning fixture would cover")
     func makeRoomNotes() {
         var s = F.mirrored(["a.txt"])
         _ = reduce(&s, .putAway(.dDayCard), env)
