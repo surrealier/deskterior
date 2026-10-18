@@ -223,8 +223,9 @@ public struct RoomLightState: Hashable, Sendable {
 
 extension LightMask {
     /// The room's mask (DESIGN §1.4): emissive glass, screen, LED and bulbs at 7; when the room is dark enough
-    /// for it (ambient 5 or less) the lamp's warm pool and halo; the monitor's glow on the desk and on the wall and
-    /// the phone's glow (`screenGlowTint`); the pendant and the string lights after dark.
+    /// for it (ambient 5 or less) the lamp's warm pool and halo, and its wash on the partition's left wing; the
+    /// monitor's glow on the desk and on the wall and the phone's glow (`screenGlowTint`); the partition's clip light;
+    /// the pendant and the string lights after dark.
     public static func room(_ layout: SceneLayout, lights: RoomLightState, time: TimeOfDay) -> LightMask {
         var m = LightMask(size: layout.canvas)
         let glow = screenGlowTint(time)
@@ -255,8 +256,25 @@ extension LightMask {
                 m.addTrapezoid(top: (riser.x, riser.x + 4, riser.y), bottom: (riser.x, riser.x + 8, riser.maxY),
                                level: 6, tint: .warm, edge: 8, clip: riser)
                 m.addPoints(RoomArt.lampHaloPixels(layout).map(\.point), level: 7, tint: .warm)
+                // MARK: memos (0.3.0)
+                // The lamp washes the partition's left wing: the pad, the cube and the left note spot (Erratum 31).
+                if lights.partitionOut {
+                    m.addFalloff(ellipse: layout.rect(CoreLayout.partitionLampWash), stops: Self.partitionWashFalloff,
+                                 tint: .warm, clip: layout.rect(CoreLayout.partitionLampWashClip))
+                }
             }
             m.addRect(layout.rect(PropArt.lampBulbRect), level: 7, tint: .warm)
+        }
+        // The clip light: its bulb always glows; once the room is dark enough, it lights the tower and the right wing
+        // (only the partition's faces: the wall around them stays out of its cone).
+        if lights.clipLightOn && lights.partitionOut {
+            if RoomArt.lampGlows(time) {
+                for face in Self.clipLightFaces {
+                    m.addFalloff(ellipse: layout.rect(CoreLayout.partitionClipWash), stops: Self.clipLightFalloff,
+                                 tint: .warm, clip: layout.rect(face))
+                }
+            }
+            m.addRect(layout.rect(CoreLayout.partitionClipBulb), level: 7, tint: .warm)
         }
         m.addRect(layout.rect(CoreLayout.led), level: 7, tint: .cool)
         if lights.phoneFaceUp {
@@ -299,6 +317,24 @@ extension LightMask {
     public static let monitorGlowFalloff: [(n: Double, level: Double)] = [
         (0.5, 5), (0.62, 4), (0.74, 4), (0.84, 3), (0.92, 3), (1.02, 2), (1.08, 2), (1.16, 1),
     ]
+    // MARK: memos (0.3.0)
+    /// The lamp's wash on the partition's left wing (`CoreLayout.partitionLampWash`): about level 6 over the pad, 3
+    /// held out over the cube and the left note spot, so the whole wing is lit to the post.
+    public static let partitionWashFalloff: [(n: Double, level: Double)] = [
+        (0.5, 6), (0.75, 5), (0.95, 4), (1.1, 3), (1.35, 3), (1.5, 2),
+    ]
+    /// The clip light's pool on the tower and the right wing (`CoreLayout.partitionClipWash`): about 5 over the notes,
+    /// 6 at the clips.
+    public static let clipLightFalloff: [(n: Double, level: Double)] = [
+        (0.45, 6), (0.7, 5), (0.9, 4), (1.05, 3), (1.15, 2),
+    ]
+    /// Where the clip light's pool falls: `CoreLayout.partitionClipWashClip` on the tower (from its top rail down) and
+    /// on the low panel's right wing.
+    public static let clipLightFaces: [ArtRect] = {
+        let clip = CoreLayout.partitionClipWashClip, tower = CoreLayout.partitionTower, low = CoreLayout.partitionLow
+        return [ArtRect(clip.x, tower.y, tower.maxX - clip.x, low.y - tower.y).intersection(clip),
+                ArtRect(clip.x, low.y, clip.maxX - clip.x, low.h).intersection(clip)]
+    }()
     /// A face-up phone's glow: level 5 round the stand, stepping down to 2.
     public static let phoneGlowFalloff: [(n: Double, level: Double)] = [
         (0.7, 5), (0.82, 4), (0.94, 4), (1.04, 3), (1.12, 3), (1.22, 2), (1.3, 2), (1.38, 1),
