@@ -52,13 +52,25 @@ public struct MemoDocument: Codable, Sendable, Equatable {
 
     // MARK: Sanitize
 
+    /// The highest note number a file may hold, and the farthest a note's position may be from the room (core px):
+    /// far beyond any real book, and far from overflowing the arithmetic on them (Errata 25).
+    static let maxNoteNumber = 1_000_000_000
+    static let maxCoordinate = 100_000
+
     /// `self` as a book can hold it: every text and title clean (`MemoBook.clean`), no page under a key that is not
-    /// a day or with no text, one note per id, the 24 frontmost notes, z numbered densely back to front (by z, then
-    /// id), every note inside a felt face (the nearest), and a next note number past every id.
+    /// a day or with no text, one note per id, a note numbered past `maxNoteNumber` (a hand edit) renumbered after the
+    /// others, the 24 frontmost notes, z numbered densely back to front (by z, then id), every note inside a felt
+    /// face (the nearest), and a next note number past every id (a stored one past `maxNoteNumber` is ignored).
     public func sanitized() -> MemoDocument {
         var d = self
         var seen = Set<NoteID>()
         var kept = notes.filter { seen.insert($0.id).inserted }
+        let highest = kept.lazy.map(\.id.number).filter { $0 <= Self.maxNoteNumber }.max() ?? 0
+        var next = max(1, nextNote <= Self.maxNoteNumber ? nextNote : 1, highest + 1)
+        for i in kept.indices.sorted(by: { kept[$0].id < kept[$1].id }) where kept[i].id.number > Self.maxNoteNumber {
+            kept[i].id = NoteID(next)
+            next += 1
+        }
         kept.sort { ($0.z, $0.id) > ($1.z, $1.id) }
         kept = Array(kept.prefix(MemoBook.maxNotes)).sorted { ($0.z, $0.id) < ($1.z, $1.id) }
         for i in kept.indices {
@@ -74,12 +86,14 @@ public struct MemoDocument: Codable, Sendable, Equatable {
             if !clean.isEmpty { d.pages[day.description] = clean }
         }
         d.dDay = dDay.map { DDay(day: $0.day, title: MemoBook.clean($0.title, limit: MemoBook.maxTitle)) }
-        d.nextNote = max(1, nextNote, (notes.map(\.id.number).max() ?? 0) + 1)
+        d.nextNote = next
         return d
     }
 
     /// `p` moved the least that puts a note wholly on a felt face.
     static func onFelt(_ p: ArtPoint) -> ArtPoint {
+        let m = Self.maxCoordinate
+        let p = ArtPoint(min(max(p.x, -m), m), min(max(p.y, -m), m))
         let size = PartitionLayout.noteSize
         let spots = PartitionLayout.faces.map { f in
             ArtPoint(min(max(p.x, f.minX), f.maxX - size.w), min(max(p.y, f.minY), f.maxY - size.h))

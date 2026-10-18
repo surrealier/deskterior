@@ -137,4 +137,33 @@ struct MemoDocumentTests {
         #expect(s.pages == ["2026-10-18": "ab\nc"] && s.dDay?.title.count == MemoBook.maxTitle)
         #expect(s.nextNote == 31 && s.makeBook().nextNoteID == NoteID(31))
     }
+
+    @Test("Absurd numbers in a memos.json that parses are brought back into range: no launch traps on them")
+    func absurdNumbers() throws {
+        // A hand edit or a merge tool: an id at Int.max (its next would overflow), a position at Int.min (its distance
+        // to the felt would), two coordinates whose distances overflow when added, and a next note at Int.max.
+        let doc = try MemoDocument.decode(Self.json(#"""
+            {"schema": 1, "nextNote": 9223372036854775807, "notes": [
+              {"id": "N9223372036854775807", "text": "big id", "pos": [371, 67], "z": 0},
+              {"id": "N2", "text": "far left", "pos": [-9223372036854775808, 0], "z": 1},
+              {"id": "N3", "text": "far away", "pos": [-5000000000000000000, -5000000000000000000], "z": 2}
+            ]}
+            """#))
+        #expect(doc.notes.map(\.id) == [NoteID(2), NoteID(3), NoteID(4)], "the far-off id is renumbered after the others")
+        #expect(doc.notes.map(\.text) == ["far left", "far away", "big id"], "no note is lost")
+        #expect(doc.nextNote == 5 && doc.nextNote <= MemoDocument.maxNoteNumber)
+        for n in doc.notes {
+            let r = PartitionLayout.noteRect(at: n.pos)
+            #expect(PartitionLayout.faces.contains { $0.contains(r) }, "\(n.id) at \(n.pos)")
+        }
+        // New notes go on as usual.
+        var s = DeskState()
+        s.memos = doc.makeBook()
+        let id = s.memos.nextNoteID
+        _ = reduce(&s, .addNote(NewNote(id: id, text: "next", colour: .lime), session: nil), ReduceEnv(now: ModelFixture.t0))
+        #expect(id == NoteID(5) && s.memos.notes[id]?.text == "next" && s.memos.nextNoteID == NoteID(6))
+        // A next note number no book could reach is ignored on its own too.
+        let next = try MemoDocument.decode(Self.json(#"{"schema": 1, "nextNote": 9223372036854775807, "notes": []}"#))
+        #expect(next.nextNote == 1)
+    }
 }
