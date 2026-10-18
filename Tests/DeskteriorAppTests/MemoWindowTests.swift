@@ -173,6 +173,41 @@ struct MemoWindowTests {
         return tv
     }
 
+    /// A window that says it is key, as the Memos window is while it is typed in (the test windows never go on screen).
+    final class KeyWindow: NSWindow {
+        override var isKeyWindow: Bool { true }
+    }
+
+    /// Moves the window's content into a `KeyWindow`, so its editors can be focused; `body` gets the note's text view
+    /// with the keyboard. The content goes back afterwards.
+    func whileKey(_ r: Rig, _ body: (NSTextView, KeyWindow) async throws -> Void) async throws {
+        let original = try #require(r.controller.window)
+        let hosting = try #require(original.contentViewController)
+        original.contentViewController = nil
+        let key = KeyWindow(contentRect: NSRect(origin: .zero, size: MemoWindowController.contentSize), styleMask: [.titled],
+                            backing: .buffered, defer: false)
+        key.isReleasedWhenClosed = false
+        key.contentViewController = hosting
+        defer {
+            key.contentViewController = nil
+            original.contentViewController = hosting
+            key.close()
+        }
+        key.contentView?.layoutSubtreeIfNeeded()
+        let tv = try #require(r.controller.model.noteEditor.textView)
+        #expect(tv.window === key && key.makeFirstResponder(tv))
+        #expect(r.controller.model.noteEditor.isFocused)
+        try await body(tv, key)
+    }
+
+    /// Lets SwiftUI update the views in `window` a few times.
+    func layOut(_ window: NSWindow) async throws {
+        for _ in 0..<5 {
+            window.contentView?.layoutSubtreeIfNeeded()
+            try await Task.sleep(for: .milliseconds(40))
+        }
+    }
+
     func type(_ text: String, into tv: NSTextView) {
         for c in text { tv.insertText(String(c), replacementRange: tv.selectedRange()) }
     }
@@ -250,6 +285,49 @@ struct MemoWindowTests {
         let pages = r.log.actions.compactMap { if case let .editDayPage(d, text, _) = $0 { (d, text) } else { nil } }
         #expect(pages.count == 1 && pages.first?.0 == today && pages.first?.1 == "메모")
         #expect(r.store.state.memos.pages[today] == "메모")
+    }
+
+    @Test("Undo from the status menu while a note is typed in: the editor shows what it put back, and typing goes on from there")
+    func undoWhileFocused() async throws {
+        let r = try await rig()
+        defer { r.controller.close() }
+        r.controller.model.noteEditor.delay = 60
+        r.controller.show(.note(NoteID(1)), near: nil, session: nil)
+        _ = try await noteTextView(r)
+        try await whileKey(r) { tv, key in
+            type(" 사기", into: tv)
+            r.controller.flush()
+            #expect(r.store.state.memos.notes[NoteID(1)]?.text == "우유 사기")
+            // What AppDelegate.perform does for the status menu's Undo (the menu never takes key).
+            r.controller.flush()
+            r.store.dispatch(.undo)
+            r.controller.reloadClean()
+            try await layOut(key)
+            #expect(r.store.state.memos.notes[NoteID(1)]?.text == "우유")
+            #expect(tv.string == "우유", "the editor shows the undone text, focused as it is")
+            type("!", into: tv)
+            r.controller.flush()
+            #expect(r.store.state.memos.notes[NoteID(1)]?.text == "우유!", "not \"우유 사기!\" over the Undo")
+        }
+    }
+
+    @Test("A change the focused editor skipped shows once it lets go of the text (blur, resign-key, a tab switch)")
+    func reloadOnFlush() async throws {
+        let r = try await rig()
+        defer { r.controller.close() }
+        r.controller.model.noteEditor.delay = 60
+        r.controller.show(.note(NoteID(1)), near: nil, session: nil)
+        _ = try await noteTextView(r)
+        try await whileKey(r) { tv, key in
+            r.store.replace { $0.memos.notes[NoteID(1)]?.text = "from the desk" }
+            try await layOut(key)
+            #expect(tv.string == "우유", "never pushed into an editor being typed in")
+            _ = key.makeFirstResponder(nil)
+            r.controller.flush()  // resign-key
+            try await layOut(key)
+            #expect(tv.string == "from the desk")
+            #expect(r.log.edits.isEmpty, "nothing was committed back")
+        }
     }
 
     @Test("Model text never replaces typing that is not committed yet")

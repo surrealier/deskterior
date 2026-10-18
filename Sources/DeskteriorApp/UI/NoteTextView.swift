@@ -23,8 +23,7 @@ final class MemoEditor {
 
     private(set) var target: Target?
     private(set) var session = 0
-    /// Bumped whenever the text view must show the model's text again: an attach, or a window action on the target
-    /// (Tear Off, Remove Note) that changed it.
+    /// Bumped whenever the text view must show the model's text again: an attach, or `reload`.
     private(set) var generation = 0
     /// Graphemes in the text view now (the "%d/1000" counter).
     private(set) var count = 0
@@ -52,6 +51,12 @@ final class MemoEditor {
 
     func focus() {
         focusRequest += 1
+    }
+
+    /// The text view shows the model's text again, focused or not (an Undo picked from the status menu while it was
+    /// being typed in, a change made while the window was closed). Only for an editor with nothing to commit.
+    func reload() {
+        generation += 1
     }
 
     /// The user typed, pasted or deleted (an input method's composition included).

@@ -175,6 +175,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// app's.
     func perform(_ command: MenuCommand, from origin: ExplicitIntent.Origin = .menuItem) {
         integration?.userInput()  // M12: a frozen (on-battery) desk shows what the command does.
+        // MARK: memos (0.3.0): Undo or Redo from the status menu (it never takes key) while the Memos window holds
+        // typing: the typing is committed first, so the Undo takes it back, and the editors show what the step put
+        // back (one being typed in never takes model text by itself).
+        let undoing = command == .undo || command == .redo
+        if undoing { memos?.flush() }
+        defer { if undoing { memos?.reloadClean() } }
         if session?.perform(command, from: origin) == true { return }
         switch command {
         case .inventory:

@@ -50,6 +50,7 @@ final class MemoWindowController: NSObject, NSWindowDelegate {
         model.today = today()
         languageChanged()
         model.open(target, session: session)
+        if !wasShown { model.reloadClean() }  // the memos may have changed while it was closed
         guard let window else { return }
         if let near, !wasShown || window.frame.intersects(near) { place(window, beside: near) }
         if presents { AppWindow.present(window) }
@@ -73,6 +74,11 @@ final class MemoWindowController: NSObject, NSWindowDelegate {
     /// Commits what the editors hold (quit, a folder switch).
     func flush() {
         model.flush()
+    }
+
+    /// The editors show what the model holds now (after an Undo or Redo picked from the status menu).
+    func reloadClean() {
+        model.reloadClean()
     }
 
     /// Closes the window for good (its store is going away: another folder is mirrored).
@@ -240,10 +246,24 @@ final class MemoWindowModel {
         noteEditor.attach(target, session: session ?? nextSession())
     }
 
-    /// Commits both editors now.
+    /// Commits both editors now (tab switch, resign-key, close, quit); then they show the model's text.
     func flush() {
         dayEditor.flush()
         noteEditor.flush()
+        reloadClean()
+    }
+
+    /// An editor with nothing to commit whose text view shows other text than the model's shows the model's again: a
+    /// focused editor never takes model text by itself (`NoteTextView`), so an Undo from the status menu, or a change
+    /// made while the window was closed, would otherwise stay unseen and be committed back by the next keystroke.
+    func reloadClean() {
+        if dayEditor.target == .day(day), !dayEditor.isDirty, let tv = dayEditor.textView, tv.string != pageText {
+            dayEditor.reload()
+        }
+        if let note, noteEditor.target == .note(note), !noteEditor.isDirty, let tv = noteEditor.textView,
+           tv.string != (selectedNote?.text ?? "") {
+            noteEditor.reload()
+        }
     }
 
     // MARK: Calendar
