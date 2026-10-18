@@ -384,6 +384,7 @@ struct ReducerTests {
     /// One of every action, against a populated state.
     static func catalogue() -> [DeskAction] {
         let k = [F.key(1), F.key(2)]
+        let day = DayKey("2026-10-18")!
         return [
             .snapshot(F.snapshot([F.entry("a", 1), F.entry("n", 9)]), now: F.t0), .volumes([]), .accessDenied,
             .accessGranted, .finderHidesItems, .move(k, to: .container(.riserLeft, order: 0)), .settle(SettleReport()),
@@ -401,6 +402,14 @@ struct ReducerTests {
             .requestOpenVolume("V"), .requestRevealVolume("V"),
             .fileResult(FileReport(kind: .trash, count: 1, trashed: [F.key(1)], undo: FileUndoRef(1))),
             .fileStarted(FileUndoRef(2), .importItems, op: .copy),
+            // MARK: tidy and memos (0.3.0)
+            .putAway(.cabinet), .putAway(.partition), .bringBack(.plant), .bringBackAll, .clipLight(true),
+            .move(k, to: .container(.memoClips, order: 0)),
+            .addNote(NewNote(id: NoteID(1), text: "n", colour: .lime, day: day), session: 1),
+            .editNote(NoteID(1), text: "m", session: 1), .noteColour(NoteID(1), .cream), .noteDay(NoteID(1), nil),
+            .moveNote(NoteID(1), to: ArtPoint(401, 88)), .raiseNote(NoteID(1)), .removeNote(NoteID(1)),
+            .editDayPage(day, text: "p", session: 2), .tearOffPage(day, at: nil), .setDDay(DDay(day: day, title: "t")),
+            .setDDay(nil), .requestSaveMemoFile(.note(NoteID(1))), .requestSaveMemoFile(.day(day)),
         ]
     }
 

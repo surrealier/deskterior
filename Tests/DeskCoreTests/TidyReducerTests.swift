@@ -135,6 +135,24 @@ struct TidyReducerTests {
         #expect(reduce(&s, .move([F.key(1)], to: .container(.cabinetTop, order: 0)), env) == [.persist, .wakeLoop])
     }
 
+    @Test("Move to ▸ and Move Contents to ▸ leave put-away places out")
+    func menusOmitAway() {
+        var s = F.mirrored(["a.txt", "b.txt"])
+        s.tokens.move(F.key(2), to: .container(.penCup, order: 0))
+        _ = reduce(&s, .putAway(.cabinet), env)
+        _ = reduce(&s, .putAway(.partition), env)
+        let ids = MenuSpec.token([F.key(1)], s).ids
+        for c in [ContainerID.cabinetTop, .cabinetMiddle, .cabinetFile, .memoClips] {
+            #expect(!ids.contains("moveTo.\(c.rawValue)"), "\(c)")
+        }
+        #expect(ids.contains("moveTo.riserLeft") && ids.contains("moveTo.phone") && ids.contains("moveTo.wastebasket"))
+        let contents = MenuSpec.container(.penCup, s).ids
+        #expect(!contents.contains("moveTo.cabinetFile") && !contents.contains("moveTo.memoClips"))
+        #expect(contents.contains("moveTo.riserRight"))
+        _ = reduce(&s, .bringBack(.partition), env)
+        #expect(MenuSpec.token([F.key(1)], s).ids.contains("moveTo.memoClips"), "the memo clips while the partition is out")
+    }
+
     @Test("A returning file aimed at a put-away place stays hidden in a shut drawer; a shown one goes to the monitor")
     func returningFiles() {
         var s = F.mirrored(["a.png", "b.txt", "c.txt"])
