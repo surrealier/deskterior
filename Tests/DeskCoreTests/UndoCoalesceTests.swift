@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 @testable import DeskCore
 
@@ -69,12 +70,17 @@ struct UndoCoalesceTests {
         let id = note(&s, "same")
         var j = UndoJournal()
         run(&s, &j, .move([F.key(1)], to: .screen(page: 0, col: 3, row: 3)))
-        run(&s, &j, .editNote(id, text: "samex", session: 1))
-        run(&s, &j, .editNote(id, text: "same", session: 1))
+        // The clock moves between commits, as it does in the app: the note's edit time is not a change anyone sees.
+        _ = Reducer.reduce(&s, journal: &j, .editNote(id, text: "samex", session: 1), ReduceEnv(now: F.t0 + 5))
+        _ = Reducer.reduce(&s, journal: &j, .editNote(id, text: "same", session: 1), ReduceEnv(now: F.t0 + 9))
         #expect(j.undoStack.map(\.label) == ["Move"])
         run(&s, &j, .editDayPage(day, text: "x", session: 1))
         run(&s, &j, .editDayPage(day, text: "", session: 1))
         #expect(j.undoStack.map(\.label) == ["Move"] && s.memos.pages.isEmpty)
+        // A session that ends somewhere else stays.
+        run(&s, &j, .editNote(id, text: "samex", session: 2))
+        _ = Reducer.reduce(&s, journal: &j, .editNote(id, text: "same!", session: 2), ReduceEnv(now: F.t0 + 12))
+        #expect(j.undoStack.map(\.label) == ["Move", "Edit Note"])
     }
 
     @Test("New Sticky Note and the typing in its editor are one entry")

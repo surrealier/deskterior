@@ -142,6 +142,14 @@ public struct UndoJournal: Sendable, Equatable {
             // that arrived or a pile that settled meanwhile never joins the entry.
             var merged = top.after
             Self.applyMemos(from: before.memos, to: after.memos, onto: &merged.memos)
+            // A note typed back to where it began differs only in when it was edited, which nothing shows: it counts
+            // as unchanged, so such a session goes.
+            for (id, note) in merged.memos.notes {
+                guard let start = top.before.memos.notes[id], start.edited != note.edited else { continue }
+                var same = note
+                same.edited = start.edited
+                if same == start { merged.memos.notes[id] = start }
+            }
             if merged == top.before {
                 undoStack.removeLast()
             } else {
