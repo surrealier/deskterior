@@ -233,10 +233,12 @@ public struct UndoJournal: Sendable, Equatable {
     }
 
     /// Re-applies the difference `from → to` onto `s`. Objects coming out come back first, so files can go back
-    /// into them; objects going away go last, and only once their places are empty (Erratum 30).
+    /// into them, and make room as Bring Back does (what settled where they stood since moves aside); objects going
+    /// away go last, and only once their places are empty (Erratum 30).
     static func apply(from: LayoutSnapshot, to: LayoutSnapshot, onto s: inout DeskState, grid: ScreenGrid) {
         // MARK: tidy (0.3.0)
         s.stowed.subtract(from.stowed.subtracting(to.stowed))
+        let returning = from.stowed.subtracting(to.stowed).filter { s.isOut($0) }
 
         // Tokens the change moved (present on both sides), now under their current keys.
         var targets: [(key: TokenKey, to: Location)] = []
@@ -270,6 +272,8 @@ public struct UndoJournal: Sendable, Equatable {
         s.monitor.page = min(max(0, s.monitor.page), s.pageCount(grid: grid) - 1)
 
         // MARK: tidy and memos (0.3.0)
+        // What the entry restored stood clear of them when it was recorded; only what arrived since moves.
+        if !returning.isEmpty { _ = Reducer.makeRoom(for: returning.sorted(), in: &s) }
         for id in to.stowed.subtracting(from.stowed).sorted() where s.tokensInside(id).isEmpty {
             s.stowed.insert(id)
         }

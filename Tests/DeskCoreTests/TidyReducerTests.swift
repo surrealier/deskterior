@@ -284,6 +284,38 @@ struct TidyReducerTests {
         #expect(s.stowed == before.stowed && s.piles == before.piles && s.tokens == before.tokens)
     }
 
+    @Test("Undo of Put Away and redo of Bring Back make room too: what settled there since moves aside")
+    func makeRoomUndoRedo() {
+        let midX = CoreLayout.cabinet.midX
+        // A pile pushed off the desk lands on the floor where the cabinet stood (not journaled), then ⌘Z.
+        var s = F.mirrored(["a.txt"])
+        var j = UndoJournal()
+        run(&s, &j, .putAway(.cabinet))
+        _ = reduce(&s, .settle(SettleReport(moves: [.init(key: F.key(1), to: .floor(x: midX))])), env)
+        #expect(StowCatalog.blockers(of: .cabinet, in: s) == 1)
+        run(&s, &j, .undo)
+        #expect(s.isOut(.cabinet) && StowCatalog.blockers(of: .cabinet, in: s) == 0 && s.violations().isEmpty)
+        // A pile that settled in an away plant's strip.
+        var p = F.mirrored(["a.txt"])
+        var k = UndoJournal()
+        _ = reduce(&p, .dropOnDesk([F.key(1)], pile: "P1", at: [200, 40]), env)
+        run(&p, &k, .putAway(.plant))
+        _ = reduce(&p, .settle(SettleReport(piles: [PileID("P1"): inside("plant")])), env)
+        #expect(StowCatalog.blockers(of: .plant, in: p) == 1)
+        run(&p, &k, .undo)
+        #expect(p.isOut(.plant) && StowCatalog.blockers(of: .plant, in: p) == 0 && p.violations().isEmpty)
+        // Redo of a Bring Back, over a token that settled in the span after the undo.
+        var r = F.mirrored(["a.txt"])
+        var l = UndoJournal()
+        _ = reduce(&r, .putAway(.cabinet), env)
+        run(&r, &l, .bringBack(.cabinet))
+        run(&r, &l, .undo)
+        #expect(!r.isOut(.cabinet))
+        _ = reduce(&r, .settle(SettleReport(moves: [.init(key: F.key(1), to: .floor(x: midX))])), env)
+        run(&r, &l, .redo)
+        #expect(r.isOut(.cabinet) && StowCatalog.blockers(of: .cabinet, in: r) == 0 && r.violations().isEmpty)
+    }
+
     // MARK: Invariants and the rest of the model
 
     @Test("No put-away place ever holds a token, through random tidying, moves, undo and redo")
