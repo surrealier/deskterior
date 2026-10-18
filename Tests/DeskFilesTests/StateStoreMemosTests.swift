@@ -197,6 +197,32 @@ struct StateStoreMemosTests {
         #expect(firstNote(store.memosBackupURL(1)) == "우유 사기")
     }
 
+    @Test("A FIFO, a symlink or a folder among the backups never blocks, redirects or stops a load or a save")
+    func plantedBackups() throws {
+        let d = try TempDesk()
+        let state = try d.mkdir("state")
+        let store = try StateStore(directory: state)
+        let target = try d.write("elsewhere.json", "keep me")
+        #expect(mkfifo(store.memosBackupURL(1).path, 0o600) == 0)
+        try FileManager.default.createSymbolicLink(at: store.memosBackupURL(2), withDestinationURL: target)
+        try FileManager.default.createDirectory(at: store.memosBackupURL(3), withIntermediateDirectories: false)
+        try Data("{oops".utf8).write(to: store.memosURL)
+        let loaded = store.loadMemos() // returns: the FIFO is not waited on, the link not followed
+        #expect(loaded.book == nil && loaded.writable && loaded.problems.count == 1)
+        for (i, days) in [0.0, 2, 4, 6].enumerated() {
+            try store.saveMemos(Self.book(i + 1), now: Self.t0 + days * 86400)
+        }
+        #expect(store.loadMemos().book == Self.book(4))
+        #expect((try? String(contentsOf: target, encoding: .utf8)) == "keep me", "nothing written through the link")
+        var st = stat()
+        for n in 1...2 {
+            // Replaced whole (an atomic write replaces a link itself, never what it points to).
+            #expect(lstat(store.memosBackupURL(n).path, &st) == 0 && st.st_mode & S_IFMT == S_IFREG, "bak\(n)")
+            #expect(firstNote(store.memosBackupURL(n)) == "우유 사기")
+        }
+        #expect(lstat(store.memosBackupURL(3).path, &st) == 0 && st.st_mode & S_IFMT == S_IFDIR, "a folder there stays")
+    }
+
     @Test("Reset Layout leaves memos.json and its backups as they are")
     func resetLeavesMemos() throws {
         let d = try TempDesk()

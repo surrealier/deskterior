@@ -214,8 +214,12 @@ public struct StateStore: Sendable {
 
     /// Shifts due generations down (`.bak3` ← `.bak2` ← `.bak1` ← the file), oldest first. A generation's
     /// modification date is when it was last refreshed. `backupURL(n)` names generation `n` (`desk.json`'s or
-    /// `memos.json`'s).
-    private func rotateBackups(of backupURL: (Int) -> URL, now: Date, primary: () -> Data?) throws {
+    /// `memos.json`'s), and `read` reads one. Not `strict`, a generation that cannot be written (a symlink planted
+    /// there, which `checkOwnWrite` refuses to follow) is skipped instead of stopping the save.
+    private func rotateBackups(
+        of backupURL: (Int) -> URL, now: Date, read: (URL) -> Data? = { try? Data(contentsOf: $0) },
+        strict: Bool = true, primary: () -> Data?
+    ) throws {
         func isDue(_ n: Int) -> Bool {
             guard let date = (try? backupURL(n).resourceValues(forKeys: [.contentModificationDateKey]))?
                 .contentModificationDate
@@ -223,10 +227,17 @@ public struct StateStore: Sendable {
             let age = now.timeIntervalSince(date)
             return age < 0 || age >= Self.backupIntervals[n - 1]
         }
-        for n in stride(from: Self.backupCount, to: 1, by: -1) where isDue(n) {
-            if let older = try? Data(contentsOf: backupURL(n - 1)) { try write(older, to: backupURL(n), stamped: now) }
+        func refresh(_ n: Int, with data: Data) throws {
+            do {
+                try write(data, to: backupURL(n), stamped: now)
+            } catch {
+                if strict { throw error }
+            }
         }
-        if isDue(1), let data = primary() { try write(data, to: backupURL(1), stamped: now) }
+        for n in stride(from: Self.backupCount, to: 1, by: -1) where isDue(n) {
+            if let older = read(backupURL(n - 1)) { try refresh(n, with: older) }
+        }
+        if isDue(1), let data = primary() { try refresh(1, with: data) }
     }
 
     /// Atomic replace with fresh permissions, so a file someone made unreadable heals on the next save.
@@ -394,7 +405,10 @@ extension StateStore {
                 throw Failure.memosUnreadable(why)
             }
         }
-        try rotateBackups(of: memosBackupURL, now: now) {
+        // Backups are read as `memos.json` is (never through a symlink, never blocking on a FIFO), and one that cannot
+        // be refreshed never keeps the user's text from being saved.
+        let readOwn = { (url: URL) -> Data? in if case let .data(d) = Self.readOwnFile(url) { d } else { nil } }
+        try rotateBackups(of: memosBackupURL, now: now, read: readOwn, strict: false) {
             // Only a readable document of a schema we know becomes a backup.
             guard case let .data(primary) = current.map(OwnFile.data) ?? Self.readOwnFile(memosURL),
                   case .success = Self.decodeMemos(primary)
