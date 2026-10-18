@@ -117,7 +117,7 @@ struct MemoWindowTests {
         let store = rig.session.store
         if started {
             rig.session.start()
-            if connected { #expect(await eventually(10) { store.state.access == .connected }) }
+            if connected { #expect(await eventually { store.state.access == .connected }) }
         }
         let log = Log()
         let previous = store.willDispatch
@@ -145,7 +145,7 @@ struct MemoWindowTests {
     /// The note editor's text view, once SwiftUI has made it, with the keyboard (typing goes to the first responder;
     /// AppKit ends the editing of a text view that is not, which is a blur).
     func noteTextView(_ r: Rig) async throws -> NSTextView {
-        #expect(await eventually(10) {
+        #expect(await eventually {
             r.controller.window?.contentView?.layoutSubtreeIfNeeded()
             return r.controller.model.noteEditor.textView?.window != nil
         })
@@ -167,7 +167,7 @@ struct MemoWindowTests {
         #expect(tv.string == "우유")
         type(" 사기", into: tv)
         let typed = Date()
-        #expect(await eventually(10) { !r.log.edits.isEmpty })
+        #expect(await eventually { !r.log.edits.isEmpty })
         // Measured, not slept: the tests share the main queue, so a busy run only makes the commit later.
         let delay = try #require(r.log.firstEditTime).timeIntervalSince(typed)
         #expect(delay >= 0.75, "no commit until 0.8 s after the last keystroke (\(delay) s)")
@@ -191,7 +191,7 @@ struct MemoWindowTests {
         try await Task.sleep(for: .milliseconds(2000))
         #expect(r.log.edits.isEmpty, "never mid-composition")
         tv.unmarkText()
-        #expect(await eventually(10) { r.log.edits.count == 1 })
+        #expect(await eventually { r.log.edits.count == 1 })
         try await Task.sleep(for: .milliseconds(1500))
         #expect(r.log.edits.count == 1)
         #expect(tv.string == "우유 사" && r.log.edits.first?.1 == "우유 사")
@@ -264,7 +264,7 @@ struct MemoWindowTests {
         #expect(r.controller.model.note == id && r.controller.model.tab == .notes)
         let tv = try await noteTextView(r)
         type("새 메모", into: tv)
-        #expect(await eventually(10) { r.log.edits.count == 1 })
+        #expect(await eventually { r.log.edits.count == 1 })
         #expect(r.store.state.memos.notes[id]?.text == "새 메모")
         #expect(r.store.journal.undoStack.count == before + 1)
         #expect(r.store.undoLabel == "New Sticky Note")
@@ -283,7 +283,7 @@ struct MemoWindowTests {
         }
         r.controller.show(.note(NoteID(1)), near: nil, session: nil)
         r.controller.model.saveNote()
-        #expect(await eventually(10) { r.rig.session.effects.fileLog.last == "createTextFile" })
-        #expect(await eventually(10) { r.rig.names(r.rig.desk).contains("우유 사기.txt") })
+        #expect(await eventually { r.rig.session.effects.fileLog.last == "createTextFile" })
+        #expect(await eventually { r.rig.names(r.rig.desk).contains("우유 사기.txt") })
     }
 }
