@@ -199,7 +199,10 @@ brush double-clicked home); the mat's front edge peeled back and held, the pile 
 carried back to the monitor while the edge stays up; the power button's CRT collapse; the clock's minute hand dragged
 four turns from 16:00 into the night (the real clock is set to 20:00 before the release, so the hands stay), the wall
 switch (Lamp Only), then the monitor back on, held 1.6 s. The tooltips that linger are English names. Unrecorded steps
-after it set up the hiding places by day for a still. Its snapshots are the README's stills.
+after it set up the hiding places by day for a still, then the desk partition (Erratum 31) on a fixed day, 2026-10-18,
+so the pad and the D-Day card read the same on every run: the riser drawer shut again, two sticky notes on the tower
+(one dated), today's page on the daily memo pad, a D-Day card ("D-12") and two files in the memo clips
+(`still-partition`). Its snapshots are the README's stills.
 
 The first line writes frames to `.build/demo-out/hero/frames`; `make gif` writes the tour to `build/tour.gif` and the README's stills
 (ffmpeg). The README's own `docs/media/hero.gif` is a real screen recording of the app in desk mode on a
@@ -215,8 +218,10 @@ scene frame it steps as `frame-NNNNN.png` (art px, the lit frame) with the demo'
 a button is down, a ring after a press; snapshots never show it). Real-time waits write nothing, so the frames play at
 60/N fps of scene time. `scripts/make-gif.sh` records with `DESKTERIOR_ICONS=kind`, so the media are the same on every
 Mac, and assembles a ×2 nearest-neighbour, undithered, looping GIF (20 fps, at most 4 MB), the ×2 stills and two ×4
-crops (the mat peeled; the riser, pen cup, phone and filing cabinet in use). The README shows each image at half its
-width, so every art pixel covers whole screen pixels.
+crops (the mat peeled; the riser, pen cup, phone and filing cabinet in use). The README's `docs/media/partition.png` is
+a ×2 crop of `still-partition` (canvas 496×156 at 46,77 on the 588×383 canvas: core 8…504 × 20…176, the partition
+with the wall calendar above it; `crop=496:156:46:77,scale=iw*2:ih*2:flags=neighbor`, 992 px wide). The README shows
+each image at half its width, so every art pixel covers whole screen pixels.
 
 | Step | Example | Does |
 |---|---|---|
