@@ -53,7 +53,7 @@ struct MemoSaverTests {
         #expect(saver.saveCount == 2, "flush writes the pending book without waiting")
     }
 
-    // Reads back through `StateStore.loadMemos` (Track E's memos.json I/O; the Step 0 stub writes nothing).
+    // Reads back through `StateStore.loadMemos`, the memos.json I/O the app uses.
     @Test("Written with no folder connected (root nil), and read back as it was")
     func noRoot() throws {
         let temp = try AppTemp()
@@ -67,6 +67,22 @@ struct MemoSaverTests {
         #expect(saver.saveCount == 1)
         #expect(FileManager.default.fileExists(atPath: memosFile(dir).path))
         #expect(store.loadMemos().book == memoBook())
+    }
+
+    @Test("A memos.json that a newer Deskterior wrote mid-session stops the saves: it is never written over")
+    func newerFileDisarms() throws {
+        let temp = try AppTemp()
+        let dir = try temp.dir("State")
+        let store = try StateStore(directory: dir, mirrored: try temp.dir("Desk"))
+        let saver = MemoSaver(store: store)
+        saver.arm()
+        saver.flush(memoBook())
+        let future = Data("{\"schema\": 2, \"notes\": []}".utf8)
+        try future.write(to: memosFile(dir))
+        saver.flush(memoBook("later"))
+        #expect(!saver.isArmed && saver.saveCount == 1)
+        saver.flush(memoBook("later still"))
+        #expect(try Data(contentsOf: memosFile(dir)) == future)
     }
 }
 
@@ -107,8 +123,7 @@ final class MemoRig {
 }
 
 /// The load and save order of §4.6: memos load after every desk load, the saver arms only after it, and a stop
-/// flushes. These need Track E's `StateStore.loadMemos` / `saveMemos` (the Step 0 stub reads nothing and says not to
-/// write), so they pass once the tracks are integrated.
+/// flushes, all through `StateStore.loadMemos` / `saveMemos` in a temporary state folder.
 @Suite("Memos across sessions", .enabled(if: MTLCreateSystemDefaultDevice() != nil))
 @MainActor
 struct MemoSessionTests {

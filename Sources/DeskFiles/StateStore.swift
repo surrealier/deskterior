@@ -480,6 +480,10 @@ extension StateStore {
             return .success(try MemoDocument.decode(data))
         } catch let Migrations.Failure.newerSchema(n) {
             return .failure(.newer(n))
+        } catch Migrations.Failure.notAnObject {
+            return .failure(.corrupt("not a JSON object")) // Migrations' own words name desk.json.
+        } catch Migrations.Failure.missingSchema {
+            return .failure(.corrupt("no schema number"))
         } catch {
             return .failure(.corrupt("\(error)"))
         }

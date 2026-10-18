@@ -106,7 +106,7 @@ final class MirrorController {
         if loaded?.writable == true {
             store.memoSaver?.arm()
         } else if stateStore != nil {
-            log("memos.json is from a newer Deskterior: memo changes are not saved this time")
+            log("memos.json is left as it is (newer or unreadable): memo changes are not saved this time")
         }
     }
 
