@@ -87,4 +87,22 @@ struct ChairElementTests {
         C.settle(p)
         #expect(abs(chair.sim.x - 300) <= 3 && abs(store.state.chair.x - chair.sim.x) < 0.01)
     }
+
+    // MARK: tidy (0.3.0)
+
+    @Test("While the cabinet is put away nothing blocks the chair")
+    func chairUnblocked() throws {
+        var s = C.state()
+        s.stowed = [.cabinet]
+        s.drawers[.cabinetTop] = DrawerState(p: 12)
+        let store = SceneStore(s)
+        let room = try C.room(store.scene)
+        let chair = try #require(room.chairElement)
+        #expect(room.cabinetElement?.blocksChair == true, "the (inconsistent) drawer is open in the element")
+        #expect(!chair.cabinetBlocks)
+        var out = store.state
+        out.stowed = []
+        store.scene.apply(out)
+        #expect(chair.cabinetBlocks)
+    }
 }

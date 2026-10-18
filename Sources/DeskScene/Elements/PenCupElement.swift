@@ -228,11 +228,12 @@ final class PenCupElement: DeskElement, Knockable {
         run(machine.standUp())
     }
 
-    /// The side with more room before the next back-strip footprint (right on a tie).
+    /// The side with more room before the next back-strip footprint of what is out (right on a tie).
     var tipsRight: Bool {
         let f = DeskPlanePhysics.penCupFootprint(at: machine.position)
         var left = f.x - DeskPlanePhysics.desk.x, right = DeskPlanePhysics.desk.x + DeskPlanePhysics.desk.width - f.x - f.width
-        for o in DeskPlanePhysics.footprints(stowed: []).values where o.d < f.d + f.depth && f.d < o.d + o.depth {
+        let footprints = DeskPlanePhysics.footprints(stowed: hub.state?.stowed ?? [])
+        for o in footprints.values where o.d < f.d + f.depth && f.d < o.d + o.depth {
             if o.x + o.width <= f.x { left = min(left, f.x - o.x - o.width) }
             if o.x >= f.x + f.width { right = min(right, o.x - f.x - f.width) }
         }

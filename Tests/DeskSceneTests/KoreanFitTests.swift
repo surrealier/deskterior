@@ -37,6 +37,21 @@ struct KoreanFitTests {
         }
     }
 
+    // MARK: tidy and memos (0.3.0)
+    @Test("The nine new toasts (Put Away, the partition, Save as Text File) speak Korean and fit the band")
+    func newToasts() throws {
+        let font = try font()
+        let keys: [ToastKey] = [.putAwayPlace, .tookFilesOut, .drawersPutAway, .madeRoom, .partitionFull, .memoClipsFull,
+                                .noteRemoved, .savedTextFile, .undidSaveTextFile]
+        for key in keys {
+            #expect(L10n.knows(key.english), "\(key) is in the table")
+            #expect(key.text(.ko) != key.english, "\(key) has its Korean")
+            for language in Language.allCases {
+                #expect(ToastView.image(key.text(language), font: font).width <= ToastView.band.count, "\(language) \(key)")
+            }
+        }
+    }
+
     @Test("The toast band lies inside the visible band of the smallest canvas")
     func bandOnTheSmallestCanvas() {
         let layout = Self.smallest

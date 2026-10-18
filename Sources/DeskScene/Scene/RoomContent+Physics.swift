@@ -11,7 +11,7 @@ extension RoomContent {
         let hub = PhysicsHub(context: context)
         context.physics = hub
         hub.eventTime = { [unowned self] in router.now }
-        hub.knockables = { [unowned self] in extras.compactMap { $0 as? any Knockable } }
+        hub.knockables = { [unowned self] in activeExtras.compactMap { $0 as? any Knockable } }
         hub.apron.wobbleNodes = { [unowned self] prop in wobbleNodes(prop) }
         hub.hidePlacements = { [unowned self] in hidePhysicsPlacements() }
         hub.chairLeft = { [unowned self] in chairElement?.sim.x ?? Float(state.chairX) }
@@ -45,7 +45,7 @@ extension RoomContent {
         }
         var nodes: [SKNode] = elements.filter { $0.id == slot }.map(\.root)
         // Elements drawing over the prop (the monitor's screen and controls, a phone element).
-        nodes += extras.filter { $0.id == slot || $0.id.hasPrefix(slot + ".") || (slot == "monitor" && $0 === screen) }
+        nodes += activeExtras.filter { $0.id == slot || $0.id.hasPrefix(slot + ".") || (slot == "monitor" && $0 === screen) }
             .map(\.root)
         return nodes
     }

@@ -170,18 +170,34 @@ public final class DeskScene: SKScene {
     }
 
     /// The room state for the clock, the lights setting and (when known) the model's lamps, phone and drawers;
-    /// the monitor glows while its screen is lit. (The chair follows the model once it rolls, M6.)
+    /// the monitor glows while its screen is lit. (The chair follows the model once it rolls, M6.) What is put away,
+    /// the clip light and the memos the room draws come from the model too (Errata 30, 31): the phone's glow goes
+    /// with the phone stand.
     private func roomState(for s: DeskState?) -> RoomState {
         var r = RoomState(time: clock.now(), lightsMode: lightsMode)
         guard let s else { return r }
         r.lights = RoomLightState(
             lampOn: s.lights.lamp, monitorOn: room?.monitor.isEmissive ?? (s.monitor.power == .on),
-            phoneFaceUp: !s.phone.faceDown, roomLightOn: s.lights.room,
+            phoneFaceUp: !s.phone.faceDown && s.isOut(.phoneStand), roomLightOn: s.lights.room,
             monitorGlows: room?.monitor.glows ?? (s.monitor.power == .on)
         )
         r.riserOpen = [ContainerID.riserLeft, .riserRight].map { Int(s.drawerOpening($0).rounded()) }
         r.cabinetOpen = [ContainerID.cabinetTop, .cabinetMiddle, .cabinetFile].map { Int(s.drawerOpening($0).rounded()) }
+        // MARK: tidy and memos (0.3.0)
+        r.stowed = s.stowed
+        r.lights.partitionOut = s.isOut(.partition)
+        r.lights.clipLightOn = s.clipLightOn && s.isOut(.clipLight)
+        Self.mapMemos(s, into: &r)
         return r
+    }
+
+    /// The memos the room draws for the day it shows (`r.time`): the calendar's marks for that month, whether the
+    /// day's page is written, and the days to the D-Day.
+    static func mapMemos(_ s: DeskState, into r: inout RoomState) {
+        let day = DayKey(r.time)
+        r.calendarMarks = s.memos.marks(year: day.year, month: day.month)
+        r.padWritten = !(s.memos.pages[day] ?? "").isEmpty
+        r.dDayDays = s.memos.dDay.map { day.days(until: $0.day) }
     }
 
     // MARK: Model
@@ -251,16 +267,16 @@ public final class DeskScene: SKScene {
 
     /// VoiceOver's Open on a token, while it is on show.
     public func accessibilityOpen(_ key: TokenKey) {
-        guard let room, room.extras.contains(where: { $0.shownTokens.contains(key) }) else { return }
+        guard let room, room.activeExtras.contains(where: { $0.shownTokens.contains(key) }) else { return }
         onAction?(.requestOpen([key]))
     }
 
     /// The menu a right-click at `p` would show (demo scripts, the app's status item uses the desk menu); empty
     /// over a token in the dark, where a right-click shows none.
     public func contextMenu(at p: ArtPoint) -> MenuSpec {
-        let t = room?.target(at: p)
-        if t?.element is DarkTokenElement { return MenuSpec([]) }
-        return t.flatMap { $0.element.menu($0.hit) } ?? MenuSpec.desk(deskState ?? DeskState(), menuContext)
+        guard let room else { return MenuSpec.desk(deskState ?? DeskState(), menuContext) }
+        let t = room.target(at: p)
+        return room.menuSpec(hit: t?.hit, element: t?.element) ?? MenuSpec([])
     }
 
     /// Re-reads the clock, lights and model into the room; true when the picture changed.
@@ -271,6 +287,8 @@ public final class DeskScene: SKScene {
         s.time = clock.now()
         s.lightsMode = lightsMode
         room.adjustLighting(&s)
+        // MARK: memos (0.3.0): a clock preview past midnight shows that day's memos.
+        if let deskState { Self.mapMemos(deskState, into: &s) }
         let changed = room.setState(s)
         if changed { pushLighting() }
         return changed
@@ -428,9 +446,8 @@ extension DeskScene {
         nil // Step 0 stub: Track C (spec §5.9).
     }
 
-    /// Whether the element `element` takes hits, drops and menus now (a put-away object's is dormant, Erratum 30).
+    /// Whether the element `element` takes hits, drops and menus now: a put-away object's is dormant (Erratum 30).
     public func isRouted(_ element: String) -> Bool {
-        // Step 0 stub: Track C (dormant slots, spec §5.9). Until then: whether an element of that id is routed.
         room?.routing.contains { $0.id == element } ?? false
     }
 }

@@ -113,11 +113,11 @@ final class PhysicsHub {
     }
 
     /// Ballistics for the room as it stands: a tipped basket frees its spot and blocks where it lies (and catches
-    /// nothing); floor stacks and the chair's base are stepped over.
+    /// nothing); floor stacks and the chair's base are stepped over; a put-away cabinet leaves its span free.
     var ballistics: Ballistics.Params {
         var p = Ballistics.Params.standard
         guard let s = state else { return p }
-        p.floorAvoid = FloorLine.furniture(basket: s.wastebasket) + [FloorLine.chair(at: chairLeft())]
+        p.floorAvoid = FloorLine.furniture(basket: s.wastebasket, stowed: s.stowed) + [FloorLine.chair(at: chairLeft())]
             + FloorLine.spans(floorCentres(s))
         if !basket.isUpright { p.basketX = -1000 }
         return p
@@ -148,6 +148,12 @@ final class PhysicsHub {
     func apply(_ s: DeskState) {
         world.attach(to: world.root.scene)
         world.setFurniture("keyboard", DeskPlaneWorld.keyboardFootprint(s.mat.keyboard))
+        // MARK: tidy (0.3.0): a put-away plant's or phone stand's footprint leaves the plane (Erratum 30); the
+        // reducer has already moved aside the piles where a returning one stands.
+        if s.stowed != bodies.stowed {
+            world.setFootprints(stowed: s.stowed)
+            bodies.stowed = s.stowed
+        }
         syncBodies(s)
     }
 

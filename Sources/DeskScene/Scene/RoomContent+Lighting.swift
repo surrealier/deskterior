@@ -111,7 +111,7 @@ extension RoomContent {
     func darkTokens() -> Set<TokenKey> {
         guard router.drag == nil, ambient.level < DarkHit.minimumLevel else { return [] }
         var out = Set<TokenKey>()
-        for e in extras {
+        for e in activeExtras {
             for item in e.accessibilityItems() {
                 if let key = item.token, !isTokenLit(item.frame) { out.insert(key) }
             }

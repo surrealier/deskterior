@@ -5,7 +5,8 @@ import SpriteKit
 /// 60% of the fling, spinning through its four facings when fast, bouncing off the desk leg and the cabinet side.
 /// An open cabinet drawer stops it rolling in (a thunk); a cabinet drawer opening into it pushes it aside. It
 /// commits `.chair(x, facing)` when it comes to rest, and rolls to a position the model sets elsewhere (Show on
-/// Desk clearing the cabinet). Drawn here in place of the room's chair sprite once a model arrives.
+/// Desk clearing the cabinet). While the cabinet is put away nothing blocks it (Erratum 30). Drawn here in place of
+/// the room's chair sprite once a model arrives.
 final class ChairElement: ContainerElement, DeskElement {
     let id = "chair"
     private(set) var sim = RollerSim(x: Float(CoreLayout.chair.x))
@@ -42,6 +43,12 @@ final class ChairElement: ContainerElement, DeskElement {
 
     /// A cabinet drawer ran into the chair.
     func pushedByDrawer() { sim.pushedByDrawer() }
+
+    // MARK: tidy (0.3.0)
+    /// An open cabinet drawer stops the chair; a put-away cabinet has none to (Erratum 30).
+    var cabinetBlocks: Bool {
+        (state?.isOut(.cabinet) ?? true) && cabinet?.blocksChair == true
+    }
 
     // MARK: DeskElement
 
@@ -105,7 +112,7 @@ final class ChairElement: ContainerElement, DeskElement {
     var needsFrames: Bool { sim.needsFrames }
 
     func step(_ dt: Double) {
-        sim.setBlock(cabinet?.blocksChair == true ? RollerSim.cabinetBlockX() : nil)
+        sim.setBlock(cabinetBlocks ? RollerSim.cabinetBlockX() : nil)
         handle(sim.step(Float(dt)))
         if render() { refreshHover() }
     }

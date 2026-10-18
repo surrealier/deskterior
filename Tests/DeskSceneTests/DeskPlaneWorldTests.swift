@@ -139,4 +139,18 @@ struct DeskPlaneWorldUnitTests {
         world.setFurniture("pencup", nil)
         #expect(world.obstacles.count == 1)
     }
+
+    // MARK: tidy (0.3.0)
+
+    @Test("A put-away plant's and phone stand's footprints leave the plane and come back; obstacles never list the strip")
+    func footprintsPutAway() {
+        let world = DeskPlaneWorld()
+        #expect(DeskPlaneWorld.footprintNames.allSatisfy(world.hasFurniture))
+        world.setFootprints(stowed: [.plant, .phoneStand, .cabinet])
+        #expect(!world.hasFurniture("plant") && !world.hasFurniture("phone"))
+        #expect(world.hasFurniture("riser") && world.hasFurniture("lamp") && world.hasFurniture("hub"))
+        #expect(world.obstacles == [DeskPlaneWorld.keyboardFootprint(nil)])
+        world.setFootprints(stowed: [])
+        #expect(DeskPlaneWorld.footprintNames.allSatisfy(world.hasFurniture))
+    }
 }
