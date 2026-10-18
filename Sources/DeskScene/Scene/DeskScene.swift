@@ -436,14 +436,15 @@ extension DeskScene {
     /// Today on the room's clock: the day the pad shows and Today's Memo opens (Erratum 31).
     public var today: DayKey { DayKey(clock.now()) }
 
-    /// A sticky note's canvas rect, while the partition shows it.
+    /// A sticky note's canvas rect where it rests, while the partition shows it (nil while it is put away, or for a
+    /// note that is gone).
     public func noteRect(_ id: NoteID) -> ArtRect? {
-        nil // Step 0 stub: Track C (spec §5.9).
+        room?.partitionElement?.noteRect(id)
     }
 
-    /// Day `day`'s cell on the wall calendar, in canvas px.
+    /// Day `day`'s cell on the wall calendar for the month it shows, in canvas px (nil for a day not in it).
     public func calendarDayRect(_ day: Int) -> ArtRect? {
-        nil // Step 0 stub: Track C (spec §5.9).
+        room?.calendarElement?.dayRect(day)
     }
 
     /// Whether the element `element` takes hits, drops and menus now: a put-away object's is dormant (Erratum 30).

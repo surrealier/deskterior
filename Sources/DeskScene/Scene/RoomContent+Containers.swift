@@ -78,6 +78,7 @@ extension RoomContent {
         case .riserLeft, .riserRight, .riserCubby: riserElement
         case .cabinetTop, .cabinetMiddle, .cabinetFile: cabinetElement
         case .phone: phoneElement
+        case .memoClips: memoClipsElement // MARK: memos (0.3.0)
         default: nil
         }
         element?.playPulse(key)
@@ -91,5 +92,6 @@ extension RoomContent {
     /// Where `key` shows as a mini in an open container (canvas px), if it does.
     func containerMiniRect(of key: TokenKey) -> ArtRect? {
         riserElement?.miniRect(of: key) ?? cabinetElement?.miniRect(of: key) ?? phoneElement?.miniRect(of: key)
+            ?? memoClipsElement?.miniRect(of: key)
     }
 }

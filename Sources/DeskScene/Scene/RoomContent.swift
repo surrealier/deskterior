@@ -169,6 +169,7 @@ final class RoomContent: GestureTarget {
         installPhysics()
         installMat()  // MARK: mat
         installFiles() // MARK: files
+        installPartition() // MARK: memos (0.3.0)
         rebuild()
     }
 
@@ -338,6 +339,7 @@ final class RoomContent: GestureTarget {
             rebuild()
             if skyChanged, let s = context.state { monitor.apply(s) }
             relit()
+            roomTimeChanged(from: old)
             return true
         }
         let a = old.timeOfDay, b = new.timeOfDay
@@ -355,6 +357,7 @@ final class RoomContent: GestureTarget {
         if skyChanged, let s = context.state { monitor.apply(s) }
         // The light moved under a resting pointer: a token it reached or left is hovered (or not) anew (`DarkHit`).
         if !minuteOnly { relit() }
+        roomTimeChanged(from: old)
         return true
     }
 
@@ -488,6 +491,7 @@ final class RoomContent: GestureTarget {
     private func finishSettling() {
         for d in settling {
             (d as? CarrySession)?.finishNow()
+            (d as? NoteDrag)?.finishNow() // MARK: memos (0.3.0)
         }
         settling.removeAll()
     }
