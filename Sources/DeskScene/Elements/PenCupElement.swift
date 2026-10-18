@@ -58,6 +58,8 @@ final class PenCupElement: DeskElement, Knockable {
     }
 
     func apply(_ s: DeskState) {
+        // An away plant's or phone stand's strip is free desk for the cup (Erratum 30).
+        machine.stowed = s.stowed
         // Carried or mid-tip, the model holds the old state until the motion settles.
         if !isCarried, !machine.needsFrames { machine.sync(s.penCup) }
         updateFootprint()

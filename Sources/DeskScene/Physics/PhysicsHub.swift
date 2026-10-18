@@ -506,7 +506,7 @@ final class PhysicsHub {
         let keys = s.tokens.members(of: .penCup).filter { !hiddenKeys.contains($0) }
         guard !keys.isEmpty else { return }
         let spills = PenCupMachine.spill(count: keys.count, from: position, right: right, seed: nextSeed(),
-                                         direction: direction, ballistics: ballistics)
+                                         direction: direction, ballistics: ballistics, stowed: s.stowed)
         // The top pen (last in) leaves first.
         pendingPens = (Array(spills.reversed()), keys, 0)
         stepPens(0)
