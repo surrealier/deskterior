@@ -65,6 +65,7 @@ extension ToastKey {
         case .savedTextFile: "Saved as a text file."
         case .undidSaveTextFile: "The text file went to the Trash."
         case .savedNoUndo: "Saved, but it can't be undone."
+        case .memosNotSaved: "Memos can't be saved this time."
         }
     }
 

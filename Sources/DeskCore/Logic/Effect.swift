@@ -166,4 +166,7 @@ public enum ToastKey: String, Sendable, CaseIterable {
     /// 24 notes are up; the memo clips hold 5; a note went into the wastebasket; Save as Text File and its undo; a
     /// saved file landed but the item at its name is not provably the one written, so it has no undo step.
     case partitionFull, memoClipsFull, noteRemoved, savedTextFile, undidSaveTextFile, savedNoUndo
+    /// `memos.json` may not be written this session (a newer Deskterior's, or unreadable), so memo changes are not
+    /// saved: shown by the app, never by the reducer.
+    case memosNotSaved
 }

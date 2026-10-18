@@ -17,6 +17,15 @@ func memoBook(_ text: String = "우유 사기", page: String = "회의 3시") ->
     return book
 }
 
+/// Counts calls made on any queue.
+nonisolated final class CallCount: @unchecked Sendable {
+    private let lock = NSLock()
+    private var n = 0
+
+    func bump() { lock.withLock { n += 1 } }
+    var value: Int { lock.withLock { n } }
+}
+
 /// `memos.json`'s saver (Erratum 31): nothing before `arm()`, debounced, written with no folder connected, flushed
 /// when a session stops. Scratch state folders only.
 @Suite("Memo saver")
@@ -111,7 +120,8 @@ struct MemoSaverTests {
         let temp = try AppTemp()
         let dir = try temp.dir("State")
         let store = try StateStore(directory: dir, mirrored: try temp.dir("Desk"))
-        let saver = MemoSaver(store: store)
+        let refusals = CallCount()
+        let saver = MemoSaver(store: store, onRefusal: { refusals.bump() })
         saver.arm()
         saver.flush(memoBook())
         let future = Data("{\"schema\": 2, \"notes\": []}".utf8)
@@ -120,6 +130,7 @@ struct MemoSaverTests {
         #expect(!saver.isArmed && saver.saveCount == 1)
         saver.flush(memoBook("later still"))
         #expect(try Data(contentsOf: memosFile(dir)) == future)
+        #expect(refusals.value == 1, "the user is told once (the session shows a toast)")
     }
 }
 
@@ -200,6 +211,42 @@ struct MemoSessionTests {
         new.stop()
         #expect(new.store.memoSaver?.saveCount == 0, "nothing changed in the new session")
         #expect(try rig.stateStore.loadMemos().book == memoBook("from the old desk"))
+    }
+
+    @Test("A memos.json from a newer Deskterior: the session says memo changes are not saved, and never writes it")
+    func newerFileToast() throws {
+        let rig = try MemoRig()
+        let file = rig.state.appendingPathComponent(StateStore.memosFileName)
+        let future = Data("{\"schema\": 2, \"notes\": []}".utf8)
+        try future.write(to: file)
+        let session = try rig.session()
+        session.start()
+        #expect(session.host.scene.toastShown == .memosNotSaved)
+        let saver = try #require(session.store.memoSaver)
+        #expect(!saver.isArmed)
+        let id = session.store.state.memos.nextNoteID
+        session.store.dispatch(.addNote(NewNote(id: id, text: "새 메모", colour: .pink), session: nil))
+        #expect(session.store.state.memos.notes[id] != nil)
+        session.stop()
+        #expect(saver.saveCount == 0)
+        #expect(try Data(contentsOf: file) == future)
+    }
+
+    @Test("memos.json turning newer mid-session stops the saves, and the session says so")
+    func newerMidSessionToast() async throws {
+        let rig = try MemoRig()
+        try rig.stateStore.saveMemos(memoBook())
+        let session = try rig.session()
+        session.start()
+        #expect(session.host.scene.toastShown == nil)
+        let file = rig.state.appendingPathComponent(StateStore.memosFileName)
+        let future = Data("{\"schema\": 2, \"notes\": []}".utf8)
+        try future.write(to: file)
+        session.store.dispatch(.editNote(NoteID(1), text: "택배 반품", session: 1))
+        session.store.flush()
+        #expect(await eventually { session.host.scene.toastShown == .memosNotSaved })
+        session.stop()
+        #expect(try Data(contentsOf: file) == future)
     }
 
     @Test("A memo action dispatched to the store is scheduled; a replace (a load) never is")

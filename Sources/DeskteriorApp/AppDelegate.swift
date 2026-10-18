@@ -425,9 +425,14 @@ final class DeskSession {
             stateStore = nil
         }
         let saver = stateStore.map { LayoutSaver(store: $0, delay: configuration.persistDelay, maxWait: configuration.persistMaxWait) }
-        // MARK: memos (0.3.0): memos.json beside desk.json, armed by the mirror once it was read (Erratum 31).
+        // MARK: memos (0.3.0): memos.json beside desk.json, armed by the mirror once it was read (Erratum 31). When
+        // the saves stop mid-session (the file turned newer or unreadable), a toast says so.
         let memoSaver = stateStore.map {
-            MemoSaver(store: $0, delay: configuration.persistDelay, maxWait: configuration.persistMaxWait)
+            MemoSaver(store: $0, delay: configuration.persistDelay, maxWait: configuration.persistMaxWait) { [weak host] in
+                DispatchQueue.main.async {
+                    MainActor.assumeIsolated { host.map(Self.memosNotSaved) }
+                }
+            }
         }
         store = Store(saver: saver, memoSaver: memoSaver)
         store.seed = seed ?? options.seed ?? 0
@@ -492,6 +497,8 @@ final class DeskSession {
         }
         // MARK: harden: once the mirror has read the folder (never before ⏻ on a first run), look for leftover copies.
         mirror.onSnapshot = { [weak self] count in if count == 1 { self?.leftovers.look() } }
+        // MARK: memos (0.3.0): memos.json found newer or unreadable: the notes typed this time are not saved.
+        mirror.onMemosNotSaved = { [weak self] in self.map { Self.memosNotSaved($0.host) } }
         sync.start()
         mirror.start()
         host.scene.lightsMode = store.state.lights.mode
@@ -551,6 +558,15 @@ final class DeskSession {
                 leftovers.look()
             }
         }
+    }
+
+    // MARK: memos (0.3.0)
+
+    /// Tells the user that memo changes are not saved this session (Erratum 31: `memos.json` is never written over
+    /// when it is newer or unreadable).
+    static func memosNotSaved(_ host: SceneHost) {
+        host.scene.toast(.memosNotSaved)
+        host.modelChanged()
     }
 
     /// Brings the scene to rest (a carry springs back; a drawer or the chair mid-motion commits where it is; whatever

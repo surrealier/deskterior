@@ -52,6 +52,10 @@ final class MirrorController {
     /// Called after each snapshot reaches the model, with how many have so far: the folder has been read, so the
     /// privacy prompt (if any) came from ⏻ (the session then looks for leftover copies).
     var onSnapshot: ((Int) -> Void)?
+    // MARK: memos (0.3.0)
+    /// Called when `memos.json` is there but may not be written this session (a newer Deskterior's, or unreadable):
+    /// memo changes are not saved, and the session says so.
+    var onMemosNotSaved: (() -> Void)?
 
     init(configuration: Configuration, store: Store, stateStore: StateStore?) {
         self.configuration = configuration
@@ -107,6 +111,7 @@ final class MirrorController {
             store.memoSaver?.arm()
         } else if stateStore != nil {
             log("memos.json is left as it is (newer or unreadable): memo changes are not saved this time")
+            onMemosNotSaved?()
         }
     }
 

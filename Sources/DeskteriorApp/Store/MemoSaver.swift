@@ -8,11 +8,14 @@ import Foundation
 /// false for a newer Deskterior's file), so an empty book can never replace the user's notes, not before the load and
 /// not over a newer file. Unlike the layout, the notes are saved with no folder connected too (they are not about the
 /// folder). Errors are logged once each, and a failed write keeps its book for the next try; a `memos.json` that
-/// turned newer or unreadable during the session disarms it for the rest of the session, as the load would have.
+/// turned newer or unreadable during the session disarms it for the rest of the session, as the load would have, and
+/// `onRefusal` lets the user know.
 nonisolated final class MemoSaver: @unchecked Sendable {
     let store: StateStore
     let delay: TimeInterval
     let maxWait: TimeInterval
+    /// Called on the saver's queue when memo changes stop being saved (the file turned newer or unreadable).
+    private let onRefusal: (@Sendable () -> Void)?
     private let queue = DispatchQueue(label: "deskterior.memos", qos: .utility)
     // Confined to `queue`.
     private var armed = false
@@ -22,10 +25,12 @@ nonisolated final class MemoSaver: @unchecked Sendable {
     private var lastError: String?
     private var saves = 0
 
-    init(store: StateStore, delay: TimeInterval = 1, maxWait: TimeInterval = 5) {
+    init(store: StateStore, delay: TimeInterval = 1, maxWait: TimeInterval = 5,
+         onRefusal: (@Sendable () -> Void)? = nil) {
         self.store = store
         self.delay = delay
         self.maxWait = maxWait
+        self.onRefusal = onRefusal
     }
 
     /// From now on changes are saved (the book was loaded and its file may be written).
@@ -76,6 +81,7 @@ nonisolated final class MemoSaver: @unchecked Sendable {
         } catch let failure as StateStore.Failure where failure.stopsMemoSaves {
             armed = false
             FileHandle.standardError.write(Data("Deskterior: \(failure); memo changes are not saved this time\n".utf8))
+            onRefusal?()
         } catch {
             let message = "could not save the memos: \(error)"
             if message != lastError { FileHandle.standardError.write(Data("Deskterior: \(message)\n".utf8)) }

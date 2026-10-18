@@ -42,7 +42,7 @@ struct KoreanFitTests {
     func newToasts() throws {
         let font = try font()
         let keys: [ToastKey] = [.putAwayPlace, .tookFilesOut, .drawersPutAway, .madeRoom, .partitionFull, .memoClipsFull,
-                                .noteRemoved, .savedTextFile, .undidSaveTextFile, .savedNoUndo]
+                                .noteRemoved, .savedTextFile, .undidSaveTextFile, .savedNoUndo, .memosNotSaved]
         for key in keys {
             #expect(L10n.knows(key.english), "\(key) is in the table")
             #expect(key.text(.ko) != key.english, "\(key) has its Korean")
