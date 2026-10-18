@@ -145,6 +145,23 @@
     { "hover": "core:470,140" },
     { "waitIdle": 5 },
     { "expect": { "token:diagram.png": "container:riserLeft", "token:readme.txt": "container:riserCubby", "token:installer.dmg": "container:phone", "token:main.swift": "container:penCup", "token:Meeting notes.docx": "container:cabinetFile", "drawer:riserLeft": "open", "drawer:cabinetFile": "open", "phone": "faceUp", "pens": 2 } },
-    { "snapshot": "still-hiding" }
+    { "snapshot": "still-hiding" },
+
+    { "comment": "Not recorded: a still of the desk partition by day (Erratum 31; the README's docs/media/partition.png is a ×2 crop of it, see docs/DEMOS.md): the riser drawer shut again, two sticky notes on the tower (one dated), today's page written on the daily memo pad, a D-Day card, and two files clipped to the memo clips. The clock takes a fixed day, so the pad, the card and the calendar read the same on every run." },
+    { "clock": "2026-10-18T10:00" },
+    { "click": "riser.drawerL.handle" },
+    { "action": "newNote:yellow:Call mom\nabout Sunday" },
+    { "action": "newNote:pink:택배 반품" },
+    { "action": "noteDay:N2:2026-10-20" },
+    { "action": "dayMemo:2026-10-18:장보기\n우유, 두부" },
+    { "action": "dDay:2026-10-30:중간고사" },
+    { "drag": { "from": "token:notes.md", "to": "partition.clips", "duration": 0.4 } },
+    { "waitIdle": 3 },
+    { "drag": { "from": "token:IMG_0003.png", "to": "partition.clips", "duration": 0.4 } },
+    { "waitIdle": 3 },
+    { "hover": "core:470,140" },
+    { "waitIdle": 5 },
+    { "expect": { "out:partition": "out", "notes": 2, "note:N1.pos": "371,67", "note:N2.pos": "401,67", "note:N2.day": "2026-10-20", "page:2026-10-18": "장보기\n우유, 두부", "dDay": "2026-10-30 중간고사", "token:notes.md": "container:memoClips", "token:IMG_0003.png": "container:memoClips", "drawer:riserLeft": "closed", "calendar.marks": 3, "tooltip": "none" } },
+    { "snapshot": "still-partition" }
   ]
 }

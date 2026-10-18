@@ -136,6 +136,25 @@ Drawers, cubby and phone list their contents, move them or take them all out fro
 </tr>
 </table>
 
+### The desk partition
+
+<table>
+<tr>
+<td colspan="2" valign="top">
+<img src="docs/media/partition.png" width="496" alt="The desk partition by day, close up: a felt panel along the back of the desk, raised beside the monitor; a yellow and a pink sticky note on the raised panel under the wall calendar, whose days with memos are marked; the daily memo pad under the desk lamp, showing OCT 18, Sunday and a Korean memo; the sticky-note cube beside the plant; a text file and a photo clipped up as cards, and a D-Day card reading D-12"><br>
+<b>Sticky notes, a memo pad and the calendar</b><br>
+Peel a sticky note off the cube and stick it anywhere on the felt partition, write today's page on the memo pad, and see the days with memos on the wall calendar.
+</td>
+</tr>
+<tr>
+<td colspan="2" valign="top">
+<b>Also on the partition</b><br>
+Memo clips hold up to 5 files · a D-Day card counts down · a clip light for the night · Save as Text File on Desktop · Put Away anything you don't use.<br>
+<a href="#everything-it-does">Everything it does</a>
+</td>
+</tr>
+</table>
+
 ### The desk mat
 
 <table>
@@ -321,6 +340,38 @@ The [Where things hide](#where-things-hide) and [Gestures](#gestures) tables bel
   have Tip Over and Stand Up. Any file's Move to ▸ sends it straight to a hiding place.
 - **Nothing comes out by itself.** Knocks, slams and overfilling never empty a container; overfilling bonks.
 
+### Putting things away
+
+- **Put Away.** Put away what you don't use: the riser drawers (the riser stays as a plain monitor stand), the filing
+  cabinet, the phone stand, the plant, the desk partition or any of its add-ons, and the wall shelf, pegboard, string
+  lights, floor plant and wall art. Right-click it ▸ Put Away ("Put Away Plant"), or use Put Away ▸ in the menu bar
+  menu, or Arrange Desk… for one list of everything.
+- **Nothing hides inside.** A place that holds files says so ("Take Out 3 & Put Away Cabinet") and brings them to the
+  monitor first, in the same undo step.
+- **Bring Back.** Bring Back ▸ returns things one by one or all at once (Bring Everything Back); anything resting where
+  an object returns is moved aside. ⌘Z undoes either.
+
+### The desk partition
+
+- **The partition.** A felt partition along the back of the desk, with a raised panel beside the monitor. Put it away
+  like anything else; your notes wait for it.
+- **Sticky notes.** Click the sticky-note cube for a new note, or drag one off it. Drag notes anywhere on the felt:
+  they snap to where you can read them. Click a note to edit it in the Memos window (Korean input works as it does
+  anywhere on the Mac); pick one of six colours, give it a date, bring it to the front, or drop it on the wastebasket
+  to take it off (⌘Z puts it back). Up to 24; hover one to read it (in the dark, only where a light reaches it).
+- **Daily memo pad.** Today's page, dated, under the desk lamp. Click it to write; drag the page off to tear it into a
+  sticky note dated that day.
+- **Wall calendar.** Days with a memo, a dated note or the D-Day are marked; click a day to open it. The Memos window
+  shows the whole month.
+- **Memo clips.** Drop up to 5 files on the partition to clip them up as cards. Like every hiding place, this only
+  changes the layout.
+- **D-Day card and clip light.** Set a D-Day from the calendar in the Memos window ("D-12", "D-DAY", "D+3"); click the
+  clip light to light the right side of the partition at night.
+- **Save as Text File on Desktop** (a note's or the pad's menu, or the Memos window) makes a new .txt file in your
+  Desktop folder, clipped to the partition.
+- **Kept safe.** Notes live in their own file (`memos.json` in the state folder) and survive Safe Mode's Reset Layout
+  and folder switches.
+
 ### The desk mat
 
 - **Cloth.** A simulated cloth mat, felt on top and rubber underneath, with the keyboard lying on it: the keyboard
@@ -375,10 +426,10 @@ The [Where things hide](#where-things-hide) and [Gestures](#gestures) tables bel
 - **File actions, only when asked.** Move to Trash (from the menu; no keyboard shortcut), Empty Wastebasket…,
   dropping files in from Finder (moved into the folder, or copied from another disk or with ⌥; an app becomes an alias
   and stays where it is; a name that is taken gets " 2"), dragging files out to other apps, Mail or the Dock's Trash,
-  and Eject. Locked files are never moved in.
+  Eject, and Save as Text File on Desktop (a new file only). Locked files are never moved in.
 - **Undo.** ⌘Z undoes the last 20 steps (⌘⇧Z redoes layout steps), Deskterior's own file actions included: trashed
-  files come back to the same spot, dropped files go back where they came from. Eject and drags out to other apps
-  cannot be undone. Every file action is written to `operations.log`.
+  files come back to the same spot, dropped files go back where they came from, saved text files go to the Trash. Eject
+  and drags out to other apps cannot be undone. Every file action is written to `operations.log`.
 - **Drive hub.** Mounted drives plug into the hub as USB sticks, disks or servers (four slots, then a "+n" tag).
   Double-click to open; Open, Show in Finder and Eject from the menu. Files dropped on a drive bonk: copying to
   drives is Finder's job.
@@ -429,6 +480,7 @@ The [Where things hide](#where-things-hide) and [Gestures](#gestures) tables bel
 | **Pen cup** | Drop a file in and it becomes a pen; the cap colour tells its kind. | Drag the last pen out of the cup. A quick flick of the cup with three or more pens in it tips it over, and the pens spill onto the desk; click it to stand it up. |
 | **Wastebasket** | Drop or toss a file in. It is crumpled up, **not deleted**: "hidden, not deleted". | Drag the top ball out, or drag the rim sideways to tip the basket over. *Empty Wastebasket…* moves its contents to the macOS Trash, after a confirmation that lists them. |
 | **Desk mat** and **brush** | Drop a file on the mat and it slides under, leaving a bump; taller stacks make bigger bumps. Push piles in with the brush, or with a sideways two-finger scroll over the desk. | Peel an edge or corner back: the piles underneath stand up and can be taken. Or right-click ▸ Peek Under. With the Flat mat (or Reduce Motion) the mat does not lift: right-click it ▸ List Items Under Mat ▸ a name puts that file back on the monitor, and Find Item… (⌘F) works too. |
+| **Memo clips** (on the partition) | Drop a file on the partition: it is clipped up as a card with its icon. Not hidden: a place to keep files in sight. | Drag the card back out, or Take All Out from the clips' menu. |
 | **Lamp** and **Lamp Only** | At night, switch the room light off and keep the desk lamp on: only the lamp's pool, the monitor's glow and the phone's glow light anything. Files in the dark are silhouettes: no names, no clicks. | Files in the lamp's pool or the monitor's or face-up phone's glow can still be picked; switch the room light back on, or pick Lights ▸ Auto. |
 | **Drive hub** | Deskterior covers Finder's drive icons too, so mounted drives plug into the hub on the desk. | Double-click to open; Eject from the drive's menu. |
 | **Clear the Desk** | One menu item: the monitor goes off, the phone turns over, drawers shut and the brush sweeps every loose pile under the mat. "TIDY!" | One ⌘Z puts everything back exactly. |
@@ -439,13 +491,16 @@ Nothing comes out of hiding by itself. Knocks, slams and overfilling never empty
 again only when you open its container, peel or move the mat, flip the phone, tip the cup or basket, switch input, use
 a menu, Find Item…, Show on Desk or Take Everything Out.
 
+**Put Away** takes a whole object out of the room (right-click it, Put Away ▸ or Arrange Desk…). A put-away place
+never holds files: they come out to the monitor first. Bring Back ▸ returns it.
+
 ## Gestures
 
 | Gesture | What it does |
 |---|---|
-| **Click** | Selects a file (⌘-click adds or removes one; drag on the empty screen to select several; ⌘A selects the page). Also flips switches and presses buttons: the power button, INPUT, the lamp, the room light switch, a drawer handle, the phone. |
+| **Click** | Selects a file (⌘-click adds or removes one; drag on the empty screen to select several; ⌘A selects the page). Also flips switches and presses buttons: the power button, INPUT, the lamp, the room light switch, a drawer handle, the phone. On the partition: a sticky note (edits it), the sticky-note cube (a new note), the memo pad, a day on the wall calendar, the clip light. |
 | **Double-click** | Opens a file. On the desk's front edge (the apron): **knocks the desk**: things wobble, but no file changes place. On the mat's edge: smooths it. On a folded flap: unfolds it. On the brush: sends it home. |
-| **Drag** | Carries files (several at once if several are selected) to the monitor, a hiding place, the desk or the floor. Hovering a carried file over a closed drawer for a moment opens it. Drags the brush, the chair (it rolls), the pen cup, drawer handles, the clock's minute hand (previews another time of day). |
+| **Drag** | Carries files (several at once if several are selected) to the monitor, a hiding place, the desk or the floor. Hovering a carried file over a closed drawer for a moment opens it. Drags the brush, the chair (it rolls), the pen cup, drawer handles, the clock's minute hand (previews another time of day), sticky notes (anywhere on the partition; onto the wastebasket to take one off), a page off the memo pad. |
 | **Drop from Finder** | Files dragged onto the desk from Finder land where you drop them: moved into your Desktop folder, or copied when they come from another disk. An **app** becomes an alias (its own icon with an arrow; double-click opens it) and stays where it is; one from the Trash or a disk image comes in like any file. Hold ⌥ to copy, ⌘ to move (apps too), ⌘⌥ to make an alias of anything. Files dropped on another display go to the monitor. |
 | **Flick / toss** | Let go of a carried file while moving fast and it flies: off the desk's edge onto the floor, or into the wastebasket (SWISH!). A fast flick of the pen cup (with three or more pens in it) tips it over. |
 | **Drag the mat** | Carries the whole mat (and the keyboard on it); fast carries leave creases. |
@@ -453,7 +508,7 @@ a menu, Find Item…, Show on Desk or Take Everything Out.
 | **Tug** | Drag a corner of the mat outward to pull its creases flat (or double-click an edge, or Smooth Desk Mat). |
 | **⌥ (Option)** | Over the mat, shows its handles: ⌥-drag a corner to resize and turn it (⇧ snaps to 15°); ⌥-drag the middle to slide it without creases. |
 | **Two-finger scroll** | Sideways over the desk: the **scroll-broom** sweeps piles under the mat. Over the screen: changes page. Over a closed drawer: peeks inside. |
-| **Right-click** | A menu for everything: files (Open, Quick Look, Show in Finder, Copy, **Move to ▸** a monitor page or a drawer, the cubby, the phone, the pen cup or the wastebasket, Move to Trash), the monitor, each container, the mat (Peek Under, Smooth, Rotate, Size, List Items Under Mat ▸), drives. Right-click the bare wall for the same menu as the menu bar icon. |
+| **Right-click** | A menu for everything: files (Open, Quick Look, Show in Finder, Copy, **Move to ▸** a monitor page or a drawer, the cubby, the phone, the pen cup or the wastebasket, Move to Trash), the monitor, each container, the mat (Peek Under, Smooth, Rotate, Size, List Items Under Mat ▸), drives, the partition and each sticky note; what can be put away ends its menu with Put Away. Right-click the bare wall for the same menu as the menu bar icon. |
 | **Keys** (after clicking the desk) | Space: Quick Look · ⌘O / ⌘↓: open · arrows: move the selection · ⌘A · ⌘C: copy · ⌘F: Find Item… · ⌘Z / ⌘⇧Z: undo and redo · Esc: cancel a carry or end a peek. There is no delete key. |
 
 <img src="docs/media/mat-peel.png" width="576" alt="The desk around the mat: its front edge peeled back, rubber side up, and a pile of three files standing where it lay">
@@ -465,7 +520,7 @@ Deskterior has no Dock icon. Its menu is the small pixel icon in the menu bar, o
 
 - **Hiding is layout only.** A file in a drawer, under the mat or in the wastebasket is still in your Desktop
   folder, untouched. Finder, Spotlight and every other app see it exactly as before. Deskterior only remembers
-  where you put it.
+  where you put it. Put Away and the memo clips only change the layout too.
 - **Files change only when you explicitly ask**, through one of these actions:
   - **Move to Trash** from a file's right-click menu (no keyboard shortcut);
   - **Empty Wastebasket…**, after a confirmation that lists the names;
@@ -474,6 +529,8 @@ Deskterior has no Dock icon. Its menu is the small pixel icon in the menu bar, o
   - dragging a file out to another app (that app does what it would do with a drag from Finder; dropped on the
     Dock's Trash, Deskterior moves it to the Trash itself if the Dock has not);
   - **Eject** from a drive's menu;
+  - **Save as Text File on Desktop** from a sticky note's or the memo pad's menu (it only creates a new file, never
+    changes one that exists);
   - **Move to Trash** under Settings ▸ Leftover copies, which appears only after an interrupted copy (below).
 - **Trash, never delete.** Deskterior moves files to the macOS Trash and never deletes anything. It never
   overwrites a file: a name that is taken gets " 2", " 3"…
@@ -483,10 +540,10 @@ Deskterior has no Dock icon. Its menu is the small pixel icon in the menu bar, o
   Deskterior tells you once each launch while it is there and lists it under Settings ▸ Leftover copies (Show in
   Finder, Move to Trash), but never removes it by itself.
 - **Undo.** ⌘Z undoes layout changes and Deskterior's own file actions (Move to Trash, Empty Wastebasket…, drops
-  onto the desk): trashed files come back to the same spot on the desk, dropped files go back where they came from
-  (copies and aliases go to the Trash). Eject and drags out to other apps cannot be undone, except a drag onto the Dock's Trash
-  that Deskterior carried out. If macOS will not let Deskterior reach the Trash, it says so and you can use Finder's
-  Put Back.
+  onto the desk, Save as Text File): trashed files come back to the same spot on the desk, dropped files go back where
+  they came from (copies, aliases and saved text files go to the Trash; a saved file you have changed since stays).
+  Eject and drags out to other apps cannot be undone, except a drag onto the Dock's Trash that Deskterior carried out.
+  If macOS will not let Deskterior reach the Trash, it says so and you can use Finder's Put Back.
 - **Finder is left alone.** The desk is a window just above Finder's desktop icons: it covers them, it does not hide
   them by changing any Finder setting (Finder's settings are only read). Quit Deskterior, or use Pause Desk, and your
   normal desktop is back.
@@ -568,8 +625,8 @@ Hold **⌥ (Option)** while Deskterior starts. A Safe Mode window appears before
 touched yet:
 
 - **Start Normally**;
-- **Reset Layout…**: every file goes back to the monitor; the old layout is kept as a backup in the state folder
-  (no file is deleted);
+- **Reset Layout…**: every file goes back to the monitor and everything put away comes back; the old layout is kept
+  as a backup in the state folder (no file is deleted). Reset Layout keeps your sticky notes and memos;
 - **Open State Folder**;
 - **Quit**.
 
@@ -580,8 +637,8 @@ back; your files were never touched.
 
 1. If you turned on **Launch at login**, turn it off in Settings.
 2. Quit Deskterior (menu bar icon ▸ Quit Deskterior).
-3. Optionally remove its layout, icon cache, settings and privacy permissions. They are named after the app's
-   bundle identifier, so read it before deleting the app. Paste the whole block into Terminal at once:
+3. Optionally remove its layout, sticky notes and memos, icon cache, settings and privacy permissions. They are named
+   after the app's bundle identifier, so read it before deleting the app. Paste the whole block into Terminal at once:
 
    ```sh
    ID="$(defaults read /Applications/Deskterior.app/Contents/Info CFBundleIdentifier)" &&
@@ -593,8 +650,9 @@ back; your files were never touched.
    ```
 
    If the first line prints an error, stop: Deskterior is not in /Applications. The block removes the layout, its
-   backups and `operations.log` (Application Support), the icon cache (Caches), the settings (`defaults`) and the
-   Desktop folder permission (`tccutil`), and does nothing unless the identifier is Deskterior's.
+   backups, your sticky notes and memos (`memos.json`) and `operations.log` (Application Support), the icon cache
+   (Caches), the settings (`defaults`) and the Desktop folder permission (`tccutil`), and does nothing unless the
+   identifier is Deskterior's.
 
 4. Move `Deskterior.app` to the Trash.
 
@@ -658,8 +716,12 @@ More: [docs/DESIGN.md](docs/DESIGN.md) (the design), [docs/DEMOS.md](docs/DEMOS.
   and APFS work.
 - Finder's own desktop is still there underneath. If Finder had icons selected on the desktop before Deskterior
   covered it, ⌘⌫ in Finder can still move them to the Trash (Finder's Undo puts them back).
+- The calendar is the room's own: it does not read or write the Calendar app, and notes stay on this Mac (in
+  `memos.json`).
+- Notes show on the desk's display only, not on other displays' walls.
 - Parts of the scene stay in English in v0.1, also with the Korean language setting: its tooltips, VoiceOver's names
-  for the desk's objects, the AV input's NO SIGNAL logo, BONK, SWISH! and TIDY!.
+  for the desk's objects, the AV input's NO SIGNAL logo, BONK, SWISH! and TIDY! (the partition's and calendar's
+  tooltips are translated).
 
 ## Credits
 

@@ -142,6 +142,25 @@ Los cajones, el hueco y el teléfono enumeran su contenido, lo mueven o lo sacan
 </tr>
 </table>
 
+### El panel de la mesa
+
+<table>
+<tr>
+<td colspan="2" valign="top">
+<img src="docs/media/partition.png" width="496" alt="El panel de la mesa de día, de cerca: un panel de fieltro a lo largo del fondo de la mesa, más alto junto al monitor; en la parte alta, una nota adhesiva amarilla y otra rosa bajo el calendario de pared, que marca los días con apuntes; el bloc diario bajo la lámpara, con OCT 18, el domingo y un apunte en coreano; el cubo de notas junto a la planta; un archivo de texto y una foto sujetos como tarjetas, y una tarjeta D-Day que dice D-12"><br>
+<b>Notas adhesivas, bloc diario y calendario</b><br>
+Despega una nota del cubo y pégala en cualquier parte del panel de fieltro, escribe la página de hoy en el bloc diario y mira en el calendario de pared los días con apuntes.
+</td>
+</tr>
+<tr>
+<td colspan="2" valign="top">
+<b>Más en el panel</b><br>
+Clips para hasta 5 archivos · una tarjeta D-Day con la cuenta atrás · una lámpara de pinza para la noche · Save as Text File on Desktop · Put Away para lo que no uses.<br>
+<a href="#todo-lo-que-hace">Todo lo que hace</a>
+</td>
+</tr>
+</table>
+
 ### La alfombrilla
 
 <table>
@@ -336,6 +355,40 @@ usar cada parte.
 - **Nada sale solo.** Los golpes, los cierres de golpe y llenar de más nunca vacían un contenedor; si lo llenas de más,
   hace bonk.
 
+### Guardar cosas
+
+- **Put Away.** Guarda lo que no uses: los cajones del elevador (el elevador queda como simple soporte del monitor),
+  el archivador, el soporte del teléfono, la planta, el panel de la mesa o cualquiera de sus accesorios, y el estante
+  de pared, el tablero perforado, la guirnalda de luces, la planta de suelo y los cuadros. Clic derecho en el objeto ▸
+  Put Away («Put Away Plant»), Put Away ▸ en el menú de la barra de menús, o Arrange Desk… para verlo todo en una
+  lista.
+- **Nada se queda dentro.** Un sitio con archivos lo dice («Take Out 3 & Put Away Cabinet») y los lleva antes al
+  monitor, en el mismo paso de deshacer.
+- **Bring Back.** Bring Back ▸ devuelve las cosas de una en una o todas a la vez (Bring Everything Back); lo que esté
+  donde vuelve un objeto se aparta. ⌘Z deshace ambas cosas.
+
+### El panel de la mesa
+
+- **El panel.** Un panel de fieltro a lo largo del fondo de la mesa, más alto junto al monitor. Se puede guardar como
+  lo demás; tus notas lo esperan.
+- **Notas adhesivas.** Haz clic en el cubo de notas para una nota nueva, o arrastra una para despegarla. Arrastra las
+  notas a cualquier parte del fieltro: se colocan donde se pueden leer. Haz clic en una para editarla en la ventana
+  Memos (la entrada de coreano funciona como en todo el Mac); elige uno de seis colores, ponle fecha, tráela al frente
+  (Bring to Front) o suéltala en el cesto de papeles para quitarla (⌘Z la devuelve). Hasta 24; pasa el puntero por
+  encima para leerla (a oscuras, solo donde llega una luz).
+- **Bloc diario.** La página de hoy, con fecha, bajo la lámpara. Haz clic para escribir; arrastra la página para
+  arrancarla como una nota adhesiva con la fecha de ese día.
+- **Calendario de pared.** Marca los días con un apunte, una nota fechada o el D-Day; un clic en un día lo abre. La
+  ventana Memos muestra el mes entero.
+- **Clips de notas.** Suelta hasta 5 archivos en el panel para sujetarlos como tarjetas. Como en todo escondite, solo
+  cambia la disposición.
+- **Tarjeta D-Day y lámpara de pinza.** Fija un D-Day desde el calendario de la ventana Memos («D-12», «D-DAY»,
+  «D+3»); haz clic en la lámpara de pinza para iluminar de noche el lado derecho del panel.
+- **Archivo de texto.** Save as Text File on Desktop en el menú de una nota (en el del bloc, Save Today's Memo as Text
+  File) o el botón de la ventana Memos crea un .txt nuevo en tu carpeta Escritorio, sujeto al panel.
+- **A salvo.** Las notas y los apuntes viven en su propio archivo (`memos.json` en la carpeta de estado) y sobreviven
+  al Reset Layout del modo seguro y a los cambios de carpeta.
+
 ### La alfombrilla
 
 - **Tela.** Una alfombrilla de tela simulada, de fieltro por arriba y goma por debajo, con el teclado encima: el teclado
@@ -400,11 +453,12 @@ usar cada parte.
 - **Acciones sobre archivos, solo cuando las pides.** Move to Trash (desde el menú; sin atajo de teclado), Empty
   Wastebasket…, soltar archivos desde el Finder (se mueven a la carpeta, o se copian si vienen de otro disco o si usas
   ⌥; una app se convierte en un alias y se queda donde está; si el nombre ya existe, se le añade « 2»), arrastrar
-  archivos a otras apps, a Mail o a la Papelera del Dock, y Eject. Los archivos bloqueados nunca se mueven a la carpeta.
+  archivos a otras apps, a Mail o a la Papelera del Dock, Eject, y Save as Text File on Desktop (solo un archivo nuevo).
+  Los archivos bloqueados nunca se mueven a la carpeta.
 - **Deshacer.** ⌘Z deshace los últimos 20 pasos (⌘⇧Z rehace los pasos de disposición), incluidas las propias acciones de
-  Deskterior sobre archivos: los archivos enviados a la Papelera vuelven al mismo sitio y los que soltaste vuelven de
-  donde vinieron. Expulsar y arrastrar a otras apps no se puede deshacer. Cada acción sobre archivos se anota en
-  `operations.log`.
+  Deskterior sobre archivos: los archivos enviados a la Papelera vuelven al mismo sitio, los que soltaste vuelven de
+  donde vinieron y los archivos de texto guardados van a la Papelera. Expulsar y arrastrar a otras apps no se puede
+  deshacer. Cada acción sobre archivos se anota en `operations.log`.
 - **Hub de unidades.** Las unidades montadas se enchufan en el hub como memorias USB, discos o servidores (cuatro
   ranuras y luego una etiqueta «+n»). Doble clic para abrir; Open, Show in Finder y Eject desde el menú. Los archivos
   que sueltas sobre una unidad rebotan con un bonk: copiar a unidades es cosa del Finder.
@@ -458,6 +512,7 @@ usar cada parte.
 | **Portalápices** | Suelta un archivo dentro y se convierte en un bolígrafo; el color del capuchón indica su tipo. | Saca el último bolígrafo arrastrándolo. Si arrastras rápido el portalápices con tres o más bolígrafos dentro y lo sueltas, se vuelca y los bolígrafos se desparraman por la mesa; haz clic en él para ponerlo de pie. |
 | **Cesto de papeles** | Suelta o lanza un archivo dentro. Se arruga, pero **no se borra**: «oculto, no borrado». | Saca la bola de arriba arrastrándola, o arrastra el borde hacia un lado para volcar el cesto. *Empty Wastebasket…* mueve su contenido a la Papelera de macOS tras una confirmación que lo enumera. |
 | **Alfombrilla** y **cepillo** | Suelta un archivo sobre la alfombrilla y se desliza debajo dejando un bulto; cuanto más alta la pila, más grande el bulto. Empuja los montones debajo con el cepillo o con un desplazamiento lateral con dos dedos sobre la mesa. | Levanta un borde o una esquina: los montones de debajo se ponen de pie y puedes llevártelos. O clic derecho ▸ Peek Under. Con el modo Flat (o Reduce motion), la alfombrilla no se levanta: clic derecho ▸ List Items Under Mat ▸ un nombre devuelve ese archivo al monitor, y Find Item… (⌘F) también sirve. |
+| **Clips de notas** (en el panel) | Suelta un archivo en el panel: queda sujeto como una tarjeta con su icono. No se esconde: es un sitio para tenerlo a la vista. | Arrastra la tarjeta fuera, o Take All Out en el menú de los clips. |
 | **Lámpara** y **Lamp Only** | De noche, apaga la luz de la habitación y deja encendida la lámpara de mesa: solo el círculo de la lámpara y el brillo del monitor y del teléfono iluminan algo. Los archivos a oscuras son siluetas: sin nombres ni clics. | Los archivos que quedan dentro del círculo de la lámpara o del brillo del monitor o del teléfono boca arriba aún se pueden seleccionar; vuelve a encender la luz de la habitación o elige Lights ▸ Auto. |
 | **Hub de unidades** | Deskterior también tapa los iconos de unidades del Finder, así que las unidades montadas se enchufan en el hub de la mesa. | Doble clic para abrir; Eject desde el menú de la unidad. |
 | **Clear the Desk** | Un solo ítem de menú: el monitor se apaga, el teléfono se da la vuelta, los cajones se cierran y el cepillo barre bajo la alfombrilla todos los montones sueltos. «TIDY!» | Un solo ⌘Z lo devuelve todo exactamente como estaba. |
@@ -469,13 +524,16 @@ archivo oculto solo vuelve a verse cuando abres su contenedor, levantas o mueves
 teléfono, vuelcas el portalápices o el cesto, cambias de entrada o usas un menú, Find Item…, Show on Desk o Take
 Everything Out.
 
+**Put Away** saca un objeto entero de la habitación (clic derecho, Put Away ▸ o Arrange Desk…). Un sitio guardado
+nunca contiene archivos: antes salen al monitor. Bring Back ▸ lo devuelve.
+
 ## Gestos
 
 | Gesto | Qué hace |
 |---|---|
-| **Clic** | Selecciona un archivo (⌘-clic añade o quita uno; arrastra sobre la pantalla vacía para seleccionar varios; ⌘A selecciona la página). También acciona interruptores y pulsa botones: el de encendido, INPUT, la lámpara, el interruptor de la luz de la habitación, el tirador de un cajón, el teléfono. |
+| **Clic** | Selecciona un archivo (⌘-clic añade o quita uno; arrastra sobre la pantalla vacía para seleccionar varios; ⌘A selecciona la página). También acciona interruptores y pulsa botones: el de encendido, INPUT, la lámpara, el interruptor de la luz de la habitación, el tirador de un cajón, el teléfono. En el panel: una nota adhesiva (la edita), el cubo de notas (una nota nueva), el bloc diario, un día del calendario de pared, la lámpara de pinza. |
 | **Doble clic** | Abre un archivo. En el borde frontal de la mesa (el faldón), **da un golpe a la mesa**: las cosas se tambalean, pero ningún archivo cambia de sitio. En el borde de la alfombrilla, la alisa. En una solapa doblada, la desdobla. En el cepillo, lo devuelve a su sitio. |
-| **Arrastrar** | Lleva archivos (varios a la vez si hay varios seleccionados) al monitor, a un escondite, a la mesa o al suelo. Si mantienes un momento un archivo sobre un cajón cerrado, se abre. Arrastra el cepillo, la silla (rueda), el portalápices, los tiradores de los cajones y el minutero del reloj (muestra otra hora del día). |
+| **Arrastrar** | Lleva archivos (varios a la vez si hay varios seleccionados) al monitor, a un escondite, a la mesa o al suelo. Si mantienes un momento un archivo sobre un cajón cerrado, se abre. Arrastra el cepillo, la silla (rueda), el portalápices, los tiradores de los cajones, el minutero del reloj (muestra otra hora del día), las notas adhesivas (a cualquier parte del panel; al cesto de papeles para quitar una) y una página del bloc diario (la arranca). |
 | **Soltar desde el Finder** | Los archivos que arrastras desde el Finder a la mesa caen donde los sueltas: se mueven a tu carpeta Escritorio, o se copian si vienen de otro disco. Una **app** se convierte en un alias (su propio icono con una flecha; doble clic la abre) y se queda donde está; una que sacas de la Papelera o de una imagen de disco entra como cualquier archivo. Mantén pulsada ⌥ para copiar, ⌘ para mover (también las apps) y ⌘⌥ para crear un alias de cualquier cosa. Los archivos que sueltas en otra pantalla van al monitor. |
 | **Lanzar** | Suelta un archivo que llevas mientras lo mueves rápido y sale volando: por el borde de la mesa hasta el suelo, o dentro del cesto (SWISH!). Si sueltas el portalápices mientras lo arrastras rápido (con tres o más bolígrafos dentro), se vuelca. |
 | **Arrastrar la alfombrilla** | Lleva toda la alfombrilla (y el teclado que tiene encima); si la mueves rápido deja arrugas. |
@@ -483,7 +541,7 @@ Everything Out.
 | **Estirar** | Arrastra una esquina de la alfombrilla hacia fuera para alisar sus arrugas (o haz doble clic en un borde, o elige Smooth Desk Mat). |
 | **⌥ (Opción)** | Sobre la alfombrilla, muestra sus controles: arrastra una esquina con ⌥ para cambiarle el tamaño y girarla (⇧ la ajusta a pasos de 15°); arrastra el centro con ⌥ para deslizarla sin arrugas. |
 | **Desplazamiento con dos dedos** | De lado sobre la mesa: la **escoba de desplazamiento** barre los montones bajo la alfombrilla. Sobre la pantalla: cambia de página. Sobre un cajón cerrado: echa un vistazo dentro. |
-| **Clic derecho** | Un menú para todo: archivos (Open, Quick Look, Show in Finder, Copy, **Move to ▸** una página del monitor o un cajón, el hueco, el teléfono, el portalápices o el cesto, Move to Trash), el monitor, cada contenedor, la alfombrilla (Peek Under, Smooth, Rotate, Size, List Items Under Mat ▸) y las unidades. Un clic derecho en la pared vacía abre el mismo menú que el icono de la barra de menús. |
+| **Clic derecho** | Un menú para todo: archivos (Open, Quick Look, Show in Finder, Copy, **Move to ▸** una página del monitor o un cajón, el hueco, el teléfono, el portalápices o el cesto, Move to Trash), el monitor, cada contenedor, la alfombrilla (Peek Under, Smooth, Rotate, Size, List Items Under Mat ▸), las unidades, el panel y cada nota adhesiva; lo que se puede guardar termina su menú con Put Away. Un clic derecho en la pared vacía abre el mismo menú que el icono de la barra de menús. |
 | **Teclas** (tras hacer clic en la mesa) | Barra espaciadora: Quick Look · ⌘O / ⌘↓: abrir · flechas: mover la selección · ⌘A · ⌘C: copiar · ⌘F: Find Item… · ⌘Z / ⌘⇧Z: deshacer y rehacer · Esc: cancelar lo que llevas o terminar un vistazo. No hay tecla para borrar. |
 
 <img src="docs/media/mat-peel.png" width="576" alt="La mesa alrededor de la alfombrilla: su borde frontal levantado, con la goma hacia arriba, y un montón de tres archivos de pie donde estaba">
@@ -493,9 +551,9 @@ sobre la pared vacía (práctico si ocultas ítems de la barra de menús).
 
 ## Tus archivos están a salvo
 
-- **Esconder solo cambia la disposición.** Un archivo en un cajón, bajo la alfombrilla o en el cesto sigue en tu carpeta
-  Escritorio, intacto. El Finder, Spotlight y todas las demás apps lo ven exactamente igual que antes. Deskterior solo
-  recuerda dónde lo pusiste.
+- **Esconder solo cambia la disposición.** Un archivo en un cajón, bajo la alfombrilla o en el cesto sigue en tu
+  carpeta Escritorio, intacto. El Finder, Spotlight y todas las demás apps lo ven exactamente igual que antes.
+  Deskterior solo recuerda dónde lo pusiste. Put Away y los clips de notas también solo cambian la disposición.
 - **Los archivos solo cambian cuando lo pides expresamente**, con una de estas acciones:
   - **Move to Trash** desde el menú de clic derecho de un archivo (sin atajo de teclado);
   - **Empty Wastebasket…**, tras una confirmación que enumera los nombres;
@@ -504,6 +562,8 @@ sobre la pared vacía (práctico si ocultas ítems de la barra de menús).
   - arrastrar un archivo a otra app (esa app hace lo mismo que con un arrastre desde el Finder; si lo sueltas en la
     Papelera del Dock, Deskterior lo mueve él mismo a la Papelera si el Dock no lo ha hecho);
   - **Eject** desde el menú de una unidad;
+  - **Save as Text File on Desktop** desde el menú de una nota adhesiva o del bloc diario (solo crea un archivo nuevo,
+    nunca cambia uno que ya exista);
   - **Move to Trash** en Settings ▸ Leftover copies, que solo aparece tras una copia interrumpida (más abajo).
 - **A la Papelera, nunca borrar.** Deskterior mueve archivos a la Papelera de macOS y nunca borra nada. Nunca
   sobrescribe un archivo: si un nombre ya existe, se le añade « 2», « 3»…
@@ -513,10 +573,11 @@ sobre la pared vacía (práctico si ocultas ítems de la barra de menús).
   cuando macOS no ofrece una carpeta temporal en ese disco): Deskterior te avisa una vez en cada arranque mientras siga
   ahí y la muestra en Settings ▸ Leftover copies (Show in Finder, Move to Trash), pero nunca la elimina por su cuenta.
 - **Deshacer.** ⌘Z deshace los cambios de disposición y las propias acciones de Deskterior sobre archivos (Move to
-  Trash, Empty Wastebasket…, soltar archivos en la mesa): los archivos enviados a la Papelera vuelven al mismo sitio de
-  la mesa y los que soltaste vuelven de donde vinieron (las copias y los alias van a la Papelera). Expulsar y arrastrar a otras apps
-  no se puede deshacer, salvo un arrastre a la Papelera del Dock que haya completado Deskterior. Si macOS no deja que
-  Deskterior llegue a la Papelera, te lo dice y puedes usar Devolver en el Finder.
+  Trash, Empty Wastebasket…, soltar archivos en la mesa, Save as Text File): los archivos enviados a la Papelera
+  vuelven al mismo sitio de la mesa y los que soltaste vuelven de donde vinieron (las copias, los alias y los archivos
+  de texto guardados van a la Papelera; un archivo guardado que hayas cambiado después se queda). Expulsar y arrastrar
+  a otras apps no se puede deshacer, salvo un arrastre a la Papelera del Dock que haya completado Deskterior. Si macOS
+  no deja que Deskterior llegue a la Papelera, te lo dice y puedes usar Devolver en el Finder.
 - **El Finder no se toca.** La mesa es una ventana justo por encima de los iconos del escritorio del Finder: los tapa,
   no los oculta cambiando ningún ajuste del Finder (los ajustes del Finder solo se leen). Sal de Deskterior o usa Pause
   Desk y vuelves a tener tu escritorio normal.
@@ -603,8 +664,9 @@ Mantén pulsada la tecla **⌥ (Opción)** mientras Deskterior arranca. Aparece 
 Mode) antes que la mesa, y todavía no se ha tocado nada:
 
 - **Start Normally** (arrancar con normalidad);
-- **Reset Layout…**: todos los archivos vuelven al monitor; la disposición anterior se guarda como copia de seguridad en
-  la carpeta de estado (no se borra ningún archivo);
+- **Reset Layout…**: todos los archivos vuelven al monitor y todo lo guardado vuelve a su sitio; la disposición
+  anterior se guarda como copia de seguridad en la carpeta de estado (no se borra ningún archivo). Reset Layout
+  conserva tus notas adhesivas y apuntes;
 - **Open State Folder** (abrir la carpeta de estado);
 - **Quit**.
 
@@ -615,9 +677,9 @@ normal; tus archivos nunca se tocaron.
 
 1. Si activaste **Launch at login**, desactívalo en Settings.
 2. Sal de Deskterior (icono de la barra de menús ▸ Quit Deskterior).
-3. Si quieres, elimina también su disposición, la caché de iconos, los ajustes y los permisos de privacidad. Llevan el
-   nombre del identificador de paquete (bundle identifier) de la app, así que léelo antes de borrar la app. Pega todo el
-   bloque en Terminal de una vez:
+3. Si quieres, elimina también su disposición, tus notas adhesivas y apuntes, la caché de iconos, los ajustes y los
+   permisos de privacidad. Llevan el nombre del identificador de paquete (bundle identifier) de la app, así que léelo
+   antes de borrar la app. Pega todo el bloque en Terminal de una vez:
 
    ```sh
    ID="$(defaults read /Applications/Deskterior.app/Contents/Info CFBundleIdentifier)" &&
@@ -628,10 +690,10 @@ normal; tus archivos nunca se tocaron.
    esac
    ```
 
-   Si la primera línea muestra un error, detente: Deskterior no está en /Applications. El bloque elimina la disposición,
-   sus copias de seguridad y `operations.log` (Application Support), la caché de iconos (Caches), los ajustes
-   (`defaults`) y el permiso de la carpeta Escritorio (`tccutil`), y no hace nada si el identificador no es el de
-   Deskterior.
+   Si la primera línea muestra un error, detente: Deskterior no está en /Applications. El bloque elimina la
+   disposición, sus copias de seguridad, tus notas adhesivas y apuntes (`memos.json`) y `operations.log` (Application
+   Support), la caché de iconos (Caches), los ajustes (`defaults`) y el permiso de la carpeta Escritorio (`tccutil`),
+   y no hace nada si el identificador no es el de Deskterior.
 
 4. Mueve `Deskterior.app` a la Papelera.
 
@@ -696,8 +758,12 @@ Más: [docs/DESIGN.md](docs/DESIGN.md) (el diseño), [docs/DEMOS.md](docs/DEMOS.
   movimiento, así que lo rechaza y no cambia nada. FAT32 y APFS funcionan.
 - El escritorio del propio Finder sigue ahí debajo. Si el Finder tenía iconos seleccionados en el escritorio antes de
   que Deskterior lo cubriera, ⌘⌫ en el Finder todavía puede moverlos a la Papelera (Deshacer en el Finder los devuelve).
+- El calendario es el de la habitación: no lee ni escribe la app Calendario, y las notas y los apuntes se quedan en
+  este Mac (`memos.json`).
+- Las notas adhesivas solo se ven en la pantalla de la mesa, no en las paredes de otras pantallas.
 - Algunas partes de la escena siguen en inglés en la v0.1, también con el idioma coreano: sus textos de ayuda, los
-  nombres que VoiceOver da a los objetos de la mesa, el logo NO SIGNAL de la entrada AV, BONK, SWISH! y TIDY!
+  nombres que VoiceOver da a los objetos de la mesa, el logo NO SIGNAL de la entrada AV, BONK, SWISH! y TIDY! (los
+  textos de ayuda del panel y del calendario sí están traducidos).
 
 ## Créditos
 

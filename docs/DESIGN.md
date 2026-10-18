@@ -636,6 +636,138 @@
       Alias", the app still in the source, its icon on the token, Open), makes an alias of a text file with ⌘⌥, moves
       the app in with ⌘, and undoes all three. New expectations: `alias:<name>`, `icon:<name>` (`real` once the
       pixelated icon arrived) and `source:<name>` (`present` or `missing` in the drop source).
+30. **Put Away and Bring Back (0.3.0).** These refine §1.3, §2.1 (non-destructive un-hiding), §2.2 E3–E5, E8, E11
+    and E16, §4.7, §4.9, §13 and Errata 13, 16, 17 and 26. Objects the user does not need can be put away and leave the
+    room; nothing of the user's ever hides inside them.
+    - **What** (`StowCatalog`, `StowID`): Riser Drawers (`riserLeft`, `riserRight`, `riserCubby`; the riser body stays,
+      drawn sealed by `StorageArt.riser(sealed: true)`, because the monitor stands on it), Cabinet (its three drawers),
+      Phone Stand (`phone`), Plant, Desk Partition, the partition's add-ons (Daily Memo Pad, Memo Clips with
+      `memoClips`, Clip Light, D-Day Card; Erratum 31) and wall decor in groups: Wall Shelf (`shelf`, `frame`),
+      Pegboard, String Lights, Floor Plant, Wall Art (`painting`, `upperShelf`, `gallery`, `wallHanging`,
+      `hangingPlant`). An add-on keeps its own flag while the partition is away and comes back with it. Not offered:
+      the pen cup (its slot hosts the loose piles; it moves, tips and spills), the wastebasket (the step before the
+      Trash), the mat and keyboard (the cloth; the mat would un-hide its piles), the lamp (Lamp Only), the monitor,
+      desk, clock, room switch, window and calendar, the chair, the brush, the drive hub, and the ceiling, crown, rail,
+      pendant and ceiling lamp. Defaults: everything out.
+    - **Where.** Each object's menu ends with "Put Away ‹X›" ("‹X› 넣어 두기"); the sealed riser's menu offers "Bring
+      Back Riser Drawers". The desk and status menus have Put Away ▸ (what is out), Bring Back ▸ (what is away, then
+      Bring Everything Back; disabled, not hidden, when nothing is away) and Arrange Desk… (소품 정리…), a window that
+      lists every object by group with an "On the Desk" toggle. No arrange mode, no confirmations.
+    - **Files never hide inside a put-away place.** Putting away a place that holds files first takes them to the
+      monitor exactly as Take Everything Out does (power on, AV off, the page of the first), in the same journaled
+      step, and every item that does this says so: "Take Out %d & Put Away %T" ("%d개 꺼내고 %T 넣어 두기"); the window's
+      row says "Putting it away takes %d files out to the monitor." Toast "Took the files out first." Model invariant
+      (`DeskState.violations`): an away container holds no token. A move into one is refused (toast "That's put
+      away."); Move to ▸ and Move Contents to ▸ leave it out; drops cannot reach it (it is not routed).
+    - **Returning files** (tombstones, hints, undo) aimed at an away container go to the first out, closed, non-full
+      concealing place (riser drawers, then cabinet drawers top to file, then a face-down phone) so a hidden file stays
+      hidden; aimed at away Memo Clips (a shown place) they go to the monitor. With no such place a hidden file goes to
+      the monitor, as a full drawer's always has (`Placement.awaySubstitute`).
+    - **Bring Back** ("다시 놓기") makes room in the same journaled step (`Reducer.makeRoom`): the pen cup standing in a
+      returning plant's or phone stand's footprint goes home, piles whose body meets that footprint move to
+      `PileRest.nearestValidSpot`, floor tokens in the returning cabinet's span move to the nearest free floor spots,
+      and sticky notes a returning fixture would cover snap to the nearest valid spot (else the first free one); toast
+      "Moved things aside to make room." The chair is not moved: it stands in front of the cabinet and blocks its
+      drawers as E5 says. Bringing back an add-on brings back the partition with it. Bring Everything Back is one
+      entry. `adoptLayout` and sanitize bring back any object whose containers hold tokens in the adopted or loaded
+      layout (nothing becomes visible: drawers stay shut, the phone keeps its face).
+    - **The scene.** `RoomPlan` skips an away object's placements (the riser swaps in its sealed sprite and drops its
+      drawer fronts); the decor follows `SceneLayout.hiding(_:)`, a filtered copy, so wall shadows, the light mask
+      (string lights) and `WallArt` on other displays agree; the backdrop drops the cabinet's floor shadow and the
+      plant's and phone's desk shadows (`RoomArt.backdrop(_:stowed:)`). An installed element whose placed object is
+      gone is dormant: hidden, unrouted, no frames, no accessibility items, not knockable; it still adopts state. The
+      sealed riser stays routed through `RiserElement`: drops on it bonk ("The drawers are put away."). A change of
+      the put-away set rebuilds the room once. A dust puff (`FXArt.dustPuff`, 12 fps) plays where the object stood or
+      appears; none with Reduce Motion. The phone's glow goes with the phone stand.
+    - **Physics.** `DeskPlanePhysics.footprints` is private behind `footprints(stowed:)`, so every reader (pen cup,
+      pile rest, the desk-plane world, the cup and pile elements) drops an away plant's or phone stand's footprint;
+      `FloorLine.furniture(basket:stowed:)` drops an away cabinet's span; knocks skip away wobblers and drawers; Clear
+      the Desk does not turn over an away phone.
+    - **Undo** restores objects leaving the put-away set before token moves (so files can go back in), then moves
+      tokens, then puts away objects entering the set only if their containers are empty by then.
+    - **Persistence.** desk.json gains `"stowed"` (sorted raw values, always written, lenient, unknown values skipped)
+      and `"clipLight"`; schema stays 1 (§13). Safe Mode's Reset Layout brings everything back. A 0.2.0 build drops
+      both keys, so everything comes back there.
+    - **Demo.** `14-tidy-up`: a photo moved into the cabinet and the monitor switched off; the cabinet's Put Away takes
+      the photo out to the monitor, which comes on; the chair rolled where the cabinet stood; ⌘Z puts back the
+      cabinet, the photo in its drawer and the monitor as it was (off); the plant, phone stand, riser drawers, string
+      lights and wall shelf put away (day and Lamp Only); a bonk on the sealed riser; a pile moved aside when the
+      plant returns; the riser drawers back from the sealed riser's menu; Bring Everything Back from the wall's menu;
+      Arrange Desk…. New expectations `stowed`, `out:<id>`, `routed:<element>`, `clear:<id>`; actions
+      `putAway:<id>`, `bringBack:<id>`, `bringBackAll`, `clipLight:<on|off>`.
+31. **The desk partition, sticky notes, the daily memo pad, the wall calendar and memo files (0.3.0).** These refine
+    §1.3 (the calendar is no longer decor only), §1.4, §2.1, §2.2, §3.5–§3.7, §4.2, §4.5, §4.8, §4.9, §13 and Errata 8,
+    15, 19–23 and 29. A felt partition along the desk's back edge holds notes, a daily memo pad, files and two small
+    accessories, and the wall calendar shows and opens the memos.
+    - **The partition** (`CoreLayout.partition*`): a low panel (12,112,488,56) across the desk and a raised tower
+      (368,64,66,48) between the monitor and the right-wall shelf, clamped to the back strip at x80 and x470 (rows
+      168–171). It is the last backdrop placement, so every desk-back and desk-front object covers it; it is in the core,
+      so it nudges and lifts with it on every display, and is not a critical rect (a widget may cover it). Aluminium
+      rails (neutral8/6/5/4) and felt (neutral7, a fixed neutral6 speckle); the tower casts a 2,2 wall shadow and the
+      monitor's shadow continues on it. No physics body. Bare felt has no ring and no tooltip; its menu is the
+      partition's (New Sticky Note, Today's Memo…, Calendar…, Add-ons ▸, the clip light, Set D-Day…, Put Away Desk
+      Partition); files dropped on it go to the memo clips.
+    - **Sticky notes** (메모지; `MemoBook.notes`, at most 24): 30×24, six colours (yellow, pink, sky, lime, orange,
+      cream), the first line in Galmuri9 clipped to whole glyphs in 26 px, scribble rules for more lines, a red corner
+      flag when dated, tape or a pushpin by id. A note rests anywhere on the felt where its text band (26×12) is at least
+      90 % and the note at least 60 % visible past the props in front (monitor, stand, riser, lamp, plant, phone stand,
+      hub, the pen cup's resting spot) and it covers no fixture (`PartitionLayout.isValidRest`); a drop elsewhere snaps
+      to the nearest valid spot within 40 px or springs back. New notes take the first free default spot. Click opens
+      the Memos window on the note; drag moves it and brings it to the front; a drop on the wastebasket's mouth takes it
+      off with a crumple ("Note taken off.", ⌘Z puts it back). Its menu: Edit Note…, Colour ▸, Bring to Front, Save as
+      Text File on Desktop, Remove Note. The sticky-note cube left of the plant makes a note on a click (and opens it)
+      or peels one off on a drag. Notes are not files and take clicks in the dark, but where a note is unlit its tooltip
+      and VoiceOver label are only "Sticky Note" ("메모지"); lit, the tooltip shows the text in up to five wrapped lines
+      (`TooltipSpec.body`) and its date.
+    - **Editing** happens only in the Memos window (메모; tabs Calendar and Sticky Notes), never inside the scene. Its
+      text views (`NoteTextView`) commit 0.8 s after the last keystroke while no IME composition is open, and on blur,
+      tab switch, close, resign-key and quit; they never take model text while focused. One editing session (with the
+      New Sticky Note that began it) is one undo entry (`UndoJournal.record(…, coalesce:)`). Undo restores notes per id
+      and pages per day.
+    - **The daily memo pad** (데일리 메모지, 38×44 under the desk lamp): a red header with "OCT 18", the weekday (Sunday
+      red, Saturday blue), the first line of today's page, and page edges. Click opens today; drag tears the page off
+      into a cream note dated that day (the page goes blank; "Tear Off Page"; the pad's menu has Tear Off as Sticky
+      Note too). The day rolls over on the minute timer; pages are never moved or carried over by themselves. While the
+      desk lamp glows and the partition is out, a warm wash lights the left wing (Errata 8).
+    - **The wall calendar** marks days with a page or a dated note (blue3) and the D-Day (purple3); today stays red4.
+      Its days are hit cells (`RoomArt.calendarDay(at:in:)` inverts the drawing); hover shows the month and the day
+      ("Sun 18 · memo · 2 notes"; the memo's first line in place of "memo", and the D-Day's name, only when lit); a
+      click opens that day, elsewhere today. The month grid, flipping and the D-Day editor live in the Memos window.
+      No Calendar app, no EventKit.
+    - **Memo clips** (메모 집게; `ContainerID.memoClips`, appended last, capacity and hard cap 5, `Concealment.shown`,
+      minis, any kind): files clipped up as cards on the right wing. Layout only, like every hiding place; Find says
+      "Partition ▸ memo clips"; Take Everything Out includes them.
+    - **D-Day card** (24×20, kraft oak5, red pushpin, 1× Digits "D-12" / "D-DAY" / "D+3", red4 within a week, capped at
+      999) shows while a D-Day is set; **clip light** (clamped on the tower, off by default) lights the tower and right
+      wing at night when switched on (not journaled, like the lamp; Lamp Only leaves it as set).
+    - **Save as Text File on Desktop** (a note's menu, the pad's Save Today's Memo as Text File, or the Memos window's
+      button; only while the folder is connected): the one new file action. Only
+      `FileOperator.createTextFile(named:contents:_:)` writes it, with an `ExplicitIntent` minted for `.menuItem` right
+      before the call; the text (UTF-8, LF, a final newline, a day page under its date; at most 64 KB) is written in a
+      staging folder and renamed in with `RENAME_EXCL` (" 2"… on a clash), its landing checked; it never writes into an
+      existing file. The name is the first line (NFC, "/" and ":" as "-", no leading dot, ≤ 40 graphemes) + ".txt",
+      "Memo YYYY-MM-DD.txt" for an empty first line, "YYYY-MM-DD <first line>.txt" for a day page (`MemoFileName`). A
+      hint clips the new file to the memo clips while they are out and have room, else to the first free monitor
+      cell. Toast "Saved as a text file."; a file that landed
+      but is not provably the one written gets no undo step ("Saved, but it can't be undone."). Undo ("Save as Text
+      File") moves it to the Trash only while its inode, size and modification date are unchanged ("The text file went
+      to the Trash."), else refuses as changed; nothing is ever deleted. `operations.log` says `create-file` and
+      `trash-created`; the effect runner's log and the demo's `effect` say `createTextFile` (the write lint keeps
+      `createFile` to the writers).
+    - **memos.json** (state folder, `StateStore.loadMemos`/`saveMemos`, schema 1, sorted keys, `.bak1`–`.bak3` by age,
+      corrupt copy, never overwritten when newer) holds notes, pages and the D-Day. It is loaded after every desk load
+      (launch, folder switch, after Safe Mode), saved by `MemoSaver` (1 s debounce, ≤ 5 s behind, flushed on quit) only
+      after that load, also with no folder connected, and Reset Layout leaves it alone.
+    - **Words** (Korean included): the new scene tooltips and VoiceOver labels go through `L10n.tr` (an exception to
+      Errata 21/23 for these items only); user text never appears in a menu title.
+    - **Lint.** `requestSaveMemoFile` joins `FILE_REQUEST_PATTERNS` (with a Bypass self-test line); allowlists unchanged.
+    - **Demo.** `15-partition-memos`: the cube, three notes, a day page and a D-Day, hover, a snap, a clipped file, a
+      torn page, a calendar click, Lamp Only with the lamp wash and the clip light, a dark anonymous tooltip, a note
+      into the wastebasket and back, Save as Text File into the clips and ⌘Z into the FakeTrash, the partition put away
+      with its clipped file taken out, ⌘Z. New expectations `notes`, `note:<id>…`, `page:<day>`, `dDay`,
+      `calendar.marks`, `clipLight`; targets `partition.*`, `note:<id>`, `calendar.day:<d>`. `hero` ends with an
+      unrecorded partition still (`still-partition`: two notes, a written pad, a D-Day card, two clipped files), the
+      README's `docs/media/partition.png`.
 
 ---
 
@@ -1721,6 +1853,11 @@ Exit codes: 0 pass, 1 expectation failed, 2 script error, 64 guard refusal.
 18. Quit or crash brings Finder's icons back. `ls -li ~/Desktop` is unchanged before and after a full session without explicit file actions.
 19. VoiceOver reads tokens and controls. The Inventory is fully keyboard-accessible.
 20. `make idle` ≤ 0.3%. The 1-hour soak passes. The Safari-downloaded zip goes through the Open Anyway flow.
+21. Korean IME in the Memos window (compose, commit, ⌘Z inside the text) (Erratum 31).
+22. Save as Text File on the real Desktop in desk mode, then ⌘Z through the real Trash (Erratum 31).
+23. VoiceOver reads notes, the pad, the calendar and the Arrange Desk toggles (Errata 30, 31).
+24. Put Away every object, Bring Everything Back, at two display sizes (Erratum 30).
+25. Lamp Only with the lamp wash, then the clip light (Erratum 31).
 
 ---
 
@@ -1949,6 +2086,16 @@ No other usage-description keys. The app reads no other protected location (the 
 - `carried` is never persisted. A carry interrupted by a quit commits the token to its origin.
 - Tokens whose files are missing at launch move to `tombstones` (7 days); they are not dropped.
 - **Migrations:** `[Int: (Data) throws -> Data]` keyed by `schema`. A separate `layoutVersion` step clamps or re-maps desk-plane and floor coordinates when elements move between versions.
+- `"stowed": ["phoneStand", "plant"]` (0.3.0, Erratum 30): the `StowID` raw values of what is put away, sorted,
+  always written (`[]` when everything is out). Read leniently: unknown values are skipped, and an object whose
+  containers hold tokens comes back when the file is sanitized (an away container never holds a token).
+- `"clipLight": true` (0.3.0, Erratum 31) while the partition's clip light is switched on; `false` (the default)
+  when missing.
+- `memoClips` (0.3.0, Erratum 31): a `ContainerID` appended last, as in
+  `"loc": { "container": { "id": "memoClips", "order": 0 } }` (at most 5 tokens; no `drawers` entry). A 0.2.0 build
+  cannot read that location and drops the token, so the file comes back as a new one on the monitor; if no token
+  can be read at all, 0.2.0 falls back to a backup. All three are additive: the schema stays 1.
+- Notes, day pages and the D-Day are not in `desk.json`: they live in `memos.json` beside it (schema 1, Erratum 31).
 
 ---
 

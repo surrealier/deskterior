@@ -6,6 +6,34 @@ All notable changes to Deskterior are listed here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- **Put Away and Bring Back.** Put away what you don't use: the riser drawers (the riser stays as a plain stand), the
+  filing cabinet, the phone stand, the plant, the desk partition or its add-ons, and the wall shelf, pegboard, string
+  lights, floor plant and wall art, from the object's menu, Put Away ▸ in the menu bar menu, or Arrange Desk…. A place
+  that holds files says so ("Take Out 3 & Put Away Cabinet") and brings them to the monitor first, in the same undo
+  step. Bring Back ▸ returns things one by one or all at once (Bring Everything Back) and moves aside anything resting
+  where an object returns.
+- **The desk partition.** A felt partition along the back of the desk, with a raised panel beside the monitor.
+- **Sticky notes.** Click the sticky-note cube for a note or drag one off it; stick notes anywhere on the felt (they
+  snap where they can be read); edit them in the new Memos window, in six colours, with a date; drop one in the
+  wastebasket to take it off. Up to 24. A note in the dark keeps its text to itself: its tooltip only says "Sticky
+  Note". Notes and memos live in their own `memos.json` in the state folder, which Safe Mode's Reset Layout and
+  folder switches leave alone.
+- **Daily memo pad and the wall calendar.** Today's page under the desk lamp; tear it off as a dated sticky note. The
+  wall calendar marks days with memos, notes or the D-Day, and a click opens that day; the Memos window has the month.
+- **Memo clips.** Clip up to 5 Desktop files to the partition (layout only).
+- **D-Day card and clip light.** A countdown card ("D-12") and a clip light for the right side of the partition at
+  night.
+- **Save as Text File on Desktop.** From a note's or the pad's menu, or the Memos window: a new text file in your
+  Desktop folder, never overwriting anything; ⌘Z moves it to the Trash while it is unchanged.
+
+### Changed
+
+- The room now shows the desk partition; Put Away removes it. The desk lamp lights the partition's left side.
+- Going back to 0.2.0: put-away objects come back; files in the memo clips come back as new files on the monitor (if
+  every file was in the clips, 0.2.0 opens the previous backup instead); notes stay in memos.json for 0.3.0.
+
 ## [0.2.0] - 2026-10-17
 
 ### Added
