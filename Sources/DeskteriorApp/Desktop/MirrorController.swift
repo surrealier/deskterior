@@ -2,10 +2,11 @@ import DeskCore
 import DeskFiles
 import Foundation
 
-/// Mirrors the desktop folder into the `Store` (DESIGN §3.1, §4.3). It loads `desk.json` into the store, applies
-/// first-run gating (connect prompt, or the DESKTOP HIDDEN card when Finder hides desktop items), and runs the
-/// scanner, watcher and volume watcher on background queues (`MirrorEngine`); snapshots, access failures and
-/// volumes come back to the main actor and reach the model as actions. Its safety behaviours stay here:
+/// Mirrors the desktop folder into the `Store` (DESIGN §3.1, §4.3). It loads `desk.json` and then `memos.json` into
+/// the store (Erratum 31), applies first-run gating (connect prompt, or the DESKTOP HIDDEN card when Finder hides
+/// desktop items), and runs the scanner, watcher and volume watcher on background queues (`MirrorEngine`); snapshots,
+/// access failures and volumes come back to the main actor and reach the model as actions. Its safety behaviours stay
+/// here:
 ///
 /// - a scan that would remove most of the desk is held and confirmed by a rescan `confirmDelay` later;
 /// - switching to another folder parks the old folder's layout (`StateStore.switchRoot`) before the snapshot;
@@ -78,6 +79,7 @@ final class MirrorController {
             if let copy = loaded.corruptCopy { log("kept corrupt layout as \(copy.path)") }
             if let document = loaded.document { store.replace { $0 = document.makeState() } }
         }
+        loadMemos()
         let state = store.state
         let rootMatches = state.root.map { $0.path == DesktopLocator.canonicalPath(configuration.folder) } ?? false
         if configuration.connectImmediately || (state.access == .connected && rootMatches) {
@@ -89,6 +91,23 @@ final class MirrorController {
             if hides && configuration.settings.showDespiteFinderHidden != true { store.dispatch(.finderHidesItems) }
         }
         if configuration.watchesVolumes { engine.startVolumes() }
+    }
+
+    // MARK: memos (0.3.0)
+
+    /// The notes, day pages and D-Day (Erratum 31), read after every desk load: at launch, on a folder switch (a new
+    /// session) and for the desk started after Safe Mode. Only once they are read may they be saved, and never over a
+    /// newer Deskterior's file, so an empty book never replaces them; with no state folder they live in memory only.
+    private func loadMemos() {
+        let loaded = stateStore?.loadMemos()
+        for problem in loaded?.problems ?? [] { log("memos.json: \(problem)") }
+        if let copy = loaded?.corruptCopy { log("kept corrupt memos as \(copy.path)") }
+        store.replace { $0.memos = loaded?.book ?? MemoBook() }
+        if loaded?.writable == true {
+            store.memoSaver?.arm()
+        } else if stateStore != nil {
+            log("memos.json is from a newer Deskterior: memo changes are not saved this time")
+        }
     }
 
     /// Starts watching, or rescans when the watcher already runs (`Effect.connectDesktop`, Choose Folder…).

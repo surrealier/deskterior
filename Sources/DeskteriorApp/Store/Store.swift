@@ -5,8 +5,9 @@ import Foundation
 /// The single owner of the desk model (DESIGN §4.3), on the main actor. Every change is `dispatch(action)` →
 /// `Reducer.reduce` with the undo journal → observers get the new state (`SceneSync` first, so the scene shows it)
 /// → the effects run (`EffectRunner`). `.persist` effects become debounced saves on a background queue
-/// (`LayoutSaver`: 1 s, at most 5 s behind a stream of changes); quitting flushes. The mirror, the icon
-/// renderer and the scene all reach the model only through here.
+/// (`LayoutSaver`: 1 s, at most 5 s behind a stream of changes); quitting flushes. The memos (notes, day pages, the
+/// D-Day) follow the model into `memos.json` the same way (`MemoSaver`, armed once they were loaded; Erratum 31). The
+/// mirror, the icon renderer and the scene all reach the model only through here.
 final class Store {
     private(set) var state: DeskState
     private(set) var journal = UndoJournal()
@@ -20,14 +21,17 @@ final class Store {
     /// The undo or redo label changed (menus show "Undo <label>"), even when the state did not.
     var journalChanged: (() -> Void)?
     let saver: LayoutSaver?
+    // MARK: memos (0.3.0)
+    let memoSaver: MemoSaver?
     private var observers: [(id: Int, body: (DeskState, DeskState) -> Void)] = []
     private var nextObserver = 0
     /// Actions dispatched so far (demo idle detection, tests).
     private(set) var dispatchCount = 0
 
-    init(state: DeskState = DeskState(), saver: LayoutSaver? = nil) {
+    init(state: DeskState = DeskState(), saver: LayoutSaver? = nil, memoSaver: MemoSaver? = nil) {
         self.state = state
         self.saver = saver
+        self.memoSaver = memoSaver
     }
 
     /// Calls `body(new, old)` after every change; returns a token for `removeObserver`.
@@ -49,6 +53,8 @@ final class Store {
         let labels = (journal.undoLabel, journal.redoLabel, journal.undoStack.count, journal.redoStack.count)
         let out = Reducer.reduce(&state, journal: &journal, action, ReduceEnv(now: now(), seed: seed))
         if state != before { notify(before) }
+        // MARK: memos (0.3.0): every change to the memos is saved, an undo or redo included; a load (`replace`) never.
+        if state.memos != before.memos { memoSaver?.schedule(state.memos) }
         if labels != (journal.undoLabel, journal.redoLabel, journal.undoStack.count, journal.redoStack.count) {
             journalChanged?()
         }
@@ -61,16 +67,18 @@ final class Store {
         }
     }
 
-    /// Changes the model outside the reducer (loading `desk.json`, a folder switch that parks the old layout).
+    /// Changes the model outside the reducer (loading `desk.json` and `memos.json`, a folder switch that parks the old
+    /// layout). Nothing is saved for it.
     func replace(_ body: (inout DeskState) throws -> Void) rethrows {
         let before = state
         try body(&state)
         if state != before { notify(before) }
     }
 
-    /// Saves now and waits (quit, sleep, session resign).
+    /// Saves now and waits (quit, sleep, session resign): the layout, and the memos' pending change if there is one.
     func flush() {
         saver?.flush(state)
+        memoSaver?.flush()
     }
 
     var undoLabel: String? { journal.undoLabel }

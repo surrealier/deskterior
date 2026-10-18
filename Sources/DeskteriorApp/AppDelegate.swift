@@ -332,7 +332,11 @@ final class DeskSession {
             stateStore = nil
         }
         let saver = stateStore.map { LayoutSaver(store: $0, delay: configuration.persistDelay, maxWait: configuration.persistMaxWait) }
-        store = Store(saver: saver)
+        // MARK: memos (0.3.0): memos.json beside desk.json, armed by the mirror once it was read (Erratum 31).
+        let memoSaver = stateStore.map {
+            MemoSaver(store: $0, delay: configuration.persistDelay, maxWait: configuration.persistMaxWait)
+        }
+        store = Store(saver: saver, memoSaver: memoSaver)
         store.seed = seed ?? options.seed ?? 0
         if options.icons == .live {
             let cache = try? IconCache(directory: configuration.iconCacheDirectory, mirrored: configuration.folder)
