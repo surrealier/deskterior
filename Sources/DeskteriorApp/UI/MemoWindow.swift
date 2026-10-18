@@ -56,6 +56,20 @@ final class MemoWindowController: NSObject, NSWindowDelegate {
         if presents { AppWindow.present(window) }
     }
 
+    /// New Sticky Note from a menu: what the editors hold is committed first (so it stays its own undo entry, under
+    /// the new note's), then a yellow note on the first free spot, and its editor in the same editing session, so the
+    /// note and the first words typed into it are one undo entry. The window opens beside `near` of the new note.
+    /// Nil, and nothing opens, when the partition is full (its toast says so).
+    @discardableResult
+    func newNoteFromMenu(near: (NoteID) -> NSRect?) -> NoteID? {
+        model.flush()
+        let id = store.state.memos.nextNoteID, editing = nextSession()
+        store.dispatch(.addNote(NewNote(id: id, text: "", colour: .yellow), session: editing))
+        guard store.state.memos.notes[id] != nil else { return nil }
+        show(.note(id), near: near(id), session: editing)
+        return id
+    }
+
     /// A new editing session (each editor attach starts one).
     func nextSession() -> Int {
         sessions += 1

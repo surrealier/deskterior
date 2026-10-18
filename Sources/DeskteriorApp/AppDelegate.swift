@@ -311,17 +311,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         memos.show(target, near: memoTargetFrame(target), session: nil)
     }
 
-    /// New Sticky Note from a menu: a yellow note on the first free spot, and its editor in the same editing session,
-    /// so the note and the first words typed into it are one undo entry. Nothing opens when the partition is full (its
+    /// New Sticky Note from a menu (`MemoWindowController.newNoteFromMenu`): the note and the first words typed into
+    /// it are one undo entry, after whatever the Memos window held. Nothing opens when the partition is full (its
     /// toast says so).
     private func newNote() {
         guard let session, let memos = memoWindow() else { return }
-        let store = session.store
-        let id = store.state.memos.nextNoteID, editing = memos.nextSession()
-        store.dispatch(.addNote(NewNote(id: id, text: "", colour: .yellow), session: editing))
+        memos.newNoteFromMenu { [weak self] in self?.memoTargetFrame(.note($0)) }
         session.sync.refreshMenuContext()
-        guard store.state.memos.notes[id] != nil else { return }
-        memos.show(.note(id), near: memoTargetFrame(.note(id)), session: editing)
     }
 
     /// Where on the screen the desk shows what the Memos window opens on: the note, the day's cell on the wall

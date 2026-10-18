@@ -387,6 +387,29 @@ struct MemoWindowTests {
         #expect(r.log.edits.first?.2 == session)
     }
 
+    @Test("New Sticky Note from a menu commits what the window held first: one entry for it, one for the new note and its words")
+    func newNoteFromMenu() async throws {
+        let r = try await rig()
+        defer { r.controller.close() }
+        r.controller.model.noteEditor.delay = 60  // N1's words wait, as a Korean syllable still marked does
+        r.controller.show(.note(NoteID(1)), near: nil, session: nil)
+        type(" 사기", into: try await noteTextView(r))
+        #expect(r.log.edits.isEmpty)
+        let id = try #require(r.controller.newNoteFromMenu { _ in nil })
+        #expect(id == NoteID(2) && r.controller.model.note == id)
+        let tv = try await noteTextView(r)
+        #expect(await eventually {
+            r.controller.window?.contentView?.layoutSubtreeIfNeeded()
+            return tv.string.isEmpty
+        })
+        type("새 메모", into: tv)
+        r.controller.flush()
+        #expect(r.store.journal.undoStack.map(\.label) == ["Edit Note", "New Sticky Note"])
+        r.store.dispatch(.undo)
+        #expect(r.store.state.memos.notes[id] == nil, "one ⌘Z takes the new note and its words")
+        #expect(r.store.state.memos.notes[NoteID(1)]?.text == "우유 사기")
+    }
+
     // The runner's log word is "createTextFile": the write lint keeps FileManager's `createFile` out of EffectRunner.
     @Test("The Save button's command runs as a menu pick: the effect runner records createTextFile and the file appears")
     func saveRecordsCreateFile() async throws {
