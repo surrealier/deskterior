@@ -528,7 +528,7 @@ macOS 15.6以降と、Xcode 26用のCommand Line Tools（Swift 6.2、`xcode-sele
 | コマンド | 内容 |
 |---|---|
 | `make build` | `swift build` |
-| `make test` | テストスイート（`scripts/swift-test.sh`） |
+| `make test` | テストスイート、CI と同じ実行方法（`scripts/ci-test.sh`） |
 | `make lint` | ファイル安全性のlint（`scripts/check-file-safety.sh`） |
 | `make app` | このMacのプロセッサ用の`build/Deskterior.app`、アドホック署名（`VERSION=0.3.0`でバージョンを指定） |
 | `make universal` | 同じものを、AppleシリコンとIntelの両対応の1つのアプリとして |

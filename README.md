@@ -664,7 +664,7 @@ is not needed. The app you build runs on macOS 14 and later. Then, in a clone of
 | Command | Does |
 |---|---|
 | `make build` | `swift build` |
-| `make test` | the test suites (`scripts/swift-test.sh`) |
+| `make test` | the test suites, as CI runs them (`scripts/ci-test.sh`) |
 | `make lint` | the file-safety lint (`scripts/check-file-safety.sh`) |
 | `make app` | `build/Deskterior.app` for this Mac's processor, ad-hoc signed (`VERSION=0.3.0` sets the version) |
 | `make universal` | the same for Apple silicon and Intel in one app |

@@ -13,7 +13,7 @@ release:
 	swift build -c release --product Deskterior
 
 test:
-	scripts/swift-test.sh
+	scripts/ci-test.sh
 
 lint:
 	scripts/check-file-safety.sh

@@ -528,7 +528,7 @@ Settings ▸ **About & Credits…** 显示版本号和致谢信息。
 | 命令 | 作用 |
 |---|---|
 | `make build` | `swift build` |
-| `make test` | 运行测试套件（`scripts/swift-test.sh`） |
+| `make test` | 运行测试套件，与 CI 相同（`scripts/ci-test.sh`） |
 | `make lint` | 文件安全检查（`scripts/check-file-safety.sh`） |
 | `make app` | 为本机处理器构建 `build/Deskterior.app`，ad-hoc 签名（`VERSION=0.3.0` 设置版本号） |
 | `make universal` | 同上，但构建同时支持 Apple 芯片和 Intel 的单个应用 |

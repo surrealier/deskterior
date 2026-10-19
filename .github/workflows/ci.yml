@@ -15,19 +15,30 @@ concurrency:
 jobs:
   test:
     runs-on: macos-26
+    env:
+      # The desk-plane physics tests need a Metal device (SpriteKit steps Box2D); fail rather than skip them.
+      DESKTERIOR_REQUIRE_METAL: "1"
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
       - name: Toolchain
         run: swift --version && xcode-select -p
       - name: Build
         run: swift build
-      - name: Test
-        # A hung test fails the job with a log instead of holding it for GitHub's 6-hour limit (about 9 min when green).
+      - name: Build tests
+        id: build-tests
+        timeout-minutes: 20
+        run: scripts/ci-test.sh build
+      # scripts/ci-test.sh runs the app tests one at a time and the rest in parallel, and reruns a group's failed tests
+      # once: a flake passes with a warning annotation, a test that fails twice fails the job. A hung test fails its
+      # step with a log instead of holding the job for GitHub's 6-hour limit.
+      - name: Test (app sessions, one at a time)
+        timeout-minutes: 20
+        run: scripts/ci-test.sh serial --skip-build
+      - name: Test (other targets, in parallel)
+        # Also after an app-test failure, so one run reports both groups.
+        if: ${{ !cancelled() && steps.build-tests.outcome == 'success' }}
         timeout-minutes: 30
-        run: scripts/swift-test.sh
-        env:
-          # The desk-plane physics tests need a Metal device (SpriteKit steps Box2D); fail rather than skip them.
-          DESKTERIOR_REQUIRE_METAL: "1"
+        run: scripts/ci-test.sh parallel --skip-build
       - name: File-safety lint
         run: scripts/check-file-safety.sh
       - name: Build app bundle (arm64, ad-hoc)

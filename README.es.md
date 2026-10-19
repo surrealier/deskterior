@@ -705,7 +705,7 @@ falta Xcode. La app que compiles funciona en macOS 14 y posteriores. Después, e
 | Comando | Qué hace |
 |---|---|
 | `make build` | `swift build` |
-| `make test` | las suites de pruebas (`scripts/swift-test.sh`) |
+| `make test` | las suites de pruebas, como las ejecuta la CI (`scripts/ci-test.sh`) |
 | `make lint` | el lint de seguridad de archivos (`scripts/check-file-safety.sh`) |
 | `make app` | `build/Deskterior.app` para el procesador de este Mac, con firma ad hoc (`VERSION=0.3.0` fija la versión) |
 | `make universal` | lo mismo para Apple silicon e Intel en una sola app |

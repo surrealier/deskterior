@@ -662,7 +662,7 @@ macOS 15.6 이상과 Xcode 26용 Command Line Tools(Swift 6.2, `xcode-select --i
 | 명령 | 하는 일 |
 |---|---|
 | `make build` | `swift build` |
-| `make test` | 테스트 실행(`scripts/swift-test.sh`) |
+| `make test` | 테스트 실행, CI와 같은 방식(`scripts/ci-test.sh`) |
 | `make lint` | 파일 안전 검사(`scripts/check-file-safety.sh`) |
 | `make app` | 이 Mac의 프로세서용 `build/Deskterior.app`, ad-hoc 서명(`VERSION=0.3.0`으로 버전 지정) |
 | `make universal` | 같은 앱을 Apple 실리콘과 Intel 겸용으로 |
