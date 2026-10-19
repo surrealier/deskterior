@@ -788,12 +788,13 @@
       then is reported as a flake (a `::warning` annotation and a line in the job summary) and the step passes; one
       that fails twice fails it. There is no rerun after a crash or a hang, or for more than 5 failed tests.
     - **Waits that hold when scheduled late.** `eventually` counts a main-queue turn held back as at most 1 s (60 s of
-      polling, given up 15 min after that), and a precondition it waits for is a `try #require`. Debounce and intent
-      checks run on held or matching clocks: the typing burst's delay on `DispatchTime` from before the last keystroke,
-      the public `FileOperator` initializer's intent freshness on the rig's clock (an internal `uptime:` seam). The
-      watcher's delete and re-create replays on a model clock; CPU bounds are on the thread's CPU time
-      (`TestSupport.cpuSeconds`, about 10× this Mac's debug times); latch and watcher waits allow 600 s and 60 s, and
-      return as soon as their condition holds. Errata 28's 600-s `eventually` is superseded.
+      polling; no cap on the wall clock, which one held-back turn can outlast), and a precondition it waits for is a
+      `try #require`. Debounce and intent checks run on held or matching clocks: the typing burst's delay on
+      `DispatchTime` from before the last keystroke, the public `FileOperator` initializer's intent freshness on the
+      rig's clock (an internal `uptime:` seam). The watcher's delete and re-create replays on a model clock; CPU bounds
+      are on the thread's CPU time (`TestSupport.cpuSeconds`, about 10× this Mac's debug times); latch and watcher
+      waits allow 600 s and 60 s, and return as soon as their condition holds. Errata 28's 600-s `eventually` is
+      superseded.
 
 ---
 

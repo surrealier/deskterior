@@ -78,15 +78,14 @@ final class AppRig {
 
 /// Polls `condition` every 20 ms until it holds, for at most `timeout` seconds of polling; it returns as soon as the
 /// condition holds. A turn the main queue holds back (in a run that shares the main actor with hundreds of other
-/// tests) counts at most 1 s, so main-queue work the test waits for, queued behind the poller's wake-up, still runs
-/// before the last check; however slow the turns, it gives up 15 min after `timeout`. CI runs these tests one at a time
-/// (scripts/ci-test.sh), where a condition holds within seconds.
+/// tests, a single one can last a quarter of an hour on a starved machine) counts at most 1 s, so main-queue work the
+/// test waits for, queued behind the poller's wake-up, still runs before the last check; the wait ends after `timeout`
+/// such turns at most. CI runs these tests one at a time (scripts/ci-test.sh), where a condition holds within seconds.
 @MainActor
 func eventually(_ timeout: Double = 60, _ condition: () -> Bool) async -> Bool {
     let clock = ContinuousClock()
-    let giveUp = clock.now + .seconds(timeout + 900)
     var left = Duration.seconds(timeout)
-    while left > .zero, clock.now < giveUp, !Task.isCancelled {
+    while left > .zero, !Task.isCancelled {
         if condition() { return true }
         let turn = clock.now
         try? await Task.sleep(for: .milliseconds(20))
