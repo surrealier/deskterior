@@ -776,6 +776,24 @@
       `calendar.marks`, `clipLight`; targets `partition.*`, `note:<id>`, `calendar.day:<d>`. `hero` ends with an
       unrecorded partition still (`still-partition`: two notes, a written pad, a D-Day card, two clipped files), the
       README's `docs/media/partition.png`.
+32. **Tests and CI on a starved runner (0.4.0-dev).** These refine §6's workflows, §8.1 and Errata 28.
+    - **Two groups.** `scripts/ci-test.sh` is the test run of both workflows and of `make test`: `build` (the package
+      and its tests, `scripts/swift-test.sh --build-only`), then `serial`, DeskteriorAppTests one test at a time
+      (`--no-parallel`), then `parallel`, every other target. In one parallel run the ~390 main-actor tests (DeskScene's
+      322, all synchronous, and the app's 71) start together and queue on the one main actor, so an app test waited
+      minutes at every await: its debounces fired before its checks, its intents went stale and `eventually` ran out.
+      Alone, an app test waits only on its own work. Each group is a step of its own; the parallel one also runs after
+      a failed serial one.
+    - **One rerun.** A group's failed tests (read from its xUnit file) are rerun once, one at a time. One that passes
+      then is reported as a flake (a `::warning` annotation and a line in the job summary) and the step passes; one
+      that fails twice fails it. There is no rerun after a crash or a hang, or for more than 5 failed tests.
+    - **Waits that hold when scheduled late.** `eventually` counts a main-queue turn held back as at most 1 s (60 s of
+      polling, given up 15 min after that), and a precondition it waits for is a `try #require`. Debounce and intent
+      checks run on held or matching clocks: the typing burst's delay on `DispatchTime` from before the last keystroke,
+      the public `FileOperator` initializer's intent freshness on the rig's clock (an internal `uptime:` seam). The
+      watcher's delete and re-create replays on a model clock; CPU bounds are on the thread's CPU time
+      (`TestSupport.cpuSeconds`, about 10× this Mac's debug times); latch and watcher waits allow 600 s and 60 s, and
+      return as soon as their condition holds. Errata 28's 600-s `eventually` is superseded.
 
 ---
 
@@ -1706,7 +1724,7 @@ Exit codes: 0 pass, 1 expectation failed, 2 script error, 64 guard refusal.
 1. checkout@v5
 2. `swift --version`
 3. `swift build`
-4. `swift test --disable-xctest` (Metal-gated suites may skip)
+4. `scripts/ci-test.sh build`, `serial --skip-build`, `parallel --skip-build` (Erratum 32; Metal-gated suites may skip)
 5. `scripts/check-file-safety.sh`
 6. `ARCHS=arm64 scripts/build-app.sh --version 0.0.0-ci`
 7. Upload the zip as an artifact on `main`
