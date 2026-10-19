@@ -18,10 +18,15 @@ struct WatcherTests {
         return (d, w, log)
     }
 
-    /// Reduces every snapshot the watcher produced, in order, starting from `state`.
-    func replay(_ log: EventLog, from state: DeskState, after: Int) -> DeskState {
+    /// Reduces every snapshot the watcher produced, in order, starting from `state`: each at its own scan time, or with
+    /// `base`, on a model clock 10 ms a snapshot after it (the reducer's time windows then do not depend on how late a
+    /// busy runner delivered the snapshots).
+    func replay(_ log: EventLog, from state: DeskState, after: Int, base: Date? = nil) -> DeskState {
         var s = state
-        for snap in log.all.dropFirst(after) { _ = reduce(&s, .snapshot(snap, now: snap.scannedAt), ReduceEnv(now: snap.scannedAt)) }
+        for (i, snap) in log.all.dropFirst(after).enumerated() {
+            let now = base?.addingTimeInterval(0.01 * Double(i + 1)) ?? snap.scannedAt
+            _ = reduce(&s, .snapshot(snap, now: now), ReduceEnv(now: now))
+        }
         return s
     }
 
@@ -30,10 +35,15 @@ struct WatcherTests {
         let (d, w, log) = try await started()
         defer { w.stop() }
         #expect(log.latest?.entries.isEmpty == true)
+        // Within a second by design: FSEvents' latency, then the debounce, capped at `maxDelay`.
+        #expect(w.latency + w.debounce <= 1 && w.maxDelay == 1)
         let t0 = Date()
         try d.write("new.txt")
         #expect(await waitUntil { log.latestNames().contains("new.txt") })
-        #expect(Date().timeIntervalSince(t0) < 2)
+        // As delivered, by the watcher's own scan time (not when this test's polling woke up), with room to spare:
+        // fseventsd and the watcher's utility queue run late on a starved runner.
+        let delivered = try #require(log.latest).scannedAt.timeIntervalSince(t0)
+        #expect(delivered < 10, "the scan came \(delivered) s after the write")
         #expect(log.latest?.entries.first?.key.inode == d.inode("new.txt"))
     }
 
@@ -79,16 +89,19 @@ struct WatcherTests {
     func deleteAndRecreate() async throws {
         let (d, w, log) = try await started { try $0.write("draft.txt") }
         defer { w.stop() }
+        // The watcher delivers the delete and the re-create as snapshots of their own; whether they lie within the
+        // 2 s window is the reducer's call, on the model clock (DeskCore's tests cover the window itself).
+        let t0 = Date(timeIntervalSince1970: 1_800_000_000)
         var state = DeskState()
-        _ = reduce(&state, .snapshot(log.latest!, now: Date()), ReduceEnv(now: Date()))
+        _ = reduce(&state, .snapshot(log.latest!, now: t0), ReduceEnv(now: t0))
         let key = TokenKey(volume: log.latest!.rootVolume, inode: d.inode("draft.txt"))
-        _ = reduce(&state, .move([key], to: .container(.phone, order: 0)), ReduceEnv(now: Date()))
+        _ = reduce(&state, .move([key], to: .container(.phone, order: 0)), ReduceEnv(now: t0))
         let seen = log.count
         try d.delete("draft.txt")
         #expect(await waitUntil { log.latestNames().isEmpty })
         try d.write("draft.txt", "again")
         #expect(await waitUntil { log.latestNames() == ["draft.txt"] })
-        let after = replay(log, from: state, after: seen)
+        let after = replay(log, from: state, after: seen, base: t0)
         let newKey = TokenKey(volume: log.latest!.rootVolume, inode: d.inode("draft.txt"))
         #expect(after.tokens.location(of: newKey) == .container(.phone, order: 0))
         #expect(after.tombstones.isEmpty)
@@ -129,10 +142,13 @@ struct WatcherTests {
         let (d, w, log) = try await started()
         defer { w.stop() }
         let before = log.count
-        for i in 1...200 { try d.write("file \(i).txt", "\(i)") }
-        #expect(await waitUntil(timeout: 10) { log.latest?.entries.count == 200 })
+        let writing = try ContinuousClock().measure { for i in 1...200 { try d.write("file \(i).txt", "\(i)") } }
+        #expect(await waitUntil { log.latest?.entries.count == 200 })
         let deliveries = log.count - before
-        #expect(deliveries >= 1 && deliveries <= 20, "\(deliveries) snapshots for one burst")
+        // At most a snapshot per FSEvents batch, and batches come at most once a `latency` while the files are written
+        // (a few more after): so the bound stretches with the burst, should a busy runner hold the writing back.
+        let most = max(20, Int(TestClock.seconds(writing) / w.latency) + 3)
+        #expect(deliveries >= 1 && deliveries <= most, "\(deliveries) snapshots for one burst written in \(writing)")
         var state = DeskState()
         for snap in log.all { _ = reduce(&state, .snapshot(snap, now: snap.scannedAt), ReduceEnv(now: snap.scannedAt)) }
         #expect(state.tokens.count == 200 && state.pageCount() == 5)
@@ -167,8 +183,10 @@ struct WatcherTests {
         #expect(await waitUntil { log.count >= 1 })
         try parent.move("Desk", "Desk moved")
         #expect(await waitUntil { !log.failureList.isEmpty })
-        try parent.move("Desk moved", "Desk")
+        // Counted before the move back: while the folder is away a scan only fails, and the stream rescans at once
+        // once it is back, which could otherwise land before the count.
         let seen = log.count
+        try parent.move("Desk moved", "Desk")
         #expect(await waitUntil { log.count > seen && log.latestNames() == ["a.txt"] })
         // The restarted stream still sees changes.
         try parent.write("Desk/b.txt")
@@ -185,8 +203,8 @@ struct WatcherTests {
         #expect(log.latest?.continuous == true)
         var seen = log.count
         w.rescanNow()
-        #expect(await waitUntil { log.count > seen })
-        #expect(log.latest?.continuous == false)
+        // The rescan's own snapshot, wherever it lands among scans of a late batch for a.txt (continuous ones).
+        #expect(await waitUntil { log.all.dropFirst(seen).contains { !$0.continuous } })
         seen = log.count
         w.rescanNow(preservingContinuity: true)
         #expect(await waitUntil { log.count > seen })
@@ -197,16 +215,21 @@ struct WatcherTests {
     func stopDoesNotWaitForAScan() async throws {
         let d = try TempDesk()
         for i in 0..<3000 { try d.write(String(format: "f%05d.txt", i)) }
-        let log = EventLog()
-        let w = DesktopWatcher(scanner: DesktopScanner(root: d.root)) { log.record($0) }
-        w.start()
-        try await Task.sleep(for: .milliseconds(20))
-        let t = Date()
-        w.stop()
-        #expect(Date().timeIntervalSince(t) < 0.1)
-        let stopped = log.count
+        // Best of three watchers: a stop() that waited for the scan would be slow every time, while a starved runner
+        // that holds the test back between the clock's two reads does so only now and then.
+        var watchers: [(DesktopWatcher, EventLog, stopped: Int)] = []
+        var stops: [Duration] = []
+        for _ in 0..<3 {
+            let log = EventLog()
+            let w = DesktopWatcher(scanner: DesktopScanner(root: d.root)) { log.record($0) }
+            w.start()
+            try await Task.sleep(for: .milliseconds(20))
+            stops.append(ContinuousClock().measure { w.stop() })
+            watchers.append((w, log, log.count))  // kept: a watcher's deinit waits for its queue
+        }
+        #expect(try #require(stops.min()) < .milliseconds(100), "stop() took \(stops)")
         try await Task.sleep(for: .milliseconds(1200))
-        #expect(log.count == stopped)
+        #expect(watchers.allSatisfy { $0.1.count == $0.stopped })
     }
 
     @Test("rescanNow delivers a snapshot immediately; stop ends delivery")

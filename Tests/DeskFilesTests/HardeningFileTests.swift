@@ -214,13 +214,14 @@ struct HardeningFileTests {
         let big = try rig.file(rig.elsewhere, "big.bin", "data")
         await rig.op.setHooks(.init(stageInDesk: true))
         let started = Latch(), release = Latch()
+        defer { release.open() }  // a failed run never leaves the copy parked
         let drop = Task {
             await rig.op.importItems([big], op: .copy, rig.intent(.drop), progress: { _ in
                 started.open()
-                _ = release.wait(seconds: 30)
+                _ = release.wait()
             })
         }
-        #expect(await started.opened(within: 30))
+        #expect(await started.opened())
         let staging = try #require(stagingFolder(in: rig.desk, rig), "the copy stages in the desk folder")
         #expect(PartialCopies.find(in: rig.desk).isEmpty, "a running copy's folder is not a leftover")
         let refused = await rig.op.trash([staging.url], expecting: [staging.key], rig.intent())
@@ -237,13 +238,14 @@ struct HardeningFileTests {
         let big = try rig.file(rig.elsewhere, "big.bin", "data")
         await rig.op.setHooks(.init(stageInDesk: true))
         let started = Latch(), release = Latch()
+        defer { release.open() }  // a failed run never leaves the copy parked
         let drop = Task {
             await rig.op.importItems([big], op: .copy, rig.intent(.drop), progress: { _ in
                 started.open()
-                _ = release.wait(seconds: 30)
+                _ = release.wait()
             })
         }
-        #expect(await started.opened(within: 30))
+        #expect(await started.opened())
         let staging = try #require(stagingFolder(in: rig.desk, rig))
         #expect(PartialCopies.find(in: rig.desk).isEmpty, "the new session's look finds nothing to report")
         let other = rig.makeOperator()

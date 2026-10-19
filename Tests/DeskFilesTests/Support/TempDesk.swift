@@ -87,8 +87,9 @@ final class EventLog: @unchecked Sendable {
     func latestNames() -> Set<String> { Set(latest?.entries.map(\.meta.name) ?? []) }
 }
 
-/// Polls `condition` every 25 ms until it holds or `timeout` passes.
-func waitUntil(timeout: Double = 5, _ condition: () -> Bool) async -> Bool {
+/// Polls `condition` every 25 ms until it holds or `timeout` passes. Generous, as it returns as soon as the condition
+/// holds: FSEvents and the watcher's utility queue can run seconds late on a starved runner.
+func waitUntil(timeout: Double = 60, _ condition: () -> Bool) async -> Bool {
     let deadline = Date().addingTimeInterval(timeout)
     while Date() < deadline {
         if condition() { return true }

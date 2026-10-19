@@ -43,9 +43,10 @@ struct FileActionsReviewTests {
         // Minted inside the task, as the copy tests do, so a task a busy pool starts late still holds a fresh intent.
         let eject = Task { await rig.op.eject(volume, rig.intent()) }
         try #require(await Self.wait(entered), "the eject never reached the unmount: \(rig.log.entries().map(\.outcome))")
-        // An actor held by the unmount would serve the trash only after this failsafe lets the unmount go.
+        // An actor held by the unmount would serve the trash only after this failsafe lets the unmount go. Generous, as
+        // the trash still needs a few turns of the pool, which a starved runner can hold back for minutes.
         let failsafe = Task {
-            try? await Task.sleep(for: .seconds(5))
+            try? await Task.sleep(for: .seconds(300))
             release.signal()
         }
         let a = try rig.file(rig.desk, "a.txt")

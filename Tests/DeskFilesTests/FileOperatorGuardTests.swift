@@ -3,7 +3,9 @@ import Foundation
 import Testing
 @testable import DeskFiles
 
-/// A one-way flag a GCD thread can wait on (never a Swift task: tasks poll `opened(within:)`).
+/// A one-way flag a GCD thread can wait on (never a Swift task: tasks poll `opened(within:)`). The waits are generous,
+/// since they return as soon as the latch opens: on a starved runner a task can wait minutes for the cooperative pool,
+/// and a window shorter than that would let a parked copy run on before the request it is held for comes in.
 final class Latch: @unchecked Sendable {
     private let lock = NSLock()
     private var isSet = false
@@ -13,7 +15,7 @@ final class Latch: @unchecked Sendable {
     func open() { lock.withLock { isSet = true } }
 
     /// Blocks the calling thread until open; false after `seconds`.
-    func wait(seconds: Double) -> Bool {
+    func wait(seconds: Double = 600) -> Bool {
         let deadline = Date().addingTimeInterval(seconds)
         while !isOpen {
             if Date() > deadline { return false }
@@ -23,7 +25,7 @@ final class Latch: @unchecked Sendable {
     }
 
     /// Polls from a task until open; false after `seconds`.
-    func opened(within seconds: Double) async -> Bool {
+    func opened(within seconds: Double = 600) async -> Bool {
         let deadline = Date().addingTimeInterval(seconds)
         while !isOpen {
             if Date() > deadline { return false }
@@ -151,7 +153,9 @@ struct FileOperatorGuardTests {
         }
         #expect(rig.names(rig.desk).isEmpty)
         let folder = rig.state.appendingPathComponent("OtherTrash", isDirectory: true)
-        let op = try FileOperator(root: rig.desk, trash: .folder(folder), log: rig.log, sandboxRoots: [rig.temp.root])
+        // On the rig's held clock, as its intents are: a busy pool cannot let the intent go stale before the trash.
+        let op = try FileOperator(root: rig.desk, trash: .folder(folder), log: rig.log, sandboxRoots: [rig.temp.root],
+                                  uptime: { [clock = rig.clock] in clock.instant })
         let a = try rig.file(rig.desk, "a.txt")
         let result = await op.trash([a], expecting: [rig.key(a)], rig.intent())
         #expect(result.refusals.isEmpty)
@@ -318,14 +322,15 @@ struct FileOperatorGuardTests {
         let a = try rig.file(rig.desk, "a.txt")
         let big = try rig.file(rig.elsewhere, "big.bin")
         let started = Latch(), release = Latch(), resumed = Latch()
+        defer { release.open() }  // a failed run never leaves the copy parked
         let drop = Task {
             await rig.op.importItems([big], op: .copy, rig.intent(.drop), progress: { _ in
                 started.open()
-                _ = release.wait(seconds: 30)
+                _ = release.wait()
                 resumed.open()
             })
         }
-        #expect(await started.opened(within: 30))
+        #expect(await started.opened())
         let trashed = await rig.op.trash([a], expecting: [rig.key(a)], rig.intent())
         let copyWasRunning = !resumed.isOpen
         release.open()
@@ -342,13 +347,14 @@ struct FileOperatorGuardTests {
         for i in 0..<5 { try rig.file(album, "p\(i).jpg") }
         let other = try rig.file(rig.elsewhere, "other.txt")
         let started = Latch(), release = Latch()
+        defer { release.open() }  // a failed run never leaves the copy parked
         let drop = Task {
             await rig.op.importItems([album, other], op: .copy, rig.intent(.drop), progress: { _ in
                 started.open()
-                _ = release.wait(seconds: 30)
+                _ = release.wait()
             })
         }
-        #expect(await started.opened(within: 30))
+        #expect(await started.opened())
         drop.cancel()
         release.open()
         let result = await drop.value

@@ -275,12 +275,20 @@ public actor FileOperator {
     /// drop sources, undo destinations, the trash folder) must lie inside one of them, the system Trash is never
     /// used and nothing is ejected. Throws when a trash folder lies inside the desktop or the mirrored folder.
     public init(root: URL, trash: Trash, log: OperationLog, sandboxRoots: [URL]?) throws {
+        try self.init(root: root, trash: trash, log: log, sandboxRoots: sandboxRoots, uptime: { .now })
+    }
+
+    /// The public initializer with intent freshness measured on `uptime` (a test's held clock).
+    init(
+        root: URL, trash: Trash, log: OperationLog, sandboxRoots: [URL]?,
+        uptime: @escaping @Sendable () -> ContinuousClock.Instant
+    ) throws {
         let trasher: any Trasher
         switch trash {
         case .system: trasher = SystemTrasher()
         case let .folder(folder): trasher = try FakeTrasher(folder: folder, mirrored: root)
         }
-        self.init(root: root, trasher: trasher, log: log, sandboxRoots: sandboxRoots)
+        self.init(root: root, trasher: trasher, log: log, sandboxRoots: sandboxRoots, uptime: uptime)
     }
 
     /// `clock` stamps log lines, `uptime` measures intent freshness, and `volumeID` names an item's volume

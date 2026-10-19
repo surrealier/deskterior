@@ -188,13 +188,14 @@ struct AliasFileTests {
         let a = try rig.file(rig.desk, "a.txt")
         let app = try rig.app(rig.elsewhere, "Calc.app")
         let started = Latch(), release = Latch(), resumed = Latch()
+        defer { release.open() }  // a failed run never leaves the alias parked
         await rig.op.setHooks(.init(whileAliasing: { _ in
             started.open()
-            _ = release.wait(seconds: 30)
+            _ = release.wait()
             resumed.open()
         }))
         let drop = Task { await rig.op.importItems([app], ops: [.alias], rig.intent(.drop)) }
-        #expect(await started.opened(within: 30))
+        #expect(await started.opened())
         let trashed = await rig.op.trash([a], expecting: [rig.key(a)], rig.intent())
         let aliasWasRunning = !resumed.isOpen
         release.open()
