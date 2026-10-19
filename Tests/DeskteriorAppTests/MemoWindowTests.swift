@@ -95,8 +95,8 @@ struct MemoWindowModelTests {
 struct MemoWindowTests {
     final class Log {
         var actions: [DeskAction] = []
-        /// When each action was sent.
-        var times: [Date] = []
+        /// When each action was sent, on the editor's debounce clock (`DispatchTime`, as `asyncAfter` counts).
+        var times: [DispatchTime] = []
         var commands: [MenuCommand] = []
 
         /// The `editNote` actions sent: (id, text, session).
@@ -105,7 +105,7 @@ struct MemoWindowTests {
         }
 
         /// When the first `editNote` was sent.
-        var firstEditTime: Date? {
+        var firstEditTime: DispatchTime? {
             zip(actions, times).first { if case .editNote = $0.0 { true } else { false } }?.1
         }
     }
@@ -125,14 +125,14 @@ struct MemoWindowTests {
         let store = rig.session.store
         if started {
             rig.session.start()
-            if connected { #expect(await eventually { store.state.access == .connected }) }
+            if connected { try #require(await eventually { store.state.access == .connected }) }
         }
         let log = Log()
         let previous = store.willDispatch
         store.willDispatch = { action, state in
             previous?(action, state)
             log.actions.append(action)
-            log.times.append(Date())
+            log.times.append(DispatchTime.now())
         }
         store.replace {
             let t = Date(timeIntervalSince1970: 1_792_300_000)
@@ -153,7 +153,7 @@ struct MemoWindowTests {
     /// The note editor's text view, once SwiftUI has made it, with the keyboard (typing goes to the first responder;
     /// AppKit ends the editing of a text view that is not, which is a blur).
     func noteTextView(_ r: Rig) async throws -> NSTextView {
-        #expect(await eventually {
+        try #require(await eventually {
             r.controller.window?.contentView?.layoutSubtreeIfNeeded()
             return r.controller.model.noteEditor.textView?.window != nil
         })
@@ -164,7 +164,7 @@ struct MemoWindowTests {
 
     /// The day page's text view, as `noteTextView` does the note's.
     func dayTextView(_ r: Rig) async throws -> NSTextView {
-        #expect(await eventually {
+        try #require(await eventually {
             r.controller.window?.contentView?.layoutSubtreeIfNeeded()
             return r.controller.model.dayEditor.textView?.window != nil
         })
@@ -219,11 +219,14 @@ struct MemoWindowTests {
         r.controller.show(.note(NoteID(1)), near: nil, session: 7)
         let tv = try await noteTextView(r)
         #expect(tv.string == "우유")
-        type(" 사기", into: tv)
-        let typed = Date()
-        #expect(await eventually { !r.log.edits.isEmpty })
-        // Measured, not slept: the tests share the main queue, so a busy run only makes the commit later.
-        let delay = try #require(r.log.firstEditTime).timeIntervalSince(typed)
+        type(" 사", into: tv)
+        // Measured, not slept, from before the last keystroke arms the debounce and on its clock: a busy run only
+        // makes the commit later, never early.
+        let typed = DispatchTime.now()
+        type("기", into: tv)
+        try #require(await eventually { !r.log.edits.isEmpty })
+        let committed = try #require(r.log.firstEditTime)
+        let delay = Double(Int64(committed.uptimeNanoseconds) - Int64(typed.uptimeNanoseconds)) / 1e9
         #expect(delay >= 0.75, "no commit until 0.8 s after the last keystroke (\(delay) s)")
         try await Task.sleep(for: .milliseconds(1500))
         #expect(r.log.edits.count == 1)
@@ -245,7 +248,7 @@ struct MemoWindowTests {
         try await Task.sleep(for: .milliseconds(2000))
         #expect(r.log.edits.isEmpty, "never mid-composition")
         tv.unmarkText()
-        #expect(await eventually { r.log.edits.count == 1 })
+        try #require(await eventually { r.log.edits.count == 1 })
         try await Task.sleep(for: .milliseconds(1500))
         #expect(r.log.edits.count == 1)
         #expect(tv.string == "우유 사" && r.log.edits.first?.1 == "우유 사")
@@ -380,7 +383,7 @@ struct MemoWindowTests {
         #expect(r.controller.model.note == id && r.controller.model.tab == .notes)
         let tv = try await noteTextView(r)
         type("새 메모", into: tv)
-        #expect(await eventually { r.log.edits.count == 1 })
+        try #require(await eventually { r.log.edits.count == 1 })
         #expect(r.store.state.memos.notes[id]?.text == "새 메모")
         #expect(r.store.journal.undoStack.count == before + 1)
         #expect(r.store.undoLabel == "New Sticky Note")
@@ -400,7 +403,7 @@ struct MemoWindowTests {
         let id = try #require(r.controller.newNoteFromMenu { _ in nil })
         #expect(id == NoteID(2) && r.controller.model.note == id)
         let tv = try await noteTextView(r)
-        #expect(await eventually {
+        try #require(await eventually {
             r.controller.window?.contentView?.layoutSubtreeIfNeeded()
             return tv.string.isEmpty
         })
@@ -428,7 +431,7 @@ struct MemoWindowTests {
         #expect(controller.model.dDayLine?.hasSuffix("D-12") == true)
         clock.day = DayKey("2026-10-19")!
         NotificationCenter.default.post(name: .NSCalendarDayChanged, object: nil)
-        #expect(await eventually { controller.model.today == DayKey("2026-10-19")! })
+        try #require(await eventually { controller.model.today == DayKey("2026-10-19")! })
         #expect(controller.model.dDayLine?.hasSuffix("D-11") == true)
         controller.model.setDated(true)
         #expect(r.store.state.memos.notes[NoteID(1)]?.day == DayKey("2026-10-19")!)
@@ -454,7 +457,7 @@ struct MemoWindowTests {
         r.controller.show(.note(NoteID(1)), near: nil, session: nil)
         uptime.hold()
         r.controller.model.saveNote()
-        #expect(await eventually { r.rig.session.effects.fileLog.last == "createTextFile" })
+        try #require(await eventually { r.rig.session.effects.fileLog.last == "createTextFile" })
         #expect(await eventually { r.rig.names(r.rig.desk).contains("우유 사기.txt") })
     }
 }

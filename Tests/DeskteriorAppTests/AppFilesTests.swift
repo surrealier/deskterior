@@ -76,15 +76,21 @@ final class AppRig {
     }
 }
 
-/// Polls `condition` until it holds or `timeout` passes (generous: the whole suite shares the main actor, and on a
-/// starved runner long tests elsewhere can hold the main queue or the pool back for minutes; it returns as soon as
-/// the condition holds).
+/// Polls `condition` every 20 ms until it holds, for at most `timeout` seconds of polling; it returns as soon as the
+/// condition holds. A turn the main queue holds back (in a run that shares the main actor with hundreds of other
+/// tests) counts at most 1 s, so main-queue work the test waits for, queued behind the poller's wake-up, still runs
+/// before the last check; however slow the turns, it gives up 15 min after `timeout`. CI runs these tests one at a time
+/// (scripts/ci-test.sh), where a condition holds within seconds.
 @MainActor
-func eventually(_ timeout: Double = 600, _ condition: () -> Bool) async -> Bool {
-    let deadline = Date().addingTimeInterval(timeout)
-    while Date() < deadline {
+func eventually(_ timeout: Double = 60, _ condition: () -> Bool) async -> Bool {
+    let clock = ContinuousClock()
+    let giveUp = clock.now + .seconds(timeout + 900)
+    var left = Duration.seconds(timeout)
+    while left > .zero, clock.now < giveUp, !Task.isCancelled {
         if condition() { return true }
+        let turn = clock.now
         try? await Task.sleep(for: .milliseconds(20))
+        left -= min(turn.duration(to: clock.now), .seconds(1))
     }
     return condition()
 }
@@ -161,7 +167,7 @@ struct AppFilesTests {
         }
         watch.look()
         watch.look()  // while the first runs
-        #expect(await eventually { watch.looks == 2 })
+        try #require(await eventually { watch.looks == 2 })
         #expect(threads.onMain == [false, false], "both listings ran off the main thread")
         #expect(watch.found.map(\.url.lastPathComponent) == [leftover.lastPathComponent])
         #expect(rig.host.scene.toastShown == .leftoverCopies)
@@ -227,7 +233,7 @@ struct LeftoverSessionTests {
         try await Task.sleep(for: .milliseconds(300))
         #expect(session.mirror.snapshotCount == 0 && session.leftovers.looks == 0, "nothing read before ⏻")
         session.mirror.connect()  // what ⏻ (and the privacy prompt) leads to
-        #expect(await eventually { session.leftovers.looks == 1 })
+        try #require(await eventually { session.leftovers.looks == 1 })
         #expect(session.mirror.snapshotCount >= 1)
         #expect(session.leftovers.found.map(\.url.lastPathComponent) == [leftover.lastPathComponent])
         #expect(FileManager.default.fileExists(atPath: leftover.path), "a look never changes anything")
@@ -243,7 +249,7 @@ struct LeftoverSessionTests {
         let uptime = HeldUptime()
         session.effects.files = try heldFileActions(desk: rig.desk, state: rig.state, uptime: uptime)
         session.start()
-        #expect(await eventually { session.leftovers.found.count == 1 })
+        try #require(await eventually { session.leftovers.found.count == 1 })
         let model = SettingsModel(settings: DeskSettings(), lights: .auto, folderPath: rig.desk.path, folderLocked: true,
                                   displays: [])
         model.follow(session.leftovers)
@@ -252,11 +258,11 @@ struct LeftoverSessionTests {
         var notes: [String] = []
         uptime.hold()
         session.trashLeftovers { notes.append($0) }
-        #expect(await eventually { notes.count == 1 })
+        try #require(await eventually { notes.count == 1 })
         #expect(notes == [tr(.leftoversTrashed)])
         #expect(!FileManager.default.fileExists(atPath: leftover.path))
         #expect(rig.names(rig.fakeTrash) == [leftover.lastPathComponent])
-        #expect(await eventually { session.leftovers.found.isEmpty && model.leftovers == 0 }, "a fresh look follows")
+        try #require(await eventually { session.leftovers.found.isEmpty && model.leftovers == 0 }, "a fresh look follows")
         session.trashLeftovers { notes.append($0) }
         #expect(notes.last == tr(.leftoversNone), "nothing to do is said, not silent")
     }

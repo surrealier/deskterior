@@ -48,18 +48,27 @@ struct MemoSaverTests {
     @Test("Once armed, a stream of changes is one debounced write, and a flush writes what is pending at once")
     func debounced() async throws {
         let temp = try AppTemp()
-        let saver = MemoSaver(store: try StateStore(directory: try temp.dir("State"), mirrored: try temp.dir("Desk")),
-                              delay: 0.05, maxWait: 1)
+        let store = try StateStore(directory: try temp.dir("State"), mirrored: try temp.dir("Desk"))
+        // The burst on a debounce no run outlasts, so however the loop is scheduled no timer fires in the middle of it:
+        // the five changes are one pending book, the last, and one write.
+        let saver = MemoSaver(store: store, delay: 600, maxWait: 600)
         saver.arm()
         for i in 0..<5 { saver.schedule(memoBook("note \(i)")) }
-        #expect(await eventually { saver.saveCount == 1 })
-        try await Task.sleep(for: .milliseconds(200))
+        #expect(saver.saveCount == 0, "nothing before the pause is over")
+        saver.flush()
         #expect(saver.saveCount == 1, "five changes in a row, one write")
+        #expect(store.loadMemos().book == memoBook("note 4"))
         saver.flush()
         #expect(saver.saveCount == 1, "nothing pending: nothing to write")
         saver.schedule(memoBook("later"))
         saver.flush()
         #expect(saver.saveCount == 2, "flush writes the pending book without waiting")
+        // With nothing flushing, the debounce writes by itself once the pause is over.
+        let timed = MemoSaver(store: store, delay: 0.05, maxWait: 1)
+        timed.arm()
+        timed.schedule(memoBook("by itself"))
+        #expect(await eventually { timed.saveCount == 1 })
+        #expect(store.loadMemos().book == memoBook("by itself"))
     }
 
     // Reads back through `StateStore.loadMemos`, the memos.json I/O the app uses.

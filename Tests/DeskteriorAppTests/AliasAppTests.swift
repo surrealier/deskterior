@@ -269,7 +269,7 @@ struct AliasAppTests {
         rig.uptime.hold()
         #expect(rig.dropIn.dropOnWall([app, doc], copy: false))
         #expect(effects.contains { if case let .importFiles(_, ops, _) = $0 { ops == [.alias, .move] } else { false } })
-        #expect(await eventually { files.finished == 1 })
+        try #require(await eventually { files.finished == 1 })
         #expect(rig.names(rig.desk) == ["Calc", "notes.txt"])
         #expect(FileManager.default.fileExists(atPath: app.path) && Self.inode(app) == appInode, "the app stayed put")
         #expect(rig.store.undoLabel == "Drop In")
@@ -296,7 +296,7 @@ struct AliasAppTests {
         // ⌘Z: the alias goes to the (fake) Trash, the document back where it came from.
         rig.uptime.hold()
         rig.effects.withOrigin(.undo) { rig.store.dispatch(.undo) }
-        #expect(await eventually { files.finished == 2 })
+        try #require(await eventually { files.finished == 2 })
         #expect(rig.host.scene.toastShown == .undidAliasMix)
         #expect(rig.names(rig.desk).isEmpty && rig.names(rig.fakeTrash) == ["Calc"])
         #expect(FileManager.default.fileExists(atPath: doc.path) && Self.inode(app) == appInode)
@@ -324,8 +324,8 @@ struct AliasAppTests {
             IconProvider.Request(key: entry.key, url: alias, meta: entry.meta),
             IconProvider.Request(key: appKey, url: calculator, meta: TokenMeta(name: "Calculator.app", kind: .app)),
         ])
-        // The main queue is shared with the whole suite: wait as long as the other app tests do.
-        #expect(await eventually { icons.count == 2 })
+        // Each icon goes through the main queue twice and a utility queue twice.
+        try #require(await eventually { icons.count == 2 })
         guard case let .pixels(aliasIcon, aliasMini)? = icons[entry.key], case let .pixels(appIcon, appMini)? = icons[appKey]
         else {
             Issue.record("no pixels: \(icons)")
