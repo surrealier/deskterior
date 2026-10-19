@@ -11,7 +11,7 @@
 #                                in parallel: their main-actor tests are synchronous and wait on no clock there.
 #   scripts/ci-test.sh           all three in that order; both groups run even if the first one fails.
 # Extra arguments go to `swift test` for serial and parallel (CI passes --skip-build after its build step), and to
-# every step without a group; a rerun takes none of them.
+# every step without a group; a rerun takes none of them. A --filter narrows either group (`serial --filter MemoSaverTests`).
 #
 # A group that fails reruns only its failed tests, once, one at a time (`--skip-build --no-parallel`, read from the
 # group's xUnit file). One that passes then is a flake: the step passes, with a ::warning annotation naming it and a
@@ -21,7 +21,7 @@
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
-serialTargets='^DeskteriorAppTests\.'
+serialTargets='DeskteriorAppTests\.'
 
 if [ $# -eq 0 ] || [ "${1#-}" != "$1" ]; then
   scripts/ci-test.sh build "$@"
@@ -34,8 +34,10 @@ group="$1"
 shift
 case "$group" in
   build) exec scripts/swift-test.sh --build-only "$@" ;;
-  serial) select=(--filter "$serialTargets" --no-parallel) ;;
-  parallel) select=(--skip "$serialTargets") ;;
+  # Both groups select by --skip: repeated --filter flags are ORed, so a --filter of the group's own would widen any
+  # --filter passed in rather than narrow it.
+  serial) select=(--skip "^(?!$serialTargets)" --no-parallel) ;;
+  parallel) select=(--skip "^$serialTargets") ;;
   *) echo "usage: scripts/ci-test.sh [build|serial|parallel] [swift test options]" >&2; exit 2 ;;
 esac
 out=".build/ci-test/$group"
@@ -50,13 +52,18 @@ scripts/swift-test.sh "${select[@]}" --xunit-output "$out/run.xml" "$@" || rc=$?
 # The xUnit file swift-testing wrote (with "-swift-testing" before the extension when XCTest also runs).
 xunit() { if [ -f "$1.xml" ]; then echo "$1.xml"; else echo "$1-swift-testing.xml"; fi; }
 
-# Failed tests as swift-testing ids, from the xUnit classname ("Module", "Module.Suite", "Module.Outer.Inner") and
-# name: "Module.name()" (a free function), "Module.Suite/name()", "Module.Outer/Inner/name()".
-failed() {
+# Tests as swift-testing ids, from the xUnit classname ("Module", "Module.Suite", "Module.Outer.Inner") and name:
+# "Module.name()" (a free function), "Module.Suite/name()", "Module.Outer/Inner/name()". `failed` lists the failed
+# ones, `ran` every one in the file.
+failed() { testIDs "$1" failed; }
+ran() { testIDs "$1" all; }
+testIDs() {
   [ -f "$1" ] || return 0
-  perl -ne '
-    if (/<testcase classname="([^"]*)" name="([^"]*)"/) { ($c, $n) = ($1, $2); }
-    if (/<(failure|error)\b/ && defined $c) {
+  ALL="$([ "$2" = all ] && echo 1 || echo 0)" perl -ne '
+    if (/<testcase classname="([^"]*)" name="([^"]*)"/) { ($c, $n) = ($1, $2); $hit = $ENV{ALL}; }
+    if (/<(failure|error)\b/ && defined $c) { $hit = 1; }
+    if ($hit && defined $c) {
+      $hit = 0;
       ($m, $suite) = split(/\./, $c, 2);
       $id = defined $suite ? "$m." . ($suite =~ s/\./\//gr) . "/$n" : "$m.$n";
       $id =~ s/&lt;/</g; $id =~ s/&gt;/>/g; $id =~ s/&quot;/"/g; $id =~ s/&apos;/\x27/g; $id =~ s/&amp;/&/g;
@@ -68,10 +75,14 @@ count=0
 [ -n "$ids" ] && count="$(printf '%s\n' "$ids" | wc -l | tr -d ' ')"
 if [ "$count" -eq 0 ]; then
   echo "::error title=$group tests::swift test failed ($rc) without naming a failed test (a crash or a hang); not rerun"
+  echo "- $group: \`swift test\` failed ($rc) without naming a failed test (a crash or a hang); not rerun" >> "$summary"
   exit "$rc"
 fi
 if [ "${CI_TEST_RETRY:-1}" = 0 ] || [ "$count" -gt "${CI_TEST_MAX_RETRY:-5}" ]; then
-  printf '%s\n' "$ids" | while IFS= read -r id; do echo "::error title=Test failed::$id"; done
+  printf '%s\n' "$ids" | while IFS= read -r id; do
+    echo "::error title=Test failed::$id"
+    echo "- failed (not rerun): \`$id\`" >> "$summary"
+  done
   echo "$count $group tests failed; not rerun"
   exit "$rc"
 fi
@@ -90,16 +101,16 @@ scripts/swift-test.sh --skip-build --no-parallel ${filters[@]+"${filters[@]}"} -
 echo "::endgroup::"
 
 rerun="$(xunit "$out/rerun")"
-ran="$(perl -ne 'print "$1\n" if /<testsuite [^>]*\btests="(\d+)"/' "$rerun" 2>/dev/null | head -1)"
-if [ "${ran:-0}" -lt "$count" ]; then
-  printf '%s\n' "$ids" | while IFS= read -r id; do echo "::error title=Test failed::$id"; done
-  echo "::error title=$group tests::the rerun ran ${ran:-0} of the $count failed tests"
-  exit 1
-fi
+reran="$(ran "$rerun")"
 again="$(failed "$rerun")"
 status=0
 while IFS= read -r id; do
-  if printf '%s\n' "$again" | grep -Fxq -- "$id"; then
+  # A test the rerun did not run (a crash, or an id its filter missed) is never taken for a flake.
+  if ! printf '%s\n' "$reran" | grep -Fxq -- "$id"; then
+    echo "::error title=Test failed::$id failed, and did not run again when rerun"
+    echo "- failed, not run again: \`$id\`" >> "$summary"
+    status=1
+  elif printf '%s\n' "$again" | grep -Fxq -- "$id"; then
     echo "::error title=Test failed twice::$id failed, and failed again when rerun alone"
     echo "- failed twice: \`$id\`" >> "$summary"
     status=1

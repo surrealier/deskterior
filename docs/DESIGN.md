@@ -783,7 +783,8 @@
       322, all synchronous, and the app's 71) start together and queue on the one main actor, so an app test waited
       minutes at every await: its debounces fired before its checks, its intents went stale and `eventually` ran out.
       Alone, an app test waits only on its own work. Each group is a step of its own; the parallel one also runs after
-      a failed serial one.
+      a failed serial one. The steps stop after 20 min (build tests), 20 min (serial) and 30 min (parallel); green here,
+      the serial group takes about 22 s and the parallel one about 6 min, and with 16 busy-loop hogs under 24 min.
     - **One rerun.** A group's failed tests (read from its xUnit file) are rerun once, one at a time. One that passes
       then is reported as a flake (a `::warning` annotation and a line in the job summary) and the step passes; one
       that fails twice fails it. There is no rerun after a crash or a hang, or for more than 5 failed tests.

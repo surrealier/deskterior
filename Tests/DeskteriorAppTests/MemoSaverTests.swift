@@ -63,12 +63,12 @@ struct MemoSaverTests {
         saver.schedule(memoBook("later"))
         saver.flush()
         #expect(saver.saveCount == 2, "flush writes the pending book without waiting")
-        // With nothing flushing, the debounce writes by itself once the pause is over.
+        // With nothing flushing, the debounce writes by itself once the pause is over, and what it writes in the end is
+        // the last of a burst (a late-scheduled loop may let the timer write an earlier one first).
         let timed = MemoSaver(store: store, delay: 0.05, maxWait: 1)
         timed.arm()
-        timed.schedule(memoBook("by itself"))
-        #expect(await eventually { timed.saveCount == 1 })
-        #expect(store.loadMemos().book == memoBook("by itself"))
+        for i in 0..<3 { timed.schedule(memoBook("by itself \(i)")) }
+        #expect(await eventually { timed.saveCount >= 1 && store.loadMemos().book == memoBook("by itself 2") })
     }
 
     // Reads back through `StateStore.loadMemos`, the memos.json I/O the app uses.
