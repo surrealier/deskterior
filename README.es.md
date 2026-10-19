@@ -19,12 +19,13 @@ Ordena el escritorio de tu Mac como ordenarías una mesa de verdad, en pixel art
 
 </div>
 
-**Una mesa en pixel art que vive en el escritorio de tu Mac.** Deskterior cubre el escritorio con una pequeña habitación
-iluminada, y los archivos de tu Escritorio aparecen como iconos en el monitor de la mesa. Recógelos como lo harías en
-una mesa de verdad: mételos en los cajones del elevador del monitor o en el archivador, déjalos en el soporte del
-teléfono o en el portalápices, tíralos al cesto de papeles, bárrelos con el cepillo bajo la alfombrilla de tela o,
-simplemente, pulsa el botón de encendido del monitor. Esconder solo cambia la disposición. Tus archivos se quedan donde
-están y solo cambian cuando lo pides expresamente.
+**Una mesa en pixel art que vive en el escritorio de tu Mac.** Deskterior es un organizador del escritorio para macOS:
+cubre el escritorio, iconos del Finder incluidos, con una pequeña habitación iluminada, y los archivos de tu Escritorio
+aparecen como iconos en el monitor de la mesa. Recógelos como lo harías en una mesa de verdad: mételos en los cajones
+del elevador del monitor o en el archivador, déjalos en el soporte del teléfono o en el portalápices, tíralos al cesto
+de papeles, bárrelos con el cepillo bajo la alfombrilla de tela o, simplemente, pulsa el botón de encendido del
+monitor. Esconder solo cambia la disposición. Tus archivos se quedan donde están y solo cambian cuando lo pides
+expresamente.
 
 La interfaz de la app está en inglés y en coreano, y sigue el idioma de tu Mac cuando es uno de esos dos; con cualquier
 otro, español incluido, se muestra en inglés. Por eso, en esta página los menús, botones y ajustes de la app aparecen en
@@ -761,7 +762,7 @@ Más: [docs/DESIGN.md](docs/DESIGN.md) (el diseño), [docs/DEMOS.md](docs/DEMOS.
 - El calendario es el de la habitación: no lee ni escribe la app Calendario, y las notas y los apuntes se quedan en
   este Mac (`memos.json`).
 - Las notas adhesivas solo se ven en la pantalla de la mesa, no en las paredes de otras pantallas.
-- Algunas partes de la escena siguen en inglés en la v0.1, también con el idioma coreano: sus textos de ayuda, los
+- Algunas partes de la escena siguen en inglés, también con el idioma coreano: sus textos de ayuda, los
   nombres que VoiceOver da a los objetos de la mesa, el logo NO SIGNAL de la entrada AV, BONK, SWISH! y TIDY! (los
   textos de ayuda del panel y del calendario sí están traducidos).
 

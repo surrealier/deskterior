@@ -20,11 +20,12 @@ icons. On your Mac each file shows its own icon or thumbnail, in pixels.</sub>
 
 </div>
 
-**A pixel-art desk that lives on your Mac's desktop.** Deskterior covers the desktop with a small, lit room, and
-the files on your Desktop show up as icons on the desk's monitor. Tidy them away the way you would on a real desk:
-drop them in the riser drawers or the filing cabinet, park them on the phone stand or in the pen cup, toss them in
-the wastebasket, sweep them under the cloth desk mat with the brush, or just press the monitor's power button.
-Hiding only changes the layout. Your files stay where they are and change only when you explicitly ask.
+**A pixel-art desk that lives on your Mac's desktop.** Deskterior is a desktop organizer for macOS: it covers the
+desktop, Finder's icons included, with a small, lit room, and the files on your Desktop show up as icons on the
+desk's monitor. Tidy them away the way you would on a real desk: drop them in the riser drawers or the filing
+cabinet, park them on the phone stand or in the pen cup, toss them in the wastebasket, sweep them under the cloth
+desk mat with the brush, or just press the monitor's power button. Hiding only changes the layout. Your files stay
+where they are and change only when you explicitly ask.
 
 [**Download the latest release**](../../releases/latest) · macOS 14 Sonoma or later · Apple silicon and Intel ·
 free and open source (MIT)
@@ -719,7 +720,7 @@ More: [docs/DESIGN.md](docs/DESIGN.md) (the design), [docs/DEMOS.md](docs/DEMOS.
 - The calendar is the room's own: it does not read or write the Calendar app, and notes stay on this Mac (in
   `memos.json`).
 - Notes show on the desk's display only, not on other displays' walls.
-- Parts of the scene stay in English in v0.1, also with the Korean language setting: its tooltips, VoiceOver's names
+- Parts of the scene stay in English, also with the Korean language setting: its tooltips, VoiceOver's names
   for the desk's objects, the AV input's NO SIGNAL logo, BONK, SWISH! and TIDY! (the partition's and calendar's
   tooltips are translated).
 
