@@ -143,9 +143,9 @@ struct ReconcilerTests {
             if i % 2 == 1 { return F.entry("new \(i).txt", inode) }
             return F.entry("old \(i).txt", inode, created: born + Double(i))
         }
-        let start = Date()
-        let events = Reconciler.reconcile(&s, F.snapshot(second), now: F.t0 + 120)
-        #expect(Date().timeIntervalSince(start) < 1)
+        var events: [DeskEvent] = []
+        let cpu = TestSupport.cpuSeconds { events = Reconciler.reconcile(&s, F.snapshot(second), now: F.t0 + 120) }
+        #expect(cpu < 1)
         #expect(events.filter { if case .added(_, _, .restored) = $0 { true } else { false } }.count == 500)
         #expect(s.tombstones.count == 500)
         #expect(s.violations().isEmpty)

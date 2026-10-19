@@ -185,12 +185,12 @@ import Testing
     }
 
     @Test func buildingIsCheapEnoughForLaunch() {
-        // M1 review F5: the debug build of the table took 1.5 s on the main thread.
-        let clock = ContinuousClock()
+        // M1 review F5: the debug build of the table took 1.5 s on the main thread. It takes about 0.1 s now: the bound
+        // is about 10× that, in this thread's CPU time, so a busy runner passes and the slow build still fails.
         var table: [UInt8] = []
-        let elapsed = clock.measure { table = IndexLUT().bytes }
+        let cpu = TestSupport.cpuSeconds { table = IndexLUT().bytes }
         #expect(table == lut.bytes)
-        #expect(elapsed < .milliseconds(500), "IndexLUT build took \(elapsed)")
+        #expect(cpu < 1.0, "IndexLUT build took \(cpu) s of CPU")
     }
 
     @Test func prewarmBuildsTheSharedTables() async {
