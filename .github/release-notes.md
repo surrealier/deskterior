@@ -5,10 +5,10 @@ A pixel-art desk that lives on your desktop: your Desktop files sit on its monit
 
 ## New in this version
 
-- **Put Away and Bring Back.** Put away what you don't use (the riser drawers, the filing cabinet, the phone stand, the plant, the desk partition or its add-ons, the wall decor) from its right-click menu, Put Away ▸ in the menu bar menu or Arrange Desk…. Nothing stays hidden inside: a place that holds files says so ("Take Out 3 & Put Away Cabinet") and brings them to the monitor first, in the same undo step. Bring Back ▸ returns anything, and moves aside what rests where it returns.
-- **The desk partition.** A felt partition along the back of the desk holds sticky notes (up to 24, six colours, written in the new Memos window, Korean input included), a daily memo pad whose page tears off as a dated note, memo clips for up to 5 Desktop files, a D-Day card and a clip light for the night. The wall calendar marks the days with memos, and a click opens one.
-- **Save as Text File on Desktop.** A note or today's memo becomes a new .txt file in your Desktop folder, never overwriting anything; ⌘Z moves it to the Trash while it is unchanged.
-- Notes live in their own `memos.json` in the state folder and survive Safe Mode's Reset Layout. Going back to 0.2.0 brings every put-away object back (the changelog has the details).
+- **Picture frame.** Hang a photo of your own in the framed print above the wall shelf: right-click the frame and pick Choose Photo… (or just click the empty frame), drag an image from the monitor onto it, pick Hang in Picture Frame from an image's right-click menu, or drop one from Finder onto the frame (or onto the framed print on another display's wall). It is drawn in the room's 46 colours at 26×34 pixels, dims with the room at night and hangs on your other displays' walls too.
+- **Your file is only read.** The photo is read once and never moved, copied or changed, and its name never shows; one dropped on the frame from Finder stays where it is. The frame keeps its own small pixel copy in `frame.json` in the state folder, which survives Safe Mode's Reset Layout. ⌘Z takes a hang back; Remove Photo brings the print back.
+- Dragging a photo straight out of the Photos app is not supported: export it as a file first, then choose or drop that file.
+- Going back to 0.3.0 brings the framed print back; `frame.json` stays for 0.4.0 (the changelog has the details).
 
 ## Install
 
@@ -39,10 +39,10 @@ gh attestation verify Deskterior-__VERSION__.zip --repo __REPO__
 
 ## 새 기능 (한국어)
 
-- **넣어 두기와 다시 놓기.** 안 쓰는 물건(받침대 서랍, 서랍장, 휴대폰 거치대, 화분, 데스크 파티션이나 그 부속품, 벽 장식)은 물건의 오른쪽 클릭 메뉴, 메뉴 막대 메뉴의 ‘넣어 두기’ ▸, ‘소품 정리…’로 넣어 둡니다. 안에 숨는 파일은 없습니다. 파일이 든 곳은 메뉴가 먼저 알려 주고(‘3개 꺼내고 서랍장 넣어 두기’) 파일을 모니터로 꺼낸 뒤 넣어 두며, 실행 취소 한 번이면 둘 다 돌아옵니다. ‘다시 놓기’ ▸로 되돌리면 그 자리에 있던 것은 옆으로 비켜 줍니다.
-- **데스크 파티션.** 책상 뒤쪽의 펠트 파티션에 메모지(최대 24장, 여섯 가지 색, 새 ‘메모’ 창에서 한글로 편집), 한 장씩 뜯어 날짜가 적힌 메모지로 붙이는 데일리 메모지, 바탕화면 파일을 5개까지 집는 메모 집게, 디데이 카드, 밤을 위한 클립 조명이 있습니다. 벽 캘린더는 메모가 있는 날을 표시하고, 날짜를 클릭하면 그날이 열립니다.
-- **바탕화면에 텍스트 파일로 저장.** 메모지나 오늘 메모를 바탕화면 폴더의 새 .txt 파일로 저장합니다. 어떤 파일도 덮어쓰지 않으며, 파일이 그대로인 동안에는 ⌘Z로 휴지통으로 옮깁니다.
-- 메모는 상태 폴더의 `memos.json`에 따로 저장되어 안전 모드의 배치 초기화에도 남습니다. 0.2.0으로 되돌아가면 넣어 둔 물건은 모두 다시 나옵니다(자세한 내용은 변경 기록에 있습니다).
+- **사진 액자.** 벽 선반 위의 액자 그림 자리에 내 사진을 걸 수 있습니다. 액자를 오른쪽 클릭해 ‘사진 선택…’을 고르거나(빈 액자는 클릭만 해도 됩니다), 모니터의 사진을 끌어다 액자에 놓거나, 사진 파일의 오른쪽 클릭 메뉴에서 ‘사진 액자에 걸기’를 고르거나, Finder에서 사진을 끌어다 액자(다른 디스플레이 벽의 액자도 됩니다)에 놓으세요. 사진은 방의 46가지 색으로 26×34픽셀에 그려지고, 밤에는 방과 함께 어두워지며, 다른 디스플레이의 벽에도 걸립니다.
+- **파일은 읽기만 합니다.** 사진 파일은 한 번 읽을 뿐 옮기거나 복사하거나 바꾸지 않고, 파일 이름도 보이지 않습니다. Finder에서 액자에 놓은 사진도 원래 있던 곳에 그대로 남습니다. 액자는 상태 폴더의 `frame.json`에 작은 픽셀 사본을 따로 두어서 안전 모드의 배치 초기화에도 남습니다. ⌘Z로 건 사진을 되돌리고, ‘사진 빼기’를 고르면 원래 그림이 돌아옵니다.
+- 사진 앱에서 바로 끌어 오는 것은 지원하지 않습니다. 먼저 사진을 파일로 내보낸 뒤, 그 파일을 고르거나 끌어다 놓으세요.
+- 0.3.0으로 되돌아가면 원래 액자 그림이 다시 나오고, `frame.json`은 0.4.0을 위해 그대로 남습니다(자세한 내용은 변경 기록에 있습니다).
 
 ## 설치 (한국어)
 
