@@ -459,8 +459,8 @@ Deskteriorは無料で、Appleの公証（notarization）を受けていませ�
 ダウンロードしたファイルを検証するには、両方のファイルをダウンロードしたフォルダでターミナルを開き（通常は`cd ~/Downloads`）、同じリリースの`.sha256`ファイルと照合します。または、このリポジトリのリリースワークフローでビルドされたことを確認します（GitHub CLIを使います。OWNERは、このページのURLにあるアカウント名に置き換えてください）：
 
 ```sh
-shasum -a 256 -c Deskterior-0.3.0.zip.sha256
-gh attestation verify Deskterior-0.3.0.zip --repo OWNER/deskterior
+shasum -a 256 -c Deskterior-0.4.0.zip.sha256
+gh attestation verify Deskterior-0.4.0.zip --repo OWNER/deskterior
 ```
 
 ## 初回起動
@@ -535,7 +535,7 @@ macOS 15.6以降と、Xcode 26用のCommand Line Tools（Swift 6.2、`xcode-sele
 | `make build` | `swift build` |
 | `make test` | テストスイート、CI と同じ実行方法（`scripts/ci-test.sh`） |
 | `make lint` | ファイル安全性のlint（`scripts/check-file-safety.sh`） |
-| `make app` | このMacのプロセッサ用の`build/Deskterior.app`、アドホック署名（`VERSION=0.3.0`でバージョンを指定） |
+| `make app` | このMacのプロセッサ用の`build/Deskterior.app`、アドホック署名（`VERSION=0.4.0`でバージョンを指定） |
 | `make universal` | 同じものを、AppleシリコンとIntelの両対応の1つのアプリとして |
 | `make install` | `make app`のあと、アプリを/Applicationsにコピー |
 | `make run` | サンプルファイルを入れた新しい作業用フォルダで、デスクをウインドウ内で実行 |
