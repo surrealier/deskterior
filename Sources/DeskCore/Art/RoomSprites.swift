@@ -981,12 +981,13 @@ extension RoomArt {
 /// Procedural decor for the margins (`LayoutSolver` decides what fits): shelf, framed print, pegboard,
 /// painting and floor plant. Each takes its solved rect's size.
 public enum DecorArt {
-    /// The decor sprite for a solved placement (string lights depend on the light, so pass `lit`).
-    public static func sprite(_ d: WallDecor, lit: Bool = false) -> SpriteAsset {
+    /// The decor sprite for a solved placement (string lights depend on the light, so pass `lit`). `photo`: the
+    /// picture frame's (Erratum 33), used only by `.frame`.
+    public static func sprite(_ d: WallDecor, lit: Bool = false, photo: PixelBuffer? = nil) -> SpriteAsset {
         switch d.kind {
         case .stringLights: RoomArt.stringLights(d.rect, lit: lit)
         case .shelf: shelf(d.rect.size)
-        case .frame: frame(d.rect.size)
+        case .frame: frame(d.rect.size, photo: photo) // MARK: picture frame (0.4.0)
         case .pegboard: pegboard(d.rect.size)
         case .painting: painting(d.rect.size)
         case .floorPlant: floorPlant(d.rect.size)
@@ -1155,8 +1156,15 @@ public enum DecorArt {
         c.plot(x + 1, y + 2, .green2)
     }
 
-    /// A framed mid-century print (rainbow arches over a sun).
-    public static func frame(_ size: ArtSize) -> SpriteAsset {
+    // MARK: picture frame (0.4.0)
+    /// The photo's window in a framed print of `size` (Erratum 33): inside the 2-px oak frame and a 1-px mat. In the
+    /// 32×40 frame `LayoutSolver` places, (3, 3, 26, 34): `FramePhoto.size`.
+    public static func photoWindow(in size: ArtSize) -> ArtRect { ArtRect(0, 0, size.w, size.h).insetBy(3, 3) }
+
+    /// A framed mid-century print (rainbow arches over a sun), or the user's photo (Erratum 33): a `photo` exactly the
+    /// size of `photoWindow(in:)` fills it, the mat thinned to 1 px (its bottom row stays neutral8); with none, or one of
+    /// any other size, the print is drawn as before.
+    public static func frame(_ size: ArtSize, photo: PixelBuffer? = nil) -> SpriteAsset {
         var c = PixelCanvas(width: size.w, height: size.h)
         c.fill(c.bounds, .oak1)
         c.stroke(c.bounds, .oak0)
@@ -1164,6 +1172,13 @@ public enum DecorArt {
         c.vline(x: 1, y: 1, length: size.h - 2, .oak2)
         let mat = c.bounds.insetBy(2, 2)
         c.fill(mat, .neutral9)
+        // MARK: picture frame (0.4.0)
+        let window = photoWindow(in: size)
+        if let photo, photo.size == window.size {
+            c.blit(photo, at: window.origin)
+            c.hline(x: mat.x, y: mat.maxY - 1, length: mat.w, .neutral8)
+            return SpriteAsset("decor.frame.photo", c, anchor: .zero)
+        }
         let art = mat.insetBy(3, 3)
         // The print is drawn in its own clipped card, so the arches stop at the card's edge.
         c.drawing(at: art.origin, size: art.size) { a in

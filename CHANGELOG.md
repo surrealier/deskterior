@@ -6,6 +6,22 @@ All notable changes to Deskterior are listed here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- **Picture frame.** Hang a photo of your own in the framed print above the wall shelf: right-click the frame ▸
+  Choose Photo…, drag an image from the monitor onto it, pick Hang in Picture Frame from an image's menu, or drop one
+  from Finder onto it (or onto the framed print on another display's wall). It is drawn in the room's 46 colours at
+  26×34 pixels, dims with the room at night and hangs on your other displays' walls too. Your file is only read, never
+  moved, copied or changed: the frame keeps its own small pixel copy in `frame.json` in the state folder, which Safe
+  Mode's Reset Layout and folder switches leave alone. ⌘Z takes a hang back; Remove Photo brings the print back.
+
+### Changed
+
+- The framed print over the wall shelf answers the pointer: a ring, a tooltip and its own menu (Choose Photo…, Remove
+  Photo, Put Away Wall Shelf). Files dropped on it from Finder are never moved into the Desktop folder.
+- The privacy prompts for Downloads, Documents and drives also say that a photo hung from there is only read.
+- Going back to 0.3.0: the framed print comes back; `frame.json` stays for 0.4.0.
+
 ## [0.3.0] - 2026-10-19
 
 ### Added

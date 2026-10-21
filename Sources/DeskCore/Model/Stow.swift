@@ -107,13 +107,14 @@ public enum StowCatalog {
     }
 
     /// Object menus that append "Put Away" centrally: "riser" → `.riserDrawers`, "cabinet", "phone" →
-    /// `.phoneStand`, "plant".
+    /// `.phoneStand`, "plant", and "frame" → `.wallShelf` (Erratum 33).
     public static func stowID(forElement element: String) -> StowID? {
         switch element {
         case "riser": .riserDrawers
         case "cabinet": .cabinet
         case "phone": .phoneStand
         case "plant": .plant
+        case "frame": .wallShelf // MARK: picture frame (0.4.0): the framed print is in the Wall Shelf group (Erratum 30)
         default: nil
         }
     }

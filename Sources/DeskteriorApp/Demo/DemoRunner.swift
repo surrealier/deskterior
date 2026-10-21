@@ -61,7 +61,7 @@ final class DemoRunner {
             switch request {
             case let .menu(spec, _): self?.lastMenu = spec
             case .inventory: self?.appCommands.append("inventory")
-            case let .command(c): self?.appCommands.append(c.demoName)  // MARK: memos (0.3.0): "editNote:N1"…
+            case let .command(c): self?.appCommand(c)  // MARK: memos (0.3.0): "editNote:N1"…; picture frame (0.4.0)
             }
         }
         // MARK: files
@@ -375,8 +375,16 @@ final class DemoRunner {
             pendingConfirm = nil
             pendingSheetName = nil
         }
-        if !session.perform(command, from: .menuItem) { appCommands.append(command.demoName) } // MARK: files: a menu pick
+        if !session.perform(command, from: .menuItem) { appCommand(command) } // MARK: files: a menu pick
         frame()
+    }
+
+    // MARK: picture frame (0.4.0)
+    /// An app command a scene request or a menu pick asked for: recorded for `command`; Hang in Picture Frame also runs,
+    /// through the session's loader as in the app (Choose Photo… opens no panel in a demo; Erratum 33).
+    private func appCommand(_ c: MenuCommand) {
+        appCommands.append(c.demoName)
+        if case let .hangInFrame(key) = c { session.hangPhoto(token: key) }
     }
 
     /// Asks the harness to change the fixture folder and waits for its answer.
@@ -467,6 +475,7 @@ final class DemoRunner {
             if let t = files.lastFinishedAt, now.timeIntervalSince(t) < Self.quietPeriod { return true }
         }
         if !session.dragOut.held.isEmpty { return true }
+        if !session.framePhotos.isIdle { return true } // MARK: picture frame (0.4.0): a photo being read for the frame
         return false
     }
 
@@ -537,6 +546,11 @@ final class DemoRunner {
         if target.hasPrefix("calendar.day:") {
             guard let d = Int(target.dropFirst(13)) else { throw ScriptError(description: "bad day in '\(target)'") }
             guard let r = host.scene.calendarDayRect(d) else { throw ScriptError(description: "no calendar day \(d)") }
+            return center(r)
+        }
+        // MARK: picture frame (0.4.0)
+        if target == "frame" {
+            guard let r = host.scene.pictureFrameRect else { throw ScriptError(description: "the picture frame is not on show") }
             return center(r)
         }
         if target.hasPrefix("card.") {
@@ -699,6 +713,7 @@ final class DemoRunner {
             // MARK: tidy and memos (0.3.0)
             case "stowed", "notes", "dDay", "calendar.marks", "clipLight":
                 check(key, memoValue(key, s), key == "dDay" ? .string(TextLayout.nfc(value.text)) : value)
+            case "framePhoto": check(key, s.framePhoto == nil ? "none" : "hung", value) // MARK: picture frame (0.4.0)
             case let k where k.hasPrefix("out:"):
                 check(key, s.isOut(try stowID(k.dropFirst(4))) ? "out" : "away", value)
             case let k where k.hasPrefix("routed:"):

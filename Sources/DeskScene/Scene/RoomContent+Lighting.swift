@@ -77,8 +77,8 @@ struct LitOverlay: Equatable {
 }
 
 extension RoomContent {
-    /// The room's lamp, wall switch, clock, keyboard, plant and wall calendar, each in its placed object's hit-test
-    /// slot.
+    /// The room's lamp, wall switch, clock, keyboard, plant, wall calendar and picture frame (Erratum 33), each in its
+    /// placed object's hit-test slot.
     func installRoomControls() {
         func placed(_ id: String) -> () -> PlacedElement? {
             { [unowned self] in elements.first { $0.id == id } }
@@ -92,6 +92,8 @@ extension RoomContent {
         install([plant], inSlotOf: "plant")
         // MARK: memos (0.3.0)
         install([CalendarElement(context: context, placed: placed("calendar"))], inSlotOf: "calendar")
+        // MARK: picture frame (0.4.0)
+        install([FrameElement(context: context, placed: placed("frame"))], inSlotOf: "frame")
     }
 
     /// Dark-token hit filtering (`DarkHit`): a token hit (any element's, through `Hit.token`) where the light has

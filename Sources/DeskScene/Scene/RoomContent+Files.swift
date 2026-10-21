@@ -48,6 +48,8 @@ extension RoomContent {
             return .land(.desk(pile: pile, order: order), pilePos: pos)
         case let .accept(location)?:
             return .land(location, pilePos: nil)
+        // MARK: picture frame (0.4.0): never for stand-ins; Finder drops on the frame are taken before (Erratum 33)
+        case .hang?: return .bonk(nil)
         case let .bonk(reason)?:
             return .bonk(reason)
         case nil:

@@ -106,6 +106,11 @@ public enum L10nKey: String, CaseIterable, Sendable {
     case axMemoClipsOne, clipsEmpty, clipsOne, clipsCount, clipsFull
     case memosTitle, tabCalendar, tabNotes, today, dayPlaceholder, notesForDay, newNoteForDay, setAsDDay, dDayTitle
     case dateToggle, noNotes, emptyNote, partitionAway, noteGone, connectToSave
+    // MARK: picture frame (0.4.0): the frame's menu, the token menu's item, undo labels, toasts, the open panel, the
+    // frame's tooltip and VoiceOver (Erratum 33)
+    case choosePhoto, removePhoto, hangInFrame, undoHangPhoto, undoRemovePhoto
+    case toastNotAPhoto, toastOnePhotoAtATime, toastPhotoInCloud, toastPhotoUnreadable, toastFrameNotSaved
+    case panelHangPhoto, panelChoosePhoto, pictureFrame, pictureFrameHelp, axFrameEmpty, axFramePhoto
 
     public var en: String { Self.table[self]?.en ?? rawValue }
     public var ko: String { Self.table[self]?.ko ?? rawValue }
@@ -582,5 +587,27 @@ public enum L10nKey: String, CaseIterable, Sendable {
         .partitionAway: p("The partition is put away.", "파티션을 넣어 뒀어요."),
         .noteGone: p("This note was taken off.", "이 메모지는 떼어졌어요."),
         .connectToSave: p("Connect the Desktop folder to save files.", "파일로 저장하려면 바탕화면 폴더를 연결하세요."),
+        // MARK: picture frame (0.4.0)
+        // Menus (no user text in a title) and undo labels; Remove Photo is both, with one Korean.
+        .choosePhoto: p("Choose Photo…", "사진 선택…"),
+        .removePhoto: p("Remove Photo", "사진 빼기"),
+        .hangInFrame: p("Hang in Picture Frame", "사진 액자에 걸기"),
+        .undoHangPhoto: p("Hang Photo", "사진 걸기"),
+        .undoRemovePhoto: p("Remove Photo", "사진 빼기"),
+        // Toasts.
+        .toastNotAPhoto: p("That isn't a photo.", "사진이 아니에요."),
+        .toastOnePhotoAtATime: p("One photo at a time.", "사진은 한 장만 걸 수 있어요."),
+        .toastPhotoInCloud: p("Download it from iCloud first.", "먼저 iCloud에서 내려받으세요."),
+        .toastPhotoUnreadable: p("That photo can't be read.", "이 사진은 읽을 수 없어요."),
+        .toastFrameNotSaved: p("The photo can't be saved this time.", "이번에는 사진을 저장할 수 없어요."),
+        // The open panel.
+        .panelHangPhoto: p("Hang", "걸기"),
+        .panelChoosePhoto: p("Choose a photo to hang in the picture frame.", "사진 액자에 걸 사진을 고르세요."),
+        // The frame's tooltip, VoiceOver label and value (through `L10n.text`; an exception to Errata 21/23, as
+        // Erratum 31's). The label is decision 4's "Picture Frame"; the value says whether a photo hangs.
+        .pictureFrame: p("Picture Frame", "사진 액자"),
+        .pictureFrameHelp: p("Click to choose a photo · drop one on it", "클릭: 사진 선택 · 사진을 끌어다 놓기"),
+        .axFrameEmpty: p("No photo", "사진 없음"),
+        .axFramePhoto: p("Your photo", "내 사진"),
     ]
 }

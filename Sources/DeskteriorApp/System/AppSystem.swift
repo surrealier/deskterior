@@ -82,6 +82,7 @@ final class AppSystem {
         displays.wallState = { [weak self] in
             guard let self, var room = self.session.host.scene.roomState else { return nil }
             room.stowed = self.session.store.state.stowed
+            room.framePhoto = self.session.store.state.framePhoto?.image // MARK: picture frame (0.4.0)
             return room
         }
         displays.onScreensChanged = { [weak self] in
@@ -93,6 +94,16 @@ final class AppSystem {
         displays.onWallDrop = { [weak self] urls, copy, keys in self?.wallDrop(urls, copy: copy, keys: keys) }
         displays.wallOperation = { [weak self] urls, copy, drag, keys in
             self?.session.dropIn.wallOperation(urls, copy: copy, drag: drag, keys: keys) ?? []
+        }
+        // MARK: picture frame (0.4.0): a wall's framed print takes a photo as the desk's frame does (Erratum 33).
+        displays.wallFrameOperation = { [weak self] urls, keys in
+            self?.session.dropIn.wallFrameOperation(urls, keys: keys) ?? []
+        }
+        displays.onWallFrameDrop = { [weak self] urls in
+            guard let self else { return false }
+            let took = self.session.dropIn.dropOnWallFrame(urls)
+            self.session.host.modelChanged()
+            return took
         }
         displays.onWallMenu = { [weak self] view, p in self?.wallMenu(view, at: p) }
         displays.settingsChanged()
@@ -136,7 +147,8 @@ final class AppSystem {
         guard let view = displays.view else { return }
         accessibility = DeskAccessibility(view: view, store: session.store)
         session.store.observe { [weak self] new, old in
-            guard new.lights != old.lights || new.stowed != old.stowed else { return }
+            // MARK: picture frame (0.4.0): another photo re-renders the walls too.
+            guard new.lights != old.lights || new.stowed != old.stowed || new.framePhoto != old.framePhoto else { return }
             if new.lights != old.lights { self?.settingsModel?.lights = new.lights.mode }
             self?.displays.renderWalls()
         }

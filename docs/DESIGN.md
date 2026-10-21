@@ -796,6 +796,86 @@
       are on the thread's CPU time (`TestSupport.cpuSeconds`, about 10× this Mac's debug times); latch and watcher
       waits allow 600 s and 60 s, and return as soon as their condition holds. Errata 28's 600-s `eventually` is
       superseded.
+33. **The picture frame (0.4.0).** These refine §1.3 (the framed print is no longer decor only), §2.1 (DropResolver,
+    Drop-in), §3.6 Drop-in, §3.7 item 9, §4.8, §4.9, §4.10, §11, §13 and Errata 24, 26, 29, 30 and 31. The user hangs a
+    photo of their own in the framed print above the wall shelf; its file is only read, once.
+    - **The slot.** The existing framed print (`WallDecor.Kind.frame`, 32×40 over the right-wall shelf, on every desk
+      display; missing only where a desktop widget takes its place), and nothing else: no new decor kind, no layout
+      change, one photo for the whole app. It stays in the Wall Shelf group (Erratum 30): its menu ends with Put Away
+      Wall Shelf, and while away it keeps its photo. Other displays' walls (`WallArt`) show the photo in their own
+      framed print; their large painting stays a painting.
+    - **The photo** (`FramePhoto`): 26×34 art px, every pixel an opaque Apollo colour. Hung, the oak frame stays and
+      the mat thins to 1 px (its bottom row stays neutral8); the photo fills `bounds.insetBy(3, 3)`
+      (`DecorArt.frame(_:photo:)`, sprite `decor.frame.photo`). With none, or in a frame of another size, the print is
+      drawn as before, so a room without a photo is unchanged pixel for pixel. It is part of the room's sprites
+      (`RoomState.framePhoto`), so the lit pass dims it with the room at night exactly as `RoomPlan.render` and
+      `WallArt` do on the CPU; the frame has no light of its own.
+    - **Pixelation** (DeskPixels `ImageThumbnail`, `FramePixelator`; app-side, off the main thread, once per hang):
+      ImageIO's thumbnail of the first image with the file's orientation applied, at most 256 px on its longest side.
+      Never decoded at full size: the thumbnail path decodes JPEG, HEIC, PNG and compressed TIFF incrementally, but
+      ImageIO maps the file it reads, so a file over 64 MB is refused by its size before it is opened, and a header
+      over 250 MP before any pixel is decoded ("That photo can't be read."). Then a centred aspect-fill crop to 26:34,
+      an area average, alpha under 0.45 onto the mat's paper (neutral9, kept exactly), and 16 median-cut Apollo
+      colours in OKLab, without dither: §1.2 forbids 1-px checkers on large flat areas such as a photo's sky, and at
+      26 px a 4-px dither period reads as texture, not tone.
+    - **Hanging.** Four ways, each ending in the one non-file action `.hangPhoto(FramePhoto)` (journaled "Hang Photo";
+      Remove Photo is `.removePhoto`, "Remove Photo"): the frame's Choose Photo… (an open panel for one image anywhere;
+      a click on the empty frame opens it too); an image token carried onto the frame (`DropVerdict.hang`: the icon
+      springs back, nothing moves); a token's Hang in Picture Frame (one image or screenshot, not an alias, not an
+      iCloud placeholder, while the wall shelf is out; a token gone since says "That file is gone already."); a Finder
+      drop of one image onto the frame, on the desk or on another display's wall. The reducer stores the pixels only:
+      no read, no file effect, no `.persist`; undo and redo restore them (`LayoutSnapshot.framePhoto`) with no file
+      effect either. A photo hung while a widget covers the desk's frame is kept, shows once it is uncovered, and
+      "Widgets cover part of the desk." says why nothing changed.
+    - **Finder drops on the frame** are taken before the drop-in (`DeskScene.isOverPictureFrame`, `DropInController`;
+      on a wall, `WallArt.frameRect` and `WallController.isOverFrame`) and never become `requestDropIn`. Refining §2.1's
+      "nothing where the drop would bonk" for the frame alone: every file drag over it is answered with a link, else a
+      copy, else a generic drop (never a move), even one it will refuse, so the drop is delivered and the frame can say
+      why; a source that allows only a move is told nothing. On the drop one image is read and hung; several files, a
+      folder, an alias, a document or an iCloud placeholder bonk with "One photo at a time.", "That isn't a photo." or
+      "Download it from iCloud first." (on a wall, the desk shows the toast), and the drop fails, so the source keeps
+      its item. The drop goes where the drag's last answer said (`DropInController.frameRoute`): told the frame's
+      answer, it only reads wherever it is let go; told the desk's, a drop let go over the frame is refused. Frame
+      drops need no connected folder. This refines Erratum 29's "walls answer and take drags the same way": a wall's
+      framed print answers and takes them as the desk's frame does, and a drop anywhere else on a wall still goes to
+      the monitor.
+    - **What is read.** Only the file the user picked in the panel, dropped on the frame, or named by its token (in the
+      mirrored folder, by `DeskState.url(of:)` while connected, its inode checked again). In development modes a path
+      inside the real Desktop is refused first, by its spelling, before any of its metadata is read (§3.7 item 7);
+      then resource values (a refusal never reads contents), then ImageIO's thumbnail. iCloud placeholders are never
+      read; dropped or carried aliases and symbolic links are refused, not followed; an alias picked in the open panel
+      is resolved by the panel, its original being the user's pick. A pick or a drop is the user's intent (§8.3 item 26
+      checks that macOS asks nothing); should macOS ask for Downloads, Documents or a volume anyway, its purpose
+      strings now say a photo hung from there is only read (refining Erratum 24). §11's "The app reads no other
+      protected location" excepts these reads.
+    - **frame.json** (state folder; `StateStore.loadFrame`/`saveFrame`, schema 1, sorted keys, `.bak1`–`.bak3` by age,
+      a corrupt copy kept, never written over when newer or unreadable, as memos.json; `FrameSaver`, armed after the
+      load, saving also with no folder connected, flushed on quit and sleep) holds the pixels as 34 rows of 26
+      palette-index characters, never the file, its name or its path. This refines §3.7 item 9: the photo's 884-pixel
+      rendering is persisted derived art, like the layout, not a file's contents or a thumbnail of record. Reset
+      Layout, folder switches and a downgrade leave it alone; 0.3.0 ignores it and shows the print. A newer or
+      unreadable frame.json: "The photo can't be saved this time." ("이번에는 사진을 저장할 수 없어요.").
+    - **The frame answers** (superseding Erratum 26 for `decor.frame.*` only, now the `frame` element, `FrameElement`):
+      the silhouette ring; the tooltip "Picture Frame" ("사진 액자"; while empty, "Click to choose a photo · drop one on
+      it"); VoiceOver "Picture Frame" ("사진 액자"), valued "No photo" / "Your photo" ("사진 없음" / "내 사진"), with
+      Choose Photo… and Remove Photo as actions (and Hang in Picture Frame on an image token); its menu Choose Photo…,
+      Remove Photo (while one is hung), Put Away Wall Shelf. No file name ever shows. In the dark the photo only dims
+      with the room. Every other `decor.*` placement stays the bare wall's; a wall's framed print takes drops only.
+    - **Words** (through `L10n`, Korean included; an exception to Errata 21/23 like Erratum 31's): Choose Photo… (사진
+      선택…), Remove Photo (사진 빼기), Hang in Picture Frame (사진 액자에 걸기), undo Hang Photo (사진 걸기) and Remove
+      Photo; toasts "That isn't a photo." (사진이 아니에요.), "One photo at a time." (사진은 한 장만 걸 수 있어요.),
+      "Download it from iCloud first." (먼저 iCloud에서 내려받으세요.), "That photo can't be read." (이 사진은 읽을 수
+      없어요.), "The photo can't be saved this time."; the panel's Hang (걸기) and "Choose a photo to hang in the picture
+      frame." (사진 액자에 걸 사진을 고르세요.). All fit the toast band.
+    - **Lint.** No allowlist changes: frame.json is written only by `StateStore`; the frame code mints no intent, names
+      no gesture and builds no file request.
+    - **Demo.** `16-picture-frame`: the print's tooltip and a click asking for Choose Photo…; `IMG_0001.png` carried onto
+      the frame (hung; its icon back in its cell, same inode, no file operation), by day and on another display's wall;
+      a text file carried there bonks; Hang in Picture Frame from `IMG_0002.png`'s menu onto the emptied frame; a Finder
+      drop of a photo from the drop source onto the emptied frame (hung, still in the source, not imported) and of a
+      text file (bonk, still there); night on the desk and the wall; Remove Photo and ⌘Z; Put Away Wall Shelf from the
+      frame's menu and Bring Back. New target `frame`, expectation `framePhoto`, action `removePhoto`, fs step
+      `sourceImage`, commands `choosePhoto` and `hangInFrame`.
 
 ---
 
@@ -1886,6 +1966,8 @@ Exit codes: 0 pass, 1 expectation failed, 2 script error, 64 guard refusal.
 23. VoiceOver reads notes, the pad, the calendar and the Arrange Desk toggles (Errata 30, 31).
 24. Put Away every object, Bring Everything Back, at two display sizes (Erratum 30).
 25. Lamp Only with the lamp wash, then the clip light (Erratum 31).
+26. Picture frame: Choose Photo… from ~/Pictures, Downloads, Documents, a USB stick and a network share; a Finder drop from each of those onto the desk's frame and onto a second display's framed print; and a carried Desktop photo: each hangs it with no privacy prompt and `ls -li` of the source unchanged; a PDF, a folder and two photos dropped on the desk's frame bonk with their toast as they are let go, and dropped on a wall's framed print are refused with the toast on the desk (no bonk on the wall), the source keeping each item (the drag showed the alias cursor either way); an iCloud placeholder is refused unread; an iPhone portrait HEIC hangs upright (Erratum 33).
+27. The framed photo after a relaunch, Reset Layout and a folder switch; on a second display's wall by day and at night; with the wall shelf put away and back; with a desktop widget over the frame (hung, the widgets toast, shown once uncovered); VoiceOver's "Picture Frame" with its value, Choose Photo… and Remove Photo (Erratum 33).
 
 ---
 
@@ -2124,6 +2206,11 @@ No other usage-description keys. The app reads no other protected location (the 
   cannot read that location and drops the token, so the file comes back as a new one on the monitor; if no token
   can be read at all, 0.2.0 falls back to a backup. All three are additive: the schema stays 1.
 - Notes, day pages and the D-Day are not in `desk.json`: they live in `memos.json` beside it (schema 1, Erratum 31).
+- The picture frame's photo is not in `desk.json` either: `frame.json` beside it (schema 1, Erratum 33),
+  `{ "schema": 1, "app": "0.4.0", "savedAt": "…", "photo": { "size": [26, 34], "rows": ["…", …] } }`: 34 rows of 26
+  characters, top row first, each one Apollo index (`0`–`9`, `a`–`z`, `A`–`J` for 0–45); no photo, no `photo` key. Read
+  leniently (a malformed photo is none); a newer schema is never written over; `.bak1`–`.bak3` by age; Reset Layout,
+  folder switches and a downgrade leave it alone (0.3.0 shows the print).
 
 ---
 

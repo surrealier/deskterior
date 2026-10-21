@@ -115,7 +115,8 @@ private extension StateStore.Failure {
     nonisolated var stopsMemoSaves: Bool {
         switch self {
         case .newerMemos, .memosUnreadable: true
-        case .newerSchema, .writeFailed, .memosTooLarge: false
+        // MARK: picture frame (0.4.0): frame.json's refusals stop only FrameSaver (Erratum 33)
+        case .newerSchema, .writeFailed, .memosTooLarge, .newerFrame, .frameUnreadable: false
         }
     }
 }

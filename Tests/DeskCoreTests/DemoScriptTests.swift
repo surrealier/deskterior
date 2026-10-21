@@ -73,6 +73,27 @@ struct DemoScriptTests {
         if case let .lights(l)? = DemoStep.action(named: "lights:lamp", in: s) { #expect(l.mode == .lampOnly) }
         #expect(DemoStep.action(named: "lights:disco", in: s) == nil)
         #expect(DemoStep.action(named: "explode", in: s) == nil)
+        // MARK: picture frame (0.4.0)
+        if case .removePhoto? = DemoStep.action(named: "removePhoto", in: s) {} else { Issue.record("removePhoto") }
+        #expect(DemoStep.action(named: "removePhoto:x", in: s) == nil && DemoStep.action(named: "hangPhoto", in: s) == nil)
+    }
+
+    // MARK: picture frame (0.4.0)
+
+    @Test("A sourceImage step puts a .png in the drop source folder (the picture frame, Erratum 33)")
+    func sourceImage() throws {
+        let decoder = JSONDecoder()
+        let fs = try decoder.decode(DemoFS.self, from: Data(#"{"sourceImage": "harbour.png"}"#.utf8))
+        #expect(fs == .sourceImage("harbour.png") && fs.parts == ["sourceImage", "harbour.png"] && fs.isValid)
+        #expect(try decoder.decode(DemoFS.self, from: JSONEncoder().encode(fs)) == fs)
+        #expect(String(decoding: try JSONEncoder().encode(fs), as: UTF8.self) == #"{"sourceImage":"harbour.png"}"#)
+        #expect(try decoder.decode(DemoFS.self, from: Data(#"{"sourceImage": "Harbour.PNG"}"#.utf8)) == .sourceImage("Harbour.PNG"))
+        #expect(throws: (any Error).self) { try decoder.decode(DemoFS.self, from: Data(#"{"sourceImage": "harbour.txt"}"#.utf8)) }
+        #expect(throws: (any Error).self) { try decoder.decode(DemoFS.self, from: Data(#"{"sourceImage": "harbour"}"#.utf8)) }
+        #expect(throws: (any Error).self) { try decoder.decode(DemoFS.self, from: Data(#"{"sourceImage": 3}"#.utf8)) }
+        #expect(!DemoFS.sourceImage("../harbour.png").isValid && !DemoFS.sourceImage("a\tb.png").isValid)
+        let step = try decode(#"{ "name": "x", "steps": [ { "fs": { "sourceImage": "harbour.png" } } ] }"#)
+        #expect(step.steps.count == 1)
     }
 
     @Test("Location patterns")

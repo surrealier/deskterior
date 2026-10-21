@@ -223,6 +223,9 @@ public enum Reducer {
             return reduceMemos(&s, a, env)
         case .requestSaveMemoFile:
             return reduceFiles(&s, a, env)
+        // MARK: picture frame (0.4.0)
+        case .hangPhoto, .removePhoto:
+            return reduceFrame(&s, a)
         }
     }
 

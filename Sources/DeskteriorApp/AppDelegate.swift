@@ -3,6 +3,7 @@ import DeskCore
 import DeskFiles
 import DeskScene
 import Metal
+import UniformTypeIdentifiers
 
 /// The app shell: desk (or `--windowed`) window, the `DeskSession` (store, mirror, effects, scene sync), status
 /// item, context menus, Inventory, Memos and Arrange Desk, system observers, and the dev flags that act after launch
@@ -206,6 +207,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             showMemos(target)
         case .arrangeDesk:
             showArrangeDesk()
+        // MARK: picture frame (0.4.0)
+        case .choosePhoto:
+            choosePhoto()
+        case let .hangInFrame(key):
+            session?.hangPhoto(token: key)
         default:
             break
         }
@@ -344,6 +350,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         arrange?.show()
     }
 
+    // MARK: picture frame (0.4.0)
+
+    /// Choose Photo… (the frame's menu; a click on the empty frame): an open panel for one image, anywhere. The pick is
+    /// the user's intent, so the photo is read once, off the main thread, and hung (Erratum 33); only its pixels stay.
+    /// An alias picked in the panel is resolved by the panel (its original is the user's pick); aliases dropped or
+    /// carried onto the frame are refused, not followed.
+    private func choosePhoto() {
+        guard let session else { return }
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = false
+        panel.resolvesAliases = true   // AppKit's default, said out loud: the pick is the alias's original
+        panel.allowedContentTypes = [.image]
+        panel.prompt = tr(.panelHangPhoto)
+        panel.message = tr(.panelChoosePhoto)
+        // A development run opens it on its scratch folder (the loader refuses the real Desktop there anyway).
+        if options.mode != .desk { panel.directoryURL = session.configuration.folder }
+        NSApp.activate()
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        session.hangPhoto(contentsOf: url)
+    }
+
     /// An accessory app shows no menu bar (DESIGN Errata 1); this hidden main menu only routes key equivalents.
     private func installKeyRoutingMenu() {
         let main = NSMenu()
@@ -410,6 +439,9 @@ final class DeskSession {
     // MARK: harden
     /// Leftovers of an interrupted copy in the mirrored folder (Settings lists them; Errata 25).
     let leftovers: LeftoverCopies
+    // MARK: picture frame (0.4.0)
+    /// Reads photos for the picture frame (Erratum 33).
+    let framePhotos: FramePhotoLoader
 
     /// `fileRoots`: scratch folders a demo may drop from (outside desk mode the operator is confined to the mirrored
     /// folder, the state folder and these).
@@ -436,7 +468,16 @@ final class DeskSession {
                 }
             }
         }
-        store = Store(saver: saver, memoSaver: memoSaver)
+        // MARK: picture frame (0.4.0): frame.json beside memos.json, armed by the mirror once it was read (Erratum 33);
+        // saves stopped mid-session (the file turned newer or unreadable) are toasted the same way.
+        let frameSaver = stateStore.map {
+            FrameSaver(store: $0, delay: configuration.persistDelay, maxWait: configuration.persistMaxWait) { [weak host] in
+                DispatchQueue.main.async {
+                    MainActor.assumeIsolated { host.map(Self.frameNotSaved) }
+                }
+            }
+        }
+        store = Store(saver: saver, memoSaver: memoSaver, frameSaver: frameSaver)
         store.seed = seed ?? options.seed ?? 0
         if options.icons == .live {
             let cache = try? IconCache(directory: configuration.iconCacheDirectory, mirrored: configuration.folder)
@@ -452,6 +493,8 @@ final class DeskSession {
         case .windowed: .windowed
         case .headless: options.demo == nil ? .headless : .demo
         }
+        // MARK: picture frame (0.4.0): outside desk mode the real Desktop is refused, by its spelling (§3.7 item 7).
+        framePhotos = FramePhotoLoader(realDesktop: mode.requiresSandboxFolder ? DesktopLocator.defaultDesktopURL() : nil)
         let scope = FileActionScope(mode: mode, folder: configuration.folder,
                                     stateDirectory: configuration.stateDirectory, extraRoots: fileRoots)
         do {
@@ -462,6 +505,7 @@ final class DeskSession {
         }
         effects.files = files
         dropIn = DropInController(host: host, store: store, effects: effects)
+        dropIn.photoRefusal = { [framePhotos] in framePhotos.refusal($0) } // MARK: picture frame (0.4.0)
         dragOut = DragOutController(host: host, store: store, effects: effects)
         dragOut.alwaysCopy = configuration.settings.dragOutMode == .alwaysCopy  // "Drag-out: Always copy" (§3.6)
         mirror = MirrorController(configuration: configuration, store: store, stateStore: stateStore)
@@ -471,6 +515,8 @@ final class DeskSession {
             self?.store.dispatch(.accessGranted)
             self?.mirror.connect()
         }
+        // MARK: picture frame (0.4.0): a photo dropped on the frame is read by this session's loader.
+        dropIn.hangPhoto = { [weak self] in self?.hangPhoto(contentsOf: $0) }
         store.effects = { [weak self] in self?.effects.run($0) }
         // MARK: files
         files?.dispatch = { [weak self] in self?.store.dispatch($0) }
@@ -501,6 +547,8 @@ final class DeskSession {
         mirror.onSnapshot = { [weak self] count in if count == 1 { self?.leftovers.look() } }
         // MARK: memos (0.3.0): memos.json found newer or unreadable: the notes typed this time are not saved.
         mirror.onMemosNotSaved = { [weak self] in self.map { Self.memosNotSaved($0.host) } }
+        // MARK: picture frame (0.4.0): frame.json found newer or unreadable: the photo hung this time is not saved.
+        mirror.onFrameNotSaved = { [weak self] in self.map { Self.frameNotSaved($0.host) } }
         sync.start()
         mirror.start()
         host.scene.lightsMode = store.state.lights.mode
@@ -568,6 +616,45 @@ final class DeskSession {
     /// when it is newer or unreadable).
     static func memosNotSaved(_ host: SceneHost) {
         host.scene.toast(.memosNotSaved)
+        host.modelChanged()
+    }
+
+    // MARK: picture frame (0.4.0)
+
+    /// Hangs the photo at `url` in the picture frame (Erratum 33): read once off the main thread (`FramePhotoLoader`),
+    /// then one journaled `.hangPhoto`; a refusal is a toast. The file is never moved, copied or kept. A photo hung
+    /// while a desktop widget covers the desk's frame is kept (it shows once the frame is uncovered) and the toast says
+    /// widgets cover the desk.
+    func hangPhoto(contentsOf url: URL, inode: UInt64? = nil) {
+        framePhotos.load(url, inode: inode) { [weak self] outcome in
+            guard let self else { return }
+            switch outcome {
+            case let .photo(photo):
+                store.dispatch(.hangPhoto(photo))
+                if store.state.isOut(.wallShelf), host.scene.pictureFrameRect == nil { Self.toast(host, .widgetsOverlap) }
+            case let .refused(key):
+                Self.toast(host, key)
+            }
+        }
+    }
+
+    /// Hang in Picture Frame, or a token carried onto the frame: the token's file in the mirrored folder, while connected
+    /// (`DeskState.url(of:)`), still the same inode. A token gone since its menu opened says so.
+    func hangPhoto(token key: TokenKey) {
+        let s = store.state
+        let live = s.currentKey(for: key)
+        guard let meta = s.tokens.meta(of: live) else { return Self.toast(host, .fileGone) }
+        if let why = FramePhoto.refusal(for: meta) { return Self.toast(host, why) }
+        guard let url = s.url(of: live) else { return Self.toast(host, .filesUnavailable) }
+        hangPhoto(contentsOf: url, inode: live.inode)
+    }
+
+    /// The picture frame's photo is not saved this session (`frame.json` newer or unreadable).
+    static func frameNotSaved(_ host: SceneHost) { toast(host, .frameNotSaved) }
+
+    /// Shows `key`'s toast on the desk now (the frame's answers come back outside any scene gesture).
+    private static func toast(_ host: SceneHost, _ key: ToastKey) {
+        host.scene.toast(key)
         host.modelChanged()
     }
 

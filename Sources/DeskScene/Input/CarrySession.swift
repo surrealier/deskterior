@@ -7,8 +7,9 @@ import SpriteKit
 /// landing cell. Hovering a page dot for 0.6 s turns to that page (spring-loading; a scroll pages too). On
 /// release: accept → one `.move` action (the reducer swaps, or pours several tokens into the nearest free cells,
 /// which print in 40 ms apart); bonk → "BONK", a 1-px shake and a spring back over 6 frames, the lift settling
-/// as it lands; no verdict → spring back. Esc springs back too. The model is not touched until the drop, so an
-/// interrupted carry leaves every token where it was.
+/// as it lands; hang (the picture frame, Erratum 33) → the app is asked to read the photo, and a spring back; no
+/// verdict → spring back. Esc springs back too. The model is not touched until the drop, so an interrupted carry
+/// leaves every token where it was.
 final class CarrySession: DragController {
     enum Phase: Equatable {
         case carrying
@@ -97,6 +98,10 @@ final class CarrySession: DragController {
             finish()
             // Several tokens pour in one after another (40 ms apart).
             if keys.count > 1 { context.screen?.playPrintIn(keys) }
+        // MARK: picture frame (0.4.0): the app reads the photo; the token goes home, its file untouched.
+        case let .hang(key)?:
+            context.request(.command(.hangInFrame(key)))
+            springBack(from: lead)
         case let .bonk(reason)?:
             context.fx.pop(.bonk, at: ArtPoint(Int(p.x), Int(p.y) - 4))
             context.shake(frames: 2)

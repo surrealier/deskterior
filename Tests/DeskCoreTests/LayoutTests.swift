@@ -151,6 +151,20 @@ struct LayoutTests {
         }
     }
 
+    // MARK: picture frame (0.4.0)
+
+    @Test("Every display and Dock gets exactly one framed print, 32×40: the photo's slot (Erratum 33)",
+          arguments: pixelGridDesignTable, PixelGridDock.allCases)
+    func frameSlot(_ row: PixelGridTableRow, _ dock: PixelGridDock) {
+        let layout = LayoutSolver.solve(display: row.display(dock: dock))
+        let frames = layout.decor(.frame)
+        #expect(frames.count == 1, "\(row.name) \(dock): \(frames.count) frames")
+        for f in frames {
+            #expect(f.rect.size == ArtSize(32, 40), "\(row.name) \(dock): \(f.rect)")
+            #expect(DecorArt.photoWindow(in: f.rect.size).size == FramePhoto.size)
+        }
+    }
+
     @Test("This Mac (Dock hidden): the margins fill with decor")
     func thisMacDecor() {
         let layout = LayoutSolver.solve(display: pixelGridDesignTable[0].display(dock: .hidden))

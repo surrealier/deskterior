@@ -66,6 +66,12 @@ extension ToastKey {
         case .undidSaveTextFile: "The text file went to the Trash."
         case .savedNoUndo: "Saved, but it can't be undone."
         case .memosNotSaved: "Memos can't be saved this time."
+        // MARK: picture frame (0.4.0)
+        case .notAPhoto: "That isn't a photo."
+        case .onePhotoAtATime: "One photo at a time."
+        case .photoInCloud: "Download it from iCloud first."
+        case .photoUnreadable: "That photo can't be read."
+        case .frameNotSaved: "The photo can't be saved this time."
         }
     }
 

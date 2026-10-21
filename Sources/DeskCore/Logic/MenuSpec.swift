@@ -161,6 +161,13 @@ public enum MenuCommand: Sendable, Equatable {
     case editNote(NoteID)
     case openMemos(MemoTarget)
     case arrangeDesk
+    // MARK: picture frame (0.4.0)
+    /// The frame's Choose Photo… (also a click on the empty frame): an app command, the open panel (Erratum 33).
+    case choosePhoto
+    /// Hang in Picture Frame (a token's menu; a token carried onto the frame): an app command, the app reads the file.
+    case hangInFrame(TokenKey)
+    /// Remove Photo.
+    case removePhoto
 
     /// The model action this command dispatches; nil for app commands.
     public func action(_ s: DeskState) -> DeskAction? {
@@ -211,11 +218,15 @@ public enum MenuCommand: Sendable, Equatable {
         case .clearDDay: .setDDay(nil)
         case let .saveMemoFile(ref): .requestSaveMemoFile(ref)
         case .newNote, .editNote, .openMemos, .arrangeDesk: nil
+        // MARK: picture frame (0.4.0)
+        case .choosePhoto, .hangInFrame: nil
+        case .removePhoto: .removePhoto
         }
     }
 
     /// The command as demo scripts and their expectations name it: the memo commands in a short form
-    /// ("editNote:N1", "openMemos:day:2026-10-30"), every other as Swift prints it.
+    /// ("editNote:N1", "openMemos:day:2026-10-30"), the picture frame's without a key ("choosePhoto", "hangInFrame";
+    /// Erratum 33), every other as Swift prints it.
     public var demoName: String {
         switch self {
         case .newNote: "newNote"
@@ -226,6 +237,9 @@ public enum MenuCommand: Sendable, Equatable {
         case .openMemos(.notes): "openMemos:notes"
         case .openMemos(.dDay): "openMemos:dDay"
         case .arrangeDesk: "arrangeDesk"
+        // MARK: picture frame (0.4.0): no key (inodes differ per run); Remove Photo prints as Swift does.
+        case .choosePhoto: "choosePhoto"
+        case .hangInFrame: "hangInFrame"
         default: "\(self)"
         }
     }
@@ -256,8 +270,8 @@ extension MenuSpec {
     /// Every milestone has landed: nothing waits.
     public static let pending: Set<String> = []
 
-    /// Right-click on tokens (the selection): open, look, reveal, copy, move to another page or a hiding place
-    /// (not a put-away one), trash.
+    /// Right-click on tokens (the selection): open, look, reveal, copy, hang in the picture frame (one picture while the
+    /// frame is out; Erratum 33), move to another page or a hiding place (not a put-away one), trash.
     public static func token(_ keys: [TokenKey], _ s: DeskState) -> MenuSpec {
         let live = keys.filter { s.tokens.contains($0) }
         let any = !live.isEmpty
@@ -280,16 +294,19 @@ extension MenuSpec {
                                    enabled: any && fits && !here, checked: here))
         }
         let name = one ? s.tokens.meta(of: live[0])?.displayName : nil
-        return MenuSpec([
-            MenuItem("open", "Open", .open(live), enabled: any),
-            MenuItem("quickLook", name.map { "Quick Look “\($0)”" } ?? "Quick Look", .quickLook(live), enabled: any),
-            MenuItem("reveal", "Show in Finder", .reveal(live), enabled: any),
-            MenuItem("copy", "Copy", .copy(live), enabled: any),
-            .separator,
-            MenuItem("moveTo", "Move to", submenu: moveTo, enabled: any),
-            .separator,
-            MenuItem("trash", "Move to Trash", .moveToTrash(live), enabled: any && !pending.contains("trash")),
-        ])
+        let open = MenuItem("open", "Open", .open(live), enabled: any)
+        let quickLook = MenuItem("quickLook", name.map { "Quick Look “\($0)”" } ?? "Quick Look", .quickLook(live),
+                                 enabled: any)
+        let reveal = MenuItem("reveal", "Show in Finder", .reveal(live), enabled: any)
+        let copy = MenuItem("copy", "Copy", .copy(live), enabled: any)
+        // MARK: picture frame (0.4.0): one picture (not an alias, not an iCloud placeholder) while the frame is out.
+        var hang: [MenuItem] = []
+        if one, let meta = s.tokens.meta(of: live[0]), FramePhoto.refusal(for: meta) == nil, s.isOut(.wallShelf) {
+            hang = [MenuItem("hangInFrame", "Hang in Picture Frame", .hangInFrame(live[0]), enabled: s.access == .connected)]
+        }
+        let move = MenuItem("moveTo", "Move to", submenu: moveTo, enabled: any)
+        let trash = MenuItem("trash", "Move to Trash", .moveToTrash(live), enabled: any && !pending.contains("trash"))
+        return MenuSpec([open, quickLook, reveal, copy] + hang + [.separator, move, .separator, trash])
     }
 
     /// "Move to ▸ HDMI n" for tokens on the screen: every page in use and a new one after them. A page is offered

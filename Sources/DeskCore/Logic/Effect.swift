@@ -169,4 +169,10 @@ public enum ToastKey: String, Sendable, CaseIterable {
     /// `memos.json` may not be written this session (a newer Deskterior's, or unreadable), so memo changes are not
     /// saved: shown by the app, never by the reducer.
     case memosNotSaved
+    // MARK: picture frame (0.4.0)
+    /// The picture frame (Erratum 33): what was carried, dropped or picked is not a photo (a document, a folder, an
+    /// alias); more than one file was dropped on it; the photo is an iCloud placeholder (reading would download it); the
+    /// photo could not be read (or is too large to read); `frame.json` may not be written this session (shown by the
+    /// app, never by the reducer).
+    case notAPhoto, onePhotoAtATime, photoInCloud, photoUnreadable, frameNotSaved
 }

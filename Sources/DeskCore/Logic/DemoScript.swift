@@ -171,11 +171,19 @@ public enum DemoFS: Codable, Sendable, Equatable {
     /// `{"sourceApp": "Calculator.app"}`: a copy of that app of `/System/Applications` (ditto) in the drop source
     /// folder, so a drop never takes an app from where it is installed.
     case sourceApp(String)
+    // MARK: picture frame (0.4.0)
+    /// `{"sourceImage": "harbour.png"}`: a photo (a copy of the fixture's `IMG_0001.png`) in the drop source folder, so a
+    /// Finder drop onto the picture frame comes from outside the desk folder (Erratum 33).
+    case sourceImage(String)
     /// `{"ls": "desk" | "source" | "trash"}`: the harness prints `ls -li` of the fixture, the drop source folder or
     /// the FakeTrash into the demo log.
     case list(String)
 
-    private enum Key: String, CodingKey { case touch, newFolder = "mkdir", mv, rm, source, sourceDir, sourceApp, ls }
+    private enum Key: String, CodingKey {
+        case touch, newFolder = "mkdir", mv, rm, source, sourceDir, sourceApp, ls
+        // MARK: picture frame (0.4.0)
+        case sourceImage
+    }
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: Key.self)
@@ -194,6 +202,14 @@ public enum DemoFS: Codable, Sendable, Equatable {
                 throw DecodingError.dataCorruptedError(forKey: .sourceApp, in: c, debugDescription: "sourceApp takes an app's name")
             }
             self = .sourceApp(name)
+        // MARK: picture frame (0.4.0)
+        case .sourceImage:
+            let name = try c.decode(String.self, forKey: .sourceImage)
+            guard (name as NSString).pathExtension.lowercased() == "png" else {
+                throw DecodingError.dataCorruptedError(forKey: .sourceImage, in: c,
+                                                       debugDescription: "sourceImage takes a .png name")
+            }
+            self = .sourceImage(name)
         case .ls:
             let what = try c.decode(String.self, forKey: .ls)
             guard ["desk", "source", "trash"].contains(what) else {
@@ -219,6 +235,7 @@ public enum DemoFS: Codable, Sendable, Equatable {
         case let .sourceFile(n): try c.encode(n, forKey: .source)
         case let .sourceFolder(n): try c.encode(n, forKey: .sourceDir)
         case let .sourceApp(n): try c.encode(n, forKey: .sourceApp)
+        case let .sourceImage(n): try c.encode(n, forKey: .sourceImage) // MARK: picture frame (0.4.0)
         case let .list(what): try c.encode(what, forKey: .ls)
         }
     }
@@ -233,6 +250,7 @@ public enum DemoFS: Codable, Sendable, Equatable {
         case let .sourceFile(n): ["source", n]
         case let .sourceFolder(n): ["sourceDir", n]
         case let .sourceApp(n): ["sourceApp", n]
+        case let .sourceImage(n): ["sourceImage", n] // MARK: picture frame (0.4.0)
         case let .list(what): ["ls", what]
         }
     }
@@ -421,6 +439,9 @@ public enum DemoStep: Codable, Sendable, Equatable {
     /// `noteText:<id>:<text>` and `dayMemo:<YYYY-MM-DD>:<text>` (editing session 0), `noteDay:<id>:<day|none>`,
     /// `dDay:<day>:<title>`, `clearDDay`, `tearOff:<day>` and `removeNote:<id>`. Text runs to the end of the name, so
     /// it may hold colons and newlines.
+    ///
+    /// The picture frame (0.4.0): `removePhoto`. (Hanging needs the app's loader, so demos hang through the scene, a
+    /// menu or a `dropIn`; Erratum 33.)
     public static func action(named name: String, in s: DeskState) -> DeskAction? {
         let parts = name.split(separator: ":", maxSplits: 1).map(String.init)
         if let memo = memoAction(parts[0], parts.count > 1 ? parts[1] : nil, in: s) { return memo }
@@ -441,6 +462,7 @@ public enum DemoStep: Codable, Sendable, Equatable {
         case let ("cleanUp", k?): return ScreenGrid.SortKey(rawValue: k).map { .cleanUp($0) }
         case let ("lights", m?):
             return LightsMode(rawValue: m).map { .lights(LightsState(mode: $0, room: s.lights.room, lamp: s.lights.lamp)) }
+        case ("removePhoto", nil): return .removePhoto // MARK: picture frame (0.4.0)
         default: return nil
         }
     }

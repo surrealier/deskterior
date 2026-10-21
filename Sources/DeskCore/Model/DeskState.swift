@@ -463,6 +463,10 @@ public struct DeskState: Sendable, Equatable {
     // MARK: memos (0.3.0)
     /// Sticky notes, day pages and the D-Day: saved to `memos.json`, not `desk.json` (Erratum 31).
     public var memos = MemoBook()
+    // MARK: picture frame (0.4.0)
+    /// The photo hung in the picture frame (Erratum 33): global, saved to `frame.json` (not `desk.json`), element state
+    /// (`adoptLayout` keeps it); nil shows the print.
+    public var framePhoto: FramePhoto?
 
     public var access: DesktopAccess = .notConnected
     /// Placement hints registered by our own operations (name → location, 10 s TTL).

@@ -1,7 +1,7 @@
 /* Desktop folder access prompt (docs/DESIGN.md §11). */
 "NSDesktopFolderUsageDescription" = "Deskterior shows the files on your Desktop as objects on a pixel-art desk. It only reads the folder; files are moved or trashed only when you explicitly ask.";
 /* Drop-in from these places (Deskterior's own drop-in; docs/DESIGN.md Errata 24). */
-"NSDownloadsFolderUsageDescription" = "Files you drop onto the desk from your Downloads folder are moved into the folder the desk shows (or copied, with Option). Deskterior does nothing else there.";
-"NSDocumentsFolderUsageDescription" = "Files you drop onto the desk from your Documents folder are moved into the folder the desk shows (or copied, with Option). Deskterior does nothing else there.";
-"NSRemovableVolumesUsageDescription" = "Files you drop onto the desk from a removable drive are copied into the folder the desk shows. Deskterior does nothing else on the drive.";
-"NSNetworkVolumesUsageDescription" = "Files you drop onto the desk from a network volume are copied into the folder the desk shows. Deskterior does nothing else on the volume.";
+"NSDownloadsFolderUsageDescription" = "Files you drop onto the desk from your Downloads folder are moved into the folder the desk shows (or copied, with Option). A photo you hang in the picture frame from there is only read. Deskterior does nothing else there.";
+"NSDocumentsFolderUsageDescription" = "Files you drop onto the desk from your Documents folder are moved into the folder the desk shows (or copied, with Option). A photo you hang in the picture frame from there is only read. Deskterior does nothing else there.";
+"NSRemovableVolumesUsageDescription" = "Files you drop onto the desk from a removable drive are copied into the folder the desk shows. A photo you hang in the picture frame from it is only read. Deskterior does nothing else on the drive.";
+"NSNetworkVolumesUsageDescription" = "Files you drop onto the desk from a network volume are copied into the folder the desk shows. A photo you hang in the picture frame from it is only read. Deskterior does nothing else on the volume.";

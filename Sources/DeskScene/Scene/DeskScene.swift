@@ -172,7 +172,7 @@ public final class DeskScene: SKScene {
     /// The room state for the clock, the lights setting and (when known) the model's lamps, phone and drawers;
     /// the monitor glows while its screen is lit. (The chair follows the model once it rolls, M6.) What is put away,
     /// the clip light and the memos the room draws come from the model too (Errata 30, 31): the phone's glow goes
-    /// with the phone stand.
+    /// with the phone stand; and the photo in the picture frame (Erratum 33).
     private func roomState(for s: DeskState?) -> RoomState {
         var r = RoomState(time: clock.now(), lightsMode: lightsMode)
         guard let s else { return r }
@@ -188,6 +188,7 @@ public final class DeskScene: SKScene {
         r.lights.partitionOut = s.isOut(.partition)
         r.lights.clipLightOn = s.clipLightOn && s.isOut(.clipLight)
         Self.mapMemos(s, into: &r)
+        r.framePhoto = s.framePhoto?.image // MARK: picture frame (0.4.0)
         return r
     }
 

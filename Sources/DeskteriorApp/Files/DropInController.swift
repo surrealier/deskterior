@@ -16,11 +16,20 @@ import UniformTypeIdentifiers
 /// alias (Finder's "put a shortcut to it there"; not one in a Trash or on a disk image, `staysInstalled`) and
 /// anything else is moved in (same volume, `RENAME_EXCL`, " 2" on a clash) or copied (another volume); ⌥ copies
 /// everything, ⌘ moves everything (apps too), ⌘⌥ makes an alias of everything. Walls answer and take drags the same
-/// way. The demo runner's `dropIn` step comes through `drop` too.
+/// way. The demo runner's `dropIn` step comes through `drop` too. Over the picture frame (the desk's, or another
+/// display's wall's) a drag is answered as for an alias, even one it will refuse, and its drop only reads one photo or
+/// bonks with why; the drop goes where the drag's last answer said (Erratum 33).
 final class DropInController {
     let host: SceneHost
     unowned let store: Store
     unowned let effects: EffectRunner
+    // MARK: picture frame (0.4.0)
+    /// Hangs a photo dropped on the picture frame (the session's loader).
+    var hangPhoto: ((URL) -> Void)?
+    /// Why a file dropped on the frame may not hang (the session's loader, with its real-Desktop guard; unguarded here).
+    var photoRefusal: (URL) -> ToastKey? = { FramePhotoLoader.refusal($0, realDesktop: nil) }
+    /// Whether the last answer of drag `drag` was the picture frame's (`dragged`), for its drop.
+    private var frameDrag: (drag: Int, frame: Bool)?
 
     init(host: SceneHost, store: Store, effects: EffectRunner) {
         self.host = host
@@ -48,6 +57,14 @@ final class DropInController {
     /// are read once per drag. `keys`: the keys held and the operations the source allows (none given: ⌥ when
     /// `copy`, else no key, and every operation allowed).
     func dragged(_ urls: [URL], at p: SIMD2<Float>, copy: Bool, drag: Int, keys: DropKeys? = nil) -> NSDragOperation {
+        // MARK: picture frame (0.4.0): over the frame a drop only reads one photo, whatever the folder (Erratum 33).
+        let overFrame = host.scene.isOverPictureFrame(p)
+        frameDrag = (drag, overFrame)
+        if overFrame {
+            host.scene.showFileDropTarget(count: 0, at: nil)
+            host.modelChanged()
+            return urls.isEmpty ? [] : Self.frameAnswer(keys ?? DropKeys(copy: copy))
+        }
         let s = store.state
         guard !urls.isEmpty, s.access == .connected, let root = s.root else {
             dragEnded()
@@ -143,10 +160,24 @@ final class DropInController {
     // MARK: The drop
 
     /// Takes `urls` dropped at canvas `p`; true when they were taken (false: a bonk, or nothing to take). `copy` and
-    /// `keys` as for `dragged`.
+    /// `keys` as for `dragged`; `drag` names the dragging session whose last answer decides a drop on or off the
+    /// picture frame (nil: a demo's drop or a test, where the point decides; Erratum 33).
     @discardableResult
-    func drop(_ urls: [URL], at p: SIMD2<Float>, copy: Bool, keys: DropKeys? = nil) -> Bool {
+    func drop(_ urls: [URL], at p: SIMD2<Float>, copy: Bool, keys: DropKeys? = nil, drag: Int? = nil) -> Bool {
         dragEnded()
+        // MARK: picture frame (0.4.0): the drop goes where this drag's last answer said (Erratum 33).
+        let answered = drag.flatMap { d in frameDrag.flatMap { $0.drag == d ? $0.frame : nil } }
+        frameDrag = nil
+        switch Self.frameRoute(answeredFrame: answered, overFrame: host.scene.isOverPictureFrame(p)) {
+        case .frame:
+            return takeForFrame(urls, bonkAt: p)
+        case .refuse:
+            host.scene.bonkFileDrop(at: p, nil)
+            host.modelChanged()
+            return false
+        case .desk:
+            break
+        }
         let s = store.state
         guard s.access == .connected, let root = s.root else { return false }
         let files = urls.filter(\.isFileURL).map { Self.spelled($0, underRoot: root.path) }
@@ -161,6 +192,52 @@ final class DropInController {
             effects.withOrigin(.drop) { store.dispatch(.requestDropIn(request)) }
             return true
         }
+    }
+
+    // MARK: picture frame (0.4.0)
+
+    /// Where a Finder drop goes (Erratum 33).
+    enum FrameRoute: Equatable { case frame, desk, refuse }
+
+    /// As the drag's last answer said: told the frame's answer, the drop is the frame's (it only reads) wherever it is
+    /// let go; told the desk's (perhaps a move), a drop let go over the frame is refused (nothing is read for a source
+    /// that may remove its item after a move, and nothing is imported onto the photo); with no answer remembered (a
+    /// demo's drop, a test), the point decides.
+    static func frameRoute(answeredFrame: Bool?, overFrame: Bool) -> FrameRoute {
+        switch answeredFrame {
+        case true?: .frame
+        case false?: overFrame ? .refuse : .desk
+        case nil: overFrame ? .frame : .desk
+        }
+    }
+
+    /// A drop on the picture frame (Erratum 33): one photo is read for it and stays where it is (never a file request,
+    /// so nothing is moved, copied or imported, and no connected folder is needed); anything else bonks at `p` with why
+    /// (with no point — a wall — the desk toasts why). True when a photo is being hung.
+    private func takeForFrame(_ urls: [URL], bonkAt p: SIMD2<Float>?) -> Bool {
+        let files = urls.filter(\.isFileURL)
+        if let refusal = frameRefusal(files) {
+            if let p { host.scene.bonkFileDrop(at: p, refusal) } else { host.scene.toast(refusal) }
+            host.modelChanged()
+            return false
+        }
+        guard let hangPhoto else { return false }
+        hangPhoto(files[0])
+        return true
+    }
+
+    /// Why `urls` cannot hang in the frame: none → "That isn't a photo."; several → "One photo at a time."; else
+    /// `photoRefusal` of the one (read on the main thread: resource values only).
+    func frameRefusal(_ urls: [URL]) -> ToastKey? {
+        guard urls.count == 1, let url = urls.first else { return urls.isEmpty ? .notAPhoto : .onePhotoAtATime }
+        return photoRefusal(url)
+    }
+
+    /// What a drag over the frame is told: the item stays where it is, so never a move — a link, else a copy, else a
+    /// generic drop, the first the source allows (Erratum 29's alias answers); nothing when it allows none of them (a
+    /// move-only source: its drop is never delivered, so nothing is said).
+    static func frameAnswer(_ keys: DropKeys) -> NSDragOperation {
+        [NSDragOperation.link, .copy, .generic].first(where: keys.mask.contains) ?? []
     }
 
     /// The op of each dropped item (`DropIn.ops`), read from the items at the drop.
@@ -201,6 +278,18 @@ final class DropInController {
         effects.withOrigin(.drop) { store.dispatch(.requestDropIn(request)) }
         return true
     }
+
+    // MARK: picture frame (0.4.0)
+
+    /// What a wall answers a drag over its own picture frame with (Erratum 33): as over the desk's frame, connected or not.
+    func wallFrameOperation(_ urls: [URL], keys: DropKeys) -> NSDragOperation {
+        urls.isEmpty ? [] : Self.frameAnswer(keys)
+    }
+
+    /// A drop on a wall's picture frame (Erratum 33): as on the desk's, never `dropOnWall`'s import; the desk toasts a
+    /// refusal (the wall has no bonk to show).
+    @discardableResult
+    func dropOnWallFrame(_ urls: [URL]) -> Bool { takeForFrame(urls, bonkAt: nil) }
 
     /// `url` spelled under the model's root when its folder is the desk folder by any spelling (symlinks, `/var`
     /// for `/private/var`, case), so the reducer sees it is on the desk already; otherwise as it came.

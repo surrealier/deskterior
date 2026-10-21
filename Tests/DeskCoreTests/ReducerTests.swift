@@ -410,6 +410,8 @@ struct ReducerTests {
             .moveNote(NoteID(1), to: ArtPoint(401, 88)), .raiseNote(NoteID(1)), .removeNote(NoteID(1)),
             .editDayPage(day, text: "p", session: 2), .tearOffPage(day, at: nil), .setDDay(DDay(day: day, title: "t")),
             .setDDay(nil), .requestSaveMemoFile(.note(NoteID(1))), .requestSaveMemoFile(.day(day)),
+            // MARK: picture frame (0.4.0)
+            .hangPhoto(FramePhoto.sample), .removePhoto,
         ]
     }
 

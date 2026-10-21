@@ -12,7 +12,8 @@ import Foundation
 /// `desk.corrupt-<date>.json`. Only a missing `desk.json` is a fresh desk (that is how a reset looks), and a
 /// `desk.json` from a newer Deskterior is never overwritten. The layout of a folder that is no longer mirrored
 /// is kept aside per folder, so it comes back with the folder. `memos.json` (Erratum 31: notes, day pages, the
-/// D-Day) is kept the same way beside it, and Reset Layout leaves it alone.
+/// D-Day) and `frame.json` (Erratum 33: the picture frame's photo) are kept the same way beside it, and Reset Layout
+/// leaves both alone.
 public struct StateStore: Sendable {
     public static let fileName = "desk.json"
     /// Minimum age of each backup generation before it is refreshed.
@@ -31,6 +32,11 @@ public struct StateStore: Sendable {
         /// The book would make a `memos.json` of this many bytes, more than `maxMemosBytes` (it could not be read
         /// back): the old file is kept.
         case memosTooLarge(Int)
+        // MARK: picture frame (0.4.0)
+        /// `frame.json` was written by a newer Deskterior: it is left as it is.
+        case newerFrame(Int)
+        /// `frame.json` is there but could not be read (or kept aside when corrupt): it is never written over.
+        case frameUnreadable(String)
 
         public var description: String {
             switch self {
@@ -41,6 +47,10 @@ public struct StateStore: Sendable {
             case let .memosUnreadable(why): "\(StateStore.memosFileName) \(why); not overwriting it"
             case let .memosTooLarge(n):
                 "\(StateStore.memosFileName) would be \(n) bytes, more than \(StateStore.maxMemosBytes); not writing it"
+            // MARK: picture frame (0.4.0)
+            case let .newerFrame(n):
+                "\(StateStore.frameFileName) uses schema \(n), newer than \(FrameDocument.currentSchema); not overwriting it"
+            case let .frameUnreadable(why): "\(StateStore.frameFileName) \(why); not overwriting it"
             }
         }
     }
@@ -67,6 +77,9 @@ public struct StateStore: Sendable {
     private let memo = Memo()
     /// The same for `memos.json`.
     private let memosMemo = Memo()
+    // MARK: picture frame (0.4.0)
+    /// The same for frame.json.
+    private let frameMemo = Memo()
 
     /// Refuses a directory inside the desktop folder or the mirrored folder; creates it otherwise.
     public init(directory: URL, desktop: URL = DesktopLocator.defaultDesktopURL(), mirrored: URL? = nil) throws {
@@ -485,6 +498,147 @@ extension StateStore {
         if let n = try? Migrations.schema(of: data), n > MemoDocument.currentSchema { return .failure(.newer(n)) }
         do {
             return .success(try MemoDocument.decode(data))
+        } catch let Migrations.Failure.newerSchema(n) {
+            return .failure(.newer(n))
+        } catch Migrations.Failure.notAnObject {
+            return .failure(.corrupt("not a JSON object")) // Migrations' own words name desk.json.
+        } catch Migrations.Failure.missingSchema {
+            return .failure(.corrupt("no schema number"))
+        } catch {
+            return .failure(.corrupt("\(error)"))
+        }
+    }
+}
+
+// MARK: picture frame (0.4.0)
+
+extension StateStore {
+    /// The picture frame's photo, beside `memos.json` (Erratum 33).
+    public static let frameFileName = "frame.json"
+    /// The most of a frame file that is read (a real one is about 1.5 KB): a planted file is not loaded whole.
+    public static let maxFrameBytes = 64 << 10
+
+    /// What `loadFrame` found: the photo (nil: none hung, or none could be read), whether `saveFrame` may write, why
+    /// files were skipped, and where a corrupt `frame.json` was kept.
+    public struct FrameLoaded: Sendable {
+        /// The photo hung (nil: the print).
+        public var photo: FramePhoto?
+        /// False when `frame.json` came from a newer Deskterior or could not be read: nothing is saved over it.
+        public var writable: Bool
+        /// Human-readable reasons files were skipped.
+        public var problems: [String]
+        /// Where a corrupt `frame.json` was kept.
+        public var corruptCopy: URL?
+
+        /// What a load found (Erratum 33).
+        public init(photo: FramePhoto?, writable: Bool, problems: [String] = [], corruptCopy: URL? = nil) {
+            self.photo = photo
+            self.writable = writable
+            self.problems = problems
+            self.corruptCopy = corruptCopy
+        }
+    }
+
+    /// `frame.json` in the state folder (Erratum 33).
+    public var frameURL: URL { directory.appendingPathComponent(Self.frameFileName, isDirectory: false) }
+
+    /// `frame.json.bak<n>`: backup generation `n` of `frame.json` (Erratum 33).
+    public func frameBackupURL(_ n: Int) -> URL {
+        directory.appendingPathComponent("\(Self.frameFileName).bak\(n)", isDirectory: false)
+    }
+
+    /// Loads `frame.json` as `loadMemos` loads `memos.json`: missing → (nil, writable); corrupt → kept as
+    /// `frame.corrupt-<UTC date>.json`, then `.bak1`…`.bak3`; newer, unreadable (not a regular file, no permission,
+    /// past `maxFrameBytes`) or corrupt-and-not-kept → not writable. No symlink followed, no FIFO blocks.
+    public func loadFrame(now: Date = Date()) -> FrameLoaded {
+        var problems: [String] = []
+        var corruptCopy: URL?
+        var writable = true
+        let name = Self.frameFileName
+        switch Self.readOwnFile(frameURL, maxBytes: Self.maxFrameBytes) {
+        case .missing:
+            return FrameLoaded(photo: nil, writable: true)
+        case let .data(data):
+            switch Self.decodeFrame(data) {
+            case let .success(doc):
+                frameMemo.remember(frameURL, schemaOK: true)
+                return FrameLoaded(photo: doc.photo, writable: true)
+            case let .failure(.newer(n)):
+                problems.append("\(name): written by a newer Deskterior (schema \(n)); left untouched")
+                writable = false
+            case let .failure(.corrupt(why)):
+                problems.append("\(name): \(why)")
+                corruptCopy = keepCorrupt(data, now: now, stem: "frame")
+                if corruptCopy == nil {
+                    problems.append("\(name): could not be kept aside; left untouched")
+                    writable = false
+                } else {
+                    frameMemo.remember(frameURL, schemaOK: true) // Kept aside: a save may replace it.
+                }
+            }
+        case let .unreadable(why):
+            problems.append("\(name): \(why); left untouched")
+            writable = false
+        }
+        for n in 1...Self.backupCount {
+            guard case let .data(data) = Self.readOwnFile(frameBackupURL(n), maxBytes: Self.maxFrameBytes) else { continue }
+            switch Self.decodeFrame(data) {
+            case let .success(doc):
+                return FrameLoaded(photo: doc.photo, writable: writable, problems: problems, corruptCopy: corruptCopy)
+            case let .failure(f):
+                problems.append("\(name).bak\(n): \(f)")
+            }
+        }
+        return FrameLoaded(photo: nil, writable: writable, problems: problems, corruptCopy: corruptCopy)
+    }
+
+    /// Saves `frame.json` atomically (backups by age, `SafetyGuard.checkOwnWrite`), and nothing else. Throws instead of
+    /// writing over a newer (`.newerFrame`) or unreadable (`.frameUnreadable`) file; a corrupt one is kept aside first.
+    public func saveFrame(_ photo: FramePhoto?, now: Date = Date()) throws {
+        let data = try FrameDocument(photo: photo, savedAt: now).encoded()
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        var current: Data?
+        if !frameMemo.matches(frameURL) {
+            switch Self.readOwnFile(frameURL, maxBytes: Self.maxFrameBytes) {
+            case .missing:
+                break
+            case let .data(found):
+                switch Self.decodeFrame(found) {
+                case .success:
+                    current = found
+                case let .failure(.newer(n)):
+                    throw Failure.newerFrame(n)
+                case .failure(.corrupt):
+                    guard keepCorrupt(found, now: now, stem: "frame") != nil else {
+                        throw Failure.frameUnreadable("is corrupt and could not be kept aside")
+                    }
+                }
+            case let .unreadable(why):
+                throw Failure.frameUnreadable(why)
+            }
+        }
+        // Backups are read as `frame.json` is (never through a symlink, never blocking on a FIFO), and one that cannot
+        // be refreshed never keeps the photo from being saved.
+        let readOwn = { (url: URL) -> Data? in
+            if case let .data(d) = Self.readOwnFile(url, maxBytes: Self.maxFrameBytes) { d } else { nil }
+        }
+        try rotateBackups(of: frameBackupURL, now: now, read: readOwn, strict: false) {
+            // Only a readable document of a schema we know becomes a backup.
+            guard case let .data(primary) = current.map(OwnFile.data)
+                    ?? Self.readOwnFile(frameURL, maxBytes: Self.maxFrameBytes),
+                  case .success = Self.decodeFrame(primary)
+            else { return nil }
+            return primary
+        }
+        try write(data, to: frameURL)
+        frameMemo.remember(frameURL, schemaOK: true)
+    }
+
+    /// `data` as a frame document (newer schemas refused before decoding, as `decodeMemos`).
+    static func decodeFrame(_ data: Data) -> Result<FrameDocument, MemosProblem> {
+        if let n = try? Migrations.schema(of: data), n > FrameDocument.currentSchema { return .failure(.newer(n)) }
+        do {
+            return .success(try FrameDocument.decode(data))
         } catch let Migrations.Failure.newerSchema(n) {
             return .failure(.newer(n))
         } catch Migrations.Failure.notAnObject {

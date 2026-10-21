@@ -21,9 +21,10 @@
 # plain components without control characters; symlinks are never followed (the fixture holds links to /Applications
 # and the like), and mv never replaces anything. Each demo also gets an empty mktemp "source" folder beside the
 # fixture (DESKTERIOR_DEMO_SOURCE) that files are dropped in from: `source`/`sourceDir` steps create items there, a
+# `sourceImage` step copies the fixture's photo there (IMG_0001.png, a regular file, never a link; Erratum 33), a
 # `sourceApp` step copies an app of /System/Applications there with ditto, or cp -R (so a drop never takes an
-# installed app from where it is; Erratum 29), and `ls desk|source|trash` prints `ls -li` of the fixture, the source folder or the
-# FakeTrash (<state>/FakeTrash, where the app's file actions trash to in demos) into the log.
+# installed app from where it is; Erratum 29), and `ls desk|source|trash` prints `ls -li` of the fixture, the source
+# folder or the FakeTrash (<state>/FakeTrash, where the app's file actions trash to in demos) into the log.
 # Exit: 0 when every demo passes, else the first failing demo's code (1 expectation, 2 script error, 64 guard).
 set -euo pipefail
 
@@ -35,7 +36,7 @@ RECORD=0
 CONFIG=debug
 NAMES=()
 
-usage() { sed -n '2,27p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//' >&2; exit 2; }
+usage() { sed -n '2,28p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//' >&2; exit 2; }
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -96,6 +97,13 @@ fs_op() {
       # ditto stops on the system's own `restricted` flag (SIP), which no copy may carry: then a plain cp -R.
       ditto "/System/Applications/$a" "$SOURCE/$a" >/dev/null 2>&1 \
         || { rm -rf "${SOURCE:?}/$a" && cp -R "/System/Applications/$a" "$SOURCE/$a"; }
+      ;;
+    sourceImage)
+      # A photo in the drop source (picture frame, Erratum 33): a copy of the fixture's IMG_0001.png, never a link.
+      case "$a" in *.[pP][nN][gG]) ;; *) return 1 ;; esac
+      [ -f "$DESK/IMG_0001.png" ] && [ ! -L "$DESK/IMG_0001.png" ] || return 1
+      [ ! -e "$SOURCE/$a" ] && [ ! -L "$SOURCE/$a" ] || return 1
+      cp "$DESK/IMG_0001.png" "$SOURCE/$a"
       ;;
     ls)
       case "$a" in

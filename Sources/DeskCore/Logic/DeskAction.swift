@@ -133,6 +133,13 @@ public enum DeskAction: Sendable {
     // MARK: files (0.3.0)
     /// Save as Text File on Desktop: a new text file in the desk folder, from a note or a day page.
     case requestSaveMemoFile(MemoRef)
+    // MARK: picture frame (0.4.0)
+    /// Hangs `photo` (already pixelated by the app from a file it read once: the frame's Choose Photo…, a token carried
+    /// onto the frame, Hang in Picture Frame, a Finder drop on the frame of the desk or of another display's wall) in
+    /// place of the print or of the photo before (Erratum 33). Journaled ("Hang Photo"); never a file effect.
+    case hangPhoto(FramePhoto)
+    /// Remove Photo: the print comes back. Journaled ("Remove Photo").
+    case removePhoto
 
     /// Explicit user requests. Only these may produce file effects (`Effect.touchesFiles`).
     public var isRequest: Bool {

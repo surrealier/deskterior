@@ -242,6 +242,8 @@ extension UndoJournal {
             .noteColour(n, .sky), .noteDay(n, day), .moveNote(n, to: ArtPoint(0, 0)), .raiseNote(n), .removeNote(n),
             .editDayPage(day, text: "", session: 0), .tearOffPage(day, at: nil), .setDDay(DDay(day: day, title: "")),
             .setDDay(nil),
+            // MARK: picture frame (0.4.0)
+            .hangPhoto(FramePhoto.sample), .removePhoto,
         ]
         return actions.compactMap { label(for: $0) }
     }

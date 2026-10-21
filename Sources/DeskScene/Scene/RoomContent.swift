@@ -282,8 +282,12 @@ final class RoomContent: GestureTarget {
         case _ where RoomPlan.glowIDs.contains(placementID): "room"
         case "desk.front": "desk"
         case "room.switch": "room.switch"
+        // MARK: picture frame (0.4.0)
+        // The framed print is the picture frame (Erratum 33), matched by kind: the index suffix changes.
+        case _ where placementID.hasPrefix("decor.frame."): "frame"
         // MARK: w6-polish
-        // Wall decor is part of the backdrop (Errata 26): no ring and nothing to do, so the bare wall answers there.
+        // Every other wall decor is part of the backdrop (Errata 26, 33): no ring and nothing to do, so the bare wall
+        // answers there.
         case _ where placementID.hasPrefix("decor."): "room"
         default:
             if let dot = placementID.firstIndex(of: ".") { String(placementID[..<dot]) }
@@ -359,6 +363,8 @@ final class RoomContent: GestureTarget {
         if old.calendarMarks != new.calendarMarks || old.padWritten != new.padWritten || old.dDayDays != new.dDayDays {
             ids.formUnion(RoomPlan.memoIDs)
         }
+        // MARK: picture frame (0.4.0): a photo hung or taken down redraws the decor (the backdrop's shadow is the same).
+        if old.framePhoto != new.framePhoto { ids.insert("decor") }
         refresh(ids, relight: !minuteOnly)
         if skyChanged, let s = context.state { monitor.apply(s) }
         // The light moved under a resting pointer: a token it reached or left is hovered (or not) anew (`DarkHit`).

@@ -1,7 +1,7 @@
 import Foundation
 
 /// The layout an undoable action can change: where every token rests, pile positions, the element states a
-/// global action touches (monitor, phone, drawers), what is put away, and the memos.
+/// global action touches (monitor, phone, drawers), what is put away, the memos and the framed photo.
 public struct LayoutSnapshot: Sendable, Equatable {
     public var locations: [TokenKey: Location]
     public var piles: [PileID: SIMD2<Float>]
@@ -11,6 +11,9 @@ public struct LayoutSnapshot: Sendable, Equatable {
     // MARK: tidy and memos (0.3.0)
     public var stowed: Set<StowID>
     public var memos: MemoBook
+    // MARK: picture frame (0.4.0)
+    /// The photo hung in the picture frame (Erratum 33): its pixels, so undo needs no file.
+    public var framePhoto: FramePhoto?
 
     public init(_ s: DeskState) {
         var locations: [TokenKey: Location] = [:]
@@ -24,6 +27,8 @@ public struct LayoutSnapshot: Sendable, Equatable {
         drawers = s.drawers
         stowed = s.stowed
         memos = s.memos
+        // MARK: picture frame (0.4.0)
+        framePhoto = s.framePhoto
     }
 }
 
@@ -115,6 +120,9 @@ public struct UndoJournal: Sendable, Equatable {
         case .editDayPage: "Edit Memo"
         case .tearOffPage: "Tear Off Page"
         case let .setDDay(d): d == nil ? "Clear D-Day" : "Set D-Day"
+        // MARK: picture frame (0.4.0)
+        case .hangPhoto: "Hang Photo"
+        case .removePhoto: "Remove Photo"
         default: nil
         }
     }
@@ -286,6 +294,8 @@ public struct UndoJournal: Sendable, Equatable {
             s.stowed.insert(id)
         }
         applyMemos(from: from.memos, to: to.memos, onto: &s.memos)
+        // MARK: picture frame (0.4.0): the photo the entry changed comes back as it was (no file is read: the pixels).
+        if from.framePhoto != to.framePhoto { s.framePhoto = to.framePhoto }
     }
 
     /// Re-applies the memo change `from → to` onto `m`, note by note and page by page: notes and pages the change

@@ -252,8 +252,9 @@ final class DeskView: NSView {
         let mask = sender.draggingSourceOperationMask, modifiers = NSEvent.modifierFlags
         let copy = DropInController.wantsCopy(mask, modifiers: modifiers)
         // Erratum 29: the keys held pick each item's op (an app with no key becomes an alias).
+        // MARK: picture frame (0.4.0): the drop goes where its last answer said
         return dropIn.drop(urls, at: artPoint(windowPoint: sender.draggingLocation), copy: copy,
-                           keys: DropKeys(modifiers: modifiers, mask: mask))
+                           keys: DropKeys(modifiers: modifiers, mask: mask), drag: sender.draggingSequenceNumber)
     }
 
     private func dropInUpdate(_ sender: any NSDraggingInfo) -> NSDragOperation {
@@ -317,6 +318,7 @@ nonisolated final class DeskAccessibilityElement: NSAccessibilityElement, @unche
         super.init()
         setAccessibilityParent(parent)
         setAccessibilityLabel(item.label)
+        if let value = item.value { setAccessibilityValue(value) } // MARK: picture frame (0.4.0)
         switch item.role {
         case .button, .token:
             setAccessibilityRole(.button)

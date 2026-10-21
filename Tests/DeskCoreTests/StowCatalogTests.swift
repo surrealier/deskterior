@@ -55,6 +55,8 @@ struct StowCatalogTests {
     func elements() {
         #expect(StowCatalog.stowID(forElement: "riser") == .riserDrawers && StowCatalog.stowID(forElement: "cabinet") == .cabinet)
         #expect(StowCatalog.stowID(forElement: "phone") == .phoneStand && StowCatalog.stowID(forElement: "plant") == .plant)
+        // MARK: picture frame (0.4.0): the framed print goes with the wall shelf (Erratum 33).
+        #expect(StowCatalog.stowID(forElement: "frame") == .wallShelf)
         for other in ["pencup", "wastebasket", "lamp", "monitor", "keyboard", "chair", "hub", "calendar", "partition", "room"] {
             #expect(StowCatalog.stowID(forElement: other) == nil, "\(other)")
         }

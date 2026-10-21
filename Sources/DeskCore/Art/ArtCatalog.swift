@@ -34,7 +34,10 @@ public enum ArtCatalog {
         return Section(title: "decor", sprites: [
             RoomArt.stringLights(lights, lit: false), RoomArt.stringLights(lights, lit: true),
             DecorArt.shelf(ArtSize(92, 36)), DecorArt.shelf(ArtSize(60, 36)).renamed("decor.shelf.narrow"),
-            DecorArt.frame(ArtSize(32, 40)), DecorArt.pegboard(ArtSize(40, 44)), DecorArt.painting(ArtSize(112, 64)),
+            DecorArt.frame(ArtSize(32, 40)),
+            // MARK: picture frame (0.4.0)
+            DecorArt.frame(ArtSize(32, 40), photo: FramePhoto.sample.image),
+            DecorArt.pegboard(ArtSize(40, 44)), DecorArt.painting(ArtSize(112, 64)),
             DecorArt.floorPlant(ArtSize(38, 92)), RoomArt.crown(width: 64),
             DecorArt.pendant(ArtSize(24, 60), lit: false), DecorArt.pendant(ArtSize(24, 60), lit: true),
             DecorArt.hangingPlant(ArtSize(32, 90)), RoomArt.ceiling(ArtSize(64, 48)), RoomArt.rail(width: 64),
@@ -182,6 +185,9 @@ public struct RoomState: Equatable, Sendable {
     public var padWritten = false
     /// Days to the D-Day (negative after it); nil while none is set.
     public var dDayDays: Int?
+    // MARK: picture frame (0.4.0)
+    /// The picture frame's photo (Erratum 33; `FramePhoto.image`, 26×34 opaque Apollo); nil draws the print.
+    public var framePhoto: PixelBuffer?
 
     public init(
         time: WallTime, lightsMode: LightsMode = .auto, lights: RoomLightState = RoomLightState(),
@@ -296,8 +302,9 @@ public enum RoomPlan {
                 case .stringLights: RoomArt.stringLightsLit(tod)
                 default: tod.isDark
                 }
-                out.append(RoomPlacement("decor.\(d.kind.rawValue).\(i)", .backdrop, DecorArt.sprite(d, lit: lit),
-                                         at: d.rect.origin))
+                // MARK: picture frame (0.4.0): the framed print shows the photo hung (Erratum 33).
+                out.append(RoomPlacement("decor.\(d.kind.rawValue).\(i)", .backdrop,
+                                         DecorArt.sprite(d, lit: lit, photo: state.framePhoto), at: d.rect.origin))
             }
         }
         add("window", .backdrop, WindowArt.window(sky: state.sky, minuteOfDay: state.time.minuteOfDay),

@@ -52,6 +52,24 @@ struct KoreanFitTests {
         }
     }
 
+    // MARK: picture frame (0.4.0)
+    @Test("The picture frame's toasts are the table's English, speak Korean and fit the band (Erratum 33)")
+    func frameToasts() throws {
+        let font = try font()
+        let keys: [(ToastKey, L10nKey)] = [
+            (.notAPhoto, .toastNotAPhoto), (.onePhotoAtATime, .toastOnePhotoAtATime), (.photoInCloud, .toastPhotoInCloud),
+            (.photoUnreadable, .toastPhotoUnreadable), (.frameNotSaved, .toastFrameNotSaved),
+        ]
+        for (key, entry) in keys {
+            #expect(L10n.knows(key.english), "\(key) is in the table")
+            #expect(key.english == entry.en, "\(key) is \(entry)'s English")
+            #expect(key.text(.ko) == entry.ko && key.text(.ko) != key.english, "\(key) has its Korean")
+            for language in Language.allCases {
+                #expect(ToastView.image(key.text(language), font: font).width <= ToastView.band.count, "\(language) \(key)")
+            }
+        }
+    }
+
     @Test("The toast band lies inside the visible band of the smallest canvas")
     func bandOnTheSmallestCanvas() {
         let layout = Self.smallest

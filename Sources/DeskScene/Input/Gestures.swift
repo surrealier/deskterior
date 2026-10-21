@@ -51,6 +51,10 @@ public nonisolated enum DropVerdict: Sendable, Equatable {
     case accept(Location)
     /// Refused: "BONK", a 1-px shake, and the tokens spring back. The toast says why, when there is one.
     case bonk(ToastKey?)
+    // MARK: picture frame (0.4.0)
+    /// Hang this image token in the picture frame (Erratum 33): the app reads its file (`MenuCommand.hangInFrame`); the
+    /// token springs back to where it was and its file stays put.
+    case hang(TokenKey)
 }
 
 /// How the hover ring of a hit is drawn.
@@ -96,13 +100,18 @@ public nonisolated struct AXItem: Sendable, Equatable {
     /// Canvas art px.
     public var frame: ArtRect
     public var token: TokenKey?
+    // MARK: picture frame (0.4.0)
+    /// What VoiceOver reads after the label (`accessibilityValue`), e.g. whether the picture frame holds a photo; nil
+    /// for none. Part of the item's equality, so a changed value rebuilds the app's element (and its actions).
+    public var value: String?
 
-    public init(id: String, label: String, role: Role, frame: ArtRect, token: TokenKey? = nil) {
+    public init(id: String, label: String, role: Role, frame: ArtRect, token: TokenKey? = nil, value: String? = nil) {
         self.id = id
         self.label = label
         self.role = role
         self.frame = frame
         self.token = token
+        self.value = value
     }
 }
 

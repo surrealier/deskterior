@@ -27,6 +27,10 @@ final class DisplayManager {
     var onWallDrop: (([URL], Bool, DropKeys) -> Void)?
     /// What a wall answers a file drag with (`DropInController.wallOperation`: copy, move, link or nothing).
     var wallOperation: (([URL], _ copy: Bool, _ drag: Int, _ keys: DropKeys) -> NSDragOperation)?
+    // MARK: picture frame (0.4.0)
+    /// What a wall answers a drag over its framed print with, and a drop there (Erratum 33).
+    var wallFrameOperation: (([URL], DropKeys) -> NSDragOperation)?
+    var onWallFrameDrop: (([URL]) -> Bool)?
     var onWallMenu: ((WallView, NSPoint) -> Void)?
     /// Walls take file drags (only once dropped files are imported; until then a drag over a wall is refused).
     var wallsAcceptFiles = false {
@@ -284,6 +288,9 @@ final class DisplayManager {
                 w.view.operationFor = { [weak self] urls, copy, drag, keys in
                     self?.wallOperation?(urls, copy, drag, keys) ?? []
                 }
+                // MARK: picture frame (0.4.0)
+                w.view.frameOperationFor = { [weak self] urls, keys in self?.wallFrameOperation?(urls, keys) ?? [] }
+                w.view.onFrameDrop = { [weak self] urls in self?.onWallFrameDrop?(urls) ?? false }
                 w.view.onMenu = { [weak self, weak w] p in
                     guard let self, let view = w?.view else { return }
                     self.onWallMenu?(view, p)

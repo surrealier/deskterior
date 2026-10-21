@@ -2,11 +2,11 @@ import DeskCore
 import DeskFiles
 import Foundation
 
-/// Mirrors the desktop folder into the `Store` (DESIGN §3.1, §4.3). It loads `desk.json` and then `memos.json` into
-/// the store (Erratum 31), applies first-run gating (connect prompt, or the DESKTOP HIDDEN card when Finder hides
-/// desktop items), and runs the scanner, watcher and volume watcher on background queues (`MirrorEngine`); snapshots,
-/// access failures and volumes come back to the main actor and reach the model as actions. Its safety behaviours stay
-/// here:
+/// Mirrors the desktop folder into the `Store` (DESIGN §3.1, §4.3). It loads `desk.json`, then `memos.json` and
+/// `frame.json` into the store (Errata 31, 33), applies first-run gating (connect prompt, or the DESKTOP HIDDEN card
+/// when Finder hides desktop items), and runs the scanner, watcher and volume watcher on background queues
+/// (`MirrorEngine`); snapshots, access failures and volumes come back to the main actor and reach the model as
+/// actions. Its safety behaviours stay here:
 ///
 /// - a scan that would remove most of the desk is held and confirmed by a rescan `confirmDelay` later;
 /// - switching to another folder parks the old folder's layout (`StateStore.switchRoot`) before the snapshot;
@@ -56,6 +56,10 @@ final class MirrorController {
     /// Called when `memos.json` is there but may not be written this session (a newer Deskterior's, or unreadable):
     /// memo changes are not saved, and the session says so.
     var onMemosNotSaved: (() -> Void)?
+    // MARK: picture frame (0.4.0)
+    /// Called when `frame.json` is there but may not be written this session (a newer Deskterior's, or unreadable): the
+    /// picture frame's photo is not saved, and the session says so (Erratum 33).
+    var onFrameNotSaved: (() -> Void)?
 
     init(configuration: Configuration, store: Store, stateStore: StateStore?) {
         self.configuration = configuration
@@ -84,6 +88,7 @@ final class MirrorController {
             if let document = loaded.document { store.replace { $0 = document.makeState() } }
         }
         loadMemos()
+        loadFrame() // MARK: picture frame (0.4.0)
         let state = store.state
         let rootMatches = state.root.map { $0.path == DesktopLocator.canonicalPath(configuration.folder) } ?? false
         if configuration.connectImmediately || (state.access == .connected && rootMatches) {
@@ -112,6 +117,23 @@ final class MirrorController {
         } else if stateStore != nil {
             log("memos.json is left as it is (newer or unreadable): memo changes are not saved this time")
             onMemosNotSaved?()
+        }
+    }
+
+    // MARK: picture frame (0.4.0)
+
+    /// The picture frame's photo (Erratum 33), read after the memos at every desk load (launch, folder switch, after
+    /// Safe Mode); only then may it be saved, and never over a newer or unreadable `frame.json`.
+    private func loadFrame() {
+        let loaded = stateStore?.loadFrame()
+        for problem in loaded?.problems ?? [] { log("frame.json: \(problem)") }
+        if let copy = loaded?.corruptCopy { log("kept corrupt frame as \(copy.path)") }
+        store.replace { $0.framePhoto = loaded?.photo }
+        if loaded?.writable == true {
+            store.frameSaver?.arm()
+        } else if stateStore != nil {
+            log("frame.json is left as it is (newer or unreadable): the picture frame's photo is not saved this time")
+            onFrameNotSaved?()
         }
     }
 

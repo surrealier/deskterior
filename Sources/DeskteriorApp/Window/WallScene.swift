@@ -7,13 +7,25 @@ import DeskPixels
 /// with nearest filtering at the display's integer scale. It is re-rendered only when its size, the light or the
 /// put-away decor changes (`WallArt.signature` and the model's `stowed`, which the app puts in the `RoomState`;
 /// Erratum 30), so it costs nothing while idle. Files dropped on it go to the monitor (once dropped files
-/// are imported: `acceptsFiles`); a right-click opens the desk menu.
+/// are imported: `acceptsFiles`); a right-click opens the desk menu. Its framed print takes a photo dropped on it, as
+/// the desk's picture frame does (Erratum 33).
 final class WallController {
     let displayID: UInt32
     let window: DeskWindow
     let view: WallView
     private(set) var grid: PixelGrid
     private var signature = ""
+    // MARK: picture frame (0.4.0)
+    /// This wall's framed print (canvas px) as the last render drew it (Erratum 33): nil before one, or while the wall
+    /// shelf is put away.
+    private(set) var frameRect: ArtRect?
+
+    /// Whether view point `p` (AppKit's, y up, in a view `viewHeight` tall) lies on the framed print `frame` of a wall
+    /// on `grid` (Erratum 33).
+    static func isOverFrame(viewPoint p: NSPoint, viewHeight: CGFloat, grid: PixelGrid, frame: ArtRect?) -> Bool {
+        guard let frame else { return false }
+        return frame.contains(grid.artPoint(fromViewPoint: SIMD2(Double(p.x), Double(viewHeight - p.y))))
+    }
 
     init(display: DisplayInfo, level: LaunchOptions.Level, pixelSize: PixelSize) {
         displayID = display.id
@@ -22,6 +34,12 @@ final class WallController {
         view = WallView(frame: NSRect(origin: .zero, size: display.frame.cg.size))
         window.contentView = view
         window.setAccessibilityLabel(tr(.axWall))
+        // MARK: picture frame (0.4.0): the wall's framed print, as its last render drew it.
+        view.isOverFrame = { [weak self] p in
+            guard let self else { return false }
+            return Self.isOverFrame(viewPoint: p, viewHeight: self.view.bounds.height, grid: self.grid,
+                                    frame: self.frameRect)
+        }
     }
 
     /// Follows the display's new frame or scale.
@@ -40,6 +58,8 @@ final class WallController {
         let sig = WallArt.signature(grid: grid, state: state) + " " + stowed
         guard sig != signature else { return }
         signature = sig
+        // MARK: picture frame (0.4.0): the same layout `WallArt.render` solves (renders are rare).
+        frameRect = WallArt.frameRect(LayoutSolver.solve(grid: grid), stowed: state.stowed)
         view.show(WallArt.render(grid: grid, state: state).makeCGImage(), grid: grid)
     }
 
@@ -65,6 +85,19 @@ final class WallView: NSView {
     /// becomes an alias; nothing while the desk folder is not connected), given the copy the source's operations and
     /// ⌥ ask for, and the keys.
     var operationFor: (([URL], _ copy: Bool, _ drag: Int, _ keys: DropKeys) -> NSDragOperation)?
+    // MARK: picture frame (0.4.0)
+    /// Whether a view point is over this wall's picture frame (its controller answers from the last render).
+    var isOverFrame: ((NSPoint) -> Bool)?
+    /// What a drag over the wall's frame is told (`DropInController.wallFrameOperation`: never a move).
+    var frameOperationFor: (([URL], _ keys: DropKeys) -> NSDragOperation)?
+    /// One photo dropped on the wall's frame (`DropInController.dropOnWallFrame`): true when it is being hung.
+    var onFrameDrop: (([URL]) -> Bool)?
+    /// Whether the last answer of a drag was the frame's (`DropInController.frameRoute`).
+    private var frameAnswered: (drag: Int, frame: Bool)?
+    /// Whether the drag is over this wall's picture frame.
+    private func overFrame(_ sender: any NSDraggingInfo) -> Bool {
+        isOverFrame?(convert(sender.draggingLocation, from: nil)) ?? false
+    }
     /// A right-click (or VoiceOver's Show Desk Menu) at a view point.
     var onMenu: ((NSPoint) -> Void)?
     private var image: CGImage?
@@ -131,6 +164,18 @@ final class WallView: NSView {
 
     override func performDragOperation(_ sender: any NSDraggingInfo) -> Bool {
         let urls = Self.fileURLs(sender.draggingPasteboard)
+        // MARK: picture frame (0.4.0): the drop goes where this drag's last answer said (Erratum 33).
+        let answered = frameAnswered.flatMap { $0.drag == sender.draggingSequenceNumber ? $0.frame : nil }
+        frameAnswered = nil
+        switch DropInController.frameRoute(answeredFrame: answered, overFrame: overFrame(sender)) {
+        case .frame:
+            guard acceptsFiles, let onFrameDrop, !urls.isEmpty else { return false }
+            return onFrameDrop(urls)
+        case .refuse:
+            return false
+        case .desk:
+            break
+        }
         guard let onDrop, !operation(sender).isEmpty else { return false }
         onDrop(urls, copy(sender), keys(sender))
         return true
@@ -143,6 +188,10 @@ final class WallView: NSView {
     private func operation(_ sender: any NSDraggingInfo) -> NSDragOperation {
         let urls = Self.fileURLs(sender.draggingPasteboard)
         guard acceptsFiles, onDrop != nil, !urls.isEmpty else { return [] }
+        // MARK: picture frame (0.4.0)
+        let frame = overFrame(sender)
+        frameAnswered = (sender.draggingSequenceNumber, frame)
+        if frame { return frameOperationFor?(urls, keys(sender)) ?? [] }
         if let operationFor { return operationFor(urls, copy(sender), sender.draggingSequenceNumber, keys(sender)) }
         let plain = urls.map { _ in false }
         let facts = DropInController.ItemFacts(crosses: plain, isApp: plain, aliasedWithNoKey: plain)

@@ -95,6 +95,14 @@ public struct DesktopScanner: Sendable {
         }
     }
 
+    // MARK: picture frame (0.4.0)
+    /// Whether the item at `url` is a file-provider placeholder (iCloud and others) whose reading would download it:
+    /// its ubiquitous downloading status is not current, or it carries `SF_DATALESS`. Reads only metadata.
+    public static func isDataless(_ url: URL) -> Bool {
+        let status = (try? url.resourceValues(forKeys: [.ubiquitousItemDownloadingStatusKey]))?.ubiquitousItemDownloadingStatus
+        return (status != nil && status != .current) || hasDatalessFlag(url)
+    }
+
     // MARK: Private
 
     private static func entry(
