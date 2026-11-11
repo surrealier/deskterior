@@ -202,10 +202,10 @@ extension FilePrimitives {
         return writeAll(fd, data)
     }
 
-    /// Opens the regular file at `url` itself for reading: not through a symlink (`O_NOFOLLOW`), without blocking on
-    /// a FIFO (`O_NONBLOCK`). Returns the handle and the file's size, `ENOENT` when nothing is there, `EINVAL` for
-    /// something that is not a regular file.
-    static func openOwnFileForReading(_ url: URL) -> Result<(FileHandle, Int64), FileErrno> {
+    /// Reads the regular file at `url` itself: not through a symlink (`O_NOFOLLOW`), without blocking on a FIFO
+    /// (`O_NONBLOCK`), and at most `maxBytes` of it. `ENOENT` when nothing is there, `EINVAL` for something that is
+    /// not a regular file.
+    static func readOwnFile(_ url: URL, maxBytes: Int) -> Result<OwnFileRead, FileErrno> {
         var failure: Int32 = 0
         let fd: Int32 = url.withUnsafeFileSystemRepresentation { p in
             guard let p else {
@@ -221,7 +221,13 @@ extension FilePrimitives {
         var st = stat()
         guard fstat(fd, &st) == 0 else { return .failure(FileErrno(errno)) }
         guard st.st_mode & S_IFMT == S_IFREG else { return .failure(FileErrno(EINVAL)) }
-        return .success((handle, Int64(st.st_size)))
+        guard st.st_size <= maxBytes else { return .success(.tooLarge(Int64(st.st_size))) }
+        do {
+            let data = try handle.read(upToCount: maxBytes + 1) ?? Data()
+            return .success(data.count <= maxBytes ? .data(data) : .tooLarge(nil))
+        } catch {
+            return .failure(FileErrno(EIO))
+        }
     }
 
     private static func writeAll(_ fd: Int32, _ data: Data) -> Errno {

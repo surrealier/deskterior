@@ -38,7 +38,7 @@ enum Win32 {
     /// `IsReparseTagNameSurrogate`: the reparse point stands for another name (a link, a junction).
     static func isNameSurrogate(_ tag: DWORD) -> Bool { tag & 0x2000_0000 != 0 }
 
-    static let invalidHandle = HANDLE(bitPattern: -1)
+    static var invalidHandle: HANDLE? { HANDLE(bitPattern: -1) }
 
     /// The path as Win32 takes it: the file-system representation, with `\\?\` before long absolute paths.
     static func path(_ url: URL) -> String {
@@ -66,13 +66,13 @@ enum Win32 {
 
     static func info(_ h: HANDLE) -> BY_HANDLE_FILE_INFORMATION? {
         var info = BY_HANDLE_FILE_INFORMATION()
-        return GetFileInformationByHandle(h, &info).boolValue ? info : nil
+        return GetFileInformationByHandle(h, &info) ? info : nil
     }
 
     static func reparseTag(_ h: HANDLE) -> DWORD? {
         var tag = FILE_ATTRIBUTE_TAG_INFO()
         let ok = GetFileInformationByHandleEx(h, FileAttributeTagInfo, &tag, DWORD(MemoryLayout<FILE_ATTRIBUTE_TAG_INFO>.size))
-        return ok.boolValue ? tag.ReparseTag : nil
+        return ok ? tag.ReparseTag : nil
     }
 
     /// 100 ns ticks since 1601 → seconds and nanoseconds since 1970.
@@ -176,7 +176,7 @@ extension FilePrimitives {
     /// never replaced (`EEXIST`), another volume is `EXDEV`, an item in use is `EPERM` (and `isLocked`).
     static func renameExclusive(_ from: URL, _ to: URL) -> Errno {
         let ok = Win32.withWide(Win32.path(from)) { f in Win32.withWide(Win32.path(to)) { t in MoveFileExW(f, t, 0) } }
-        return ok.boolValue ? 0 : Win32.lastErrno
+        return ok ? 0 : Win32.lastErrno
     }
 
     /// Renames one of our own files over another of ours (the log's rotation).
@@ -184,19 +184,19 @@ extension FilePrimitives {
         let ok = Win32.withWide(Win32.path(from)) { f in
             Win32.withWide(Win32.path(to)) { t in MoveFileExW(f, t, DWORD(0x1)) }   // MOVEFILE_REPLACE_EXISTING
         }
-        return ok.boolValue ? 0 : Win32.lastErrno
+        return ok ? 0 : Win32.lastErrno
     }
 
     /// A new folder of ours; `hidden` sets the hidden attribute on it (only on the folder just made).
     static func makeDirectory(_ url: URL, hidden: Bool) -> Errno {
         let path = Win32.path(url)
-        guard Win32.withWide(path, { CreateDirectoryW($0, nil) }).boolValue else { return Win32.lastErrno }
+        guard Win32.withWide(path, { CreateDirectoryW($0, nil) }) else { return Win32.lastErrno }
         if hidden { _ = Win32.withWide(path) { SetFileAttributesW($0, Win32.hidden) } }
         return 0
     }
 
     static func removeEmptyDirectory(_ url: URL) -> Errno {
-        Win32.withWide(Win32.path(url)) { RemoveDirectoryW($0) }.boolValue ? 0 : Win32.lastErrno
+        Win32.withWide(Win32.path(url)) { RemoveDirectoryW($0) } ? 0 : Win32.lastErrno
     }
 
     /// Clears the read-only attribute on everything in one of our staging folders, so it can be removed. Reparse
@@ -239,7 +239,7 @@ extension FilePrimitives {
         }
         guard let h, h != Win32.invalidHandle else { throw FileRefusal.from(errno: Win32.lastErrno) }
         var failure = writeAll(h, data)
-        if failure == 0, !FlushFileBuffers(h).boolValue { failure = Win32.lastErrno }
+        if failure == 0, !FlushFileBuffers(h) { failure = Win32.lastErrno }
         CloseHandle(h)
         if failure != 0 { throw FileRefusal.from(errno: failure) }
     }
@@ -257,22 +257,26 @@ extension FilePrimitives {
         return writeAll(h, data)
     }
 
-    /// Opens our own regular file at `url` for reading (a link or folder there is refused with `EINVAL`).
-    static func openOwnFileForReading(_ url: URL) -> Result<(FileHandle, Int64), FileErrno> {
+    /// Reads our own regular file at `url` (a link or folder there is refused with `EINVAL`), at most `maxBytes`.
+    static func readOwnFile(_ url: URL, maxBytes: Int) -> Result<OwnFileRead, FileErrno> {
         guard let h = Win32.open(Win32.path(url), access: Win32.genericRead, follow: false) else {
             return .failure(FileErrno(Win32.lastErrno))
         }
-        guard let info = Win32.info(h) else {
-            let e = Win32.lastErrno
-            CloseHandle(h)
-            return .failure(FileErrno(e))
-        }
-        guard info.dwFileAttributes & (Win32.directory | Win32.reparsePoint) == 0 else {
-            CloseHandle(h)
-            return .failure(FileErrno(EINVAL))
-        }
+        defer { CloseHandle(h) }
+        guard let info = Win32.info(h) else { return .failure(FileErrno(Win32.lastErrno)) }
+        guard info.dwFileAttributes & (Win32.directory | Win32.reparsePoint) == 0 else { return .failure(FileErrno(EINVAL)) }
         let size = Int64(UInt64(info.nFileSizeHigh) << 32 | UInt64(info.nFileSizeLow))
-        return .success((FileHandle(handle: h, closeOnDealloc: true), size))
+        guard size <= Int64(maxBytes) else { return .success(.tooLarge(size)) }
+        var data = Data()
+        var chunk = [UInt8](repeating: 0, count: 64 * 1024)
+        while data.count <= maxBytes {
+            var got: DWORD = 0
+            let ok = chunk.withUnsafeMutableBytes { ReadFile(h, $0.baseAddress, DWORD($0.count), &got, nil) }
+            guard ok else { return .failure(FileErrno(Win32.lastErrno)) }
+            if got == 0 { break }
+            data.append(contentsOf: chunk[0..<Int(got)])
+        }
+        return .success(data.count <= maxBytes ? .data(data) : .tooLarge(nil))
     }
 
     private static func writeAll(_ h: HANDLE, _ data: Data) -> Errno {
@@ -281,7 +285,7 @@ extension FilePrimitives {
             while offset < raw.count {
                 let chunk = DWORD(min(raw.count - offset, 1 << 30))
                 var written: DWORD = 0
-                guard WriteFile(h, raw.baseAddress! + offset, chunk, &written, nil).boolValue else { return Win32.lastErrno }
+                guard WriteFile(h, raw.baseAddress! + offset, chunk, &written, nil) else { return Win32.lastErrno }
                 guard written > 0 else { return EIO }
                 offset += Int(written)
             }
@@ -306,7 +310,7 @@ extension FilePrimitives {
             let ok = Win32.withWide(Win32.path(source)) { f in
                 Win32.withWide(Win32.path(staged)) { t in CopyFileW(f, t, true) }        // fail if it exists
             }
-            if !ok.boolValue { throw FileRefusal.from(errno: Win32.lastErrno) }
+            if !ok { throw FileRefusal.from(errno: Win32.lastErrno) }
         case .link, .other:
             break
         }
@@ -341,12 +345,12 @@ extension FilePrimitives {
         var bytes: DWORD = 0
         let lock: DWORD = 0x0009_0018, dismount: DWORD = 0x0009_0020
         let allowRemoval: DWORD = 0x002D_4804, eject: DWORD = 0x002D_4808
-        guard DeviceIoControl(h, lock, nil, 0, nil, 0, &bytes, nil).boolValue,
-              DeviceIoControl(h, dismount, nil, 0, nil, 0, &bytes, nil).boolValue
+        guard DeviceIoControl(h, lock, nil, 0, nil, 0, &bytes, nil),
+              DeviceIoControl(h, dismount, nil, 0, nil, 0, &bytes, nil)
         else { throw FileRefusal.from(errno: EBUSY) }
         var prevent: UInt8 = 0
         _ = DeviceIoControl(h, allowRemoval, &prevent, 1, nil, 0, &bytes, nil)
-        guard DeviceIoControl(h, eject, nil, 0, nil, 0, &bytes, nil).boolValue else {
+        guard DeviceIoControl(h, eject, nil, 0, nil, 0, &bytes, nil) else {
             throw FileRefusal.from(errno: EBUSY)
         }
     }
@@ -373,7 +377,7 @@ extension FilePrimitives {
         let type = Win32.withWide(root) { GetDriveTypeW($0) }
         guard type > 1 else { return nil }                             // unknown, no root dir
         let removable = type == 2 || type == 5                         // removable, CD-ROM
-        let browsable = Win32.withWide(root) { GetVolumeInformationW($0, nil, 0, nil, nil, nil, nil, 0) }.boolValue
+        let browsable = Win32.withWide(root) { GetVolumeInformationW($0, nil, 0, nil, nil, nil, nil, 0) }
         var windows = [WCHAR](repeating: 0, count: 260)
         let n = GetSystemWindowsDirectoryW(&windows, UINT(windows.count))
         let systemDrive = n >= 2 ? String(decoding: windows[0..<2], as: UTF16.self).uppercased() : "C:"

@@ -64,7 +64,7 @@ struct SystemTrasher: Trasher {
             op.pFrom = UnsafePointer(buffer.baseAddress)
             op.fFlags = flags
             let r = SHFileOperationW(&op)
-            return op.fAnyOperationsAborted.boolValue ? Int32(1223) : r
+            return op.fAnyOperationsAborted ? Int32(1223) : r
         }
         guard result == 0 else {
             throw FileRefusal.from(errno: result == 1223 ? ECANCELED : FilePrimitives.errno(win32: DWORD(bitPattern: result)))

@@ -457,19 +457,13 @@ extension StateStore {
     /// Reads the regular file at `url` itself: not through a symlink (`O_NOFOLLOW`), without blocking on a FIFO
     /// (`O_NONBLOCK`), and at most `maxBytes` of it.
     static func readOwnFile(_ url: URL, maxBytes: Int = StateStore.maxMemosBytes) -> OwnFile {
-        let handle: FileHandle, size: Int64
-        switch FilePrimitives.openOwnFileForReading(url) {
-        case let .success((h, n)): (handle, size) = (h, n)
+        switch FilePrimitives.readOwnFile(url, maxBytes: maxBytes) {
+        case let .success(.data(data)): return .data(data)
+        case let .success(.tooLarge(size?)): return .unreadable("is \(size) bytes, more than \(maxBytes)")
+        case .success(.tooLarge(nil)): return .unreadable("is more than \(maxBytes) bytes")
         case .failure(ENOENT): return .missing
         case .failure(EINVAL): return .unreadable("is not a regular file")
         case let .failure(e): return .unreadable("unreadable (\(String(cString: strerror(e.code))))")
-        }
-        guard size <= maxBytes else { return .unreadable("is \(size) bytes, more than \(maxBytes)") }
-        do {
-            let data = try handle.read(upToCount: maxBytes + 1) ?? Data()
-            return data.count <= maxBytes ? .data(data) : .unreadable("is more than \(maxBytes) bytes")
-        } catch {
-            return .unreadable("unreadable (\(error.localizedDescription))")
         }
     }
 

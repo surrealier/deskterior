@@ -55,7 +55,9 @@ let targets: [Target] = [
 #else
 // Windows (and Linux, used to build the portable targets during development): docs/WINDOWS.md. The targets join
 // this list as their platform layers land; every macOS target above is unchanged by it.
-let products: [Product] = []
+let products: [Product] = [
+    .executable(name: "Deskterior", targets: ["DeskteriorWin"]),
+]
 
 let targets: [Target] = [
     .target(name: "DeskCore"),
@@ -73,9 +75,24 @@ let targets: [Target] = [
         swiftSettings: mainActorByDefault
     ),
 
+    // The Windows shell (Deskterior.exe): a window with the desk, or a headless snapshot (`--snapshot`).
+    .executableTarget(
+        name: "DeskteriorWin",
+        dependencies: ["DeskCore", "DeskPixels", "DeskStage", "DeskScene", "DeskFiles"],
+        swiftSettings: mainActorByDefault,
+        linkerSettings: [
+            .linkedLibrary("user32", .when(platforms: [.windows])),
+            .linkedLibrary("gdi32", .when(platforms: [.windows])),
+            .linkedLibrary("shell32", .when(platforms: [.windows])),
+            .linkedLibrary("ole32", .when(platforms: [.windows])),
+            .unsafeFlags(["-Xlinker", "/SUBSYSTEM:WINDOWS", "-Xlinker", "/ENTRY:mainCRTStartup"], .when(platforms: [.windows])),
+        ]
+    ),
+
     .testTarget(name: "DeskCoreTests", dependencies: ["DeskCore", "DeskPixels"], exclude: ["Goldens"]),
     .testTarget(name: "DeskPixelsTests", dependencies: ["DeskCore", "DeskPixels"], exclude: ["Goldens"]),
     .testTarget(name: "DeskFilesTests", dependencies: ["DeskCore", "DeskFiles"]),
+    .testTarget(name: "DeskteriorWinTests", dependencies: ["DeskteriorWin", "DeskCore"], swiftSettings: mainActorByDefault),
     .testTarget(
         name: "DeskSceneTests",
         dependencies: ["DeskCore", "DeskPixels", "DeskStage", "DeskScene"],

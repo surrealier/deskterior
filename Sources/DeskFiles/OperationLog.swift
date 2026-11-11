@@ -143,7 +143,7 @@ public final class OperationLog: @unchecked Sendable {
 
     /// The contents of the regular file at `url` (a symlink or FIFO there is not opened or not read), or nil.
     private static func readRegularFile(_ url: URL) -> Data? {
-        guard case let .success((handle, _)) = FilePrimitives.openOwnFileForReading(url) else { return nil }
-        return try? handle.readToEnd() ?? Data()
+        guard case let .success(.data(data)) = FilePrimitives.readOwnFile(url, maxBytes: 64 << 20) else { return nil }
+        return data
     }
 }

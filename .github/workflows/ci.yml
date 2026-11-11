@@ -92,5 +92,47 @@ jobs:
         timeout-minutes: 30
         run: swift build --build-tests
       - name: Test
+        id: test
         timeout-minutes: 30
         run: swift test --skip-build
+      - name: File-safety lint
+        if: ${{ !cancelled() }}
+        run: scripts/check-file-safety.sh
+      # The app: Deskterior.exe with the Swift runtime next to it and Resources/Fonts, as one folder (docs/WINDOWS.md).
+      - name: Build Deskterior.exe (release)
+        if: ${{ !cancelled() }}
+        timeout-minutes: 30
+        run: swift build -c release --product Deskterior
+      - name: Package
+        if: ${{ !cancelled() }}
+        run: scripts/package-windows.sh dist/Deskterior
+      # Run the packaged copy with only the system folders on PATH, so it must find its own runtime and resources.
+      - name: Smoke test (headless snapshot)
+        if: ${{ !cancelled() }}
+        run: |
+          scripts/make-windows-fixture.sh build/fixture
+          PATH="/c/Windows/System32:/c/Windows" dist/Deskterior/Deskterior.exe \
+            --snapshot build/deskterior-windows.png --desktop-folder build/fixture --frames 120 | tee build/snapshot.txt
+          grep -q "snapshot: 10 item(s)" build/snapshot.txt
+          test -s build/deskterior-windows.png
+      - name: Smoke test (window)
+        if: ${{ !cancelled() }}
+        timeout-minutes: 5
+        run: |
+          PATH="/c/Windows/System32:/c/Windows" dist/Deskterior/Deskterior.exe --desktop-folder build/fixture \
+            --state-folder build/state --connect --quit-after 8 | tee build/window.txt
+          grep -q "frame(s) shown" build/window.txt
+      - name: Upload app
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: Deskterior-windows
+          path: dist/Deskterior
+          retention-days: 14
+      - name: Upload snapshot
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: Deskterior-windows-snapshot
+          path: build/deskterior-windows.png
+          retention-days: 14

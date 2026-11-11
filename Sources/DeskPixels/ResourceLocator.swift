@@ -7,6 +7,7 @@ import os
 /// Finds bundled resources without SwiftPM resources (so no `Bundle.module`). Fonts are searched in order:
 /// 1. `Bundle.main.resourceURL/Fonts` (the built .app);
 /// 2. `$DESKTERIOR_RESOURCES/Fonts`;
+/// 2a. off Apple platforms, `Resources/Fonts` next to the executable (the Windows zip's layout);
 /// 3. debug builds only: the repo's `Resources/Fonts`, located from this source file (`swift run`, tests).
 ///    Release binaries carry no source paths.
 public enum ResourceLocator {
@@ -23,6 +24,11 @@ public enum ResourceLocator {
         if let env = environment[resourcesEnvironmentKey], !env.isEmpty {
             out.append(URL(fileURLWithPath: env, isDirectory: true).appendingPathComponent("Fonts", isDirectory: true))
         }
+        #if !canImport(Darwin)
+        if let exe = Bundle.main.executableURL {
+            out.append(exe.deletingLastPathComponent().appendingPathComponent("Resources/Fonts", isDirectory: true))
+        }
+        #endif
         if let repoFontsDirectory { out.append(repoFontsDirectory) }
         return out
     }

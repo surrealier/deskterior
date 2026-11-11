@@ -45,10 +45,13 @@ final class DirectoryChangeSource: DesktopChangeSource, @unchecked Sendable {
         directory = h
         stopEvent = stop
         let size = Self.bufferSize
-        let thread = Thread { [directory, stopEvent, finished, weak watcher] in
-            Self.run(directory, stopEvent, size) { event in
+        let handles = Handles(directory: h, stop: stop)
+        let target = WeakWatcher(watcher)
+        let finished = finished
+        let thread = Thread {
+            Self.run(handles.directory, handles.stop, size) { event in
                 queue.async {
-                    guard let watcher else { return }
+                    guard let watcher = target.watcher else { return }
                     switch event {
                     case .changed: watcher.sourceDidChange(relevant: true, lost: false)
                     case .overflowed: watcher.sourceDidChange(relevant: true, lost: true)
@@ -63,6 +66,17 @@ final class DirectoryChangeSource: DesktopChangeSource, @unchecked Sendable {
     }
 
     enum Event { case changed, overflowed, failed }
+
+    /// The two handles the thread uses (owned by the source, closed in `stop` after the thread ends).
+    private struct Handles: @unchecked Sendable {
+        let directory: HANDLE
+        let stop: HANDLE
+    }
+
+    private final class WeakWatcher: @unchecked Sendable {
+        weak var watcher: DesktopWatcher?
+        init(_ watcher: DesktopWatcher) { self.watcher = watcher }
+    }
 
     private static func run(_ directory: HANDLE, _ stopEvent: HANDLE, _ size: Int, _ report: (Event) -> Void) {
         guard let event = CreateEventW(nil, true, false, nil) else {
@@ -80,7 +94,7 @@ final class DirectoryChangeSource: DesktopChangeSource, @unchecked Sendable {
             ov.initialize(to: OVERLAPPED())
             ov.pointee.hEvent = event
             ResetEvent(event)
-            guard ReadDirectoryChangesW(directory, buffer, DWORD(size), false, filter, nil, ov, nil).boolValue else {
+            guard ReadDirectoryChangesW(directory, buffer, DWORD(size), false, filter, nil, ov, nil) else {
                 report(.failed)
                 return
             }
@@ -92,7 +106,7 @@ final class DirectoryChangeSource: DesktopChangeSource, @unchecked Sendable {
                 _ = GetOverlappedResult(directory, ov, &bytes, true)
                 return
             }
-            guard GetOverlappedResult(directory, ov, &bytes, false).boolValue else {
+            guard GetOverlappedResult(directory, ov, &bytes, false) else {
                 if GetLastError() == 1022 {        // ERROR_NOTIFY_ENUM_DIR: too many changes to list
                     report(.overflowed)
                     continue

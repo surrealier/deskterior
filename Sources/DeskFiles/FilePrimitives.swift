@@ -14,6 +14,12 @@ struct FileErrno: Error, Equatable, Sendable {
     static func ~= (pattern: Int32, value: FileErrno) -> Bool { pattern == value.code }
 }
 
+/// What reading one of our own files found: its bytes, or that it is bigger than allowed (its size when known).
+enum OwnFileRead: Equatable {
+    case data(Data)
+    case tooLarge(Int64?)
+}
+
 /// The low-level file calls of DeskFiles, one implementation per platform (docs/WINDOWS.md WP5):
 /// `FilePrimitives+POSIX.swift` (macOS, and Linux for development) and `FilePrimitives+Windows.swift`.
 /// Everything above them (intent checks, root confinement, check → act → re-check, undo, the log) is shared, so

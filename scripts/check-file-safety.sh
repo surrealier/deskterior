@@ -243,7 +243,7 @@ SRC="$(cd "$SRC" && pwd)"
 DESTRUCTIVE_ALLOW="DeskFiles/FileOperator.swift DeskFiles/Trasher.swift DeskFiles/OperationLog.swift DeskFiles/FilePrimitives+POSIX.swift DeskFiles/FilePrimitives+Windows.swift"
 # Finder alias files: only the file operator writes one (Erratum 29).
 BOOKMARK_ALLOW="DeskFiles/FilePrimitives+POSIX.swift"
-WRITE_ALLOW="$DESTRUCTIVE_ALLOW DeskFiles/StateStore.swift DeskFiles/IconCache.swift DeskFiles/ArtifactWriter.swift DeskAssetTool/"
+WRITE_ALLOW="$DESTRUCTIVE_ALLOW DeskFiles/StateStore.swift DeskFiles/IconCache.swift DeskFiles/ArtifactWriter.swift DeskAssetTool/ DeskteriorWin/Snapshot.swift"
 INTENT_ALLOW="DeskteriorApp/Store/EffectRunner.swift"
 # The SPI also appears where the initializer is declared.
 SPI_ALLOW="$INTENT_ALLOW DeskFiles/ExplicitIntent.swift"
@@ -259,6 +259,8 @@ NOWHERE=""
 # handles opened by path only there and in the watcher (a listing handle); the registry is never written.
 WIN_DESTRUCTIVE_ALLOW="DeskFiles/FilePrimitives+Windows.swift DeskFiles/Trasher.swift"
 WIN_OPEN_ALLOW="DeskFiles/FilePrimitives+Windows.swift DeskFiles/DesktopWatcher+Portable.swift"
+# Opening a document with its program (a double-click) is the shell's job, from one file.
+WIN_LAUNCH_ALLOW="DeskteriorWin/Shell.swift"
 # File extensions that may not appear under Sources (C, C++, Objective-C, assembly, module maps).
 FOREIGN_EXTENSIONS="c h m mm cc cpp cxx hpp s S modulemap"
 
@@ -391,8 +393,9 @@ WIN_DESTRUCTIVE_PATTERNS='\b(MoveFile|MoveFileEx|MoveFileWithProgress|DeleteFile
 \bIFileOperation\b'
 WIN_OPEN_PATTERNS='\bCreateFile(2|A|W)?[[:space:]]*\(
 \bOpenFileById\b'
+WIN_LAUNCH_PATTERNS='\bShellExecute(Ex)?[AW]?\b'
 WIN_NEVER_PATTERNS='\bReg(SetValue|SetValueEx|SetKeyValue|CreateKey|CreateKeyEx|DeleteKey|DeleteKeyEx|DeleteValue|DeleteTree)[AW]?\b
-\b(ShellExecute|ShellExecuteEx|CreateProcess|CreateProcessAsUser|WinExec|system)[AW]?[[:space:]]*\( !! (func|case)[[:space:]]+system
+\b(CreateProcess|CreateProcessAsUser|WinExec|system)[AW]?[[:space:]]*\( !! (func|case)[[:space:]]+system
 \bSHChangeNotify\b'
 ORIGIN_PATTERNS='\bwithOrigin[[:space:]]*\(
 \bfrom:[[:space:]]*\.(menuItem|sheetConfirm|drop|dragToTrash|undo|inventory)\b'
@@ -489,6 +492,7 @@ check "file-request" "$SRC" '*.swift' "$FILE_REQUEST_PATTERNS" "$FILE_REQUEST_AL
 check "origin" "$SRC" '*.swift' "$ORIGIN_PATTERNS" "$ORIGIN_ALLOW"
 check "win-destructive" "$SRC" '*.swift' "$WIN_DESTRUCTIVE_PATTERNS" "$WIN_DESTRUCTIVE_ALLOW"
 check "win-open" "$SRC" '*.swift' "$WIN_OPEN_PATTERNS" "$WIN_OPEN_ALLOW"
+check "win-launch" "$SRC" '*.swift' "$WIN_LAUNCH_PATTERNS" "$WIN_LAUNCH_ALLOW"
 check "win-never" "$SRC" '*.swift' "$WIN_NEVER_PATTERNS" "$NOWHERE"
 check "test-shell" "$TESTS" '*.swift' "$SHELL_PATTERNS" "$NOWHERE"
 check "test-network" "$TESTS" '*.swift' "$NETWORK_PATTERNS" "$NOWHERE"
