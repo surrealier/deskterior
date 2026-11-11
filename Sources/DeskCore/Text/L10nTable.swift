@@ -115,12 +115,21 @@ public enum L10nKey: String, CaseIterable, Sendable {
     public var en: String { Self.table[self]?.en ?? rawValue }
     public var ko: String { Self.table[self]?.ko ?? rawValue }
 
-    private struct Pair: Sendable {
+    /// The text in `language` on `platform`: the Windows wording where `windowsTable` has one, else the Mac's.
+    public func string(_ language: Language, platform: Platform) -> String {
+        if platform == .windows, let w = Self.windowsTable[self] { return language == .ko ? w.ko : w.en }
+        return language == .ko ? ko : en
+    }
+
+    /// Whether the key has Windows wording of its own.
+    public var hasWindowsText: Bool { Self.windowsTable[self] != nil }
+
+    struct Pair: Sendable {
         let en: String
         let ko: String
     }
 
-    private static func p(_ en: String, _ ko: String) -> Pair { Pair(en: en, ko: ko) }
+    static func p(_ en: String, _ ko: String) -> Pair { Pair(en: en, ko: ko) }
 
     private static let table: [L10nKey: Pair] = [
         // Desk and status menus
