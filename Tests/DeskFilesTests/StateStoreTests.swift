@@ -197,11 +197,13 @@ struct StateStoreTests {
         #expect(throws: Never.self) { try StateStore(directory: d.url("state", isDirectory: true), desktop: fakeDesk, mirrored: mirror) }
     }
 
+    #if canImport(Darwin)
     @Test("Default locations follow the bundle id")
     func defaultLocations() {
         #expect(StateStore.defaultDirectory(bundleID: "io.example.desk").path.hasSuffix("Library/Application Support/io.example.desk"))
         #expect(IconCache.defaultDirectory(bundleID: "io.example.desk").path.hasSuffix("Library/Caches/io.example.desk/icons"))
     }
+    #endif
 
     @Test("Icon cache keys cover inode, mtime, size, kind, pixels and palette version")
     func iconKeys() {

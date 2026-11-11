@@ -130,7 +130,7 @@ struct HardeningFileTests {
         let source = try rig.file(rig.elsewhere, "a.txt", "ours")
         let aside = rig.at(rig.elsewhere, "moved-away.txt")
         await rig.op.setHooks(.init(afterPlace: { placed in
-            _ = rename(placed.path, aside.path)
+            _ = renameReplacing(placed.path, aside.path)
             try? Data("theirs".utf8).write(to: placed)
         }))
         let result = await rig.op.importItems([source], op: .copy, rig.intent(.drop))

@@ -38,9 +38,9 @@ enum WinApp {
         MessageLoop.run(ticker: window.ticker, deadline: deadline, pump: { window.pump() }) { window.requestClose() }
         keepAlive.invalidate()
         let shown = window.surface.framesShown
+        let snapshots = window.snapshots
         window.close()
         if options.quitAfter != nil {
-            let snapshots = window.snapshots
             print("window: \(shown) frame(s) shown, \(snapshots) snapshot(s)")
             exit(shown > 0 && (snapshots > 0 || !options.connect) ? 0 : 2)
         }

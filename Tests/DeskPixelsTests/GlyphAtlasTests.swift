@@ -101,7 +101,10 @@ struct GlyphAtlasTests {
         let ct = try #require(PixelFont(url: ttfURL, pixelSize: 10, lineHeight: 15))
         let atlas = try GlyphAtlas(data: Self.atlasData())
         let f = PixelFont(atlas: atlas)
-        for s in atlas.allScalars {
+        // Text is NFC-normalized before it is drawn, so a scalar NFC replaces (the CJK compatibility ideographs, whose
+        // unified forms Galmuri lacks) never reaches the atlas as itself: on macOS CoreText's fallback draws its
+        // unified form instead, which no atlas of Galmuri holds.
+        for s in atlas.allScalars where TextLayout.nfc(String(s)).unicodeScalars.elementsEqual([s]) {
             let text = String(s)
             #expect(f.render(text, color: Self.ink) == ct.render(text, color: Self.ink), "U+\(String(s.value, radix: 16))")
         }

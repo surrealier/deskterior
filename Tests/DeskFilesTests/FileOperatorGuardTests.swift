@@ -52,7 +52,7 @@ struct SwapTrasher: Trasher {
     func trash(_ url: URL) async throws -> URL? {
         let save = url.deletingLastPathComponent().appendingPathComponent(".sb-save")
         try Data("newer version".utf8).write(to: save)
-        guard rename(save.path, url.path) == 0 else { throw FileRefusal.failed(Int(errno)) }
+        guard renameReplacing(save.path, url.path) == 0 else { throw FileRefusal.failed(Int(errno)) }
         return try await inner.trash(url)
     }
 
@@ -229,7 +229,7 @@ struct FileOperatorGuardTests {
             once {
                 let save = elsewhere.appendingPathComponent(".sb-save")
                 try? Data("impostor".utf8).write(to: save)
-                _ = rename(save.path, source.path)
+                _ = renameReplacing(save.path, source.path)
             }
         }))
         let result = await rig.op.importItems([source], op: .move, rig.intent(.drop))
@@ -250,7 +250,7 @@ struct FileOperatorGuardTests {
             once {
                 let save = trashFolder.appendingPathComponent(".sb-save")
                 try? Data("impostor".utf8).write(to: save)
-                _ = rename(save.path, trashFolder.appendingPathComponent("a.txt").path)
+                _ = renameReplacing(save.path, trashFolder.appendingPathComponent("a.txt").path)
             }
         }))
         let undone = await rig.op.undo(record, rig.intent(.undo))

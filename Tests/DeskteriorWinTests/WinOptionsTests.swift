@@ -64,7 +64,7 @@ struct WinSessionTests {
         defer { session.stop() }
         session.start(connect: true)
         func wait(_ done: () -> Bool) async throws {
-            let until = Date().addingTimeInterval(10)
+            let until = Date().addingTimeInterval(60)                // a busy runner delivers late
             while !done(), Date() < until {
                 session.pump()
                 try await Task.sleep(for: .milliseconds(20))

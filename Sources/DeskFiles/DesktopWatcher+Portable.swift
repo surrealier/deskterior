@@ -23,7 +23,9 @@ extension DesktopWatcher {
 /// `ReadDirectoryChangesW` (top level only: names, attributes, sizes, write and creation times) with an overlapped
 /// read and a stop event, on a dedicated thread. A buffer overflow (no bytes, or `ERROR_NOTIFY_ENUM_DIR`) is a
 /// lost change; any other failure (the folder deleted, access revoked) breaks the source, and the watcher rescans
-/// and starts a new one.
+/// and starts a new one. Windows does not report the watched folder itself being moved or replaced, so once a second
+/// the thread checks that its path still names the folder it opened; when it does not, the watcher restarts on the
+/// path (`sourceRootChanged`), as FSEvents' RootChanged does.
 final class DirectoryChangeSource: DesktopChangeSource, @unchecked Sendable {
     /// Bytes of change records per read (tests may lower it to force overflows).
     nonisolated(unsafe) static var bufferSize = 64 * 1024
@@ -49,13 +51,14 @@ final class DirectoryChangeSource: DesktopChangeSource, @unchecked Sendable {
         let target = WeakWatcher(watcher)
         let finished = finished
         let thread = Thread {
-            Self.run(handles.directory, handles.stop, size) { event in
+            Self.run(handles.directory, handles.stop, size, path: path) { event in
                 queue.async {
                     guard let watcher = target.watcher else { return }
                     switch event {
                     case .changed: watcher.sourceDidChange(relevant: true, lost: false)
                     case .overflowed: watcher.sourceDidChange(relevant: true, lost: true)
                     case .failed: watcher.sourceFailed()
+                    case .rootMoved: watcher.sourceRootChanged()
                     }
                 }
             }
@@ -65,7 +68,7 @@ final class DirectoryChangeSource: DesktopChangeSource, @unchecked Sendable {
         thread.start()
     }
 
-    enum Event { case changed, overflowed, failed }
+    enum Event { case changed, overflowed, failed, rootMoved }
 
     /// The two handles the thread uses (owned by the source, closed in `stop` after the thread ends).
     private struct Handles: @unchecked Sendable {
@@ -78,7 +81,16 @@ final class DirectoryChangeSource: DesktopChangeSource, @unchecked Sendable {
         init(_ watcher: DesktopWatcher) { self.watcher = watcher }
     }
 
-    private static func run(_ directory: HANDLE, _ stopEvent: HANDLE, _ size: Int, _ report: (Event) -> Void) {
+    private static func run(_ directory: HANDLE, _ stopEvent: HANDLE, _ size: Int, path: String, _ report: (Event) -> Void) {
+        let opened = Win32.info(directory).map {
+            (UInt64($0.dwVolumeSerialNumber), UInt64($0.nFileIndexHigh) << 32 | UInt64($0.nFileIndexLow))
+        }
+        /// The path no longer names the folder this handle holds (moved away, deleted, replaced).
+        func rootMoved() -> Bool {
+            guard let opened else { return false }
+            guard case let .success(st) = FilePrimitives.status(path: path, follow: true) else { return true }
+            return st.device != opened.0 || st.inode != opened.1
+        }
         guard let event = CreateEventW(nil, true, false, nil) else {
             report(.failed)
             return
@@ -99,8 +111,17 @@ final class DirectoryChangeSource: DesktopChangeSource, @unchecked Sendable {
                 return
             }
             var handles: [HANDLE?] = [event, stopEvent]
-            let woke = WaitForMultipleObjects(2, &handles, false, 0xFFFF_FFFF)
+            var woke: DWORD
             var bytes: DWORD = 0
+            repeat {
+                woke = WaitForMultipleObjects(2, &handles, false, 1000)
+                if woke == 0x102, rootMoved() {                   // WAIT_TIMEOUT and the folder is gone
+                    CancelIoEx(directory, ov)
+                    _ = GetOverlappedResult(directory, ov, &bytes, true)
+                    report(.rootMoved)
+                    return
+                }
+            } while woke == 0x102
             if woke != 0 {
                 CancelIoEx(directory, ov)
                 _ = GetOverlappedResult(directory, ov, &bytes, true)

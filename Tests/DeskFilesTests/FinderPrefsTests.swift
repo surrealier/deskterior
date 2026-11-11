@@ -66,6 +66,7 @@ struct FinderPrefsTests {
         #expect(VolumeEntry.Kind.allCasesForTest.allSatisfy { W.isShown($0, prefs: all) })
     }
 
+    #if canImport(Darwin)
     @Test("Listing mounted volumes respects the filter")
     func listing() {
         let hidden = VolumeWatcher.visibleVolumes(prefs: FinderPrefs(
@@ -75,6 +76,7 @@ struct FinderPrefsTests {
         let all = VolumeWatcher.visibleVolumes(prefs: FinderPrefs(showHardDrives: true))
         #expect(all.contains { $0.path == "/" && $0.kind == .internalDisk })
     }
+    #endif
 }
 
 extension VolumeEntry.Kind {

@@ -167,6 +167,10 @@ extension FilePrimitives {
         } else if final.hasPrefix(#"\\?\"#) {
             final = String(final.dropFirst(4))
         }
+        // Forward slashes, so a drive root ("D:\\") reads as absolute and not as a name relative to the current folder.
+        final = final.replacingOccurrences(of: "\\", with: "/")
+        if final.count == 2, final.hasSuffix(":") { final += "/" }
+        if final.count == 3, final.hasSuffix(":/") { return final }                // a drive root as it is
         return URL(fileURLWithPath: final).standardizedFileURL.path
     }
 

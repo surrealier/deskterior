@@ -22,6 +22,7 @@ struct SafetyGuardTests {
         }
     }
 
+    #if canImport(Darwin)
     @Test("Development modes refuse the real desktop, anything inside it and anything above it (exit 64)")
     func refusesRealDesktop() throws {
         let d = try TempDesk()
@@ -40,6 +41,7 @@ struct SafetyGuardTests {
             #expect(refusal(DesktopLocator.resolve(override: nil), mode) == .noFolderGiven)
         }
     }
+    #endif
 
     @Test("Symlinks into a desktop are followed (fake desktop, so nothing real is looked up)")
     func symlinksIntoDesktop() throws {
@@ -77,6 +79,7 @@ struct SafetyGuardTests {
         #expect(Self.devModes.allSatisfy { $0.requiresSandboxFolder })
     }
 
+    #if canImport(Darwin)
     @Test("No mode mirrors a folder holding the desktop or home, a volume, or the volumes folder (fake home)")
     func broadFoldersRefused() throws {
         let d = try TempDesk()
@@ -110,6 +113,7 @@ struct SafetyGuardTests {
         #expect(reason(desk, .demo) == .realDesktop)
         #expect(reason(inDesk, .demo) == .insideRealDesktop)
     }
+    #endif
 
     @Test("Our own folders stay out of the real desktop and the mirrored folder")
     func ownFolders() throws {

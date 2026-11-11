@@ -125,6 +125,7 @@ struct WatcherTests {
         #expect(after.tombstones.map(\.name) == ["gone.txt"])
     }
 
+    #if !os(Windows)
     @Test("Screenshot flow: a hidden dot-file renamed into place appears once, never as a dot-file")
     func dotFileThenRename() async throws {
         let (d, w, log) = try await started()
@@ -140,6 +141,7 @@ struct WatcherTests {
         #expect(state.tokens.records.values.first?.meta.kind == .screenshot)
         #expect(state.tokens.records.values.first?.location == .screen(page: 0, col: 0, row: 0))
     }
+    #endif
 
     #if canImport(Darwin)
     @Test("A burst of 200 files arrives in a few debounced snapshots and lays out in order")

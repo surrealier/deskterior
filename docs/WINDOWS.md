@@ -82,7 +82,7 @@ a `DeskApp` target (below).
 | WP2 software renderer, DeskStage | done: soft renderer matches SpriteKit+Metal pixel for pixel in the parity suite on macOS (whole room scenes, the lit pass, sprites off the grid) |
 | WP3 physics | done: the scene's physics suites pass on the AABB solver |
 | WP4 glyphs, PNG | done: atlas baked on macOS CI, checked against CoreText there; PortablePNG |
-| WP5 DeskFiles | ported (above); the Windows-specific tests of the plan (long paths, sharing violations, overflow, 200-file burst) are not written yet |
+| WP5 DeskFiles | ported (above); DeskFilesTests run on Windows (macOS-only cases — bookmarks, Finder flags, packages, APFS name folding, POSIX permissions — are compiled out there); `FilePrimitivesTests` adds sharing violations, paths over 260 characters, hidden/system items and shortcuts. Not yet: forced watcher overflow, 200-file burst on Windows |
 | WP6 app shell | first shell: window, input, frame loop, mirror, layout saving, open/reveal; no tray, menus, drag and drop or desktop layer yet |
 | WP7 auxiliary windows | not started (notes, inventory, settings, arrange desk) |
 | WP8 packaging | a self-contained folder as a CI artifact; no installer, signing or auto-start yet |

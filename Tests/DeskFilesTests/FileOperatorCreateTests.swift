@@ -82,6 +82,7 @@ struct FileOperatorCreateTests {
         #expect(rig.names(rig.at(rig.desk, "Folder.txt")).isEmpty)
     }
 
+    #if canImport(Darwin)
     @Test("Names clash as the desk's volume compares them: by case and Unicode form where it folds them")
     func foldedClash() async throws {
         let rig = try FileRig()
@@ -99,6 +100,7 @@ struct FileOperatorCreateTests {
         #expect(rig.text(rig.at(rig.desk, "memo.txt")) == "lower")
         #expect(rig.text(rig.at(rig.desk, "Cafe\u{301}.txt")) == "decomposed")
     }
+    #endif
 
     @Test("A file planted at the name between the choice and the rename is never written over")
     func plantedDestination() async throws {
@@ -173,7 +175,7 @@ struct FileOperatorCreateTests {
         await rig.op.setHooks(.init(afterPlace: { placed in
             let swap = desk.appendingPathComponent(".swap")
             try? Data("someone else's".utf8).write(to: swap)
-            _ = rename(swap.path, placed.path)
+            _ = renameReplacing(swap.path, placed.path)
         }))
         let result = await create(rig, "a.txt")
         #expect(result.outcomes == [.refused(rig.at(desk, "a.txt"), .landedUnverified)] && result.undo == nil)
@@ -306,7 +308,7 @@ struct FileOperatorCreateTests {
         case "swap":
             // An editor's safe-save: the same text, a new inode.
             let swap = try rig.file(rig.desk, ".swap", "abc\n")
-            #expect(rename(swap.path, url.path) == 0)
+            #expect(renameReplacing(swap.path, url.path) == 0)
             try FileManager.default.setAttributes([.modificationDate: modified], ofItemAtPath: url.path)
         case "gone":
             try FileManager.default.moveItem(at: url, to: rig.at(rig.elsewhere, "note.txt"))
@@ -350,7 +352,7 @@ struct FileOperatorCreateTests {
             guard url.lastPathComponent == "note.txt" else { return }
             let swap = desk.appendingPathComponent(".swap")
             try? Data("abc\n".utf8).write(to: swap)
-            _ = rename(swap.path, url.path)
+            _ = renameReplacing(swap.path, url.path)
         }))
         let undone = await rig.op.undo(try #require(result.undo), rig.intent(.undo))
         #expect(undone.refusals == [.identityChanged] && rig.trashNames.isEmpty)

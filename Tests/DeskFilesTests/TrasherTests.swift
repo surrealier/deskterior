@@ -6,6 +6,7 @@ import Testing
 /// never touched.
 @Suite("Trasher")
 struct TrasherTests {
+    #if canImport(Darwin)
     @Test("FakeTrasher renames items into its folder and says where they went")
     func fakeTrash() async throws {
         let d = try TempDesk()
@@ -36,6 +37,7 @@ struct TrasherTests {
         let names = try FileManager.default.contentsOfDirectory(atPath: trasher.folder.path).sorted()
         #expect(names == ["Notes 2.rtfd", "Notes.rtfd", "a 2.txt", "a.txt"])
     }
+    #endif
 
     @Test("FakeTrasher reports a missing item and changes nothing")
     func missing() async throws {

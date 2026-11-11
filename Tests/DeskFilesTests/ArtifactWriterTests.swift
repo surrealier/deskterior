@@ -29,6 +29,7 @@ struct ArtifactWriterTests {
         #expect(url.path.hasPrefix(FileManager.default.homeDirectoryForCurrentUser.path))
     }
 
+    #if canImport(Darwin)
     @Test("Inside checks resolve dot-dot, symlinks, missing paths and case")
     func insideChecks() throws {
         defer { cleanUp() }
@@ -48,6 +49,7 @@ struct ArtifactWriterTests {
         // /tmp is a symlink to /private/tmp; both spellings resolve alike.
         #expect(DesktopLocator.canonicalPath(URL(fileURLWithPath: "/tmp/x/y")).hasPrefix("/private/tmp/"))
     }
+    #endif
 
     @Test("The writer refuses directories inside the desktop and creates nothing there")
     func refusesDesktop() throws {

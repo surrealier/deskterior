@@ -158,8 +158,10 @@ struct FilePrimitivesTests {
         let dir = try Self.scratch()
         defer { try? FileManager.default.removeItem(at: dir) }
         var deep = dir
-        for i in 0..<6 { deep = deep.appendingPathComponent(String(repeating: "폴더\(i)", count: 12)) }
-        try FileManager.default.createDirectory(at: deep, withIntermediateDirectories: true)
+        for i in 0..<6 {
+            deep = deep.appendingPathComponent(String(repeating: "폴더\(i)", count: 12))
+            #expect(FilePrimitives.makeDirectory(deep, hidden: false) == 0)
+        }
         #expect(Win32.path(deep).count > 260)
         let file = deep.appendingPathComponent("long.txt")
         try FilePrimitives.writeNewFile(Data("deep".utf8), to: file)
