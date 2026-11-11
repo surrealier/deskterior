@@ -1,7 +1,9 @@
 import DeskCore
 import Foundation
 import Metal
+#if canImport(simd)
 import simd
+#endif
 import Testing
 @testable import DeskScene
 

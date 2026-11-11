@@ -1,3 +1,4 @@
+#if canImport(CoreText)
 import CoreGraphics
 import CoreText
 import Foundation
@@ -58,3 +59,4 @@ public enum FontRegistry {
         }
     }
 }
+#endif // canImport(CoreText)

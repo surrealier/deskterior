@@ -1,3 +1,4 @@
+#if canImport(CoreGraphics)
 import CoreGraphics
 import DeskCore
 import Foundation
@@ -102,3 +103,4 @@ struct IconPixelatorTests {
         #expect(IconPixelator.coverCrop(ArtSize(32, 48), aspect: ArtSize(12, 10)) == ArtRect(0, 11, 32, 26))
     }
 }
+#endif // canImport(CoreGraphics)

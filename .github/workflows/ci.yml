@@ -52,3 +52,30 @@ jobs:
           name: Deskterior-ci
           path: build/Deskterior-0.0.0-ci.zip
           retention-days: 7
+
+  # Windows (docs/WINDOWS.md): the targets that are portable so far, built and tested with the swift.org toolchain.
+  windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Keep LF line endings
+        run: git config --global core.autocrlf false
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - name: Toolchain
+        uses: compnerd/gha-setup-swift@9ff1ee4c44888c5817fc14d1b257ac8cabb4935f # v0.5.1
+        with:
+          swift-version: swift-6.2.3-release
+          swift-build: 6.2.3-RELEASE
+      - name: Version
+        run: swift --version
+      - name: Build
+        timeout-minutes: 30
+        run: swift build
+      - name: Build tests
+        timeout-minutes: 30
+        run: swift build --build-tests
+      - name: Test
+        timeout-minutes: 30
+        run: swift test --skip-build

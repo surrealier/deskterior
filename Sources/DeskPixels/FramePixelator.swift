@@ -1,4 +1,6 @@
+#if canImport(CoreGraphics)
 import CoreGraphics
+#endif
 import DeskCore
 import Foundation
 
@@ -39,7 +41,9 @@ public enum FramePixelator {
 
     /// `ImageThumbnail.oriented(contentsOf:)` then `pixelate`; nil when the file is no readable image. (The caller
     /// refuses by size first: `FramePhotoLoader`.)
+    #if canImport(ImageIO)
     public static func photo(contentsOf url: URL) -> FramePhoto? {
         ImageThumbnail.oriented(contentsOf: url).flatMap(pixelate)
     }
+    #endif
 }

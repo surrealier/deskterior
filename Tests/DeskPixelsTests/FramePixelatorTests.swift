@@ -1,3 +1,4 @@
+#if canImport(ImageIO)
 import CoreGraphics
 import DeskCore
 import Foundation
@@ -283,3 +284,4 @@ struct FramePixelatorTests {
         #expect(ImageThumbnail.maxSourceBytes == 64 << 20)
     }
 }
+#endif // canImport(ImageIO)

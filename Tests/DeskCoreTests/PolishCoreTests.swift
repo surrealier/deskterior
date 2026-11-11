@@ -1,6 +1,8 @@
 import DeskPixels
 import Foundation
+#if canImport(simd)
 import simd
+#endif
 import Testing
 @testable import DeskCore
 

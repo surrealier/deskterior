@@ -1,4 +1,6 @@
+#if canImport(CoreGraphics)
 import CoreGraphics
+#endif
 import DeskCore
 
 /// Turns a desktop picture into a screen wallpaper for the in-scene monitor (DESIGN §1.4): aspect-fill crop,
@@ -14,10 +16,12 @@ public enum WallpaperPixelator {
     }
 
     /// The wallpaper at `size` (default: the monitor screen), or nil for an empty image.
+    #if canImport(CoreGraphics)
     public static func pixelate(_ image: CGImage, to size: ArtSize = CoreLayout.screen.size, colors: Int = 16) -> PixelBuffer? {
         guard let buffer = PixelBuffer(cgImage: image) else { return nil }
         return pixelate(buffer, to: size, colors: colors)
     }
+    #endif
 
     /// The pure pipeline on an RGBA buffer.
     public static func pixelate(_ source: PixelBuffer, to size: ArtSize, colors: Int = 16) -> PixelBuffer {

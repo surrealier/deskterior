@@ -1,3 +1,4 @@
+#if canImport(CoreText)
 import CoreGraphics
 import CoreText
 import DeskCore
@@ -374,3 +375,4 @@ public final class PixelFont: @unchecked Sendable {
         ctx.textMatrix = .identity
     }
 }
+#endif // canImport(CoreText)

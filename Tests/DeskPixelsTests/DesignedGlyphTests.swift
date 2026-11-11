@@ -1,3 +1,4 @@
+#if canImport(CoreText)
 import Testing
 @testable import DeskCore
 @testable import DeskPixels
@@ -22,3 +23,4 @@ struct DesignedGlyphTests {
         #expect(f.source(of: "⌥") == .systemFallback)
     }
 }
+#endif // canImport(CoreText)

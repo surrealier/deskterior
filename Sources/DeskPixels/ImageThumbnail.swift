@@ -1,3 +1,4 @@
+#if canImport(ImageIO)
 import CoreGraphics
 import DeskCore
 import Foundation
@@ -66,3 +67,4 @@ public enum ImageThumbnail {
         return PixelBuffer(cgImage: thumbnail)
     }
 }
+#endif // canImport(ImageIO)

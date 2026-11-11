@@ -1,5 +1,8 @@
+import DeskCore
 import Foundation
+#if canImport(os)
 import os
+#endif
 
 /// Finds bundled resources without SwiftPM resources (so no `Bundle.module`). Fonts are searched in order:
 /// 1. `Bundle.main.resourceURL/Fonts` (the built .app);
@@ -50,7 +53,11 @@ public enum ResourceLocator {
     /// build of the app bundle an assertion failure (a packaging bug). Outside a bundle (tests, `swift run`)
     /// it only logs.
     public static func reportMissing(_ name: String) {
+        #if canImport(os)
         logger.fault("Missing or unreadable resource \(name, privacy: .public)")
+        #else
+        PlatformLog(category: "resources").fault("Missing or unreadable resource \(name)")
+        #endif
         if isAppBundle {
             assertionFailure("\(name) is missing from the app bundle's Resources")
         }
@@ -69,7 +76,9 @@ public enum ResourceLocator {
     static let repoFontsDirectory: URL? = nil
     #endif
 
+    #if canImport(os)
     private static let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "deskterior", category: "resources")
+    #endif
 
     private static func isDirectory(_ url: URL) -> Bool {
         var isDir: ObjCBool = false
