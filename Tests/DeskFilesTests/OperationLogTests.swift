@@ -90,6 +90,7 @@ struct OperationLogTests {
         #expect(try String(contentsOf: victim, encoding: .utf8) == "untouched")
     }
 
+    #if !os(Windows)
     @Test("A FIFO planted at operations.log is refused at once instead of blocking every file action")
     func plantedFIFO() throws {
         let d = try TempDesk()
@@ -115,4 +116,5 @@ struct OperationLogTests {
         #expect(finished)
         #expect(results.all == [true, true])
     }
+    #endif
 }

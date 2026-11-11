@@ -22,6 +22,7 @@ struct FileOperatorCreateTests {
 
     // MARK: Creating
 
+    #if !os(Windows)
     @Test("A new file in the desk folder only, with exactly the text asked for; logged create-file")
     func createsInRoot() async throws {
         let rig = try FileRig()
@@ -31,9 +32,13 @@ struct FileOperatorCreateTests {
         #expect(bytes(url) == Self.text && rig.names(rig.desk) == ["우유 사기.txt"])
         #expect(rig.names(rig.elsewhere).isEmpty && rig.trashNames.isEmpty)
         #expect(Set(rig.names(rig.state)).isSubset(of: ["FakeTrash", "operations.log"]))
+        #if os(Windows)
+        #expect((try? FilePrimitives.status(url).get())?.kind == .regular)
+        #else
         var st = stat()
         #expect(lstat(url.path, &st) == 0 && st.st_mode & S_IFMT == S_IFREG && st.st_nlink == 1)
         #expect(st.st_mode & 0o600 == 0o600 && st.st_mode & 0o133 == 0, "an ordinary document, at most rw-r--r--")
+        #endif
         let record = try #require(result.undo)
         #expect(record.kind == .createTextFile)
         guard case let .trashCreated(u, key, size, _)? = step(result) else {
@@ -45,6 +50,7 @@ struct FileOperatorCreateTests {
         #expect(line.op == .createFile && line.origin == .menuItem && line.outcome == "ok")
         #expect(line.names == ["우유 사기.txt"] && line.inodes == [rig.inode(url)])
     }
+    #endif
 
     @Test("A taken name lands as \"name 2\"; the file there keeps its bytes and inode")
     func clash() async throws {
@@ -174,6 +180,7 @@ struct FileOperatorCreateTests {
         #expect(rig.text(rig.at(desk, "a.txt")) == "someone else's")
     }
 
+    #if !os(Windows)
     @Test("A desk folder that cannot be written refuses, and nothing is left anywhere")
     func readOnlyDesk() async throws {
         for inDesk in [false, true] {
@@ -186,6 +193,7 @@ struct FileOperatorCreateTests {
             #expect(result.undo == nil && rig.names(rig.desk).isEmpty)
         }
     }
+    #endif
 
     // MARK: Refusals
 

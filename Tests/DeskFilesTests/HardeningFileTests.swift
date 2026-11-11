@@ -194,7 +194,9 @@ struct HardeningFileTests {
         try rig.file(rig.desk, ".deskterior-partial-\(UUID().uuidString)", "a file, not ours")
         try rig.temp.mkdir("Desk/Folder/.deskterior-partial-\(UUID().uuidString)")
         let elsewhere = try rig.temp.mkdir("Elsewhere/.deskterior-partial-\(UUID().uuidString)")
-        #expect(symlink(elsewhere.path, rig.desk.appendingPathComponent(".deskterior-partial-\(UUID().uuidString)").path) == 0)
+        try FileManager.default.createSymbolicLink(
+            at: rig.desk.appendingPathComponent(".deskterior-partial-\(UUID().uuidString)"), withDestinationURL: elsewhere
+        )
         let before = rig.names(rig.desk)
         let inode = rig.inode(leftover)
         let found = PartialCopies.find(in: rig.desk)

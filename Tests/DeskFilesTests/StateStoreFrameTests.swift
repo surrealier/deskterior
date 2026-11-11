@@ -133,6 +133,7 @@ struct StateStoreFrameTests {
         #expect(s2.loadFrame().photo == nil && s2.loadFrame().problems.count == 2)
     }
 
+    #if !os(Windows)
     @Test("A frame.json that cannot be read is never written over, and never blocks a load",
           arguments: ["fifo", "folder", "symlink", "unreadable", "huge"])
     func unreadable(kind: String) throws {
@@ -177,6 +178,7 @@ struct StateStoreFrameTests {
         #expect(StateStore.Failure.frameUnreadable("is not a regular file").description
             == "frame.json is not a regular file; not overwriting it")
     }
+    #endif
 
     @Test("Reset Layout leaves frame.json and its backups byte for byte")
     func reset() throws {

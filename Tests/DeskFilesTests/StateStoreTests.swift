@@ -117,6 +117,7 @@ struct StateStoreTests {
         #expect(step(store.backupURL(1)) == 1)
     }
 
+    #if !os(Windows)
     @Test("An unreadable desk.json falls back to a backup, and the next save heals it")
     func unreadablePrimary() throws {
         let d = try TempDesk()
@@ -130,6 +131,7 @@ struct StateStoreTests {
         #expect(step(store.fileURL) == 3)
         #expect(step(store.backupURL(1)) == 1)
     }
+    #endif
 
     @Test("A folder's layout is kept aside when another folder is mirrored, and comes back with it")
     func layoutAside() throws {

@@ -86,6 +86,7 @@ struct ScannerTests {
         #expect(try FileManager.default.contentsOfDirectory(atPath: d.root.path) == ["keep.txt"])
     }
 
+    #if !os(Windows)
     @Test("Missing, non-folder and unreadable roots fail instead of looking empty")
     func failures() throws {
         let d = try TempDesk()
@@ -100,6 +101,7 @@ struct ScannerTests {
             try DesktopScanner(root: locked).scan()
         }
     }
+    #endif
 
     @Test("Background scans complete on the given queue")
     func asyncScan() async throws {

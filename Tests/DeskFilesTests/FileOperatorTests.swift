@@ -99,8 +99,7 @@ final class FileRig: @unchecked Sendable {
     }
 
     func key(_ url: URL) -> TokenKey {
-        var st = stat()
-        let inode = lstat(url.path, &st) == 0 ? UInt64(st.st_ino) : 0
+        let inode = (try? FilePrimitives.status(url, follow: false).get())?.inode ?? 0
         return TokenKey(volume: FileOperator.volumeUUID(url) ?? FileOperator.volumeUUID(desk) ?? "unknown", inode: inode)
     }
 
@@ -109,8 +108,7 @@ final class FileRig: @unchecked Sendable {
     func text(_ url: URL) -> String? { (try? Data(contentsOf: url)).map { String(decoding: $0, as: UTF8.self) } }
 
     func exists(_ url: URL) -> Bool {
-        var st = stat()
-        return lstat(url.path, &st) == 0
+        (try? FilePrimitives.status(url, follow: false).get()) != nil
     }
 
     /// Names in `dir` (NFC, sorted), hidden ones included.
@@ -476,6 +474,7 @@ struct FileOperatorTests {
 
     // MARK: Copies
 
+    #if !os(Windows)
     @Test("A failed copy leaves no partial file behind and the source untouched")
     func partialCleanup() async throws {
         let rig = try FileRig()
@@ -493,6 +492,7 @@ struct FileOperatorTests {
         #expect(entry.op == .importCopy)
         #expect(entry.outcome == "refused: not-permitted")
     }
+    #endif
 
     @Test("A cross-volume move is a copy: the source is never deleted", arguments: [ImportOp.move, .copy])
     func crossVolume(op: ImportOp) async throws {
