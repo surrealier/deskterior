@@ -73,7 +73,7 @@ struct GlyphAtlasTests {
     @Test("Writing and reading round-trips")
     func roundTrip() throws {
         let mask = (0..<(14 * 15)).map { $0 % 3 == 0 }
-        let data = GlyphAtlas.write([GlyphAtlas.Entry(scalar: "Z", advance: 6, mask: mask),
+        let data = GlyphAtlas.encode([GlyphAtlas.Entry(scalar: "Z", advance: 6, mask: mask),
                                      GlyphAtlas.Entry(scalar: "A", advance: 6, mask: mask.map { !$0 })],
                                     pixelSize: 10, lineHeight: 15, baseline: 12, cellMargin: 4, fontFile: Data([1, 2, 3]))
         let atlas = try GlyphAtlas(data: data)

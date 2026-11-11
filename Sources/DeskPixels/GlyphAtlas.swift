@@ -135,7 +135,7 @@ public struct GlyphAtlas: Sendable, Equatable {
     }
 
     /// The atlas file for `entries` (any order; sorted by scalar here). The bytes depend only on the inputs.
-    public static func write(
+    public static func encode(
         _ entries: [Entry], pixelSize: Int, lineHeight: Int, baseline: Int, cellMargin: Int, fontFile: Data
     ) -> Data {
         let sorted = entries.sorted { $0.scalar.value < $1.scalar.value }
@@ -208,7 +208,7 @@ extension GlyphAtlas {
             else { continue }
             entries.append(Entry(scalar: s, advance: g.advance, mask: g.mask))
         }
-        return write(entries, pixelSize: font.pixelSize, lineHeight: font.lineHeight, baseline: font.baseline,
+        return encode(entries, pixelSize: font.pixelSize, lineHeight: font.lineHeight, baseline: font.baseline,
                      cellMargin: PixelFont.cellMargin, fontFile: fontFile)
     }
 }
