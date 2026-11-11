@@ -4,6 +4,7 @@ import Testing
 @testable import DeskFiles
 
 /// Clears every lock and restores write permission under `url`, so TempDesk can remove it.
+#if canImport(Darwin)
 private func release(_ url: URL) {
     _ = lchflags(url.path, 0)
     chmod(url.path, 0o755)
@@ -15,11 +16,14 @@ private func release(_ url: URL) {
         if lstat(p, &st) == 0, st.st_mode & S_IFMT == S_IFDIR { chmod(p, 0o755) }
     }
 }
+#endif
 
+#if canImport(Darwin)
 private func lockFlag(_ url: URL) -> Bool {
     var st = stat()
     return lstat(url.path, &st) == 0 && st.st_flags & UInt32(UF_IMMUTABLE) != 0
 }
+#endif
 
 /// The staging folder a copy in flight made in `desk` (`PartialCopies.find` leaves running copies out).
 private func stagingFolder(in desk: URL, _ rig: FileRig) -> PartialCopies.Leftover? {
@@ -36,6 +40,7 @@ private func stagingFolder(in desk: URL, _ rig: FileRig) -> PartialCopies.Leftov
 struct HardeningFileTests {
     // MARK: Locked items
 
+    #if canImport(Darwin)
     @Test("A move of a Finder-locked item is refused as locked: nothing lands and the source stays where it was")
     func lockedMove() async throws {
         let rig = try FileRig()
@@ -51,7 +56,9 @@ struct HardeningFileTests {
         let report = FileReport(import: result, undo: nil, requested: .move)
         #expect(report.problems == [.locked] && report.toast == .fileLocked && report.placed.isEmpty)
     }
+    #endif
 
+    #if canImport(Darwin)
     @Test("A move out of a locked folder is refused as locked too; nothing in it moves or is copied")
     func lockedFolder() async throws {
         let rig = try FileRig()
@@ -64,7 +71,9 @@ struct HardeningFileTests {
         #expect(rig.names(rig.desk).isEmpty)
         #expect(rig.names(folder) == ["deed.txt"])
     }
+    #endif
 
+    #if canImport(Darwin)  // POSIX permissions (the tests may run as root elsewhere)
     @Test("A move macOS refuses for another reason comes in as a copy, and the report says the original stayed")
     func refusedMoveCopies() async throws {
         let rig = try FileRig()
@@ -79,7 +88,9 @@ struct HardeningFileTests {
         #expect(FileReport(import: result, undo: nil, requested: .move).toast == .copiedInstead)
         #expect(FileReport(import: result, undo: nil, requested: .copy).toast == nil, "an asked-for copy is no news")
     }
+    #endif
 
+    #if canImport(Darwin)
     @Test("A move that came in as a copy is still reported when another item of the same drop is refused")
     func copiedInsteadBesideRefusal() async throws {
         let rig = try FileRig()
@@ -95,7 +106,9 @@ struct HardeningFileTests {
         let report = FileReport(import: result, undo: nil, requested: .move)
         #expect(report.done == .copiedInstead && report.toast == .someCopiedInstead, "never \"some stayed\" alone")
     }
+    #endif
 
+    #if canImport(Darwin)
     @Test("Locked items beside items that moved say why they stayed")
     func someLocked() async throws {
         let rig = try FileRig()
@@ -107,6 +120,7 @@ struct HardeningFileTests {
         #expect(result.outcomes == [.moved(a, to: rig.at(rig.desk, "a.txt")), .refused(b, .locked)])
         #expect(FileReport(import: result, undo: nil, requested: .move).toast == .someLocked)
     }
+    #endif
 
     // MARK: A copy's landing
 
@@ -128,6 +142,7 @@ struct HardeningFileTests {
         #expect(report.toast == .copiedNoUndo, "a copy was made: never \"nothing was done\"")
     }
 
+    #if canImport(Darwin)
     @Test("A locked copy written to the moment it lands is still ours: locked again, with its undo step")
     func changedAfterPlace() async throws {
         let rig = try FileRig()
@@ -149,6 +164,7 @@ struct HardeningFileTests {
         #expect(rig.text(placed) == "123456" && rig.text(source) == "12345")
         #expect(result.undo?.steps == [.trashCopy(placed, key: rig.key(placed))], "undo can take this copy back")
     }
+    #endif
 
     @Test("A copy that lands intact is reported with an undo step, from either staging place", arguments: [false, true])
     func intactCopy(stageInDesk: Bool) async throws {

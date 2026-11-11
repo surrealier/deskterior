@@ -70,6 +70,7 @@ struct TrasherTests {
         #expect(try FileManager.default.contentsOfDirectory(atPath: mirrored.path).isEmpty)
     }
 
+    #if canImport(Darwin)
     @Test("SystemTrasher recognizes trash children by spelling only")
     func systemTrashSpelling() {
         let home = URL(fileURLWithPath: "/Users/someone/.Trash", isDirectory: true)
@@ -86,4 +87,5 @@ struct TrasherTests {
         #expect(!isChild("/Users/someone/Documents/report.pdf"))
         #expect(SystemTrasher().trashFolder == nil)
     }
+    #endif
 }

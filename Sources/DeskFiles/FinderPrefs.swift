@@ -1,4 +1,9 @@
+#if canImport(CoreFoundation)
 import CoreFoundation
+#endif
+#if os(Windows)
+import WinSDK
+#endif
 import Foundation
 
 /// Read-only Finder and WindowManager preferences (DESIGN §3.1 item 2, §2.2 E15; spike S9). Deskterior never
@@ -47,10 +52,35 @@ public struct FinderPrefs: Sendable, Equatable {
     public var showsMountedServers: Bool { showMountedServers ?? false }
     public var showsHardDrives: Bool { showHardDrives ?? false }
 
+    #if canImport(Darwin)
     /// Reads the current values through `CFPreferencesCopyAppValue`.
     public static func current() -> FinderPrefs {
         read { key, domain in CFPreferencesCopyAppValue(key as CFString, domain as CFString) }
     }
+    #elseif os(Windows)
+    /// Explorer's "Show desktop icons" (`HKCU\…\Explorer\Advanced\HideIcons`, read only) stands for Finder's
+    /// `CreateDesktop`; the volume filters keep their defaults.
+    public static func current() -> FinderPrefs {
+        let hidden = registryDWORD(#"Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced"#, "HideIcons") == 1
+        return read { key, domain in domain == finderDomain && key == "CreateDesktop" && hidden ? false : nil }
+    }
+
+    /// A `REG_DWORD` under `HKEY_CURRENT_USER`, or nil.
+    static func registryDWORD(_ subkey: String, _ value: String) -> DWORD? {
+        let currentUser = HKEY(bitPattern: Int(Int32(bitPattern: 0x8000_0001)))
+        var data: DWORD = 0
+        var size = DWORD(MemoryLayout<DWORD>.size)
+        let status = subkey.withCString(encodedAs: UTF16.self) { k in
+            value.withCString(encodedAs: UTF16.self) { v in
+                RegGetValueW(currentUser, k, v, DWORD(0x0000_0010), nil, &data, &size)   // RRF_RT_REG_DWORD
+            }
+        }
+        return status == 0 ? data : nil
+    }
+    #else
+    /// Linux (development only): Finder's defaults.
+    public static func current() -> FinderPrefs { FinderPrefs() }
+    #endif
 
     /// Reads through `lookup(key, domain)` (injectable for tests).
     public static func read(_ lookup: (String, String) -> Any?) -> FinderPrefs {

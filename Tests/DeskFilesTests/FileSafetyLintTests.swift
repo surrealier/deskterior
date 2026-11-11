@@ -84,7 +84,7 @@ struct FileSafetyLintTests {
         #expect(lint.violations(dirVar: "SCRIPTS", files: [("tool.sh", script)]).map(\.line) == [2])
     }
 
-    @Test("Only the file operator writes a Finder alias (bookmark) file, not even the app's other writers (Erratum 29)")
+    @Test("Only the file primitives write a Finder alias (bookmark) file, not even the app's other writers (Erratum 29)")
     func bookmarkWrites() throws {
         let lint = try Lint(script: String(contentsOf: Self.scriptURL, encoding: .utf8))
         let planted = """
@@ -95,16 +95,16 @@ struct FileSafetyLintTests {
         func flagged(_ file: String) -> [Int] {
             lint.violations(dirVar: "SRC", files: [(file, planted)]).filter { $0.label == "bookmark" }.map(\.line).uniqued()
         }
-        #expect(flagged("DeskFiles/FileOperator.swift").isEmpty)
-        for file in ["DeskFiles/StateStore.swift", "DeskFiles/ArtifactWriter.swift", "DeskteriorApp/Files/DropInController.swift",
+        #expect(flagged("DeskFiles/FilePrimitives+POSIX.swift").isEmpty)
+        for file in ["DeskFiles/FileOperator.swift", "DeskFiles/StateStore.swift", "DeskFiles/ArtifactWriter.swift", "DeskteriorApp/Files/DropInController.swift",
                      "DeskAssetTool/main.swift"] {
             #expect(flagged(file) == [1, 2], "\(file): reading a bookmark is fine, writing one is not")
         }
         // The operator's own write is there, and found without the allowlist.
         let sources = Self.files(under: Self.repo.appendingPathComponent("Sources"))
         let strict = lint.violations(dirVar: "SRC", files: sources, ignoringAllowlists: true)
-        #expect(strict.contains { $0.file == "DeskFiles/FileOperator.swift" && $0.label == "bookmark" })
-        #expect(!strict.contains { $0.label == "bookmark" && $0.file != "DeskFiles/FileOperator.swift" })
+        #expect(strict.contains { $0.file == "DeskFiles/FilePrimitives+POSIX.swift" && $0.label == "bookmark" })
+        #expect(!strict.contains { $0.label == "bookmark" && $0.file != "DeskFiles/FilePrimitives+POSIX.swift" })
     }
 
     @Test("Save as Text File is a file request: built only in the menus and matched only in the reducer (Erratum 31)")

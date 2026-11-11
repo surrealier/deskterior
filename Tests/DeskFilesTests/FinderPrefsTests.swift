@@ -35,6 +35,7 @@ struct FinderPrefsTests {
         #expect(!prefs([:]).hidesDesktopItems)
     }
 
+    #if canImport(Darwin)
     @Test("Booleans parse from numbers, CFBoolean and strings")
     func booleans() {
         #expect(FinderPrefs.boolValue(kCFBooleanTrue) == true)
@@ -42,6 +43,7 @@ struct FinderPrefsTests {
         #expect(FinderPrefs.boolValue("YES") == true && FinderPrefs.boolValue("no") == false)
         #expect(FinderPrefs.boolValue("maybe") == nil && FinderPrefs.boolValue(nil) == nil && FinderPrefs.boolValue([1]) == nil)
     }
+    #endif
 
     @Test("Reading the real preferences works and changes nothing")
     func realPrefs() {

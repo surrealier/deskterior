@@ -41,8 +41,8 @@ public enum PartialCopies {
         let names = (try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? []
         return names.filter(isLeftoverName).sorted().compactMap { name in
             let url = folder.appendingPathComponent(name, isDirectory: false)
-            var st = stat()
-            guard lstat(url.path, &st) == 0, st.st_mode & S_IFMT == S_IFDIR, !inFlight.contains(url),
+            guard case let .success(st) = FilePrimitives.status(path: url.path, follow: false), st.isDirectory,
+                  !inFlight.contains(url),
                   let key = FileReport.identity(of: url) else {
                 return nil
             }
@@ -59,8 +59,8 @@ public enum PartialCopies {
 /// thread.
 final class InFlightStagings: @unchecked Sendable {
     private struct ID: Hashable {
-        var dev: dev_t
-        var ino: ino_t
+        var dev: UInt64
+        var ino: UInt64
     }
 
     private let lock = NSLock()
@@ -87,7 +87,7 @@ final class InFlightStagings: @unchecked Sendable {
     var count: Int { lock.withLock { folders.count } }
 
     private static func id(of url: URL) -> ID? {
-        var st = stat()
-        return lstat(url.path, &st) == 0 ? ID(dev: st.st_dev, ino: st.st_ino) : nil
+        guard case let .success(st) = FilePrimitives.status(path: url.path, follow: false) else { return nil }
+        return ID(dev: st.device, ino: st.inode)
     }
 }

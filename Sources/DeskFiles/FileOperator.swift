@@ -1,7 +1,5 @@
-import AppKit
 import DeskCore
 import Foundation
-import UniformTypeIdentifiers
 
 // MARK: Results
 
@@ -310,9 +308,10 @@ public actor FileOperator {
 
     func setHooks(_ h: Hooks) { hooks = h }
 
-    /// `URLResourceValues.volumeUUIDString`, read fresh (never from a URL's cache).
+    /// `URLResourceValues.volumeUUIDString`, read fresh (never from a URL's cache); the volume serial number on
+    /// Windows (`FilePrimitives.volumeID`).
     public static func volumeUUID(_ url: URL) -> String? {
-        (try? URL(fileURLWithPath: url.path).resourceValues(forKeys: [.volumeUUIDStringKey]))?.volumeUUIDString
+        FilePrimitives.volumeID(url)
     }
 
     // MARK: alias (Erratum 29)
@@ -321,13 +320,7 @@ public actor FileOperator {
     /// ".app", reached directly or through a symbolic link (Safari in /Applications is a link to the system's copy).
     /// Reads resource values only, fresh. Its alias is named without ".app"; a drop with no key aliases it.
     public static func isApplication(_ url: URL) -> Bool {
-        guard url.isFileURL else { return false }
-        let item = URL(fileURLWithPath: url.path).resolvingSymlinksInPath()
-        guard let v = try? item.resourceValues(forKeys: [.contentTypeKey, .isDirectoryKey, .isPackageKey]),
-              v.isDirectory == true
-        else { return false }
-        if v.contentType?.conforms(to: .application) == true { return true }
-        return v.isPackage == true && item.pathExtension.lowercased() == "app"
+        FilePrimitives.isApplication(url)
     }
 
     // MARK: Trash
@@ -555,6 +548,7 @@ public actor FileOperator {
             return (.refused(url, FileRefusal.from(error)), nil, [sourceKey.inode])
         }
         defer { removeStaging(staging) }
+        let name = FilePrimitives.linkName(for: name)
         let staged = staging.appendingPathComponent(name, isDirectory: false)
         do {
             try await Self.writeAlias(of: source, to: staged, before: hooks.whileAliasing)
@@ -592,12 +586,7 @@ public actor FileOperator {
         try await withCheckedThrowingContinuation { (done: CheckedContinuation<Void, any Error>) in
             DispatchQueue.global(qos: .userInitiated).async {
                 before?(source)
-                done.resume(with: Result {
-                    let bookmark = try source.bookmarkData(
-                        options: .suitableForBookmarkFile, includingResourceValuesForKeys: nil, relativeTo: nil
-                    )
-                    try URL.writeBookmarkData(bookmark, to: staged)
-                })
+                done.resume(with: Result { try FilePrimitives.writeLink(to: source, at: staged) })
             }
         }
     }
@@ -607,18 +596,17 @@ public actor FileOperator {
     /// volume, a hidden `.deskterior-partial-<uuid>` folder in the desk folder stands in.
     private func makeStaging() throws -> URL {
         guard let desk = Self.fileID(root, follow: true) else { throw FileRefusal.missing }
-        if !hooks.stageInDesk, let dir = try? FileManager.default.url(
-            for: .itemReplacementDirectory, in: .userDomainMask, appropriateFor: root, create: true
-        ) {
+        if !hooks.stageInDesk, let dir = FilePrimitives.replacementDirectory(appropriateFor: root) {
             if Self.fileID(dir, follow: true)?.dev == desk.dev, !DesktopLocator.isInsideDesktop(dir, desktop: root) {
                 stagings.insert(dir.path)
                 PartialCopies.inFlight.insert(dir)
                 return dir
             }
-            _ = rmdir(dir.path) // Ours and still empty.
+            _ = FilePrimitives.removeEmptyDirectory(dir) // Ours and still empty.
         }
         let dir = root.appendingPathComponent(FileMoves.partialPrefix + UUID().uuidString, isDirectory: true)
-        guard mkdir(dir.path, 0o700) == 0 else { throw FileRefusal.from(errno: errno) }
+        let made = FilePrimitives.makeDirectory(dir, hidden: true)
+        guard made == 0 else { throw FileRefusal.from(errno: made) }
         stagings.insert(dir.path)
         PartialCopies.inFlight.insert(dir)
         return dir
@@ -635,45 +623,19 @@ public actor FileOperator {
         try? FileManager.default.removeItem(at: dir)
     }
 
-    private static func unlockTree(_ path: String) {
-        var st = stat()
-        guard lstat(path, &st) == 0 else { return }
-        let locks = st.st_flags & lockMask
-        if locks != 0 { _ = lchflags(path, st.st_flags & ~locks) }
-        guard st.st_mode & S_IFMT == S_IFDIR else { return }
-        if st.st_mode & S_IRWXU != S_IRWXU {
-            _ = fchmodat(AT_FDCWD, path, (st.st_mode & 0o7777) | S_IRWXU, AT_SYMLINK_NOFOLLOW)
-        }
-        for name in (try? FileManager.default.contentsOfDirectory(atPath: path)) ?? [] {
-            unlockTree((path as NSString).appendingPathComponent(name))
-        }
-    }
+    private static func unlockTree(_ path: String) { FilePrimitives.unlockTree(path) }
 
-    /// Finder's lock and the append-only flag (both stop a rename).
-    private static let lockMask = UInt32(UF_IMMUTABLE | UF_APPEND)
-
-    private static func lockFlags(_ url: URL) -> UInt32 {
-        var st = stat()
-        return lstat(url.path, &st) == 0 ? st.st_flags & lockMask : 0
-    }
+    private static func lockFlags(_ url: URL) -> UInt32 { FilePrimitives.lockFlags(url) }
 
     private static func changeFlags(_ url: URL, adding: UInt32, removing: UInt32) {
-        var st = stat()
-        guard lstat(url.path, &st) == 0 else { return }
-        _ = lchflags(url.path, (st.st_flags & ~removing) | adding)
+        FilePrimitives.changeFlags(url, adding: adding, removing: removing)
     }
 
     // MARK: harden
 
     /// The item at `url` is locked (Finder's lock, append-only, or the system's), or its folder is, so it cannot be
-    /// renamed out of there.
-    static func isLocked(_ url: URL) -> Bool {
-        var st = stat()
-        let item = UInt32(UF_IMMUTABLE | UF_APPEND) | UInt32(SF_IMMUTABLE | SF_APPEND)
-        if lstat(url.path, &st) == 0, st.st_flags & item != 0 { return true }
-        let folder = url.standardizedFileURL.deletingLastPathComponent()
-        return lstat(folder.path, &st) == 0 && st.st_flags & (UInt32(UF_IMMUTABLE) | UInt32(SF_IMMUTABLE)) != 0
-    }
+    /// renamed out of there; on Windows, it is open elsewhere without delete sharing.
+    static func isLocked(_ url: URL) -> Bool { FilePrimitives.isLocked(url) }
 
     /// After a copy's final rename: the item now at `placed` is the copy staged (its volume and inode), so it is
     /// ours, however it changed since (a sync client writing to it at once): its locks go back on and its undo step
@@ -693,10 +655,14 @@ public actor FileOperator {
         try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { (done: CheckedContinuation<Void, any Error>) in
                 DispatchQueue.global(qos: .userInitiated).async {
+                    #if canImport(Darwin)
                     let files = FileManager()
                     files.delegate = gate
                     let result = Result { try files.copyItem(at: source, to: staged) }
                     files.delegate = nil
+                    #else
+                    let result = Result { try FilePrimitives.copyTree(source, to: staged) { _ in gate.shouldCopy() } }
+                    #endif
                     done.resume(with: gate.isCancelled ? .failure(FileRefusal.cancelled) : result)
                 }
             }
@@ -914,32 +880,7 @@ public actor FileOperator {
     }
 
     private nonisolated static func writeNewFileNow(_ data: Data, to url: URL) throws {
-        var failure: Int32 = 0
-        let fd: Int32 = url.withUnsafeFileSystemRepresentation { p in
-            guard let p else {
-                failure = EINVAL
-                return -1
-            }
-            let fd = open(p, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0o644)
-            if fd < 0 { failure = errno }
-            return fd
-        }
-        guard fd >= 0 else { throw FileRefusal.from(errno: failure) }
-        data.withUnsafeBytes { (raw: UnsafeRawBufferPointer) in
-            var offset = 0
-            while offset < raw.count {
-                let n = Darwin.write(fd, raw.baseAddress! + offset, raw.count - offset)
-                if n < 0 {
-                    if errno == EINTR { continue }
-                    failure = errno
-                    return
-                }
-                offset += n
-            }
-        }
-        if failure == 0, fsync(fd) != 0 { failure = errno }
-        if close(fd) != 0, failure == 0 { failure = errno }
-        if failure != 0 { throw FileRefusal.from(errno: failure) }
+        try FilePrimitives.writeNewFile(data, to: url)
     }
 
     /// An item's identity with its size and modification date, from one `lstat`.
@@ -951,18 +892,13 @@ public actor FileOperator {
 
     /// The `Stamp` of the item at `url` itself (a symlink is not followed).
     func stamp(of url: URL) -> Result<Stamp, FileRefusal> {
-        var st = stat()
-        let e: Int32 = url.withUnsafeFileSystemRepresentation { p in
-            guard let p else { return EINVAL }
-            return lstat(p, &st) == 0 ? 0 : errno
+        let st: FilePrimitives.Status
+        switch FilePrimitives.status(url, follow: false) {
+        case let .success(s): st = s
+        case let .failure(e): return .failure(FileRefusal.from(errno: e.code))
         }
-        guard e == 0 else { return .failure(FileRefusal.from(errno: e)) }
         let volume = volumeID(url) ?? volumeID(root) ?? "unknown"
-        let m = st.st_mtimespec
-        return .success(Stamp(
-            key: TokenKey(volume: volume, inode: UInt64(st.st_ino)), size: Int64(st.st_size),
-            modified: Date(timeIntervalSince1970: Double(m.tv_sec) + Double(m.tv_nsec) / 1e9)
-        ))
+        return .success(Stamp(key: TokenKey(volume: volume, inode: st.inode), size: st.size, modified: st.modified))
     }
 
     /// Time of check for a file we wrote: the item at `url` is the one written (`check`), with the size and
@@ -1005,7 +941,7 @@ public actor FileOperator {
         try await withCheckedThrowingContinuation { (done: CheckedContinuation<Void, any Error>) in
             DispatchQueue.global(qos: .userInitiated).async {
                 done.resume(with: Result {
-                    if let seam { try seam(volume) } else { try NSWorkspace.shared.unmountAndEjectDevice(at: volume) }
+                    if let seam { try seam(volume) } else { try FilePrimitives.unmount(volume) }
                 })
             }
         }
@@ -1017,18 +953,8 @@ public actor FileOperator {
         let path = DesktopLocator.canonicalPath(url).lowercased()
         let system = ["/", "/dev", "/system/volumes"]
         if system.contains(path) || path.hasPrefix("/dev/") || path.hasPrefix("/system/volumes/") { return false }
-        let keys: Set<URLResourceKey> = [
-            .isVolumeKey, .volumeIsRootFileSystemKey, .volumeIsEjectableKey, .volumeIsRemovableKey, .volumeIsLocalKey,
-            .volumeIsBrowsableKey, .volumeIsInternalKey,
-        ]
-        guard let v = try? URL(fileURLWithPath: url.path).resourceValues(forKeys: keys), v.isVolume == true else {
-            return false
-        }
-        return isEjectable(VolumeWatcher.Facts(
-            isInternal: v.volumeIsInternal, isLocal: v.volumeIsLocal ?? true, isRemovable: v.volumeIsRemovable ?? false,
-            isEjectable: v.volumeIsEjectable ?? false, isBrowsable: v.volumeIsBrowsable ?? false,
-            isRoot: v.volumeIsRootFileSystem ?? true
-        ))
+        guard let facts = FilePrimitives.volumeFacts(url) else { return false }
+        return isEjectable(facts)
     }
 
     /// `VolumeWatcher`'s rule: a browsable volume other than the startup disk that is ejectable, removable or a
@@ -1083,13 +1009,9 @@ public actor FileOperator {
     }
 
     /// Device and inode of the item at `url` (`stat` when `follow`, else `lstat`), and whether it is a folder.
-    private static func fileID(_ url: URL, follow: Bool) -> (dev: dev_t, ino: ino_t, isFolder: Bool)? {
-        var st = stat()
-        let ok: Bool = url.withUnsafeFileSystemRepresentation { p in
-            guard let p else { return false }
-            return (follow ? stat(p, &st) : lstat(p, &st)) == 0
-        }
-        return ok ? (st.st_dev, st.st_ino, st.st_mode & S_IFMT == S_IFDIR) : nil
+    private static func fileID(_ url: URL, follow: Bool) -> (dev: UInt64, ino: UInt64, isFolder: Bool)? {
+        guard case let .success(st) = FilePrimitives.status(url, follow: follow) else { return nil }
+        return (st.device, st.inode, st.isDirectory)
     }
 
     /// `a` and `b` (symlinks followed) are one item.
@@ -1135,14 +1057,13 @@ public actor FileOperator {
     /// The volume and inode of the item at `url` itself (`lstat`; a symlink is not followed). An item whose
     /// volume cannot be read takes the desktop folder's, as the scanner does.
     func identity(of url: URL) -> Result<TokenKey, FileRefusal> {
-        var st = stat()
-        let e: Int32 = url.withUnsafeFileSystemRepresentation { p in
-            guard let p else { return EINVAL }
-            return lstat(p, &st) == 0 ? 0 : errno
+        switch FilePrimitives.status(url, follow: false) {
+        case let .success(st):
+            let volume = volumeID(url) ?? volumeID(root) ?? "unknown"
+            return .success(TokenKey(volume: volume, inode: st.inode))
+        case let .failure(e):
+            return .failure(FileRefusal.from(errno: e.code))
         }
-        guard e == 0 else { return .failure(FileRefusal.from(errno: e)) }
-        let volume = volumeID(url) ?? volumeID(root) ?? "unknown"
-        return .success(TokenKey(volume: volume, inode: UInt64(st.st_ino)))
     }
 
     // MARK: Log
@@ -1172,7 +1093,7 @@ public actor FileOperator {
 }
 
 /// Gates the items of one copy and counts them: after `cancel()` every item not started yet is skipped.
-private final class CopyGate: NSObject, FileManagerDelegate, @unchecked Sendable {
+private final class CopyGate: NSObject, @unchecked Sendable {
     private let lock = NSLock()
     private var cancelled = false
     private var started = 0
@@ -1186,7 +1107,8 @@ private final class CopyGate: NSObject, FileManagerDelegate, @unchecked Sendable
 
     func cancel() { lock.withLock { cancelled = true } }
 
-    func fileManager(_ fileManager: FileManager, shouldCopyItemAt srcURL: URL, to dstURL: URL) -> Bool {
+    /// Counts the next item and says whether to copy it (no once cancelled).
+    func shouldCopy() -> Bool {
         let n: Int? = lock.withLock {
             guard !cancelled else { return nil }
             started += 1
@@ -1197,6 +1119,14 @@ private final class CopyGate: NSObject, FileManagerDelegate, @unchecked Sendable
         return !isCancelled
     }
 }
+
+#if canImport(Darwin)
+extension CopyGate: FileManagerDelegate {
+    func fileManager(_ fileManager: FileManager, shouldCopyItemAt srcURL: URL, to dstURL: URL) -> Bool {
+        shouldCopy()
+    }
+}
+#endif
 
 // MARK: Rename primitive
 
@@ -1226,14 +1156,9 @@ enum FileMoves {
         var renamed: Bool
     }
 
-    /// `renamex_np(from, to, RENAME_EXCL)`: 0, or the errno.
+    /// `renamex_np(from, to, RENAME_EXCL)` (`MoveFileExW` with no replace on Windows): 0, or the errno.
     static func renameExclusive(_ from: URL, _ to: URL) -> Int32 {
-        from.withUnsafeFileSystemRepresentation { f in
-            to.withUnsafeFileSystemRepresentation { t in
-                guard let f, let t else { return EINVAL }
-                return renamex_np(f, t, UInt32(RENAME_EXCL)) == 0 ? 0 : errno
-            }
-        }
+        FilePrimitives.renameExclusive(from, to)
     }
 
     /// Renames `item` to `folder/name`, or to the first free numbered name. `before` runs right before each
@@ -1284,8 +1209,7 @@ enum FileMoves {
 
     /// Files and packages keep their extension apart when numbered; plain folders do not.
     static func splitsExtension(_ url: URL) -> Bool {
-        var st = stat()
-        guard lstat(url.path, &st) == 0, st.st_mode & S_IFMT == S_IFDIR else { return true }
-        return (try? URL(fileURLWithPath: url.path).resourceValues(forKeys: [.isPackageKey]))?.isPackage ?? false
+        guard case let .success(st) = FilePrimitives.status(path: url.path, follow: false), st.isDirectory else { return true }
+        return FilePrimitives.isPackage(url)
     }
 }

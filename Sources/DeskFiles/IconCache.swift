@@ -1,4 +1,6 @@
+#if canImport(CryptoKit)
 import CryptoKit
+#endif
 import DeskCore
 import Foundation
 
@@ -33,7 +35,11 @@ public struct IconCache: Sendable {
     ) -> String {
         let mtime = modified.map { String(Int64(($0.timeIntervalSince1970 * 1000).rounded())) } ?? "-"
         let text = "\(inode)|\(mtime)|\(size.map(String.init) ?? "-")|\(kind.rawValue)|\(pixels)|\(paletteVersion)"
+        #if canImport(CryptoKit)
         return Insecure.SHA1.hash(data: Data(text.utf8)).map { String(format: "%02x", $0) }.joined()
+        #else
+        return SHA1.hex(Data(text.utf8))
+        #endif
     }
 
     public func url(for key: String) -> URL? {

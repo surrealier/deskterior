@@ -100,3 +100,16 @@ func diffCount(_ a: PixelBuffer, _ b: PixelBuffer) -> Int {
     guard a.size == b.size else { return -1 }
     return zip(a.pixels, b.pixels).reduce(0) { $0 + ($1.0 == $1.1 ? 0 : 1) }
 }
+
+/// The first `limit` differing pixels as "(x,y) a≠b", for a failure message.
+func diffList(_ a: PixelBuffer, _ b: PixelBuffer, limit: Int = 24) -> String {
+    guard a.size == b.size else { return "sizes differ" }
+    var out: [String] = []
+    for y in 0..<a.height {
+        for x in 0..<a.width where a[x, y] != b[x, y] {
+            out.append("(\(x),\(y)) \(a[x, y])≠\(b[x, y])")
+            if out.count == limit { return out.joined(separator: " ") }
+        }
+    }
+    return out.joined(separator: " ")
+}

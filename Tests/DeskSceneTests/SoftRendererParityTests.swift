@@ -60,6 +60,9 @@ struct SoftRendererParityTests {
         #expect(f.softLit == f.lit, "\(diffCount(f.softLit, f.lit)) lit px differ")
     }
 
+    // Off-grid edges sit a quarter pixel from a pixel centre: an edge exactly on a centre (a half-pixel position)
+    // is covered or not by how the GPU rounds SpriteKit's projection, which no rule reproduces. The scene snaps its
+    // sprites to whole art pixels, so it never draws one there.
     @Test("Sprites off the pixel grid, stretched and overlapping draw as SpriteKit draws them")
     func fractionalSprites() throws {
         let size = ArtSize(40, 30)
@@ -75,14 +78,14 @@ struct SoftRendererParityTests {
             return n
         }
         let parent = SKNode()
-        parent.position = CGPoint(x: 6, y: 2)
+        parent.position = CGPoint(x: 5, y: 3)
         parent.zPosition = 1
         let nodes: [SKNode] = [
             sprite(TextureFactory.texture(art), x: 8, y: 8, w: 20, h: 12, z: 0),                       // on the grid
-            sprite(TextureFactory.texture(art), x: 30, y: 50, w: 20, h: 12, z: 2),                      // over it
-            sprite(TextureFactory.dynamicTexture(art), x: 62, y: 22, w: 40, h: 24, z: 0),               // ×2
-            sprite(TextureFactory.solid(Apollo.colors[3]), x: 2, y: 90, w: 60, h: 8, z: 0),              // a fill
-            sprite(TextureFactory.texture(art), x: 100, y: 70, w: 20, h: 12, z: 0, anchor: CGPoint(x: 0.5, y: 0.5)),
+            sprite(TextureFactory.texture(art), x: 29, y: 49, w: 20, h: 12, z: 2),                      // over it
+            sprite(TextureFactory.dynamicTexture(art), x: 61, y: 21, w: 40, h: 24, z: 0),               // ×2
+            sprite(TextureFactory.solid(Apollo.colors[3]), x: 3, y: 89, w: 60, h: 8, z: 0),              // a fill
+            sprite(TextureFactory.texture(art), x: 101, y: 71, w: 20, h: 12, z: 0, anchor: CGPoint(x: 0.5, y: 0.5)),
             parent,
         ]
         parent.addChild(sprite(TextureFactory.texture(art), x: 0, y: 0, w: 20, h: 12, z: 0))
@@ -94,7 +97,7 @@ struct SoftRendererParityTests {
             scene.addChild(n)
         }
         let soft = SoftRaster.composite(SceneFlattener.items(scene), canvas: size, clear: Ink.neutral1.color)
-        #expect(soft == gpuArt, "\(diffCount(soft, gpuArt)) px differ")
+        #expect(soft == gpuArt, "\(diffCount(soft, gpuArt)) px differ: \(diffList(soft, gpuArt))")
     }
 
     @Test("The lit pass: every level, tint and mask byte as the shader computes it")

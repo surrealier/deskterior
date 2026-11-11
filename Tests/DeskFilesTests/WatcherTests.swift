@@ -1,4 +1,6 @@
+#if canImport(CoreServices)
 import CoreServices
+#endif
 import DeskCore
 import Foundation
 import Testing
@@ -30,6 +32,7 @@ struct WatcherTests {
         return s
     }
 
+    #if canImport(Darwin)
     @Test("A new file appears in a snapshot within a second")
     func add() async throws {
         let (d, w, log) = try await started()
@@ -46,6 +49,7 @@ struct WatcherTests {
         #expect(delivered < 10, "the scan came \(delivered) s after the write")
         #expect(log.latest?.entries.first?.key.inode == d.inode("new.txt"))
     }
+    #endif
 
     @Test("A rename keeps the inode, and the token keeps its place")
     func rename() async throws {
@@ -137,6 +141,7 @@ struct WatcherTests {
         #expect(state.tokens.records.values.first?.location == .screen(page: 0, col: 0, row: 0))
     }
 
+    #if canImport(Darwin)
     @Test("A burst of 200 files arrives in a few debounced snapshots and lays out in order")
     func burst() async throws {
         let (d, w, log) = try await started()
@@ -154,7 +159,9 @@ struct WatcherTests {
         #expect(state.tokens.count == 200 && state.pageCount() == 5)
         #expect(state.violations().isEmpty)
     }
+    #endif
 
+    #if canImport(Darwin)
     @Test("Changes inside subfolders are not top-level changes")
     func relevance() {
         let root = "/private/var/folders/x/desk"
@@ -170,6 +177,7 @@ struct WatcherTests {
         #expect(relevant("/somewhere/else"))
         #expect(relevant(""))
     }
+    #endif
 
     @Test("Moving the folder away and back restarts the stream (RootChanged)")
     func rootChanged() async throws {

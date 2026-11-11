@@ -235,12 +235,8 @@ extension FileReport {
     /// The volume and inode of the item at `url` itself (`lstat`: a symlink is not followed), as the scanner keys
     /// it; nil when it cannot be read.
     public static func identity(of url: URL) -> TokenKey? {
-        var st = stat()
-        let ok: Bool = url.withUnsafeFileSystemRepresentation { p in
-            guard let p else { return false }
-            return lstat(p, &st) == 0
-        }
-        guard ok, let volume = FileOperator.volumeUUID(url) else { return nil }
-        return TokenKey(volume: volume, inode: UInt64(st.st_ino))
+        guard case let .success(st) = FilePrimitives.status(url, follow: false),
+              let volume = FileOperator.volumeUUID(url) else { return nil }
+        return TokenKey(volume: volume, inode: st.inode)
     }
 }

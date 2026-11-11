@@ -1,4 +1,8 @@
+#if canImport(AppKit)
 import AppKit
+#elseif os(Windows)
+import WinSDK
+#endif
 import DeskCore
 import Foundation
 
@@ -21,6 +25,7 @@ public final class VolumeWatcher: @unchecked Sendable {
 
     deinit { stop() }
 
+    #if canImport(AppKit)
     public func start() {
         let center = NSWorkspace.shared.notificationCenter
         let names: [Notification.Name] = [
@@ -43,6 +48,15 @@ public final class VolumeWatcher: @unchecked Sendable {
         }
         for t in tokens { NSWorkspace.shared.notificationCenter.removeObserver(t) }
     }
+    #else
+    /// Lists once; afterwards the app calls `refresh()` when the system reports a drive change (`WM_DEVICECHANGE`
+    /// on Windows), as the watcher itself makes no window.
+    public func start() {
+        DispatchQueue.global(qos: .utility).async { [weak self] in self?.refresh() }
+    }
+
+    public func stop() {}
+    #endif
 
     /// Lists and filters the mounted volumes now.
     public func refresh() {
@@ -96,6 +110,7 @@ public final class VolumeWatcher: @unchecked Sendable {
         }
     }
 
+    #if canImport(AppKit)
     /// Browsable mounted volumes Finder would show, sorted by name.
     public static func visibleVolumes(prefs: FinderPrefs) -> [VolumeEntry] {
         let urls = FileManager.default.mountedVolumeURLs(
@@ -119,4 +134,32 @@ public final class VolumeWatcher: @unchecked Sendable {
         }
         return out.sorted { ($0.name, $0.id) < ($1.name, $1.id) }
     }
+    #elseif os(Windows)
+    /// The drives (`GetLogicalDrives`) Explorer's rules would show next to the desk, with `FinderPrefs`' defaults:
+    /// removable and external drives, never the system drive or other internal ones unless asked.
+    public static func visibleVolumes(prefs: FinderPrefs) -> [VolumeEntry] {
+        let mask = GetLogicalDrives()
+        var out: [VolumeEntry] = []
+        for i in 0..<26 where mask & (1 << DWORD(i)) != 0 {
+            let letter = String(UnicodeScalar(UInt8(ascii: "A") + UInt8(i)))
+            let root = letter + #":\"#
+            guard let facts = FilePrimitives.driveFacts(root), facts.isBrowsable else { continue }
+            let kind = classify(facts)
+            guard isShown(kind, prefs: prefs) else { continue }
+            var label = [WCHAR](repeating: 0, count: 261)
+            var serial: DWORD = 0
+            _ = Win32.withWide(root) { GetVolumeInformationW($0, &label, DWORD(label.count), &serial, nil, nil, nil, 0) }
+            let labelText = String(decoding: label.prefix { $0 != 0 }, as: UTF16.self)
+            let name = labelText.isEmpty ? "\(letter):" : "\(labelText) (\(letter):)"
+            out.append(VolumeEntry(
+                id: FilePrimitives.hexVolume(UInt64(serial)), name: name, path: URL(fileURLWithPath: root).path, kind: kind,
+                isEjectable: facts.isEjectable || facts.isRemovable || kind == .server
+            ))
+        }
+        return out.sorted { ($0.name, $0.id) < ($1.name, $1.id) }
+    }
+    #else
+    /// Linux (development only): no drive hub.
+    public static func visibleVolumes(prefs: FinderPrefs) -> [VolumeEntry] { [] }
+    #endif
 }

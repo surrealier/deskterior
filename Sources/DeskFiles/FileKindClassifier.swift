@@ -1,10 +1,13 @@
 import DeskCore
 import Foundation
+#if canImport(UniformTypeIdentifiers)
 import UniformTypeIdentifiers
+#endif
 
 /// Maps a file's type information to the `FileKind` that picks its kind icon (DESIGN §3.4). Pure: it reads
 /// nothing from disk.
 public enum FileKindClassifier {
+    #if canImport(UniformTypeIdentifiers)
     public static func classify(
         name: String, contentType: UTType?, isDirectory: Bool, isPackage: Bool, isScreenCapture: Bool = false
     ) -> FileKind {
@@ -53,6 +56,13 @@ public enum FileKindClassifier {
         "com.apple.iwork.pages.pages", "org.oasis-open.opendocument.text", "com.apple.iwork.keynote.sffkey",
         "com.apple.iwork.numbers.sffnumbers",
     ].compactMap { UTType($0) }
+
+    #else
+    /// Without UTType (Windows): the extension table (`FileKindTable`).
+    public static func classify(name: String, isDirectory: Bool, isScreenCapture: Bool = false) -> FileKind {
+        FileKindTable.classify(name: name, isDirectory: isDirectory, isScreenCapture: isScreenCapture)
+    }
+    #endif
 
     /// System screenshot names (English and Korean, plus older "Screen Shot").
     public static func looksLikeScreenshot(_ name: String) -> Bool {
