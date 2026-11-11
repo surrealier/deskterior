@@ -17,7 +17,10 @@ final class WinSession {
     private var journal = UndoJournal()
     private let stateStore: StateStore?
     private var watcher: DesktopWatcher?
-    private var saveWork: DispatchWorkItem?
+    /// Watcher events waiting for the main thread: the window's message loop collects them (`pump`), so delivery
+    /// does not depend on the main dispatch queue being serviced.
+    private let inbox = Inbox<DesktopWatcher.Event>()
+    private var saveDue: Date?
     /// Opens and reveals items (the window's platform services); nil when headless.
     var platform: (any WinPlatform)?
     /// Effects refused because this shell cannot run them yet (tests, the log).
@@ -59,9 +62,8 @@ final class WinSession {
     /// Starts watching the folder; snapshots arrive on the main queue.
     func connect() {
         guard watcher == nil else { return }
-        let w = DesktopWatcher(scanner: DesktopScanner(root: folder)) { [weak self] event in
-            DispatchQueue.main.async { MainActor.assumeIsolated { self?.watcherEvent(event) } }
-        }
+        let inbox = inbox
+        let w = DesktopWatcher(scanner: DesktopScanner(root: folder)) { event in inbox.post(event) }
         watcher = w
         w.start()
     }
@@ -70,6 +72,13 @@ final class WinSession {
         watcher?.stop()
         watcher = nil
         flush()
+    }
+
+    /// Runs what is due on the main thread: watcher events, a scheduled save. The message loop calls it every pass;
+    /// headless runs call it themselves.
+    func pump(now: Date = Date()) {
+        for event in inbox.take() { watcherEvent(event) }
+        if let due = saveDue, now >= due { flush() }
     }
 
     private func watcherEvent(_ event: DesktopWatcher.Event) {
@@ -150,20 +159,31 @@ final class WinSession {
 
     private func scheduleSave() {
         guard stateStore != nil else { return }
-        saveWork?.cancel()
-        let work = DispatchWorkItem { [weak self] in self?.flush() }
-        saveWork = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1, execute: work)
+        saveDue = Date().addingTimeInterval(1)
     }
 
     func flush() {
-        saveWork?.cancel()
-        saveWork = nil
+        saveDue = nil
         guard let stateStore else { return }
         do {
             try stateStore.save(state)
         } catch {
             log("could not save the layout: \(error)")
+        }
+    }
+}
+
+/// A thread-safe queue of values posted from any thread and taken on the main thread.
+nonisolated final class Inbox<Value: Sendable>: @unchecked Sendable {
+    private let lock = NSLock()
+    private var values: [Value] = []
+
+    func post(_ value: Value) { lock.withLock { values.append(value) } }
+
+    func take() -> [Value] {
+        lock.withLock {
+            defer { values = [] }
+            return values
         }
     }
 }

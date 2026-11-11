@@ -49,3 +49,31 @@ struct SnapshotTests {
         #expect(try fm.contentsOfDirectory(atPath: desk.path).sorted() == before)
     }
 }
+
+@Suite("Windows shell session")
+struct WinSessionTests {
+    @Test("Connected, the watcher's snapshots arrive through pump(), and a new file shows up")
+    func watcherThroughPump() async throws {
+        let fm = FileManager.default
+        let desk = fm.temporaryDirectory.appendingPathComponent("deskterior-win-\(UUID().uuidString)", isDirectory: true)
+        try fm.createDirectory(at: desk, withIntermediateDirectories: true)
+        defer { try? fm.removeItem(at: desk) }
+        try Data("x".utf8).write(to: desk.appendingPathComponent("first.txt"))
+        let session = try WinSession(grid: WinOptions.grid(width: 1280, height: 800, scale: 1), folder: desk,
+                                     stateDirectory: nil)
+        defer { session.stop() }
+        session.start(connect: true)
+        func wait(_ done: () -> Bool) async throws {
+            let until = Date().addingTimeInterval(10)
+            while !done(), Date() < until {
+                session.pump()
+                try await Task.sleep(for: .milliseconds(20))
+            }
+        }
+        try await wait { session.state.tokens.records.count == 1 }
+        #expect(session.snapshots >= 1 && session.state.tokens.records.count == 1)
+        try Data("y".utf8).write(to: desk.appendingPathComponent("second.txt"))
+        try await wait { session.state.tokens.records.count == 2 }
+        #expect(session.state.tokens.records.count == 2)
+    }
+}

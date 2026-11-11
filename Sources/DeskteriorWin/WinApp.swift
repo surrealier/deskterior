@@ -31,12 +31,18 @@ enum WinApp {
             exit(1)
         }
         let deadline = options.quitAfter.map { FrameClock.now() + $0 }
-        MessageLoop.run(ticker: window.ticker, deadline: deadline) { window.requestClose() }
+        // A timer that never fires keeps the main run loop from counting as finished, so each pass services the
+        // main dispatch queue and Foundation timers (the scene's tooltip delay).
+        let keepAlive = Timer(timeInterval: 86_400, repeats: true) { _ in }
+        RunLoop.main.add(keepAlive, forMode: .default)
+        MessageLoop.run(ticker: window.ticker, deadline: deadline, pump: { window.pump() }) { window.requestClose() }
+        keepAlive.invalidate()
         let shown = window.surface.framesShown
         window.close()
         if options.quitAfter != nil {
-            print("window: \(shown) frame(s) shown, \(window.snapshots) snapshot(s)")
-            exit(shown > 0 ? 0 : 2)
+            let snapshots = window.snapshots
+            print("window: \(shown) frame(s) shown, \(snapshots) snapshot(s)")
+            exit(shown > 0 && (snapshots > 0 || !options.connect) ? 0 : 2)
         }
     }
 
@@ -59,7 +65,7 @@ final class WinTicker: FrameTicker {
 
 enum MessageLoop {
     /// Pumps window messages, the main run loop and the ticker until `WM_QUIT`.
-    static func run(ticker: WinTicker, deadline: Double? = nil, onDeadline: () -> Void = {}) {
+    static func run(ticker: WinTicker, deadline: Double? = nil, pump: () -> Void = {}, onDeadline: () -> Void = {}) {
         var msg = MSG()
         var nextTick = FrameClock.now()
         var deadline = deadline
@@ -77,6 +83,7 @@ enum MessageLoop {
                 DispatchMessageW(&msg)
             }
             _ = RunLoop.main.run(mode: .default, before: Date())
+            pump()
             let t = FrameClock.now()
             if !ticker.isPaused, t >= nextTick {
                 nextTick = max(nextTick + ticker.interval, t - ticker.interval)
@@ -136,6 +143,8 @@ final class DeskWindow: WinPlatform {
     }
 
     var snapshots: Int { session?.snapshots ?? 0 }
+
+    func pump() { session?.pump() }
 
     func requestClose() {
         if let hwnd { PostMessageW(hwnd, UINT(0x0010), 0, 0) }                  // WM_CLOSE

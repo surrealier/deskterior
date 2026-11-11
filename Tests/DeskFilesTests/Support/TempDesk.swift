@@ -47,14 +47,15 @@ final class TempDesk: @unchecked Sendable {
         try FileManager.default.removeItem(at: url(name))
     }
 
-    /// `st_ino` from lstat.
+    /// The item's own inode (file index on Windows), from `FilePrimitives.status`.
     func inode(_ name: String) -> UInt64 {
-        var st = stat()
-        return lstat(url(name).path, &st) == 0 ? UInt64(st.st_ino) : 0
+        (try? FilePrimitives.status(url(name), follow: false).get())?.inode ?? 0
     }
 
     private func chmodTree(_ url: URL) {
+        #if !os(Windows)
         chmod(url.path, 0o755)
+        #endif
         let items = (try? FileManager.default.contentsOfDirectory(atPath: url.path)) ?? []
         for name in items {
             let child = url.appendingPathComponent(name)

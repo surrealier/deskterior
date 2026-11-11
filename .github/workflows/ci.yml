@@ -121,7 +121,7 @@ jobs:
         run: |
           PATH="/c/Windows/System32:/c/Windows" dist/Deskterior/Deskterior.exe --desktop-folder build/fixture \
             --state-folder build/state --connect --quit-after 8 | tee build/window.txt
-          grep -q "frame(s) shown" build/window.txt
+          grep -qE "[1-9][0-9]* frame\(s\) shown, [1-9][0-9]* snapshot\(s\)" build/window.txt
       - name: Upload app
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
