@@ -50,6 +50,17 @@ struct SnapshotTests {
     }
 }
 
+/// Polls `condition` off the main actor (which a busy test run keeps occupied with scene suites), up to `timeout`.
+@concurrent
+nonisolated func eventually(_ timeout: Double, _ condition: @Sendable () -> Bool) async -> Bool {
+    let until = Date().addingTimeInterval(timeout)
+    while Date() < until {
+        if condition() { return true }
+        try? await Task.sleep(for: .milliseconds(20))
+    }
+    return condition()
+}
+
 @Suite("Windows shell session")
 struct WinSessionTests {
     @Test("Connected, the watcher's snapshots arrive through pump(), and a new file shows up")
@@ -63,17 +74,18 @@ struct WinSessionTests {
                                      stateDirectory: nil)
         defer { session.stop() }
         session.start(connect: true)
-        func wait(_ done: () -> Bool) async throws {
-            let until = Date().addingTimeInterval(60)                // a busy runner delivers late
-            while !done(), Date() < until {
-                session.pump()
-                try await Task.sleep(for: .milliseconds(20))
-            }
-        }
-        try await wait { session.state.tokens.records.count == 1 }
+        let inbox = session.inbox
+        // The watcher posts from its own queue; the session takes its events only when pumped (the message loop).
+        #expect(await eventually(120) { inbox.count >= 1 })
+        #expect(session.snapshots == 0, "nothing reaches the model before a pump")
+        session.pump()
         #expect(session.snapshots >= 1 && session.state.tokens.records.count == 1)
         try Data("y".utf8).write(to: desk.appendingPathComponent("second.txt"))
-        try await wait { session.state.tokens.records.count == 2 }
+        let until = Date().addingTimeInterval(120)
+        while session.state.tokens.records.count < 2, Date() < until {
+            _ = await eventually(5) { inbox.count >= 1 }
+            session.pump()
+        }
         #expect(session.state.tokens.records.count == 2)
     }
 }

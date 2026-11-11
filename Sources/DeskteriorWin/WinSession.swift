@@ -19,7 +19,7 @@ final class WinSession {
     private var watcher: DesktopWatcher?
     /// Watcher events waiting for the main thread: the window's message loop collects them (`pump`), so delivery
     /// does not depend on the main dispatch queue being serviced.
-    private let inbox = Inbox<DesktopWatcher.Event>()
+    let inbox = Inbox<DesktopWatcher.Event>()
     private var saveDue: Date?
     /// Opens and reveals items (the window's platform services); nil when headless.
     var platform: (any WinPlatform)?
@@ -179,6 +179,9 @@ nonisolated final class Inbox<Value: Sendable>: @unchecked Sendable {
     private var values: [Value] = []
 
     func post(_ value: Value) { lock.withLock { values.append(value) } }
+
+    /// Values waiting (any thread).
+    var count: Int { lock.withLock { values.count } }
 
     func take() -> [Value] {
         lock.withLock {
