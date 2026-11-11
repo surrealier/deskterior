@@ -177,7 +177,7 @@ struct HardeningFileTests {
         #expect(result.outcomes == [.copied(album, to: rig.at(rig.desk, "Album"))])
         #expect(result.undo != nil)
         let stagedIn = try #require(staged.all.first).deletingLastPathComponent()
-        #expect(DesktopLocator.isInsideDesktop(stagedIn, desktop: rig.desk) == stageInDesk)
+        #expect(DesktopLocator.isInsideDesktop(stagedIn, desktop: rig.desk) == (stageInDesk || !FilePrimitives.stagesOutsideDesk))
         #expect(rig.names(rig.desk) == ["Album"], "the staging folder is gone")
         #expect(PartialCopies.find(in: rig.desk).isEmpty)
     }

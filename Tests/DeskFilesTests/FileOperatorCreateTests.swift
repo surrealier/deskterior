@@ -138,10 +138,12 @@ struct FileOperatorCreateTests {
             for list in seen.lists {
                 #expect(!list.contains("big.txt"), "inDesk \(inDesk): \(list)")
                 #expect(list.allSatisfy { $0.hasPrefix(FileMoves.partialPrefix) } == true, "inDesk \(inDesk): \(list)")
-                #expect(inDesk || list.isEmpty, "the system's staging folder lies outside the desk")
+                #expect(inDesk || !FilePrimitives.stagesOutsideDesk || list.isEmpty,
+                        "the system's staging folder lies outside the desk")
             }
             #expect(seen.stagedBytes == big, "the staged file was whole before it was renamed in")
-            #expect(seen.stagedURL.map { DesktopLocator.isInsideDesktop($0, desktop: desk) } == inDesk)
+            #expect(seen.stagedURL.map { DesktopLocator.isInsideDesktop($0, desktop: desk) }
+                == (inDesk || !FilePrimitives.stagesOutsideDesk))
             #expect(rig.names(desk) == ["big.txt"] && bytes(rig.at(desk, "big.txt")) == big, "and the staging went")
             #expect(PartialCopies.find(in: desk).isEmpty)
         }

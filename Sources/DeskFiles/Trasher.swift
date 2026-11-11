@@ -64,7 +64,7 @@ struct SystemTrasher: Trasher {
             op.pFrom = UnsafePointer(buffer.baseAddress)
             op.fFlags = flags
             let r = SHFileOperationW(&op)
-            return op.fAnyOperationsAborted ? Int32(1223) : r
+            return op.fAnyOperationsAborted.boolValue ? Int32(1223) : r
         }
         guard result == 0 else {
             throw FileRefusal.from(errno: result == 1223 ? ECANCELED : FilePrimitives.errno(win32: DWORD(bitPattern: result)))
@@ -80,7 +80,7 @@ struct SystemTrasher: Trasher {
         var info = SHQUERYRBINFO()
         info.cbSize = DWORD(MemoryLayout<SHQUERYRBINFO>.size)
         let root = String(path.hasPrefix(#"\\?\"#) ? path.dropFirst(4).prefix(3) : path.prefix(3))
-        return Win32.withWide(root) { SHQueryRecycleBinW($0, &info) } == S_OK
+        return Win32.withWide(root) { SHQueryRecycleBinW($0, &info) } == 0
     }
 }
 #else

@@ -49,6 +49,16 @@ enum FilePrimitives {
         var modified: Date { Date(timeIntervalSince1970: Double(modifiedSeconds) + Double(modifiedNanoseconds) / 1e9) }
     }
 
+    /// Copies stage outside the desk folder (the system's item-replacement folder on the desk's volume) when the
+    /// platform has one (macOS); elsewhere they stage in the desk's hidden partial folder.
+    static var stagesOutsideDesk: Bool {
+        #if canImport(Darwin)
+        true
+        #else
+        false
+        #endif
+    }
+
     /// The result of `status`: the item's facts, or the errno.
     typealias StatusResult = Result<Status, FileErrno>
 
