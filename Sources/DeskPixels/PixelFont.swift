@@ -1,8 +1,12 @@
-#if canImport(CoreText)
-import CoreGraphics
-import CoreText
 import DeskCore
 import Foundation
+
+/// Draws one character's glyph for a `PixelFont`: from the font's own file and whatever the platform falls back to
+/// (CoreText on macOS, `CoreTextRasterizer`; a baked `GlyphAtlas` elsewhere, `AtlasRasterizer`). Returns nil when
+/// none of its fonts has the character; `PixelFont` then tries the base of a variation sequence, then a box.
+protocol GlyphRasterizer: Sendable {
+    func glyph(for c: Character, in font: PixelFont) -> PixelFont.Glyph?
+}
 
 /// A pixel font rasterized by CoreText at its native size (1 font px = 1 art px) with anti-aliasing,
 /// smoothing and subpixel positioning off, then thresholded to **binary alpha**.
@@ -19,6 +23,9 @@ import Foundation
 /// Verified against Galmuri9's BDF: CoreText reproduces the designed bitmaps exactly (ASCII, Latin-1/Ext-A,
 /// kana, all 11,172 Hangul syllables). Glyph bitmaps are cached and the type is thread-safe (`CTFont` is
 /// immutable and thread-safe but not annotated `Sendable`; the glyph cache is lock-protected).
+///
+/// Where CoreText does not exist (Windows), the font's own glyphs come from `Galmuri9.glyphs`, a `GlyphAtlas`
+/// baked from CoreText's output on macOS, so the same text draws the same pixels on both (`GlyphAtlasTests`).
 public final class PixelFont: @unchecked Sendable {
     /// Where a character's pixels come from.
     public enum GlyphSource: Sendable, Equatable {
@@ -37,9 +44,8 @@ public final class PixelFont: @unchecked Sendable {
     /// hold the font's deepest descent (its bounding box), so cedillas, ogoneks and "¿" are never cut.
     public let baseline: Int
 
-    private let primary: CTFont
-    private let fallback: CTFont?
-    private let cache = FontRegistry.LockedCache<Character, Glyph>()
+    let rasterizer: any GlyphRasterizer
+    private let cache = LockedCache<Character, Glyph>()
 
     /// Galmuri9 (10 px; 15-px line, baseline 12) from `Resources/Fonts`; nil if the font file cannot be found or
     /// loaded, which is reported through `ResourceLocator.reportMissing`.
@@ -47,6 +53,7 @@ public final class PixelFont: @unchecked Sendable {
     /// The line box holds 12 rows above the baseline (accented capitals, "Ǻ", Vietnamese "ấ") and 3 below
     /// ("ç", "ą", "¿", "ș"); only stacked capital Vietnamese marks such as "Ấ" (13–14 rows) lose their top.
     public static let galmuri9: PixelFont? = {
+        #if canImport(CoreText)
         guard let url = ResourceLocator.fontURL(named: "Galmuri9.ttf"),
               let font = PixelFont(url: url, pixelSize: 10, lineHeight: 15)
         else {
@@ -54,25 +61,29 @@ public final class PixelFont: @unchecked Sendable {
             return nil
         }
         return font
+        #else
+        guard let url = ResourceLocator.fontURL(named: GlyphAtlas.galmuri9FileName),
+              let data = try? Data(contentsOf: url), let atlas = try? GlyphAtlas(data: data)
+        else {
+            ResourceLocator.reportMissing(GlyphAtlas.galmuri9FileName)
+            return nil
+        }
+        return PixelFont(atlas: atlas)
+        #endif
     }()
 
-    /// Loads the font file at `url` (see `FontRegistry`); nil if it is not a readable font.
-    public convenience init?(url: URL, pixelSize: Int, lineHeight: Int) {
-        guard let font = FontRegistry.font(at: url, size: CGFloat(pixelSize)) else { return nil }
-        self.init(font: font, pixelSize: pixelSize, lineHeight: lineHeight)
-    }
-
-    /// Wraps an existing `CTFont`, which should already be at `pixelSize`.
-    public init(font: CTFont, pixelSize: Int, lineHeight: Int) {
+    init(pixelSize: Int, lineHeight: Int, baseline: Int, rasterizer: any GlyphRasterizer) {
         precondition(pixelSize > 0 && lineHeight > 0, "PixelFont needs a positive size and line height")
         self.pixelSize = pixelSize
         self.lineHeight = lineHeight
-        self.primary = font
-        self.fallback = CTFontCreateUIFontForLanguage(.system, CGFloat(pixelSize), nil)
-        // The bounding box, not the descent metric (Galmuri9: descent 1, but glyphs reach 3 rows below).
-        // Pixel fonts have whole-pixel bounds; Galmuri9 → 3 rows below, baseline 12 in a 15-px line.
-        let descent = Int((-CTFontGetBoundingBox(font).minY).rounded())
-        self.baseline = min(lineHeight, max(0, lineHeight - descent))
+        self.baseline = baseline
+        self.rasterizer = rasterizer
+    }
+
+    /// A font whose own glyphs come from `atlas` (its size, line height and baseline are the atlas's).
+    public convenience init(atlas: GlyphAtlas) {
+        self.init(pixelSize: atlas.pixelSize, lineHeight: atlas.lineHeight, baseline: atlas.baseline,
+                  rasterizer: AtlasRasterizer(atlas: atlas))
     }
 
     // MARK: Measuring
@@ -147,10 +158,10 @@ public final class PixelFont: @unchecked Sendable {
     // MARK: Glyphs
 
     /// Extra columns kept on each side of a glyph's advance cell for ink that overhangs it (combining marks).
-    private static let cellMargin = 4
+    static let cellMargin = 4
     private static let maxCachedGlyphs = 8192
 
-    private struct Glyph: Sendable {
+    struct Glyph: Sendable {
         let advance: Int
         /// `(advance + 2 * cellMargin) × lineHeight`, row-major from the top; true = ink.
         let mask: [Bool]
@@ -197,68 +208,10 @@ public final class PixelFont: @unchecked Sendable {
         // Text presentation ("☺︎", "✈︎") asks for the plain glyph of its base character.
         if let base = Self.textPresentationBase(c) { return glyph(base) }
         if let g = designed(c) { return g }
-        if let g = rasterize(c, font: primary, source: .primary) { return g }
-        if let fallback {
-            if let g = rasterize(c, font: fallback, source: .systemFallback) { return g }
-            // The system font's cascade (other scripts), skipping colour fonts: emoji become boxes.
-            let s = String(c) as CFString
-            let cascade = CTFontCreateForString(fallback, s, CFRange(location: 0, length: CFStringGetLength(s)))
-            if !CTFontGetSymbolicTraits(cascade).contains(.traitColorGlyphs) {
-                if let g = rasterize(c, font: cascade, source: .systemFallback) { return g }
-            } else if let g = rasterizeColor(c, font: cascade) {
-                return g
-            }
-        }
+        if let g = rasterizer.glyph(for: c, in: self) { return g }
         // A variation selector no font maps: the base character before the box.
         if let base = Self.strippingVariationSelectors(c) { return glyph(base) }
         return boxGlyph()
-    }
-
-    /// Colour emoji are drawn at this many times their final size, then area-averaged down.
-    private static let colorOversample = 6
-
-    /// A colour emoji (`font` is a colour font, e.g. Apple Color Emoji): drawn large through a `CTLine` (so ZWJ
-    /// sequences, flags and skin tones shape as one picture), trimmed to its ink, reduced into a `pixelSize`
-    /// square standing on the baseline (`featureAverage`, so eyes and outlines survive), alpha thresholded,
-    /// snapped to Apollo by lightness first (`snapEmoji`) and given a light rim where its edge is dark
-    /// (`liftDarkRim`). Nil when nothing is drawn.
-    private func rasterizeColor(_ c: Character, font: CTFont) -> Glyph? {
-        let box = max(3, min(baseline, pixelSize))
-        let big = CTFontCreateCopyWithAttributes(font, CGFloat(box * Self.colorOversample), nil, nil)
-        let text = NSAttributedString(string: String(c), attributes: [NSAttributedString.Key(kCTFontAttributeName as String): big])
-        let line = CTLineCreateWithAttributedString(text)
-        var ascent: CGFloat = 0, descent: CGFloat = 0, leading: CGFloat = 0
-        let width = CTLineGetTypographicBounds(line, &ascent, &descent, &leading)
-        let pad = 4
-        let w = Int(width.rounded(.up)) + 2 * pad, h = Int((ascent + descent).rounded(.up)) + 2 * pad
-        guard width > 0, let ctx = CGBridge.makeContext(width: w, height: h) else { return nil }
-        ctx.setShouldAntialias(true)
-        ctx.setAllowsAntialiasing(true)
-        ctx.interpolationQuality = .high
-        ctx.textPosition = CGPoint(x: CGFloat(pad), y: CGFloat(pad) + descent)
-        CTLineDraw(line, ctx)
-        guard let drawn = CGBridge.pixelBuffer(from: ctx) else { return nil }
-        let bounds = IconPixelator.alphaBounds(drawn, minAlpha: 32)
-        guard !bounds.isEmpty else { return nil }
-        let fit = IconPixelator.fitted(bounds.size, into: ArtSize(box, box))
-        let snapped = Self.liftDarkRim(Self.snapEmoji(Self.featureAverage(drawn.cropped(to: bounds), to: fit)))
-        guard !snapped.opaqueBounds().isEmpty else { return nil }
-
-        let advance = fit.w + 1
-        let cellWidth = advance + 2 * Self.cellMargin
-        var mask = [Bool](repeating: false, count: cellWidth * lineHeight)
-        var colors = [RGBA8](repeating: .clear, count: cellWidth * lineHeight)
-        let top = baseline - fit.h
-        for y in 0..<fit.h where top + y >= 0 && top + y < lineHeight {
-            for x in 0..<fit.w {
-                let px = snapped.pixel(x, y)
-                guard px.a != 0 else { continue }
-                let i = (top + y) * cellWidth + Self.cellMargin + x
-                mask[i] = true
-                colors[i] = px
-            }
-        }
-        return Glyph(advance: advance, mask: mask, maskWidth: cellWidth, source: .colorFallback, colors: colors)
     }
 
     /// Area-averages `big` down to `size` with binary alpha (`IconPixelator.alphaThreshold`), except that a pixel
@@ -290,42 +243,6 @@ public final class PixelFont: @unchecked Sendable {
             }
         }
         return out
-    }
-
-    /// Draws every glyph of `c` on integer advances; nil when `font` lacks any of its code units.
-    private func rasterize(_ c: Character, font: CTFont, source: GlyphSource) -> Glyph? {
-        let units = Array(String(c).utf16)
-        var ids = [CGGlyph](repeating: 0, count: units.count)
-        guard CTFontGetGlyphsForCharacters(font, units, &ids, units.count) else { return nil }
-        ids = ids.filter { $0 != 0 }      // the second slot of a surrogate pair is 0
-        guard !ids.isEmpty else { return nil }
-
-        var advances = [CGSize](repeating: .zero, count: ids.count)
-        CTFontGetAdvancesForGlyphs(font, .horizontal, ids, &advances, ids.count)
-        var positions: [CGPoint] = []
-        var pen = 0
-        for a in advances {
-            positions.append(CGPoint(x: pen, y: 0))
-            pen += max(0, Int(a.width.rounded()))
-        }
-
-        let cellWidth = pen + 2 * Self.cellMargin
-        guard let ctx = CGBridge.makeContext(width: cellWidth, height: lineHeight) else { return nil }
-        Self.disableSmoothing(ctx)
-        ctx.setFillColor(CGColor(colorSpace: CGBridge.colorSpace, components: [1, 1, 1, 1])!)
-        // Integer baseline: CG is y-up, so the baseline sits `lineHeight − baseline` px above the bottom.
-        ctx.translateBy(x: CGFloat(Self.cellMargin), y: CGFloat(lineHeight - baseline))
-        CTFontDrawGlyphs(font, ids, positions, ids.count, ctx)
-
-        guard let data = ctx.data else { return nil }
-        let bytes = data.bindMemory(to: UInt8.self, capacity: ctx.bytesPerRow * lineHeight)
-        var mask = [Bool](repeating: false, count: cellWidth * lineHeight)
-        for y in 0..<lineHeight {
-            for x in 0..<cellWidth where bytes[y * ctx.bytesPerRow + x * 4 + 3] >= 128 {
-                mask[y * cellWidth + x] = true
-            }
-        }
-        return Glyph(advance: pen, mask: mask, maskWidth: cellWidth, source: source)
     }
 
     // MARK: w6-polish
@@ -362,17 +279,4 @@ public final class PixelFont: @unchecked Sendable {
         }
         return Glyph(advance: advance, mask: mask, maskWidth: cellWidth, source: .box)
     }
-
-    private static func disableSmoothing(_ ctx: CGContext) {
-        ctx.setShouldAntialias(false)
-        ctx.setAllowsAntialiasing(false)
-        ctx.setShouldSmoothFonts(false)
-        ctx.setAllowsFontSmoothing(false)
-        ctx.setShouldSubpixelPositionFonts(false)
-        ctx.setAllowsFontSubpixelPositioning(false)
-        ctx.setShouldSubpixelQuantizeFonts(false)
-        ctx.setAllowsFontSubpixelQuantization(false)
-        ctx.textMatrix = .identity
-    }
 }
-#endif // canImport(CoreText)

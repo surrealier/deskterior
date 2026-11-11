@@ -41,6 +41,21 @@ jobs:
         run: scripts/ci-test.sh parallel --skip-build
       - name: File-safety lint
         run: scripts/check-file-safety.sh
+      # Galmuri9 as CoreText draws it, for platforms without CoreText (docs/WINDOWS.md WP4). GlyphAtlasTests fails
+      # when the committed atlas differs; the freshly baked one is uploaded so it can be committed.
+      - name: Bake glyph atlas
+        if: ${{ !cancelled() }}
+        run: |
+          mkdir -p build
+          swift run deskterior-assets bake-font --out build/Galmuri9.glyphs
+          cmp build/Galmuri9.glyphs Resources/Fonts/Galmuri9.glyphs || echo "::warning::Resources/Fonts/Galmuri9.glyphs is out of date"
+      - name: Upload glyph atlas
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: Galmuri9-glyphs
+          path: build/Galmuri9.glyphs
+          retention-days: 7
       - name: Build app bundle (arm64, ad-hoc)
         # The bundle id comes from the checkout's origin remote (io.github.<owner>.deskterior).
         run: ARCHS=arm64 ZIP=1 scripts/build-app.sh --version 0.0.0-ci

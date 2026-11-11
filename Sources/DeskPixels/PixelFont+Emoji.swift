@@ -1,4 +1,3 @@
-#if canImport(CoreText)
 import DeskCore
 
 /// Colour emoji and variation selectors in the glyph fallback (DESIGN §1.4, M10 review): an emoji is snapped to
@@ -73,4 +72,3 @@ extension PixelFont {
         return out
     }
 }
-#endif // canImport(CoreText)
