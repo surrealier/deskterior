@@ -1,6 +1,10 @@
 import DeskCore
 import DeskPixels
+#if canImport(SpriteKit)
 import SpriteKit
+#else
+import DeskStage
+#endif
 
 /// Galmuri9 text drawn the way the scene's UI uses it: lines cropped to the font's ink rows (so boxes hug the
 /// text), a 1-px drop shadow, and label pills. Every pixel is an Apollo colour with binary alpha.

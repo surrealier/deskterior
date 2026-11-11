@@ -1,8 +1,15 @@
 import DeskCore
+#if canImport(Metal)
 import Metal
+#endif
+#if canImport(SpriteKit)
 import SpriteKit
+#else
+import DeskStage
+#endif
 @testable import DeskScene
 
+#if canImport(Metal)
 /// GPU helpers shared by the Metal-gated suites (each suite is `.enabled(if: MTLCreateSystemDefaultDevice() != nil)`).
 struct GPU {
     let device: any MTLDevice
@@ -86,6 +93,7 @@ struct GPU {
         return try presenter.readArtFrame()
     }
 }
+#endif
 
 /// Number of differing pixels, for readable failures.
 func diffCount(_ a: PixelBuffer, _ b: PixelBuffer) -> Int {

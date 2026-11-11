@@ -1,6 +1,10 @@
 import DeskCore
 #if canImport(SpriteKit)
+#if canImport(SpriteKit)
 import SpriteKit
+#else
+import DeskStage
+#endif
 #else
 import DeskStage
 #endif

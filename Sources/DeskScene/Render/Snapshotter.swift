@@ -1,10 +1,13 @@
 import DeskCore
 import DeskPixels
 import Foundation
+#if canImport(Metal)
 import Metal
+#endif
 
 /// Reads rendered frames back to the CPU and encodes them as PNG artifacts.
 public enum Snapshotter {
+    #if canImport(Metal)
     /// Copies a `.bgra8Unorm` or `.rgba8Unorm` texture into a `PixelBuffer` (row 0 = top), after all work
     /// already committed to `queue`.
     public static func read(_ texture: any MTLTexture, queue: any MTLCommandQueue) throws -> PixelBuffer {
@@ -37,6 +40,7 @@ public enum Snapshotter {
         }
         return PixelBuffer(width: w, height: h, pixels: px)
     }
+    #endif
 
     /// PNG artifacts for one frame: `<name>.png` at art resolution and `<name>@<scale>x.png` upscaled
     /// nearest-neighbour (only the first when `scale` ≤ 1).

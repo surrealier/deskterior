@@ -1,5 +1,9 @@
 import DeskCore
+#if canImport(SpriteKit)
 import SpriteKit
+#else
+import DeskStage
+#endif
 
 /// The desk brush (빗자루; DESIGN §2.2 E10) and the scroll-broom. Dragging the brush makes it the desk plane's prop,
 /// driven straight at the pointer by velocity (`DeskPlanePhysics.propDrive`, no joint, about 20× a pile's mass), so it

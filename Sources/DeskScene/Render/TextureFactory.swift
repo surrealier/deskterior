@@ -2,8 +2,16 @@ import DeskCore
 import DeskPixels
 import Foundation
 #if canImport(SpriteKit)
+#if canImport(CoreGraphics)
 import CoreGraphics
+#else
+import Foundation
+#endif
+#if canImport(SpriteKit)
 import SpriteKit
+#else
+import DeskStage
+#endif
 #else
 import DeskStage
 #endif

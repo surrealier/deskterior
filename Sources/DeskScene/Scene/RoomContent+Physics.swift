@@ -1,5 +1,9 @@
 import DeskCore
+#if canImport(SpriteKit)
 import SpriteKit
+#else
+import DeskStage
+#endif
 
 /// The desk plane in the room (M7): the `PhysicsHub` and its elements join the hit-test order in the slots of the
 /// objects they draw — the pen cup and the loose piles in the pen cup's (piles draw in front of the desk-front

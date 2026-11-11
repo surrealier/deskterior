@@ -1,5 +1,9 @@
 import DeskCore
+#if canImport(SpriteKit)
 import SpriteKit
+#else
+import DeskStage
+#endif
 
 /// What a pointer is over: an element, and the most specific named anchor of it under the point.
 public nonisolated struct Hit: Hashable, Sendable {

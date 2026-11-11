@@ -1,6 +1,10 @@
 import DeskCore
 import DeskPixels
+#if canImport(SpriteKit)
 import SpriteKit
+#else
+import DeskStage
+#endif
 
 extension ToastKey {
     /// The English toast text (shown through `L10n.tr` in the current language).

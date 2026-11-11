@@ -1,6 +1,14 @@
+#if canImport(CoreGraphics)
 import CoreGraphics
+#else
+import Foundation
+#endif
 import DeskCore
+#if canImport(SpriteKit)
 import SpriteKit
+#else
+import DeskStage
+#endif
 
 /// Conversions between canvas art space (integer px, y-down) and SpriteKit scene space (y-up, `U` units per
 /// art px). The only place that flips y; every node placed through it uses `anchorPoint = .zero`.

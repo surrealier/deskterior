@@ -1,7 +1,12 @@
+#if canImport(Metal)
 import DeskCore
 import Metal
 import QuartzCore
+#if canImport(SpriteKit)
 import SpriteKit
+#else
+import DeskStage
+#endif
 
 /// Renders a scene through the one pixel pipeline (DESIGN §1.1), for the window, headless runs and tests alike:
 ///
@@ -177,3 +182,4 @@ public final class PixelPresenter {
         return (art, depth, lit, mask)
     }
 }
+#endif // canImport(Metal)

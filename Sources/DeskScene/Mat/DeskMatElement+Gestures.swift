@@ -1,5 +1,9 @@
 import DeskCore
+#if canImport(SpriteKit)
 import SpriteKit
+#else
+import DeskStage
+#endif
 
 /// What the mat answers to (DESIGN §2.1, §2.2 E9): hits from the raster's `owner[]` (the cloth, or a pile under it the
 /// cloth has lifted off), the bare desk in front of the back strip (the scroll-broom's ground), grabs, double-clicks,

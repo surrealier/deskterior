@@ -29,9 +29,6 @@ struct CoreTextRasterizer: GlyphRasterizer, @unchecked Sendable {
     /// Colour emoji are drawn at this many times their final size, then area-averaged down.
     static let colorOversample = 6
 
-    /// Colour emoji are drawn at this many times their final size, then area-averaged down.
-    private static let colorOversample = 6
-
     /// A colour emoji (`font` is a colour font, e.g. Apple Color Emoji): drawn large through a `CTLine` (so ZWJ
     /// sequences, flags and skin tones shape as one picture), trimmed to its ink, reduced into a `pixelSize`
     /// square standing on the baseline (`featureAverage`, so eyes and outlines survive), alpha thresholded,

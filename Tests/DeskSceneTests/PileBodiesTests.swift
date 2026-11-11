@@ -1,6 +1,8 @@
 import DeskCore
 import Foundation
+#if canImport(Metal)
 import Metal
+#endif
 #if canImport(simd)
 import simd
 #endif

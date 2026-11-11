@@ -1,6 +1,10 @@
 import DeskCore
 import Foundation
+#if canImport(SpriteKit)
 import SpriteKit
+#else
+import DeskStage
+#endif
 
 /// What the scene shows: the room (default) or the M2 calibration card (`--calibration`).
 public enum SceneContent: String, Sendable, CaseIterable {

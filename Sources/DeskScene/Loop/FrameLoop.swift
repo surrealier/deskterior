@@ -1,5 +1,7 @@
-import AppKit
+import Foundation
+#if canImport(QuartzCore)
 import QuartzCore
+#endif
 
 /// Why the loop must not run at all; any active reason pauses the display link and suppresses rendering.
 public enum PauseReason: String, Hashable, Sendable, CaseIterable {
@@ -31,6 +33,16 @@ public nonisolated struct FrameClock: Hashable, Sendable {
     /// Simulation time after `steps` fixed steps (exact: `steps / 60`, no accumulated rounding).
     public static func time(steps: Int) -> Double {
         Double(steps) / Double(rate)
+    }
+
+    /// The loop's clock in seconds: `CACurrentMediaTime()` on macOS (the display link's timebase), the system uptime
+    /// elsewhere (the same clock `InputEvent` times and input deadlines use there).
+    public static func now() -> Double {
+        #if canImport(QuartzCore)
+        CACurrentMediaTime()
+        #else
+        ProcessInfo.processInfo.systemUptime
+        #endif
     }
 
     public var maxStepsPerTick = 2
@@ -128,7 +140,18 @@ extension FrameLoopHost {
     public var frameLoopSlowFrameInterval: Double? { nil }
 }
 
-/// Drives a host from the view's `CADisplayLink` (macOS 14) at up to 60 Hz with a fixed 1/60 s step, and
+/// What paces the loop: a display link on macOS (`DisplayLinkTicker`), the compositor's vertical blank on
+/// Windows. It calls `onTick` with a timestamp in `FrameClock.now()`'s timebase while not paused.
+@MainActor
+public protocol FrameTicker: AnyObject {
+    var isPaused: Bool { get set }
+    /// Caps the rate at 30 Hz (Low Power Mode).
+    var lowPower: Bool { get set }
+    var onTick: ((Double) -> Void)? { get set }
+    func invalidate()
+}
+
+/// Drives a host from a `FrameTicker` (the view's `CADisplayLink` on macOS 14) at up to 60 Hz with a fixed 1/60 s step, and
 /// stops the link whenever nothing moves (DESIGN §4.6, §5): after 30 rest frames (nothing needs frames: no
 /// element animating, no carry), or 3 s after the later of the last input and the end of the last scripted
 /// animation (hard sleep: the host settles everything), or while any `PauseReason` holds. Hover and tooltips
@@ -144,17 +167,14 @@ public final class FrameLoop {
         didSet { applyFrameRate() }
     }
 
-    private var link: CADisplayLink?
-    private let proxy = DisplayLinkProxy()
+    private var link: (any FrameTicker)?
     // MARK: harden
     /// The next slow tick, while only a slow animation runs.
     private var slowTimer: Timer?
     /// Ticks taken on the slow timer so far (tests, measurements).
     public private(set) var slowTicks = 0
 
-    public init() {
-        proxy.loop = self
-    }
+    public init() {}
 
     /// True while the display link is ticking.
     public var isRunning: Bool { link.map { !$0.isPaused } ?? false }
@@ -162,13 +182,12 @@ public final class FrameLoop {
     /// True while the loop ticks slowly on a timer (only a slow animation runs; the link rests).
     public var isTickingSlowly: Bool { slowTimer != nil }
 
-    /// Creates the display link for `view` (it follows the view across displays). Starts paused.
-    public func attach(to view: NSView) {
+    /// Drives the loop from `ticker` (paused until something needs frames).
+    public func attach(ticker: any FrameTicker) {
         invalidate()
-        let l = view.displayLink(target: proxy, selector: #selector(DisplayLinkProxy.tick(_:)))
-        l.isPaused = true
-        l.add(to: .main, forMode: .common)
-        link = l
+        ticker.isPaused = true
+        ticker.onTick = { [weak self] timestamp in self?.tick(at: timestamp) }
+        link = ticker
         applyFrameRate()
     }
 
@@ -182,7 +201,7 @@ public final class FrameLoop {
     /// Starts ticking (no-op while paused for a reason). While the loop ticks slowly and still only a slow animation
     /// runs, it keeps its pace (the activity is noted).
     public func wake() {
-        let now = CACurrentMediaTime()
+        let now = FrameClock.now()
         clock.noteActivity(at: now)
         guard pauseReasons.isEmpty, let link, link.isPaused else { return }
         if slowTimer != nil, host?.frameLoopSlowFrameInterval != nil { return }
@@ -193,7 +212,7 @@ public final class FrameLoop {
 
     /// Records input: keeps the loop out of hard sleep for another `hardSleepDelay`.
     public func noteInput() {
-        clock.noteActivity(at: CACurrentMediaTime())
+        clock.noteActivity(at: FrameClock.now())
     }
 
     /// Renders one frame without stepping (hover, clock minute, resume). Coalesced into the next tick
@@ -216,21 +235,20 @@ public final class FrameLoop {
         }
     }
 
-    fileprivate func tick(_ link: CADisplayLink) {
+    func tick(at now: Double) {
         guard pauseReasons.isEmpty, let host else {
-            link.isPaused = true
+            link?.isPaused = true
             return
         }
-        let now = link.timestamp
         switch frame(at: now, host: host, steps: nil) {
         case .run:
             // MARK: harden: only a slow animation left: rest the link and tick at its own frames.
             if let interval = host.frameLoopSlowFrameInterval {
-                link.isPaused = true
+                link?.isPaused = true
                 scheduleSlowTick(steps: FrameClock.steps(covering: interval), from: now)
             }
         case .rest, .hardSleep:
-            link.isPaused = true
+            link?.isPaused = true
         }
     }
 
@@ -255,8 +273,8 @@ public final class FrameLoop {
     private func scheduleSlowTick(steps: Int, from start: Double) {
         slowTimer?.invalidate()
         let due = start + Double(steps) * FrameClock.step
-        let timer = Timer(timeInterval: max(0.001, due - CACurrentMediaTime()), repeats: false) { [weak self] _ in
-            MainActor.assumeIsolated { self?.slowTick(at: CACurrentMediaTime()) }
+        let timer = Timer(timeInterval: max(0.001, due - FrameClock.now()), repeats: false) { [weak self] _ in
+            MainActor.assumeIsolated { self?.slowTick(at: FrameClock.now()) }
         }
         timer.tolerance = 0.005
         RunLoop.main.add(timer, forMode: .common)
@@ -286,17 +304,6 @@ public final class FrameLoop {
     }
 
     private func applyFrameRate() {
-        link?.preferredFrameRateRange = lowPower
-            ? CAFrameRateRange(minimum: 30, maximum: 30, preferred: 30)
-            : CAFrameRateRange(minimum: 30, maximum: 60, preferred: 60)
-    }
-}
-
-/// Breaks the link → target retain cycle.
-private final class DisplayLinkProxy: NSObject {
-    weak var loop: FrameLoop?
-
-    @objc func tick(_ link: CADisplayLink) {
-        loop?.tick(link)
+        link?.lowPower = lowPower
     }
 }

@@ -1,5 +1,9 @@
 import DeskCore
+#if canImport(SpriteKit)
 import SpriteKit
+#else
+import DeskStage
+#endif
 import Testing
 @testable import DeskScene
 

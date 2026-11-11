@@ -1,6 +1,10 @@
 import DeskCore
 import DeskPixels
+#if canImport(SpriteKit)
 import SpriteKit
+#else
+import DeskStage
+#endif
 
 /// Services the room shares with its elements (DESIGN §4.4): the solved layout, the committed model, the
 /// selection, real icons, the Galmuri9 font, the L7 fx layer and L8 carry layer, and the ways back out: model

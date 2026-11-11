@@ -1,5 +1,9 @@
 import DeskCore
+#if canImport(SpriteKit)
 import SpriteKit
+#else
+import DeskStage
+#endif
 
 /// Things in the air (DESIGN §2.2 E8, E11; §2.1 juice): flung carries, piles pushed off the desk, pens and balls
 /// spilling, drops into the basket. Each flight follows an analytic path (a `Ballistics.Toss` in desk space, or a

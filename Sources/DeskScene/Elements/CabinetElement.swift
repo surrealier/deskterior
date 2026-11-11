@@ -1,5 +1,9 @@
 import DeskCore
+#if canImport(SpriteKit)
 import SpriteKit
+#else
+import DeskStage
+#endif
 
 /// The pedestal cabinet under the desk (DESIGN §2.2 E5, Errata 13): three drawers — top and middle hold 12-px
 /// minis, the file drawer hangs folders whose tabs carry the names' initials — with the riser drawers' gestures

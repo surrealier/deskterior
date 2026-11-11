@@ -1,5 +1,9 @@
 import DeskCore
+#if canImport(SpriteKit)
 import SpriteKit
+#else
+import DeskStage
+#endif
 
 /// The pen cup (DESIGN §2.2 E7): a holder you can carry, flick over and stand back up, run by `PenCupMachine`.
 ///

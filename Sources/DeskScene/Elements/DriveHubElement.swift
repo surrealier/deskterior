@@ -1,5 +1,9 @@
 import DeskCore
+#if canImport(SpriteKit)
 import SpriteKit
+#else
+import DeskStage
+#endif
 
 /// The drive hub (DESIGN §2.2 E15). Covering the Finder desktop also covers its drive icons, so each mounted volume
 /// Finder would show (`DeskState.volumes`, from `VolumeWatcher`) stands plugged into the hub: a USB stick, a disk

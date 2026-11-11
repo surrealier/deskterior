@@ -1,5 +1,9 @@
 import DeskCore
+#if canImport(SpriteKit)
 import SpriteKit
+#else
+import DeskStage
+#endif
 
 /// Clear the Desk as the scene plays it (DESIGN §2.2 E16). The model already holds the result (`ClearDeskPlan`
 /// applied by the reducer as one undo); this only shows how it got there, on the plan's clock:

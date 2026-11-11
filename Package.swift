@@ -62,8 +62,22 @@ let targets: [Target] = [
     // Portable subset: PNG (PortablePNG), pixelators on `PixelBuffer`, resource lookup.
     .target(name: "DeskPixels", dependencies: ["DeskCore"]),
 
+    // SpriteKit's node tree, textures and physics as the scene code uses them (no SpriteKit here).
+    .target(name: "DeskStage", dependencies: ["DeskCore"], swiftSettings: mainActorByDefault),
+    .target(
+        name: "DeskScene",
+        dependencies: ["DeskCore", "DeskPixels", "DeskStage"],
+        swiftSettings: mainActorByDefault
+    ),
+
     .testTarget(name: "DeskCoreTests", dependencies: ["DeskCore", "DeskPixels"], exclude: ["Goldens"]),
     .testTarget(name: "DeskPixelsTests", dependencies: ["DeskCore", "DeskPixels"], exclude: ["Goldens"]),
+    .testTarget(
+        name: "DeskSceneTests",
+        dependencies: ["DeskCore", "DeskPixels", "DeskStage", "DeskScene"],
+        exclude: ["Goldens"],
+        swiftSettings: mainActorByDefault
+    ),
 ]
 #endif
 

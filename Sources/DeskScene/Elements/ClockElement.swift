@@ -1,6 +1,10 @@
 import DeskCore
 import Foundation
+#if canImport(SpriteKit)
 import SpriteKit
+#else
+import DeskStage
+#endif
 
 /// The wall clock (DESIGN §2.2 E13). It shows the real time, re-rendered at minute boundaries by the scene's
 /// one-shot minute timer (no running loop). Dragging on the face turns the minute hand (the hand jumps to where the

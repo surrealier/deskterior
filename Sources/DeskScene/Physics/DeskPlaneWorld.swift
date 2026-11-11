@@ -1,6 +1,14 @@
+#if canImport(CoreGraphics)
 import CoreGraphics
+#else
+import Foundation
+#endif
 import DeskCore
+#if canImport(SpriteKit)
 import SpriteKit
+#else
+import DeskStage
+#endif
 
 /// The one Box2D world (DESIGN §4.7, §12): the desk top seen from above, run by SpriteKit's `SKPhysicsWorld` as the
 /// scene updates (`SKRenderer.update(atTime:)`). Its bodies hang off `root`, an invisible node that is never moved,
