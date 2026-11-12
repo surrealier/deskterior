@@ -6,6 +6,22 @@ All notable changes to Deskterior are listed here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- **Windows (preview).** A first Windows build, `Deskterior.exe`, on the `windows-port` branch: the desk in a window
+  of its own, mirroring your Desktop folder (watched for changes), with arranging, opening, Show in File Explorer and
+  the saved layout. It changes no files yet: Move to Trash, drops, Eject and Save as Text File are refused with a
+  toast. `--snapshot <png>` renders the desk without a window. See [docs/WINDOWS.md](docs/WINDOWS.md).
+- The shared code now builds without Apple frameworks: a software renderer that matches the Metal one pixel for pixel,
+  a small physics solver standing in for SpriteKit's, Galmuri9 as a glyph atlas baked from CoreText on macOS, and a
+  file layer (`FilePrimitives`) with a POSIX and a Win32 implementation behind the same safety checks. The file-safety
+  lint gained Windows rules.
+- CI builds and tests on Windows too, packages the app with its runtime and runs it headless and in a window.
+
+### Changed
+
+- The Mac app's file calls go through `FilePrimitives`; behaviour is unchanged (all macOS tests pass as before).
+
 ## [0.4.0] - 2026-10-21
 
 ### Added

@@ -27,7 +27,7 @@
 
 - [機能](#機能) · [機能一覧](#機能一覧) · [隠し場所の使い方](#隠し場所の使い方) · [操作方法](#操作方法) · [ファイルは安全です](#ファイルは安全です)
 - [インストール](#インストール) · [初回起動](#初回起動) · [設定](#設定) · [セーフモード](#セーフモード) · [アンインストール](#アンインストール)
-- [ソースからビルド](#ソースからビルド) · [動作環境](#動作環境) · [既知の制限](#既知の制限) · [クレジット](#クレジット) · [ライセンス](#ライセンス)
+- [ソースからビルド](#ソースからビルド) · [Windows（プレビュー）](#windowsプレビュー) · [動作環境](#動作環境) · [既知の制限](#既知の制限) · [クレジット](#クレジット) · [ライセンス](#ライセンス)
 
 ## 機能
 
@@ -552,6 +552,24 @@ swift run Deskterior --windowed --desktop-folder "$FIX/desk" --state-dir "$FIX/s
 ```
 
 詳しくは（いずれも英語）：[docs/DESIGN.md](docs/DESIGN.md)（設計）、[docs/DEMOS.md](docs/DEMOS.md)（デモスクリプト）、[docs/SPIKES.md](docs/SPIKES.md)（プラットフォームの検証）、[CHANGELOG.md](CHANGELOG.md)（変更履歴）。
+
+## Windows（プレビュー）
+
+`windows-port` ブランチで Windows 版を開発中です。モデル、シーン、ファイル安全ルールは Mac 版と同じコードです。
+**このプレビューはデスクトップフォルダをウインドウに映すだけで、ファイルは変更しません**。 項目の整理、開く、エクスプローラーで
+表示はでき、配置も保存されますが、ゴミ箱に入れる、ドロップ、取り出し、テキストファイルとして保存は今のところ拒否されます。
+リリースはまだなく、CI が実行できるフォルダを作ります（ワークフローのアーティファクト `Deskterior-windows`）。
+Windows 10・11 で swift.org ツールチェーン 6.2 を使って自分でビルドするには（Git Bash）:
+
+```sh
+swift build -c release --product Deskterior
+scripts/package-windows.sh dist/Deskterior
+dist/Deskterior/Deskterior.exe
+```
+
+`--snapshot desk.png` を付けると、ウインドウなしで机を PNG に描きます。
+
+できること、まだできないこと、実機の Windows で確認が必要なことは [docs/WINDOWS.md](docs/WINDOWS.md)（英語）にあります。
 
 ## 動作環境
 

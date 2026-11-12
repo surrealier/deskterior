@@ -27,7 +27,7 @@ Deskterior 的界面只有英文和韩文两种语言，会按你 Mac 的语言�
 
 - [功能](#功能) · [全部功能](#全部功能) · [东西藏在哪里](#东西藏在哪里) · [操作手势](#操作手势) · [你的文件很安全](#你的文件很安全)
 - [安装](#安装) · [首次运行](#首次运行) · [设置](#设置) · [安全模式](#安全模式) · [卸载](#卸载)
-- [从源代码构建](#从源代码构建) · [系统要求](#系统要求) · [已知限制](#已知限制) · [致谢](#致谢) · [许可证](#许可证)
+- [从源代码构建](#从源代码构建) · [Windows（预览）](#windows预览) · [系统要求](#系统要求) · [已知限制](#已知限制) · [致谢](#致谢) · [许可证](#许可证)
 
 ## 功能
 
@@ -552,6 +552,23 @@ swift run Deskterior --windowed --desktop-folder "$FIX/desk" --state-dir "$FIX/s
 ```
 
 更多内容（英文）：[docs/DESIGN.md](docs/DESIGN.md)（设计）、[docs/DEMOS.md](docs/DEMOS.md)（演示脚本）、[docs/SPIKES.md](docs/SPIKES.md)（平台检查）、[CHANGELOG.md](CHANGELOG.md)。
+
+## Windows（预览）
+
+`windows-port` 分支正在开发 Windows 版，模型、场景和文件安全规则与 Mac 版共用同一套代码。**这个预览版只在窗口里映出你的桌面文件夹，
+不会改动任何文件**：可以整理、打开项目、在资源管理器中显示，布局也会保存，但移到废纸篓、拖入、推出和存为文本文件目前会被拒绝。
+还没有正式发布；CI 会生成一个可直接运行的文件夹（工作流产物 `Deskterior-windows`）。在 Windows 10 或 11 上用 swift.org
+工具链 6.2 自行构建（Git Bash）：
+
+```sh
+swift build -c release --product Deskterior
+scripts/package-windows.sh dist/Deskterior
+dist/Deskterior/Deskterior.exe
+```
+
+加上 `--snapshot desk.png` 可以不开窗口，直接把书桌画成 PNG。
+
+能用什么、还缺什么、需要在真实 Windows 电脑上检查什么，见 [docs/WINDOWS.md](docs/WINDOWS.md)（英文）。
 
 ## 系统要求
 
