@@ -1,5 +1,9 @@
 import DeskCore
+#if canImport(SpriteKit)
 import SpriteKit
+#else
+import DeskStage
+#endif
 
 /// A sticky note in hand (Erratum 31; a `DragController` like `BrushDrag` and `ClockHandDrag`). The note rides the
 /// carry layer a pixel up over a 1-px neutral5 shadow, keeping the point it was grabbed by, and a 1-px

@@ -1,6 +1,10 @@
 import DeskCore
 import DeskPixels
+#if canImport(SpriteKit)
 import SpriteKit
+#else
+import DeskStage
+#endif
 
 /// M2 calibration content (DESIGN §14 M2), replaced by the room in later milestones. Everything sits at fixed
 /// core-relative positions:

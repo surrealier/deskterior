@@ -1,6 +1,12 @@
 import DeskCore
+#if canImport(os)
 import os
+#endif
+#if canImport(SpriteKit)
 import SpriteKit
+#else
+import DeskStage
+#endif
 
 /// The desk plane and everything that leaves the hand (M7; DESIGN §2.1 fling, §2.2 E7, E8, E11, §4.6–§4.7): the
 /// `DeskPlaneWorld` and its `PileBodies`, the `TossAnimator`, and the elements that live on them (loose piles, floor
@@ -69,7 +75,11 @@ final class PhysicsHub {
     /// Seconds between pens leaving the cup, and between balls leaving the basket.
     static let penInterval = 0.08
     static let ballInterval = 0.05
+    #if canImport(os)
     static let log = Logger(subsystem: "io.github.deskterior", category: "physics")
+    #else
+    static let log = PlatformLog(category: "physics")
+    #endif
 
     init(context: SceneContext) {
         self.context = context
@@ -460,7 +470,11 @@ final class PhysicsHub {
         guard !world.piles.isEmpty, let s = state else { return }
         let report = bodies.afterStep(Float(FrameClock.step), obstacles: obstacles)
         for snap in report.snapped {
+            #if canImport(os)
             Self.log.notice("watchdog: pile \(snap.pile.raw, privacy: .public) \(snap.reason.rawValue, privacy: .public)")
+            #else
+            Self.log.notice("watchdog: pile \(snap.pile.raw) \(snap.reason.rawValue)")
+            #endif
         }
         if !report.settled.isEmpty {
             bodies.didCommit(report.settled)

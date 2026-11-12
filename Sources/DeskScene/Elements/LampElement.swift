@@ -1,5 +1,9 @@
 import DeskCore
+#if canImport(SpriteKit)
 import SpriteKit
+#else
+import DeskStage
+#endif
 
 /// The desk lamp (DESIGN §2.2 E12): a click on it (the base switch, or anywhere on the lamp) turns it on or off at
 /// once in the model, while the bulb flickers new–old–new for three 12 fps frames before it settles (none with

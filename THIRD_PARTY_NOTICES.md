@@ -14,6 +14,10 @@ credited and keeps its own terms; it is not relicensed under MIT.
   `Resources/Fonts/OFL-Galmuri.txt` (sha256 `86a3ee9495f942f0243f18c103da9faca27adb88142613edb8bb852e56c892c1`).
   In the app: `Deskterior.app/Contents/Resources/Fonts/`.
 
+- Also bundled: `Resources/Fonts/Galmuri9.glyphs`, the same font's glyphs rasterized at its native size by CoreText
+  (`deskterior-assets bake-font`), for platforms without CoreText; it carries a CRC-32 of the font file it was made
+  from and is distributed under the same license, which ships beside it.
+
 ## Apollo palette
 - Author: AdamCYounis â€” https://lospec.com/palette-list/apollo
 - 46-colour pixel-art palette; used with credit per Lospec community norms.
@@ -24,6 +28,13 @@ The app links only Apple's system frameworks (AppKit, SpriteKit, Metal, SwiftUIâ
 with macOS, and uses the system's fonts (Apple Color Emoji included) only as fallbacks at run time. Development tools
 (the Command Line Tools, and ffmpeg for `make gif`) are not part of the app. All other art, including the app icon and
 the screenshots in `docs/media`, is Deskterior's own, drawn in code.
+
+## Windows preview package
+
+The Windows folder that CI packages (`scripts/package-windows.sh`) also carries, unmodified, the Swift runtime and
+Foundation DLLs of the swift.org toolchain (Apache License 2.0 with Runtime Library Exception; ICU data under the
+Unicode License) and, when present on the build machine, Microsoft's Visual C++ runtime DLLs (`vcruntime140.dll`,
+`vcruntime140_1.dll`, `msvcp140.dll`) as redistributable files. They keep their own terms.
 
 ## Inspiration
 Deskterior is an independent project inspired by Terkel Gjervig's desktop-rug prototype *Desktop Cleaning*

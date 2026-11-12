@@ -41,6 +41,21 @@ jobs:
         run: scripts/ci-test.sh parallel --skip-build
       - name: File-safety lint
         run: scripts/check-file-safety.sh
+      # Galmuri9 as CoreText draws it, for platforms without CoreText (docs/WINDOWS.md WP4). GlyphAtlasTests fails
+      # when the committed atlas differs; the freshly baked one is uploaded so it can be committed.
+      - name: Bake glyph atlas
+        if: ${{ !cancelled() }}
+        run: |
+          mkdir -p build
+          swift run deskterior-assets bake-font --out build/Galmuri9.glyphs
+          cmp build/Galmuri9.glyphs Resources/Fonts/Galmuri9.glyphs || echo "::warning::Resources/Fonts/Galmuri9.glyphs is out of date"
+      - name: Upload glyph atlas
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: Galmuri9-glyphs
+          path: build/Galmuri9.glyphs
+          retention-days: 7
       - name: Build app bundle (arm64, ad-hoc)
         # The bundle id comes from the checkout's origin remote (io.github.<owner>.deskterior).
         run: ARCHS=arm64 ZIP=1 scripts/build-app.sh --version 0.0.0-ci
@@ -52,3 +67,72 @@ jobs:
           name: Deskterior-ci
           path: build/Deskterior-0.0.0-ci.zip
           retention-days: 7
+
+  # Windows (docs/WINDOWS.md): the targets that are portable so far, built and tested with the swift.org toolchain.
+  windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Keep LF line endings
+        run: git config --global core.autocrlf false
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - name: Toolchain
+        uses: compnerd/gha-setup-swift@9ff1ee4c44888c5817fc14d1b257ac8cabb4935f # v0.5.1
+        with:
+          swift-version: swift-6.2.3-release
+          swift-build: 6.2.3-RELEASE
+      - name: Version
+        run: swift --version
+      - name: Build
+        timeout-minutes: 30
+        run: swift build
+      - name: Build tests
+        timeout-minutes: 30
+        run: swift build --build-tests
+      - name: Test
+        id: test
+        timeout-minutes: 30
+        run: swift test --skip-build
+      - name: File-safety lint
+        if: ${{ !cancelled() }}
+        run: scripts/check-file-safety.sh
+      # The app: Deskterior.exe with the Swift runtime next to it and Resources/Fonts, as one folder (docs/WINDOWS.md).
+      - name: Build Deskterior.exe (release)
+        if: ${{ !cancelled() }}
+        timeout-minutes: 30
+        run: swift build -c release --product Deskterior
+      - name: Package
+        if: ${{ !cancelled() }}
+        run: scripts/package-windows.sh dist/Deskterior
+      # Run the packaged copy with only the system folders on PATH, so it must find its own runtime and resources.
+      - name: Smoke test (headless snapshot)
+        if: ${{ !cancelled() }}
+        run: |
+          scripts/make-windows-fixture.sh build/fixture
+          PATH="/c/Windows/System32:/c/Windows" dist/Deskterior/Deskterior.exe \
+            --snapshot build/deskterior-windows.png --desktop-folder build/fixture --frames 120 | tee build/snapshot.txt
+          grep -q "snapshot: 10 item(s)" build/snapshot.txt
+          test -s build/deskterior-windows.png
+      - name: Smoke test (window)
+        if: ${{ !cancelled() }}
+        timeout-minutes: 5
+        run: |
+          PATH="/c/Windows/System32:/c/Windows" dist/Deskterior/Deskterior.exe --desktop-folder build/fixture \
+            --state-folder build/state --connect --quit-after 8 | tee build/window.txt
+          grep -qE "[1-9][0-9]* frame\(s\) shown, [1-9][0-9]* snapshot\(s\)" build/window.txt
+      - name: Upload app
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: Deskterior-windows
+          path: dist/Deskterior
+          retention-days: 14
+      - name: Upload snapshot
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: Deskterior-windows-snapshot
+          path: build/deskterior-windows.png
+          retention-days: 14

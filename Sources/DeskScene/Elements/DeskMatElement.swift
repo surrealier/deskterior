@@ -1,5 +1,9 @@
 import DeskCore
+#if canImport(SpriteKit)
 import SpriteKit
+#else
+import DeskStage
+#endif
 
 /// The desk mat (데스크매트; DESIGN §2.2 E9), the homage to Terkel Gjervig's *Desktop Cleaning* rug: a felt cloth
 /// (`ClothSim`) lying on the desk top, drawn by `DeskSurfaceRaster` into one texture on the desk-surface layer, with

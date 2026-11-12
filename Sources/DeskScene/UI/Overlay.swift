@@ -1,6 +1,10 @@
 import DeskCore
 import DeskPixels
+#if canImport(SpriteKit)
 import SpriteKit
+#else
+import DeskStage
+#endif
 
 /// The monitor's full-screen cards (DESIGN §3.1 item 2, §2.2 E1), in screen px (196×108) with their buttons:
 /// the first-run connect prompt, "connecting", NO SIGNAL for a folder we may not read (Open Settings / Choose

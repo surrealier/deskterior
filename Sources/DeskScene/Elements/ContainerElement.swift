@@ -1,5 +1,9 @@
 import DeskCore
+#if canImport(SpriteKit)
 import SpriteKit
+#else
+import DeskStage
+#endif
 
 /// What the M6 hiding-place elements share (DESIGN §2.2 E3–E6, Errata 12): the context and committed model, the
 /// room's placed sprites they replace once a model arrives (the bare room keeps drawing those), the carry in hand

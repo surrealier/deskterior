@@ -33,8 +33,8 @@ free and open source (MIT)
 - [Features](#features) · [Everything it does](#everything-it-does) · [Where things hide](#where-things-hide) ·
   [Gestures](#gestures) · [Your files are safe](#your-files-are-safe)
 - [Install](#install) · [First run](#first-run) · [Settings](#settings) · [Safe Mode](#safe-mode) · [Uninstall](#uninstall)
-- [Build from source](#build-from-source) · [Requirements](#requirements) · [Known limitations](#known-limitations) ·
-  [Credits](#credits) · [License](#license)
+- [Build from source](#build-from-source) · [Windows (preview)](#windows-preview) · [Requirements](#requirements) ·
+  [Known limitations](#known-limitations) · [Credits](#credits) · [License](#license)
 
 ## Features
 
@@ -703,6 +703,25 @@ swift run Deskterior --windowed --desktop-folder "$FIX/desk" --state-dir "$FIX/s
 
 More: [docs/DESIGN.md](docs/DESIGN.md) (the design), [docs/DEMOS.md](docs/DEMOS.md) (the demo scripts),
 [docs/SPIKES.md](docs/SPIKES.md) (platform checks), [CHANGELOG.md](CHANGELOG.md).
+
+## Windows (preview)
+
+A Windows build is in progress on the `windows-port` branch; it shares the model, the scene and the file-safety rules
+with the Mac app. **This preview mirrors your Desktop folder in a window and changes no files**: you can arrange,
+open and reveal items and your layout is saved, but Move to Trash, drops, Eject and Save as Text File are refused
+for now. There is no release yet; CI builds a ready-to-run folder (`Deskterior-windows` in the workflow's
+artifacts). To build it yourself on Windows 10 or 11 with the swift.org toolchain 6.2 (in Git Bash):
+
+```sh
+swift build -c release --product Deskterior
+scripts/package-windows.sh dist/Deskterior
+dist/Deskterior/Deskterior.exe
+```
+
+`--snapshot desk.png` renders the desk to a PNG without a window.
+
+What works, what does not yet, and what still needs checking on a real Windows PC:
+[docs/WINDOWS.md](docs/WINDOWS.md).
 
 ## Requirements
 

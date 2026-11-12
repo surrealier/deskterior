@@ -1,5 +1,9 @@
 import DeskCore
+#if canImport(SpriteKit)
 import SpriteKit
+#else
+import DeskStage
+#endif
 
 /// One drawer of the riser or the cabinet as its element runs it (DESIGN §2.2 E3, E5, §2.1, Errata 13): the pure
 /// `DrawerSim` on its rail and the `ContentJostle` of what lies inside, the members it holds, and the scene-side

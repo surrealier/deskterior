@@ -1,5 +1,7 @@
 import Foundation
+#if canImport(simd)
 import simd
+#endif
 
 /// Desk and floor props (DESIGN §2.2): lamp, plant, pen cup and pens, phone on its stand, drive hub and drives,
 /// brush, keyboard, chair, and the wastebasket with its crumpled balls. All lit from the top-left, outlined with

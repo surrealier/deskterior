@@ -99,8 +99,7 @@ final class FileRig: @unchecked Sendable {
     }
 
     func key(_ url: URL) -> TokenKey {
-        var st = stat()
-        let inode = lstat(url.path, &st) == 0 ? UInt64(st.st_ino) : 0
+        let inode = (try? FilePrimitives.status(url, follow: false).get())?.inode ?? 0
         return TokenKey(volume: FileOperator.volumeUUID(url) ?? FileOperator.volumeUUID(desk) ?? "unknown", inode: inode)
     }
 
@@ -109,8 +108,7 @@ final class FileRig: @unchecked Sendable {
     func text(_ url: URL) -> String? { (try? Data(contentsOf: url)).map { String(decoding: $0, as: UTF8.self) } }
 
     func exists(_ url: URL) -> Bool {
-        var st = stat()
-        return lstat(url.path, &st) == 0
+        (try? FilePrimitives.status(url, follow: false).get()) != nil
     }
 
     /// Names in `dir` (NFC, sorted), hidden ones included.
@@ -243,7 +241,7 @@ struct FileOperatorTests {
         let oldKey = rig.key(a)
         // Replace a.txt with a different file (a new inode) after the token was made.
         let b = try rig.file(rig.desk, ".swap", "new")
-        #expect(rename(b.path, a.path) == 0)
+        #expect(renameReplacing(b.path, a.path) == 0)
         #expect(rig.key(a) != oldKey)
 
         var result = await rig.op.trash([a], expecting: [oldKey], rig.intent())
@@ -273,7 +271,7 @@ struct FileOperatorTests {
             guard url.lastPathComponent == "a.txt" else { return }
             let swap = desk.appendingPathComponent(".swap")
             try? Data("new".utf8).write(to: swap)
-            _ = rename(swap.path, url.path)
+            _ = renameReplacing(swap.path, url.path)
         }))
         let result = await rig.op.trash([a], expecting: [key], rig.intent())
         #expect(result.outcomes == [.refused(a, .identityChanged)])
@@ -289,7 +287,7 @@ struct FileOperatorTests {
         let record = try #require(result.undo)
         guard case let .putBack(trashed?, _, _) = record.steps.first else { Issue.record("no trash URL"); return }
         let swap = try rig.file(rig.trasher.folder, ".swap", "impostor")
-        #expect(rename(swap.path, trashed.path) == 0)
+        #expect(renameReplacing(swap.path, trashed.path) == 0)
         let undone = await rig.op.undo(record, rig.intent(.undo))
         #expect(undone.outcomes == [.refused(trashed, .identityChanged)])
         #expect(!rig.exists(a))
@@ -476,6 +474,7 @@ struct FileOperatorTests {
 
     // MARK: Copies
 
+    #if !os(Windows)
     @Test("A failed copy leaves no partial file behind and the source untouched")
     func partialCleanup() async throws {
         let rig = try FileRig()
@@ -493,6 +492,7 @@ struct FileOperatorTests {
         #expect(entry.op == .importCopy)
         #expect(entry.outcome == "refused: not-permitted")
     }
+    #endif
 
     @Test("A cross-volume move is a copy: the source is never deleted", arguments: [ImportOp.move, .copy])
     func crossVolume(op: ImportOp) async throws {
@@ -527,6 +527,7 @@ struct FileOperatorTests {
         #expect(rig.exists(source))
     }
 
+    #if canImport(Darwin)
     @Test("Packages move as one unit and copy whole")
     func packages() async throws {
         let rig = try FileRig()
@@ -550,9 +551,11 @@ struct FileOperatorTests {
         let renamed = await rig.op.importItems([again], op: .move, rig.intent(.drop))
         #expect(renamed.outcomes == [.renamed(again, to: rig.at(rig.desk, "Moving 2.rtfd"), op: .move)])
     }
+    #endif
 
     // MARK: Names
 
+    #if canImport(Darwin)
     @Test("NFD and NFC spellings of one name collide; Korean NFD names arrive intact")
     func unicodeNames() async throws {
         let rig = try FileRig()
@@ -578,6 +581,7 @@ struct FileOperatorTests {
         #expect(trashed.refusals.isEmpty)
         #expect(rig.trashNames == [nfc("보고서.txt")])
     }
+    #endif
 
     // MARK: Log
 

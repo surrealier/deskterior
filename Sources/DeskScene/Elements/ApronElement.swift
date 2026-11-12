@@ -1,5 +1,9 @@
 import DeskCore
+#if canImport(SpriteKit)
 import SpriteKit
+#else
+import DeskStage
+#endif
 
 /// The desk's apron (DESIGN §2.2 E11): a double-click knocks the desk (1 s cooldown; `PhysicsHub.knock`). It plays
 /// the knock's wobbles for the props it does not own: the monitor (with its screen), the phone, the lamp, the plant

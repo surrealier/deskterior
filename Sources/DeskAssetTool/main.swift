@@ -15,6 +15,9 @@ import Foundation
 //                                                     nearest-neighbour crop of a 1× image for close review
 //   deskterior-assets cloth-review --out <dir>        desk-mat cloth scenarios rendered for review
 //   deskterior-assets status-glyph --out <dir>        the status item's template glyph on light and dark bars
+//   deskterior-assets bake-font [--font <ttf>] --out <file>
+//                                                     Galmuri9's glyphs as CoreText draws them, for platforms
+//                                                     without CoreText (GlyphAtlas; docs/WINDOWS.md WP4)
 
 let args = Array(CommandLine.arguments.dropFirst())
 
@@ -26,6 +29,7 @@ func usage() -> Never {
                deskterior-assets zoom <in.png> --rect x,y,w,h --out <file> [--scale N]
                deskterior-assets cloth-review --out <dir>
                deskterior-assets status-glyph --out <dir>
+               deskterior-assets bake-font [--font <ttf>] --out <file>
         """)
     exit(2)
 }
@@ -254,6 +258,17 @@ do {
     case "status-glyph":
         guard let out = value(of: "--out") else { usage() }
         try StatusGlyphReview.run(outDir: URL(fileURLWithPath: out, isDirectory: true))
+    case "bake-font":
+        guard let out = value(of: "--out") else { usage() }
+        let fontURL = value(of: "--font").map { URL(fileURLWithPath: $0) }
+            ?? ResourceLocator.fontURL(named: "Galmuri9.ttf")
+        guard let fontURL, let font = PixelFont(url: fontURL, pixelSize: 10, lineHeight: 15) else {
+            throw CocoaError(.fileReadCorruptFile)
+        }
+        let atlas = GlyphAtlas.bake(font, fontFile: try Data(contentsOf: fontURL))
+        let url = URL(fileURLWithPath: out)
+        try atlas.write(to: url)
+        print("wrote \(url.path) (\(atlas.count) bytes, \(try GlyphAtlas(data: atlas).count) glyphs)")
     case "fixture":
         try MirrorTools.fixture(Array(args.dropFirst()))
     case "mirror-dump":

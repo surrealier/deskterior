@@ -128,6 +128,18 @@ session.perform(.moveToTrash(keys), from: .inventory)
 @_spi(IntentMinting) import DeskFiles
 @_spiOnly import DeskFiles
 @testable import DeskFiles
+_ = MoveFileExW(from, to, 0)
+_ = DeleteFileW(path)
+_ = RemoveDirectoryW(path)
+_ = CopyFileW(from, to, true)
+_ = SetFileAttributesW(path, 2)
+_ = SHFileOperationW(&op)
+_ = WriteFile(h, buf, n, &written, nil)
+_ = DeviceIoControl(h, code, nil, 0, nil, 0, &n, nil)
+let h = CreateFileW(path, 0, 7, nil, 3, 0, nil)
+_ = RegSetValueExW(key, name, 0, 4, data, 4)
+_ = ShellExecuteW(nil, nil, path, nil, nil, 1)
+_ = CreateProcessW(nil, cmd, nil, nil, false, 0, nil, nil, &si, &pi)
 SWIFT
   cat > "$tmp/Sources/DeskCore/Clean.swift" <<'SWIFT'
 var list = [1]; list.remove(at: 0)
@@ -228,10 +240,10 @@ SRC="$(cd "$SRC" && pwd)"
 [ -z "$SCRIPTS" ] || SCRIPTS="$(cd "$SCRIPTS" && pwd)"
 
 # Allowlists: space-separated paths relative to the checked directory. A trailing "/" allows a whole directory.
-DESTRUCTIVE_ALLOW="DeskFiles/FileOperator.swift DeskFiles/Trasher.swift DeskFiles/OperationLog.swift"
+DESTRUCTIVE_ALLOW="DeskFiles/FileOperator.swift DeskFiles/Trasher.swift DeskFiles/OperationLog.swift DeskFiles/FilePrimitives+POSIX.swift DeskFiles/FilePrimitives+Windows.swift"
 # Finder alias files: only the file operator writes one (Erratum 29).
-BOOKMARK_ALLOW="DeskFiles/FileOperator.swift"
-WRITE_ALLOW="$DESTRUCTIVE_ALLOW DeskFiles/StateStore.swift DeskFiles/IconCache.swift DeskFiles/ArtifactWriter.swift DeskAssetTool/"
+BOOKMARK_ALLOW="DeskFiles/FilePrimitives+POSIX.swift"
+WRITE_ALLOW="$DESTRUCTIVE_ALLOW DeskFiles/StateStore.swift DeskFiles/IconCache.swift DeskFiles/ArtifactWriter.swift DeskAssetTool/ DeskteriorWin/Snapshot.swift"
 INTENT_ALLOW="DeskteriorApp/Store/EffectRunner.swift"
 # The SPI also appears where the initializer is declared.
 SPI_ALLOW="$INTENT_ALLOW DeskFiles/ExplicitIntent.swift"
@@ -243,6 +255,12 @@ FILE_REQUEST_ALLOW="DeskCore/Logic/DeskAction.swift DeskCore/Logic/Reducer.swift
 ORIGIN_ALLOW="DeskteriorApp/Store/EffectRunner.swift DeskteriorApp/AppDelegate.swift DeskteriorApp/Files/DropInController.swift DeskteriorApp/Files/DragOutController.swift DeskteriorApp/Demo/DemoRunner.swift"
 SCRIPT_DESKTOP_PATH_ALLOW="make-fixture-desktop.sh"
 NOWHERE=""
+# Windows (docs/WINDOWS.md WP5): Win32 calls that change files only in the Windows primitives and the trasher;
+# handles opened by path only there and in the watcher (a listing handle); the registry is never written.
+WIN_DESTRUCTIVE_ALLOW="DeskFiles/FilePrimitives+Windows.swift DeskFiles/Trasher.swift"
+WIN_OPEN_ALLOW="DeskFiles/FilePrimitives+Windows.swift DeskFiles/DesktopWatcher+Portable.swift"
+# Opening a document with its program (a double-click) is the shell's job, from one file.
+WIN_LAUNCH_ALLOW="DeskteriorWin/Shell.swift"
 # File extensions that may not appear under Sources (C, C++, Objective-C, assembly, module maps).
 FOREIGN_EXTENSIONS="c h m mm cc cpp cxx hpp s S modulemap"
 
@@ -366,6 +384,19 @@ INTENT_PATTERNS='\bExplicitIntent[[:space:]]*(\.init)?[[:space:]]*\(
 # File requests built (or bound in a pattern) and gestures named.
 FILE_REQUEST_PATTERNS='\.(requestTrash|requestEject|requestDropIn|importDropped|requestSaveMemoFile)[[:space:]]*\(
 \.requestEmptyWastebasket\b'
+WIN_DESTRUCTIVE_PATTERNS='\b(MoveFile|MoveFileEx|MoveFileWithProgress|DeleteFile|RemoveDirectory|CopyFile|CopyFileEx|ReplaceFile|SetFileAttributes|CreateDirectory|CreateDirectoryEx|CreateHardLink|CreateSymbolicLink|SetFileTime|SHFileOperation)[AW]?[[:space:]]*\(
+\bCopyFile2\b
+\bSetFileInformationByHandle\b
+\bSetEndOfFile\b
+\bWriteFile(Ex|Gather)?\b
+\bDeviceIoControl\b
+\bIFileOperation\b'
+WIN_OPEN_PATTERNS='\bCreateFile(2|A|W)?[[:space:]]*\(
+\bOpenFileById\b'
+WIN_LAUNCH_PATTERNS='\bShellExecute(Ex)?[AW]?\b'
+WIN_NEVER_PATTERNS='\bReg(SetValue|SetValueEx|SetKeyValue|CreateKey|CreateKeyEx|DeleteKey|DeleteKeyEx|DeleteValue|DeleteTree)[AW]?\b
+\b(CreateProcess|CreateProcessAsUser|WinExec|system)[AW]?[[:space:]]*\( !! (func|case)[[:space:]]+system
+\bSHChangeNotify\b'
 ORIGIN_PATTERNS='\bwithOrigin[[:space:]]*\(
 \bfrom:[[:space:]]*\.(menuItem|sheetConfirm|drop|dragToTrash|undo|inventory)\b'
 # `@_spi(…)` and `@_spiOnly` imports or declarations.
@@ -459,6 +490,10 @@ check "testable" "$SRC" '*.swift' "$TESTABLE_PATTERNS" "$NOWHERE"
 check "desktop-path" "$SRC" '*.swift' "$DESKTOP_PATH_PATTERNS" "$DESKTOP_PATH_ALLOW"
 check "file-request" "$SRC" '*.swift' "$FILE_REQUEST_PATTERNS" "$FILE_REQUEST_ALLOW"
 check "origin" "$SRC" '*.swift' "$ORIGIN_PATTERNS" "$ORIGIN_ALLOW"
+check "win-destructive" "$SRC" '*.swift' "$WIN_DESTRUCTIVE_PATTERNS" "$WIN_DESTRUCTIVE_ALLOW"
+check "win-open" "$SRC" '*.swift' "$WIN_OPEN_PATTERNS" "$WIN_OPEN_ALLOW"
+check "win-launch" "$SRC" '*.swift' "$WIN_LAUNCH_PATTERNS" "$WIN_LAUNCH_ALLOW"
+check "win-never" "$SRC" '*.swift' "$WIN_NEVER_PATTERNS" "$NOWHERE"
 check "test-shell" "$TESTS" '*.swift' "$SHELL_PATTERNS" "$NOWHERE"
 check "test-network" "$TESTS" '*.swift' "$NETWORK_PATTERNS" "$NOWHERE"
 check "test-desktop-path" "$TESTS" '*.swift' "$TEST_DESKTOP_PATH_PATTERNS" "$TEST_DESKTOP_PATH_ALLOW"

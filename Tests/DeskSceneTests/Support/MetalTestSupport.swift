@@ -1,8 +1,15 @@
 import DeskCore
+#if canImport(Metal)
 import Metal
+#endif
+#if canImport(SpriteKit)
 import SpriteKit
+#else
+import DeskStage
+#endif
 @testable import DeskScene
 
+#if canImport(Metal)
 /// GPU helpers shared by the Metal-gated suites (each suite is `.enabled(if: MTLCreateSystemDefaultDevice() != nil)`).
 struct GPU {
     let device: any MTLDevice
@@ -86,9 +93,23 @@ struct GPU {
         return try presenter.readArtFrame()
     }
 }
+#endif
 
 /// Number of differing pixels, for readable failures.
 func diffCount(_ a: PixelBuffer, _ b: PixelBuffer) -> Int {
     guard a.size == b.size else { return -1 }
     return zip(a.pixels, b.pixels).reduce(0) { $0 + ($1.0 == $1.1 ? 0 : 1) }
+}
+
+/// The first `limit` differing pixels as "(x,y) a≠b", for a failure message.
+func diffList(_ a: PixelBuffer, _ b: PixelBuffer, limit: Int = 24) -> String {
+    guard a.size == b.size else { return "sizes differ" }
+    var out: [String] = []
+    for y in 0..<a.height {
+        for x in 0..<a.width where a[x, y] != b[x, y] {
+            out.append("(\(x),\(y)) \(a[x, y])≠\(b[x, y])")
+            if out.count == limit { return out.joined(separator: " ") }
+        }
+    }
+    return out.joined(separator: " ")
 }

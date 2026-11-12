@@ -1,5 +1,8 @@
 import DeskCore
 import Foundation
+#if os(Windows)
+import WinSDK
+#endif
 @testable import DeskFiles
 
 /// A scratch folder at `FileManager.temporaryDirectory/deskterior-tests-<uuid>`, removed on deinit. Every
@@ -47,14 +50,15 @@ final class TempDesk: @unchecked Sendable {
         try FileManager.default.removeItem(at: url(name))
     }
 
-    /// `st_ino` from lstat.
+    /// The item's own inode (file index on Windows), from `FilePrimitives.status`.
     func inode(_ name: String) -> UInt64 {
-        var st = stat()
-        return lstat(url(name).path, &st) == 0 ? UInt64(st.st_ino) : 0
+        (try? FilePrimitives.status(url(name), follow: false).get())?.inode ?? 0
     }
 
     private func chmodTree(_ url: URL) {
+        #if !os(Windows)
         chmod(url.path, 0o755)
+        #endif
         let items = (try? FileManager.default.contentsOfDirectory(atPath: url.path)) ?? []
         for name in items {
             let child = url.appendingPathComponent(name)
@@ -96,4 +100,15 @@ func waitUntil(timeout: Double = 60, _ condition: () -> Bool) async -> Bool {
         try? await Task.sleep(for: .milliseconds(25))
     }
     return condition()
+}
+
+/// Renames `from` over `to`, replacing what is there (an editor's safe-save, a swap in a test): `rename(2)`, or
+/// `MoveFileExW` with `MOVEFILE_REPLACE_EXISTING` on Windows (whose `rename` refuses an existing target). 0 or -1.
+func renameReplacing(_ from: String, _ to: String) -> Int32 {
+    #if os(Windows)
+    let ok = Win32.withWide(Win32.path(from)) { f in Win32.withWide(Win32.path(to)) { t in MoveFileExW(f, t, DWORD(0x1)) } }
+    return ok ? 0 : -1
+    #else
+    return rename(from, to)
+    #endif
 }

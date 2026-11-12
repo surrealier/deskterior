@@ -1,5 +1,7 @@
 import DeskCore
+#if canImport(Metal)
 import Metal
+#endif
 import Testing
 @testable import DeskScene
 

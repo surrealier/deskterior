@@ -1,5 +1,9 @@
 import DeskCore
+#if canImport(SpriteKit)
 import SpriteKit
+#else
+import DeskStage
+#endif
 
 /// The monitor riser (DESIGN §2.2 E3): two mini-drawers and the cubby, drawn here in place of the room's riser
 /// sprites once a model arrives.

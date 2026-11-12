@@ -1,5 +1,7 @@
 import DeskCore
+#if canImport(simd)
 import simd
+#endif
 
 /// What the `InputRouter` routes into: the room's elements in hit-test order and its shared UI.
 protocol GestureTarget: AnyObject {

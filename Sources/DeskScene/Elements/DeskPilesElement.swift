@@ -1,5 +1,9 @@
 import DeskCore
+#if canImport(SpriteKit)
 import SpriteKit
+#else
+import DeskStage
+#endif
 
 /// Loose piles on the desk top (DESIGN §2.2 E11): each pile stands where its body is (`PhysicsHub`), as up to three
 /// 16×16 icons over a contact shadow (`PileArt.stack`), its base on the projected desk point (`DeskProjection`),

@@ -1,5 +1,9 @@
 import DeskCore
+#if canImport(SpriteKit)
 import SpriteKit
+#else
+import DeskStage
+#endif
 
 /// The snake plant (DESIGN §2.2 E14): poked (clicked), its blades jiggle for four 12 fps frames
 /// (`PropArt.plantJiggle`); with Reduce Motion it stays still. Decor otherwise.

@@ -1,3 +1,4 @@
+#if canImport(CoreGraphics)
 import CoreGraphics
 import Foundation
 import DeskCore
@@ -111,3 +112,4 @@ extension PixelBuffer {
         self = buffer
     }
 }
+#endif // canImport(CoreGraphics)

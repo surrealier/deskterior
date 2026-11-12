@@ -52,7 +52,7 @@ struct SwapTrasher: Trasher {
     func trash(_ url: URL) async throws -> URL? {
         let save = url.deletingLastPathComponent().appendingPathComponent(".sb-save")
         try Data("newer version".utf8).write(to: save)
-        guard rename(save.path, url.path) == 0 else { throw FileRefusal.failed(Int(errno)) }
+        guard renameReplacing(save.path, url.path) == 0 else { throw FileRefusal.failed(Int(errno)) }
         return try await inner.trash(url)
     }
 
@@ -60,16 +60,20 @@ struct SwapTrasher: Trasher {
 }
 
 /// Clears Finder locks under `url` so TempDesk can remove it.
+#if canImport(Darwin)
 private func unlockAll(_ url: URL) {
     _ = lchflags(url.path, 0)
     let e = FileManager.default.enumerator(atPath: url.path)
     while let rel = e?.nextObject() as? String { _ = lchflags(url.appendingPathComponent(rel).path, 0) }
 }
+#endif
 
+#if canImport(Darwin)
 private func isLocked(_ url: URL) -> Bool {
     var st = stat()
     return lstat(url.path, &st) == 0 && st.st_flags & UInt32(UF_IMMUTABLE) != 0
 }
+#endif
 
 @Suite("FileOperator guards")
 struct FileOperatorGuardTests {
@@ -225,7 +229,7 @@ struct FileOperatorGuardTests {
             once {
                 let save = elsewhere.appendingPathComponent(".sb-save")
                 try? Data("impostor".utf8).write(to: save)
-                _ = rename(save.path, source.path)
+                _ = renameReplacing(save.path, source.path)
             }
         }))
         let result = await rig.op.importItems([source], op: .move, rig.intent(.drop))
@@ -246,7 +250,7 @@ struct FileOperatorGuardTests {
             once {
                 let save = trashFolder.appendingPathComponent(".sb-save")
                 try? Data("impostor".utf8).write(to: save)
-                _ = rename(save.path, trashFolder.appendingPathComponent("a.txt").path)
+                _ = renameReplacing(save.path, trashFolder.appendingPathComponent("a.txt").path)
             }
         }))
         let undone = await rig.op.undo(record, rig.intent(.undo))
@@ -258,6 +262,7 @@ struct FileOperatorGuardTests {
 
     // MARK: Copies
 
+    #if canImport(Darwin)
     @Test("A copy is staged outside the desk folder; a failed one leaves nothing, even read-only folders and locked files")
     func stagingCleanup() async throws {
         let rig = try FileRig()
@@ -285,7 +290,9 @@ struct FileOperatorGuardTests {
         #expect(!rig.names(rig.desk).contains { $0.hasPrefix(".") })
         #expect(rig.names(album) == ["locked.txt", "ro"])
     }
+    #endif
 
+    #if canImport(Darwin)
     @Test("A Finder-locked file copied in (⌥) lands as a locked copy; the source stays")
     func lockedSource() async throws {
         let rig = try FileRig()
@@ -301,6 +308,7 @@ struct FileOperatorGuardTests {
         #expect(isLocked(source) && rig.text(source) == "signed")
         #expect(rig.names(rig.desk) == ["contract.pdf"])
     }
+    #endif
 
     @Test("A copy reports each file and folder it starts")
     func copyProgress() async throws {

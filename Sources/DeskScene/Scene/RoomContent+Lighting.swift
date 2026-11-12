@@ -1,5 +1,9 @@
 import DeskCore
+#if canImport(SpriteKit)
 import SpriteKit
+#else
+import DeskStage
+#endif
 
 /// What the room shows ahead of the model and the clock (DESIGN §2.2 E12–E13, M10): the lamp mid-flicker and the
 /// time the clock's minute hand is dragged to. `DeskScene.refreshState` folds these into the `RoomState`

@@ -1,5 +1,9 @@
 import DeskCore
+#if canImport(SpriteKit)
 import SpriteKit
+#else
+import DeskStage
+#endif
 
 /// Carries tokens with the pointer (DESIGN §2.1 Drag): no physics body; the stack follows one frame behind with
 /// a 2-px lift over its shadow on the L8 carry layer (the shadow trails fast sideways moves), and shows "+N" for a

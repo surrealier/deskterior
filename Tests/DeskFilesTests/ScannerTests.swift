@@ -5,6 +5,7 @@ import Testing
 
 @Suite("DesktopScanner")
 struct ScannerTests {
+    #if canImport(Darwin)
     @Test("Fetches the §3.1 resource keys")
     func resourceKeys() {
         let keys = Set(DesktopScanner.resourceKeys)
@@ -15,7 +16,9 @@ struct ScannerTests {
         ]
         #expect(keys == Set(required))
     }
+    #endif
 
+    #if canImport(Darwin)
     @Test("Top level only, hidden items skipped, identity and metadata filled in")
     func scansTopLevel() throws {
         let d = try TempDesk()
@@ -69,6 +72,7 @@ struct ScannerTests {
         #expect(rtfd.meta.isPackage && rtfd.meta.kind == .doc)
         #expect(byName["link"]?.meta.isAlias == true)
     }
+    #endif
 
     @Test("Scanning reads nothing it should not: files are byte-for-byte unchanged")
     func readOnly() throws {
@@ -82,6 +86,7 @@ struct ScannerTests {
         #expect(try FileManager.default.contentsOfDirectory(atPath: d.root.path) == ["keep.txt"])
     }
 
+    #if !os(Windows)
     @Test("Missing, non-folder and unreadable roots fail instead of looking empty")
     func failures() throws {
         let d = try TempDesk()
@@ -96,6 +101,7 @@ struct ScannerTests {
             try DesktopScanner(root: locked).scan()
         }
     }
+    #endif
 
     @Test("Background scans complete on the given queue")
     func asyncScan() async throws {
@@ -107,6 +113,7 @@ struct ScannerTests {
         #expect(try result.get().entries.map(\.meta.name) == ["a.txt"])
     }
 
+    #if canImport(Darwin)
     @Test("Kinds from types, names and flags")
     func classifier() {
         func k(_ name: String, dir: Bool = false, pkg: Bool = false, capture: Bool = false) -> FileKind {
@@ -132,4 +139,25 @@ struct ScannerTests {
         #expect(k("noextension") == .unknown)
         #expect(k("weird.zzqq") == .unknown)
     }
+    #endif
 }
+
+#if canImport(UniformTypeIdentifiers)
+import UniformTypeIdentifiers
+
+@Suite("File kinds: the extension table agrees with UTType")
+struct FileKindTableAgreementTests {
+    /// The common types both platforms see on a desk. Extensions the table adds for Windows (exe, msi, hwp, ps1…)
+    /// or whose UTType varies by macOS release (mkv, webm, rs, go…) are left out.
+    static let shared = "pdf png jpg jpeg gif tif tiff heic bmp mp4 mov m4v mp3 wav m4a aac zip gz tar 7z rar txt json xml "
+        + "html swift c cpp py java sh docx xlsx pptx doc xls ppt rtf odt dmg iso"
+
+    @Test("Each common extension classifies as macOS does")
+    func matchesUTType() {
+        for ext in Self.shared.split(separator: " ").map(String.init) {
+            let mac = FileKindClassifier.classify(name: "file.\(ext)", contentType: nil, isDirectory: false, isPackage: false)
+            #expect(mac == FileKindTable.kind(forExtension: ext), "\(ext): table \(FileKindTable.kind(forExtension: ext)), UTType \(mac)")
+        }
+    }
+}
+#endif

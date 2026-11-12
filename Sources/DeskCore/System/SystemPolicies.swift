@@ -25,6 +25,10 @@ public struct HotKeyBinding: Equatable, Sendable {
 
     /// ⌃⌥⌘D (`kVK_ANSI_D` = 2): Peek Desk.
     public static let peekDesk = HotKeyBinding(keyCode: 2, modifiers: control | option | command)
+
+    /// Peek Desk on Windows: Ctrl+Alt+Shift+D. `keyCode` is a Windows virtual-key code ('D' = 0x44) and the
+    /// modifier bits map to MOD_CONTROL, MOD_ALT and MOD_SHIFT (docs/WINDOWS.md, WP6).
+    public static let peekDeskWindows = HotKeyBinding(keyCode: 0x44, modifiers: control | option | shift)
 }
 
 /// Registers one global hotkey (the app: Carbon `RegisterEventHotKey`, no Accessibility permission).

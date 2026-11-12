@@ -1,5 +1,8 @@
+import DeskCore
 import Foundation
+#if canImport(os)
 import os
+#endif
 
 /// The append-only record of every file action (DESIGN §3.7 item 6): one JSON object per line in
 /// `<state dir>/operations.log`, mirrored to the unified log. Lines are only ever appended, never rewritten. When
@@ -67,7 +70,11 @@ public final class OperationLog: @unchecked Sendable {
     private let desktop: URL
     private let mirrored: URL?
     private let lock = NSLock()
+    #if canImport(os)
     private static let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "deskterior", category: "files")
+    #else
+    private static let logger = PlatformLog(category: "files")
+    #endif
 
     /// Refuses a directory inside the desktop folder or the mirrored folder; creates it otherwise.
     public init(
@@ -89,14 +96,18 @@ public final class OperationLog: @unchecked Sendable {
     /// Appends one line (rotating first when it would not fit).
     public func append(_ entry: Entry) throws {
         let line = Self.encode(entry) + "\n"
+        #if canImport(os)
         Self.logger.notice("\(line, privacy: .private)")
+        #else
+        Self.logger.notice(PlatformLog.redacted(line))
+        #endif
         try lock.withLock {
             try SafetyGuard.checkOwnWrite(fileURL, root: directory, desktop: desktop, mirrored: mirrored)
             try SafetyGuard.checkOwnWrite(rotatedURL, root: directory, desktop: desktop, mirrored: mirrored)
-            var st = stat()
-            let size = lstat(fileURL.path, &st) == 0 ? Int(st.st_size) : 0
-            if size > 0, size + line.utf8.count > maxBytes, rename(fileURL.path, rotatedURL.path) != 0 {
-                throw Failure.writeFailed(errno)
+            let size = (try? FilePrimitives.status(path: fileURL.path, follow: false).get()).map { Int($0.size) } ?? 0
+            if size > 0, size + line.utf8.count > maxBytes {
+                let e = FilePrimitives.replaceOwnFile(fileURL, with: rotatedURL)
+                if e != 0 { throw Failure.writeFailed(e) }
             }
             try appendBytes(Data(line.utf8))
         }
@@ -126,32 +137,13 @@ public final class OperationLog: @unchecked Sendable {
     /// `O_APPEND` without following a symlink, so a planted link cannot redirect the log, and without blocking:
     /// anything but a regular file there (a planted FIFO) is refused instead of hanging the caller.
     private func appendBytes(_ data: Data) throws {
-        let fd = open(fileURL.path, O_WRONLY | O_APPEND | O_CREAT | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC, 0o644)
-        guard fd >= 0 else { throw Failure.writeFailed(errno) }
-        defer { close(fd) }
-        var st = stat()
-        guard fstat(fd, &st) == 0 else { throw Failure.writeFailed(errno) }
-        guard st.st_mode & S_IFMT == S_IFREG else { throw Failure.writeFailed(EFTYPE) }
-        try data.withUnsafeBytes { (raw: UnsafeRawBufferPointer) in
-            var offset = 0
-            while offset < raw.count {
-                let n = Darwin.write(fd, raw.baseAddress! + offset, raw.count - offset)
-                if n < 0 {
-                    if errno == EINTR { continue }
-                    throw Failure.writeFailed(errno)
-                }
-                offset += n
-            }
-        }
+        let e = FilePrimitives.appendToOwnFile(data, at: fileURL)
+        if e != 0 { throw Failure.writeFailed(e) }
     }
 
     /// The contents of the regular file at `url` (a symlink or FIFO there is not opened or not read), or nil.
     private static func readRegularFile(_ url: URL) -> Data? {
-        let fd = open(url.path, O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC)
-        guard fd >= 0 else { return nil }
-        let handle = FileHandle(fileDescriptor: fd, closeOnDealloc: true)
-        var st = stat()
-        guard fstat(fd, &st) == 0, st.st_mode & S_IFMT == S_IFREG else { return nil }
-        return try? handle.readToEnd() ?? Data()
+        guard case let .success(.data(data)) = FilePrimitives.readOwnFile(url, maxBytes: 64 << 20) else { return nil }
+        return data
     }
 }

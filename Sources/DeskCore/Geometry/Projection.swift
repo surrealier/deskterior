@@ -1,4 +1,6 @@
+#if canImport(simd)
 import simd
+#endif
 
 /// Oblique desk-plane projection (docs/DESIGN.md §1.3) between desk space and core art px.
 ///

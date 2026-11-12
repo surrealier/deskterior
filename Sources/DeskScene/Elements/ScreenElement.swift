@@ -1,7 +1,11 @@
 import DeskCore
 import DeskPixels
 import Foundation
+#if canImport(SpriteKit)
 import SpriteKit
+#else
+import DeskStage
+#endif
 
 /// The monitor screen as the desktop (DESIGN §2.2 E2, §3.3, §3.4): the current HDMI page's tokens as 16-px icons
 /// on the 9×5 grid, with Finder-style selection (a dark backdrop with a `Role.selection` fill, and a label pill

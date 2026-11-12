@@ -22,6 +22,7 @@ struct FileOperatorCreateTests {
 
     // MARK: Creating
 
+    #if !os(Windows)
     @Test("A new file in the desk folder only, with exactly the text asked for; logged create-file")
     func createsInRoot() async throws {
         let rig = try FileRig()
@@ -31,9 +32,13 @@ struct FileOperatorCreateTests {
         #expect(bytes(url) == Self.text && rig.names(rig.desk) == ["우유 사기.txt"])
         #expect(rig.names(rig.elsewhere).isEmpty && rig.trashNames.isEmpty)
         #expect(Set(rig.names(rig.state)).isSubset(of: ["FakeTrash", "operations.log"]))
+        #if os(Windows)
+        #expect((try? FilePrimitives.status(url).get())?.kind == .regular)
+        #else
         var st = stat()
         #expect(lstat(url.path, &st) == 0 && st.st_mode & S_IFMT == S_IFREG && st.st_nlink == 1)
         #expect(st.st_mode & 0o600 == 0o600 && st.st_mode & 0o133 == 0, "an ordinary document, at most rw-r--r--")
+        #endif
         let record = try #require(result.undo)
         #expect(record.kind == .createTextFile)
         guard case let .trashCreated(u, key, size, _)? = step(result) else {
@@ -45,6 +50,7 @@ struct FileOperatorCreateTests {
         #expect(line.op == .createFile && line.origin == .menuItem && line.outcome == "ok")
         #expect(line.names == ["우유 사기.txt"] && line.inodes == [rig.inode(url)])
     }
+    #endif
 
     @Test("A taken name lands as \"name 2\"; the file there keeps its bytes and inode")
     func clash() async throws {
@@ -76,6 +82,7 @@ struct FileOperatorCreateTests {
         #expect(rig.names(rig.at(rig.desk, "Folder.txt")).isEmpty)
     }
 
+    #if canImport(Darwin)
     @Test("Names clash as the desk's volume compares them: by case and Unicode form where it folds them")
     func foldedClash() async throws {
         let rig = try FileRig()
@@ -93,6 +100,7 @@ struct FileOperatorCreateTests {
         #expect(rig.text(rig.at(rig.desk, "memo.txt")) == "lower")
         #expect(rig.text(rig.at(rig.desk, "Cafe\u{301}.txt")) == "decomposed")
     }
+    #endif
 
     @Test("A file planted at the name between the choice and the rename is never written over")
     func plantedDestination() async throws {
@@ -138,10 +146,12 @@ struct FileOperatorCreateTests {
             for list in seen.lists {
                 #expect(!list.contains("big.txt"), "inDesk \(inDesk): \(list)")
                 #expect(list.allSatisfy { $0.hasPrefix(FileMoves.partialPrefix) } == true, "inDesk \(inDesk): \(list)")
-                #expect(inDesk || list.isEmpty, "the system's staging folder lies outside the desk")
+                #expect(inDesk || !FilePrimitives.stagesOutsideDesk || list.isEmpty,
+                        "the system's staging folder lies outside the desk")
             }
             #expect(seen.stagedBytes == big, "the staged file was whole before it was renamed in")
-            #expect(seen.stagedURL.map { DesktopLocator.isInsideDesktop($0, desktop: desk) } == inDesk)
+            #expect(seen.stagedURL.map { DesktopLocator.isInsideDesktop($0, desktop: desk) }
+                == (inDesk || !FilePrimitives.stagesOutsideDesk))
             #expect(rig.names(desk) == ["big.txt"] && bytes(rig.at(desk, "big.txt")) == big, "and the staging went")
             #expect(PartialCopies.find(in: desk).isEmpty)
         }
@@ -165,13 +175,14 @@ struct FileOperatorCreateTests {
         await rig.op.setHooks(.init(afterPlace: { placed in
             let swap = desk.appendingPathComponent(".swap")
             try? Data("someone else's".utf8).write(to: swap)
-            _ = rename(swap.path, placed.path)
+            _ = renameReplacing(swap.path, placed.path)
         }))
         let result = await create(rig, "a.txt")
         #expect(result.outcomes == [.refused(rig.at(desk, "a.txt"), .landedUnverified)] && result.undo == nil)
         #expect(rig.text(rig.at(desk, "a.txt")) == "someone else's")
     }
 
+    #if !os(Windows)
     @Test("A desk folder that cannot be written refuses, and nothing is left anywhere")
     func readOnlyDesk() async throws {
         for inDesk in [false, true] {
@@ -184,6 +195,7 @@ struct FileOperatorCreateTests {
             #expect(result.undo == nil && rig.names(rig.desk).isEmpty)
         }
     }
+    #endif
 
     // MARK: Refusals
 
@@ -296,7 +308,7 @@ struct FileOperatorCreateTests {
         case "swap":
             // An editor's safe-save: the same text, a new inode.
             let swap = try rig.file(rig.desk, ".swap", "abc\n")
-            #expect(rename(swap.path, url.path) == 0)
+            #expect(renameReplacing(swap.path, url.path) == 0)
             try FileManager.default.setAttributes([.modificationDate: modified], ofItemAtPath: url.path)
         case "gone":
             try FileManager.default.moveItem(at: url, to: rig.at(rig.elsewhere, "note.txt"))
@@ -340,7 +352,7 @@ struct FileOperatorCreateTests {
             guard url.lastPathComponent == "note.txt" else { return }
             let swap = desk.appendingPathComponent(".swap")
             try? Data("abc\n".utf8).write(to: swap)
-            _ = rename(swap.path, url.path)
+            _ = renameReplacing(swap.path, url.path)
         }))
         let undone = await rig.op.undo(try #require(result.undo), rig.intent(.undo))
         #expect(undone.refusals == [.identityChanged] && rig.trashNames.isEmpty)

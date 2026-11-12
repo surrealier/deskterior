@@ -1,7 +1,11 @@
 import DeskCore
 import DeskPixels
 import Foundation
+#if canImport(SpriteKit)
 import SpriteKit
+#else
+import DeskStage
+#endif
 
 /// The desk partition (데스크 파티션, Erratum 31): the felt panel on the desk's back edge and its tower, the sticky
 /// notes on it, and its add-ons. The room draws the panel, the cube, the pad, the D-Day card and the clip light

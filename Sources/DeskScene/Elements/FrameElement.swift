@@ -1,5 +1,9 @@
 import DeskCore
+#if canImport(SpriteKit)
 import SpriteKit
+#else
+import DeskStage
+#endif
 
 /// The picture frame (Erratum 33): the framed print over the wall shelf, which takes a photo of the user's own. It draws
 /// nothing itself (the room's `decor.frame.*` placement shows the print or the photo from `RoomState.framePhoto`, so the

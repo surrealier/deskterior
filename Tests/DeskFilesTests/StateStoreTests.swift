@@ -117,6 +117,7 @@ struct StateStoreTests {
         #expect(step(store.backupURL(1)) == 1)
     }
 
+    #if !os(Windows)
     @Test("An unreadable desk.json falls back to a backup, and the next save heals it")
     func unreadablePrimary() throws {
         let d = try TempDesk()
@@ -130,6 +131,7 @@ struct StateStoreTests {
         #expect(step(store.fileURL) == 3)
         #expect(step(store.backupURL(1)) == 1)
     }
+    #endif
 
     @Test("A folder's layout is kept aside when another folder is mirrored, and comes back with it")
     func layoutAside() throws {
@@ -195,11 +197,13 @@ struct StateStoreTests {
         #expect(throws: Never.self) { try StateStore(directory: d.url("state", isDirectory: true), desktop: fakeDesk, mirrored: mirror) }
     }
 
+    #if canImport(Darwin)
     @Test("Default locations follow the bundle id")
     func defaultLocations() {
         #expect(StateStore.defaultDirectory(bundleID: "io.example.desk").path.hasSuffix("Library/Application Support/io.example.desk"))
         #expect(IconCache.defaultDirectory(bundleID: "io.example.desk").path.hasSuffix("Library/Caches/io.example.desk/icons"))
     }
+    #endif
 
     @Test("Icon cache keys cover inode, mtime, size, kind, pixels and palette version")
     func iconKeys() {

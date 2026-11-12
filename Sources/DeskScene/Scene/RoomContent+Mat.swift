@@ -1,5 +1,9 @@
 import DeskCore
+#if canImport(SpriteKit)
 import SpriteKit
+#else
+import DeskStage
+#endif
 
 /// The desk mat and the brush in the room (M9; DESIGN §2.2 E9, E10, E16). The mat takes the slot of the room's
 /// desk-surface placement ("mat": the bare room's keyboard shadow) in the hit-test order — behind the desk-front props

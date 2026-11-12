@@ -3,6 +3,7 @@ import Foundation
 import Testing
 @testable import DeskFiles
 
+#if canImport(Darwin)  // Finder aliases are bookmark files; Windows shortcuts: ShellLinkTests.
 /// Clears every lock under `url` (and the folder itself), so TempDesk can remove it.
 private func unlockAll(_ url: URL) {
     _ = lchflags(url.path, 0)
@@ -448,3 +449,5 @@ struct AliasFileTests {
         #expect(FileReport(import: one, undo: nil, ops: [.alias], identity: { _ in nil }).toast == .aliasMadeOriginal)
     }
 }
+
+#endif

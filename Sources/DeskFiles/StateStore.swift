@@ -1,4 +1,6 @@
+#if canImport(CryptoKit)
 import CryptoKit
+#endif
 import DeskCore
 import Foundation
 
@@ -106,7 +108,11 @@ public struct StateStore: Sendable {
 
     /// `desk.<sha1(rootPath)>.json`: the layout kept for a folder that is not mirrored now.
     public func asideURL(rootPath: String) -> URL {
+        #if canImport(CryptoKit)
         let digest = Insecure.SHA1.hash(data: Data(rootPath.utf8)).map { String(format: "%02x", $0) }.joined()
+        #else
+        let digest = SHA1.hex(Data(rootPath.utf8))
+        #endif
         return directory.appendingPathComponent("desk.\(digest).json", isDirectory: false)
     }
 
@@ -310,9 +316,8 @@ public struct StateStore: Sendable {
         }
 
         private static func stamp(_ url: URL) -> [Int64]? {
-            var st = stat()
-            guard lstat(url.path, &st) == 0 else { return nil }
-            return [Int64(st.st_ino), Int64(st.st_size), Int64(st.st_mtimespec.tv_sec), Int64(st.st_mtimespec.tv_nsec)]
+            guard case let .success(st) = FilePrimitives.status(path: url.path, follow: false) else { return nil }
+            return [Int64(bitPattern: st.inode), st.size, st.modifiedSeconds, st.modifiedNanoseconds]
         }
     }
 }
@@ -452,29 +457,13 @@ extension StateStore {
     /// Reads the regular file at `url` itself: not through a symlink (`O_NOFOLLOW`), without blocking on a FIFO
     /// (`O_NONBLOCK`), and at most `maxBytes` of it.
     static func readOwnFile(_ url: URL, maxBytes: Int = StateStore.maxMemosBytes) -> OwnFile {
-        var failure: Int32 = 0
-        let fd: Int32 = url.withUnsafeFileSystemRepresentation { p in
-            guard let p else {
-                failure = EINVAL
-                return -1
-            }
-            let fd = open(p, O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC)
-            if fd < 0 { failure = errno }
-            return fd
-        }
-        guard fd >= 0 else {
-            return failure == ENOENT ? .missing : .unreadable("unreadable (\(String(cString: strerror(failure))))")
-        }
-        let handle = FileHandle(fileDescriptor: fd, closeOnDealloc: true)
-        var st = stat()
-        guard fstat(fd, &st) == 0 else { return .unreadable("unreadable (\(String(cString: strerror(errno))))") }
-        guard st.st_mode & S_IFMT == S_IFREG else { return .unreadable("is not a regular file") }
-        guard st.st_size <= maxBytes else { return .unreadable("is \(st.st_size) bytes, more than \(maxBytes)") }
-        do {
-            let data = try handle.read(upToCount: maxBytes + 1) ?? Data()
-            return data.count <= maxBytes ? .data(data) : .unreadable("is more than \(maxBytes) bytes")
-        } catch {
-            return .unreadable("unreadable (\(error.localizedDescription))")
+        switch FilePrimitives.readOwnFile(url, maxBytes: maxBytes) {
+        case let .success(.data(data)): return .data(data)
+        case let .success(.tooLarge(size?)): return .unreadable("is \(size) bytes, more than \(maxBytes)")
+        case .success(.tooLarge(nil)): return .unreadable("is more than \(maxBytes) bytes")
+        case .failure(ENOENT): return .missing
+        case .failure(EINVAL): return .unreadable("is not a regular file")
+        case let .failure(e): return .unreadable("unreadable (\(String(cString: strerror(e.code))))")
         }
     }
 

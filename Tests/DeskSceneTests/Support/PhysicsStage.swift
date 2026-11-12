@@ -1,6 +1,8 @@
 import DeskCore
 import Foundation
+#if canImport(Metal)
 import Metal
+#endif
 @testable import DeskScene
 
 /// A desk scene whose actions run through the reducer (with the undo journal) and come straight back, as the app's

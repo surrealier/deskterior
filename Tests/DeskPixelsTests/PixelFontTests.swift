@@ -1,3 +1,4 @@
+#if canImport(CoreText)
 import CoreGraphics
 import CoreText
 import Testing
@@ -290,3 +291,4 @@ struct PixelFontTests {
         #expect(b.pixels.allSatisfy { $0.a != 0 || $0 == .clear }, sourceLocation: sourceLocation)
     }
 }
+#endif // canImport(CoreText)

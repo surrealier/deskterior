@@ -1,3 +1,4 @@
+#if canImport(CoreGraphics)
 import CoreGraphics
 import Testing
 @testable import DeskCore
@@ -136,3 +137,4 @@ struct PNGCodecTests {
         #expect(back == b)
     }
 }
+#endif // canImport(CoreGraphics)

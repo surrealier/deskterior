@@ -1,5 +1,9 @@
 import DeskCore
+#if canImport(SpriteKit)
 import SpriteKit
+#else
+import DeskStage
+#endif
 
 /// The keyboard (DESIGN §2.2 E14): clicking a key presses it 1 px for two 12 fps frames. It never reflects real
 /// typing. The room keeps drawing the keyboard (wherever it is placed); a pressed frame covers it meanwhile.

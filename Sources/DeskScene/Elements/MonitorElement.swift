@@ -1,6 +1,10 @@
 import DeskCore
 import DeskPixels
+#if canImport(SpriteKit)
 import SpriteKit
+#else
+import DeskStage
+#endif
 
 /// The monitor and its power button (DESIGN §2.2 E1–E2): ⏻ (zero latency; on the first-run prompt it connects
 /// the desktop), INPUT (HDMI 1…n, AV, HDMI 1; inert while off), page dots (one per page in use; the dot of a page

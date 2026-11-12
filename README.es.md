@@ -39,8 +39,8 @@ de código abierto (MIT)
   [Tus archivos están a salvo](#tus-archivos-están-a-salvo)
 - [Instalación](#instalación) · [Primer inicio](#primer-inicio) · [Ajustes](#ajustes) · [Modo seguro](#modo-seguro) ·
   [Desinstalar](#desinstalar)
-- [Compilar desde el código fuente](#compilar-desde-el-código-fuente) · [Requisitos](#requisitos) ·
-  [Limitaciones conocidas](#limitaciones-conocidas) · [Créditos](#créditos) · [Licencia](#licencia)
+- [Compilar desde el código fuente](#compilar-desde-el-código-fuente) · [Windows (vista previa)](#windows-vista-previa) ·
+  [Requisitos](#requisitos) · [Limitaciones conocidas](#limitaciones-conocidas) · [Créditos](#créditos) · [Licencia](#licencia)
 
 ## Funciones
 
@@ -744,6 +744,25 @@ swift run Deskterior --windowed --desktop-folder "$FIX/desk" --state-dir "$FIX/s
 
 Más: [docs/DESIGN.md](docs/DESIGN.md) (el diseño), [docs/DEMOS.md](docs/DEMOS.md) (los guiones de las demos),
 [docs/SPIKES.md](docs/SPIKES.md) (comprobaciones de la plataforma), [CHANGELOG.md](CHANGELOG.md).
+
+## Windows (vista previa)
+
+Hay una versión para Windows en desarrollo en la rama `windows-port`; comparte con la app de Mac el modelo, la escena
+y las reglas de seguridad de archivos. **Esta vista previa muestra tu carpeta Escritorio en una ventana y no cambia
+ningún archivo**: puedes ordenar, abrir y mostrar elementos y la disposición se guarda, pero Mover a la papelera,
+soltar, Expulsar y Guardar como archivo de texto se rechazan por ahora. Aún no hay versión publicada; la CI genera
+una carpeta lista para ejecutar (`Deskterior-windows` en los artefactos del flujo de trabajo). Para compilarla en
+Windows 10 u 11 con la toolchain 6.2 de swift.org (en Git Bash):
+
+```sh
+swift build -c release --product Deskterior
+scripts/package-windows.sh dist/Deskterior
+dist/Deskterior/Deskterior.exe
+```
+
+Con `--snapshot desk.png` dibuja el escritorio en un PNG sin abrir ventana.
+
+Qué funciona, qué falta y qué hay que comprobar en un PC con Windows: [docs/WINDOWS.md](docs/WINDOWS.md) (en inglés).
 
 ## Requisitos
 

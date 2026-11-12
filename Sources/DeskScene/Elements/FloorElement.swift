@@ -1,5 +1,9 @@
 import DeskCore
+#if canImport(SpriteKit)
 import SpriteKit
+#else
+import DeskStage
+#endif
 
 /// Tokens on the floor (DESIGN §2.2 E11): 16×16 icons standing on the front floor line, centred on their stored x
 /// (`Location.floor(x:)`, `FloorLine`), no physics. Tokens sharing an x (a stack that landed together, balls that did

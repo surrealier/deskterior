@@ -1,3 +1,4 @@
+#if canImport(ImageIO)
 import CoreGraphics
 import DeskCore
 import Foundation
@@ -30,3 +31,4 @@ public enum PNGCodec {
         return PixelBuffer(cgImage: image)
     }
 }
+#endif // canImport(ImageIO)

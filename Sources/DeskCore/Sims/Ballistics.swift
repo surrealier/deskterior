@@ -1,4 +1,6 @@
+#if canImport(simd)
 import simd
+#endif
 
 /// Analytic toss arcs (DESIGN §2.2 E8, E10, E11): flings, tokens pushed off the desk, and paper balls aimed at the
 /// wastebasket, without Box2D.

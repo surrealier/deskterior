@@ -1,5 +1,9 @@
 import DeskCore
+#if canImport(SpriteKit)
 import SpriteKit
+#else
+import DeskStage
+#endif
 
 /// The wastebasket (DESIGN §2.2 E8, Errata 13): it hides, never deletes. Run by `WastebasketMachine`.
 ///

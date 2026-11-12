@@ -1,4 +1,6 @@
+#if canImport(CoreGraphics)
 import CoreGraphics
+#endif
 import DeskCore
 
 /// Turns a real icon or thumbnail into a 16×16 (or 12×12) on-palette token icon (DESIGN §3.4): trim to the
@@ -29,9 +31,11 @@ public enum IconPixelator {
         }
     }
 
+    #if canImport(CoreGraphics)
     public static func pixelate(_ image: CGImage, size: Int = 16, style: Style) -> PixelBuffer? {
         PixelBuffer(cgImage: image).flatMap { pixelate($0, size: size, style: style) }
     }
+    #endif
 
     /// Nil when nothing survives the alpha threshold (callers fall back to the kind icon).
     public static func pixelate(_ source: PixelBuffer, size: Int = 16, style: Style) -> PixelBuffer? {

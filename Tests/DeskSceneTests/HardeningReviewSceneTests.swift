@@ -1,8 +1,14 @@
+#if canImport(AppKit)
 import AppKit
+#endif
 import DeskCore
 import Foundation
+#if canImport(Metal)
 import Metal
+#endif
+#if canImport(QuartzCore)
 import QuartzCore
+#endif
 import Testing
 @testable import DeskScene
 

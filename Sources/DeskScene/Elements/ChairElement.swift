@@ -1,5 +1,9 @@
 import DeskCore
+#if canImport(SpriteKit)
 import SpriteKit
+#else
+import DeskStage
+#endif
 
 /// The rolling chair (DESIGN §2.2 E6): drag it along the floor (`RollerSim`); let go moving and it coasts, keeping
 /// 60% of the fling, spinning through its four facings when fast, bouncing off the desk leg and the cabinet side.

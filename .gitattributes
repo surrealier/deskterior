@@ -1,0 +1,7 @@
+# Text stays LF on every checkout (Windows runners default to core.autocrlf=true, which would put CR into Swift
+# multi-line string literals such as the sprite art). Binary files are never converted.
+* text=auto eol=lf
+*.png binary
+*.icns binary
+*.ttf binary
+*.glyphs binary

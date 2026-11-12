@@ -1,6 +1,8 @@
 import DeskCore
 import Foundation
+#if canImport(UniformTypeIdentifiers)
 import UniformTypeIdentifiers
+#endif
 
 /// Lists the visible top-level items of the desktop folder (DESIGN §3.1 item 3). Reading only: resource
 /// values and one extended-attribute probe; file contents are never opened, so iCloud items are never
@@ -23,6 +25,44 @@ public struct DesktopScanner: Sendable {
         }
     }
 
+    public let root: URL
+
+    public init(root: URL) {
+        self.root = root.standardizedFileURL
+    }
+
+    /// Scans on `queue` and calls `completion` there.
+    public func scan(
+        on queue: DispatchQueue, now: @escaping @Sendable () -> Date = { Date() },
+        completion: @escaping @Sendable (Result<DesktopSnapshot, Failure>) -> Void
+    ) {
+        queue.async {
+            do throws(Failure) {
+                completion(.success(try scan(now: now())))
+            } catch {
+                completion(.failure(error))
+            }
+        }
+    }
+
+    // MARK: Private
+
+    static func failure(_ error: Error, path: String) -> Failure {
+        let ns = error as NSError
+        let posix = (ns.userInfo[NSUnderlyingErrorKey] as? NSError).flatMap { $0.domain == NSPOSIXErrorDomain ? $0.code : nil }
+        if ns.domain == NSCocoaErrorDomain && ns.code == CocoaError.fileReadNoPermission.rawValue
+            || posix == Int(EPERM) || posix == Int(EACCES)
+        {
+            return .accessDenied(path)
+        }
+        if ns.domain == NSCocoaErrorDomain && ns.code == CocoaError.fileReadNoSuchFile.rawValue { return .missing(path) }
+        return .unreadable(path, ns.localizedDescription)
+    }
+}
+
+#if canImport(UniformTypeIdentifiers)
+// macOS: resource values and one extended-attribute probe.
+extension DesktopScanner {
     /// The resource keys fetched for every item.
     public static let resourceKeys: [URLResourceKey] = [
         .fileIdentifierKey, .volumeUUIDStringKey, .isDirectoryKey, .isPackageKey, .localizedNameKey,
@@ -37,12 +77,6 @@ public struct DesktopScanner: Sendable {
 
     /// Extended attribute Finder sets on screenshots and screen recordings.
     static let screenCaptureAttribute = "com.apple.metadata:kMDItemIsScreenCapture"
-
-    public let root: URL
-
-    public init(root: URL) {
-        self.root = root.standardizedFileURL
-    }
 
     /// One complete listing. Throws instead of returning a partial one, so a failed scan never looks like
     /// a mass deletion.
@@ -81,20 +115,6 @@ public struct DesktopScanner: Sendable {
         )
     }
 
-    /// Scans on `queue` and calls `completion` there.
-    public func scan(
-        on queue: DispatchQueue, now: @escaping @Sendable () -> Date = { Date() },
-        completion: @escaping @Sendable (Result<DesktopSnapshot, Failure>) -> Void
-    ) {
-        queue.async {
-            do throws(Failure) {
-                completion(.success(try scan(now: now())))
-            } catch {
-                completion(.failure(error))
-            }
-        }
-    }
-
     // MARK: picture frame (0.4.0)
     /// Whether the item at `url` is a file-provider placeholder (iCloud and others) whose reading would download it:
     /// its ubiquitous downloading status is not current, or it carries `SF_DATALESS`. Reads only metadata.
@@ -102,8 +122,6 @@ public struct DesktopScanner: Sendable {
         let status = (try? url.resourceValues(forKeys: [.ubiquitousItemDownloadingStatusKey]))?.ubiquitousItemDownloadingStatus
         return (status != nil && status != .current) || hasDatalessFlag(url)
     }
-
-    // MARK: Private
 
     private static func entry(
         url: URL, values: URLResourceValues, status: URLUbiquitousItemDownloadingStatus?, inode: UInt64, rootVolume: String
@@ -143,15 +161,5 @@ public struct DesktopScanner: Sendable {
         }
     }
 
-    private static func failure(_ error: Error, path: String) -> Failure {
-        let ns = error as NSError
-        let posix = (ns.userInfo[NSUnderlyingErrorKey] as? NSError).flatMap { $0.domain == NSPOSIXErrorDomain ? $0.code : nil }
-        if ns.domain == NSCocoaErrorDomain && ns.code == CocoaError.fileReadNoPermission.rawValue
-            || posix == Int(EPERM) || posix == Int(EACCES)
-        {
-            return .accessDenied(path)
-        }
-        if ns.domain == NSCocoaErrorDomain && ns.code == CocoaError.fileReadNoSuchFile.rawValue { return .missing(path) }
-        return .unreadable(path, ns.localizedDescription)
-    }
 }
+#endif

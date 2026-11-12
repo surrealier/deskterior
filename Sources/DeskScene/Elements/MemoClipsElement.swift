@@ -1,5 +1,9 @@
 import DeskCore
+#if canImport(SpriteKit)
 import SpriteKit
+#else
+import DeskStage
+#endif
 
 /// The memo clips on the partition's right wing (메모 집게, Erratum 31): a wire with five binder clips holding up to
 /// five Desktop files as cards, each the token's 12-px mini on a paper card (a polaroid for a picture), drawn here in

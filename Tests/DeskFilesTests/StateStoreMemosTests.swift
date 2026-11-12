@@ -175,6 +175,7 @@ struct StateStoreMemosTests {
         #expect(loaded.writable && loaded.book == Self.book(1))
     }
 
+    #if !os(Windows)
     @Test("A memos.json that cannot be read is never written over",
           arguments: ["folder", "symlink", "fifo", "unreadable", "huge"])
     func unreadable(kind: String) throws {
@@ -215,7 +216,9 @@ struct StateStoreMemosTests {
         }
         #expect(firstNote(store.memosBackupURL(1)) == "우유 사기")
     }
+    #endif
 
+    #if !os(Windows)
     @Test("A FIFO, a symlink or a folder among the backups never blocks, redirects or stops a load or a save")
     func plantedBackups() throws {
         let d = try TempDesk()
@@ -241,6 +244,7 @@ struct StateStoreMemosTests {
         }
         #expect(lstat(store.memosBackupURL(3).path, &st) == 0 && st.st_mode & S_IFMT == S_IFDIR, "a folder there stays")
     }
+    #endif
 
     @Test("Reset Layout leaves memos.json and its backups as they are")
     func resetLeavesMemos() throws {

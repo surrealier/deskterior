@@ -1,5 +1,9 @@
 import DeskCore
+#if canImport(SpriteKit)
 import SpriteKit
+#else
+import DeskStage
+#endif
 
 /// The room light switch on the wall (DESIGN §2.2 E12): a click toggles the room light in the model. In Lamp Only
 /// that turns the room light back on and the room settles into Night; switching it off at night with the lamp on

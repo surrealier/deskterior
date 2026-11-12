@@ -1,3 +1,4 @@
+#if canImport(CoreText)
 import CoreText
 import Testing
 @testable import DeskCore
@@ -161,3 +162,4 @@ struct GlyphFallbackTests {
         #expect(PixelFont.snapEmoji(row) == row)
     }
 }
+#endif // canImport(CoreText)

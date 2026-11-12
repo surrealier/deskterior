@@ -1,8 +1,8 @@
-import CoreServices
 import DeskCore
 import Foundation
 
-/// Watches the desktop folder with FSEvents and delivers a fresh `DesktopSnapshot` after each burst of
+/// Watches the desktop folder (FSEvents on macOS, `ReadDirectoryChangesW` on Windows, inotify on Linux:
+/// `DesktopChangeSource`) and delivers a fresh `DesktopSnapshot` after each burst of
 /// changes (DESIGN §3.1 item 4).
 ///
 /// Stream flags: `FileEvents | UseCFTypes | UseExtendedData | WatchRoot`, latency 0.25 s, on a private
@@ -33,10 +33,10 @@ public final class DesktopWatcher: @unchecked Sendable {
     private let queue = DispatchQueue(label: "deskterior.desktop-watcher", qos: .utility)
     private let queueKey = DispatchSpecificKey<Bool>()
     private let watchedPath: String
-    private let matchPrefix: String
+    let matchPrefix: String
 
     // Confined to `queue`.
-    private var stream: FSEventStreamRef?
+    private var stream: (any DesktopChangeSource)?
     private var pending: DispatchWorkItem?
     private var firstPending: DispatchTime?
     private var running = false
@@ -44,10 +44,6 @@ public final class DesktopWatcher: @unchecked Sendable {
     private var broken = true
     private var lastScanDuration: TimeInterval = 0
     private var retry: DispatchWorkItem?
-
-    /// Extended-data dictionary keys (`kFSEventStreamEventExtendedDataPathKey`, `…ExtendedFileIDKey`).
-    static let pathKey = "path"
-    static let fileIDKey = "fileID"
 
     public init(
         scanner: DesktopScanner, latency: TimeInterval = 0.25, debounce: TimeInterval = 0.25, maxDelay: TimeInterval = 1,
@@ -102,39 +98,11 @@ public final class DesktopWatcher: @unchecked Sendable {
     // MARK: Queue-confined
 
     private func createStream() {
-        let box = CallbackBox(self)
-        var context = FSEventStreamContext(
-            version: 0, info: Unmanaged.passUnretained(box).toOpaque(),
-            retain: { info in
-                guard let info else { return nil }
-                _ = Unmanaged<CallbackBox>.fromOpaque(info).retain()
-                return info
-            },
-            release: { info in
-                guard let info else { return }
-                Unmanaged<CallbackBox>.fromOpaque(info).release()
-            },
-            copyDescription: nil
-        )
-        let flags = FSEventStreamCreateFlags(
-            kFSEventStreamCreateFlagFileEvents | kFSEventStreamCreateFlagUseCFTypes
-                | kFSEventStreamCreateFlagUseExtendedData | kFSEventStreamCreateFlagWatchRoot
-        )
-        guard let s = FSEventStreamCreate(
-            kCFAllocatorDefault, Self.callback, &context, [watchedPath] as CFArray,
-            FSEventStreamEventId(kFSEventStreamEventIdSinceNow), latency, flags
-        ) else {
+        guard let source = Self.makeSource(path: watchedPath, latency: latency, queue: queue, watcher: self) else {
             streamFailed()
             return
         }
-        FSEventStreamSetDispatchQueue(s, queue)
-        guard FSEventStreamStart(s) else {
-            FSEventStreamInvalidate(s)
-            FSEventStreamRelease(s)
-            streamFailed()
-            return
-        }
-        stream = s
+        stream = source
     }
 
     /// Reports a stream that would not start and tries again; changes are unseen until then.
@@ -159,44 +127,35 @@ public final class DesktopWatcher: @unchecked Sendable {
         firstPending = nil
         guard let s = stream else { return }
         stream = nil
-        FSEventStreamStop(s)
-        FSEventStreamInvalidate(s)
-        FSEventStreamRelease(s)
+        s.stop()
     }
 
-    fileprivate func handle(_ events: [(path: String, flags: FSEventStreamEventFlags)]) {
+    // MARK: From the change source (on the queue)
+
+    /// Something in the folder changed: `relevant` changes rescan after the debounce; `lost` means the source
+    /// missed changes (an overflow), so the next snapshot cannot vouch for continuity.
+    func sourceDidChange(relevant: Bool, lost: Bool) {
         guard running else { return }
-        let rootChanged = UInt32(kFSEventStreamEventFlagRootChanged)
-        if events.contains(where: { $0.flags & rootChanged != 0 }) {
-            teardown()
-            broken = true
-            createStream()
-            runScan()
-            return
-        }
-        let lost = UInt32(
-            kFSEventStreamEventFlagMustScanSubDirs | kFSEventStreamEventFlagUserDropped | kFSEventStreamEventFlagKernelDropped
-        )
-        if events.contains(where: { $0.flags & lost != 0 }) { broken = true }
-        if events.contains(where: isRelevant) { scheduleScan() }
+        if lost { broken = true }
+        if relevant { scheduleScan() }
     }
 
-    private func isRelevant(_ event: (path: String, flags: FSEventStreamEventFlags)) -> Bool {
-        Self.isRelevant(path: event.path, flags: event.flags, root: matchPrefix)
+    /// The folder itself was moved, renamed or replaced: watch it afresh and rescan at once.
+    func sourceRootChanged() {
+        guard running else { return }
+        teardown()
+        broken = true
+        createStream()
+        runScan()
     }
 
-    /// Top-level changes, the root itself, dropped events and paths we cannot place all count; changes inside
-    /// subfolders do not. `root` is the NFC, lowercased canonical root path.
-    static func isRelevant(path: String, flags: FSEventStreamEventFlags, root: String) -> Bool {
-        let rescanFlags = UInt32(
-            kFSEventStreamEventFlagMustScanSubDirs | kFSEventStreamEventFlagUserDropped
-                | kFSEventStreamEventFlagKernelDropped | kFSEventStreamEventFlagRootChanged
-        )
-        if flags & rescanFlags != 0 || path.isEmpty { return true }
-        let p = normalized(path)
-        if p == root { return true }
-        guard p.hasPrefix(root + "/") else { return true }
-        return !p.dropFirst(root.count + 1).contains("/")
+    /// The source broke (its handle failed): rescan now and start a new one after `retryDelay`.
+    func sourceFailed() {
+        guard running else { return }
+        teardown()
+        broken = true
+        runScan()
+        streamFailed()
     }
 
     private func scheduleScan() {
@@ -242,30 +201,13 @@ public final class DesktopWatcher: @unchecked Sendable {
         }
     }
 
-    private static func normalized(_ path: String) -> String {
+    static func normalized(_ path: String) -> String {
         TextLayout.nfc(path).lowercased()
-    }
-
-    /// The C callback: unpacks `UseCFTypes | UseExtendedData` paths (an array of dictionaries).
-    private static let callback: FSEventStreamCallback = { _, info, count, paths, flags, _ in
-        guard let info else { return }
-        let box = Unmanaged<CallbackBox>.fromOpaque(info).takeUnretainedValue()
-        guard let watcher = box.watcher else { return }
-        let array = Unmanaged<CFArray>.fromOpaque(paths).takeUnretainedValue() as NSArray
-        var events: [(path: String, flags: FSEventStreamEventFlags)] = []
-        events.reserveCapacity(count)
-        for i in 0..<min(count, array.count) {
-            let item = array[i]
-            let path = (item as? NSDictionary)?[DesktopWatcher.pathKey] as? String ?? (item as? String) ?? ""
-            events.append((path, flags[i]))
-        }
-        watcher.handle(events)
     }
 }
 
-/// What the FSEvents context retains: a weak link back, so a forgotten watcher can still deallocate.
-private final class CallbackBox: @unchecked Sendable {
-    weak var watcher: DesktopWatcher?
-
-    init(_ watcher: DesktopWatcher) { self.watcher = watcher }
+/// What tells a `DesktopWatcher` that its folder changed (one per platform). Made and stopped on the watcher's
+/// queue; it calls back on that queue (`sourceDidChange`, `sourceRootChanged`, `sourceFailed`).
+protocol DesktopChangeSource: AnyObject {
+    func stop()
 }

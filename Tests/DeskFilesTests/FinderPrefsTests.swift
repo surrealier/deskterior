@@ -35,6 +35,7 @@ struct FinderPrefsTests {
         #expect(!prefs([:]).hidesDesktopItems)
     }
 
+    #if canImport(Darwin)
     @Test("Booleans parse from numbers, CFBoolean and strings")
     func booleans() {
         #expect(FinderPrefs.boolValue(kCFBooleanTrue) == true)
@@ -42,6 +43,7 @@ struct FinderPrefsTests {
         #expect(FinderPrefs.boolValue("YES") == true && FinderPrefs.boolValue("no") == false)
         #expect(FinderPrefs.boolValue("maybe") == nil && FinderPrefs.boolValue(nil) == nil && FinderPrefs.boolValue([1]) == nil)
     }
+    #endif
 
     @Test("Reading the real preferences works and changes nothing")
     func realPrefs() {
@@ -64,6 +66,7 @@ struct FinderPrefsTests {
         #expect(VolumeEntry.Kind.allCasesForTest.allSatisfy { W.isShown($0, prefs: all) })
     }
 
+    #if canImport(Darwin)
     @Test("Listing mounted volumes respects the filter")
     func listing() {
         let hidden = VolumeWatcher.visibleVolumes(prefs: FinderPrefs(
@@ -73,6 +76,7 @@ struct FinderPrefsTests {
         let all = VolumeWatcher.visibleVolumes(prefs: FinderPrefs(showHardDrives: true))
         #expect(all.contains { $0.path == "/" && $0.kind == .internalDisk })
     }
+    #endif
 }
 
 extension VolumeEntry.Kind {

@@ -80,9 +80,8 @@ public enum DesktopLocator {
         var head = standardized
         var tail: [String] = []
         while true {
-            if let resolved = realpath(head, nil) {
-                defer { free(resolved) }
-                var out = String(cString: resolved)
+            if let resolved = FilePrimitives.resolvedPath(head) {
+                var out = resolved
                 for component in tail.reversed() { out = (out as NSString).appendingPathComponent(component) }
                 return out
             }

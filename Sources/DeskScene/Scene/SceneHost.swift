@@ -1,8 +1,10 @@
-import AppKit
 import Foundation
 import DeskCore
+#if canImport(Metal)
+import AppKit
 import Metal
 import QuartzCore
+#endif
 
 /// One display's scene stack: the `DeskScene`, its `PixelPresenter` and the `FrameLoop` that drives them.
 /// Rebuilds for a new `PixelGrid`, routes input and decides what input does to the loop: pointer moves only
@@ -17,21 +19,20 @@ public final class SceneHost: FrameLoopHost {
     public private(set) var stepCount = 0
     /// Simulation time of the last step.
     public var simTime: Double { FrameClock.time(steps: stepCount) }
+    #if canImport(Metal)
     /// Where frames are presented; nil when headless.
     public private(set) weak var layer: CAMetalLayer?
+    #else
+    /// Where frames are presented; nil when headless.
+    public private(set) weak var surface: (any PixelSurface)?
+    #endif
     /// Screen-shake offset in art px (added to the scene's own bonk shake).
     public var shake = ArtPoint.zero
     private var inputTimer: Timer?
 
-    public init(grid: PixelGrid, device: any MTLDevice) throws {
-        self.grid = grid
-        presenter = try PixelPresenter(device: device, artSize: grid.artSize)
-        scene = DeskScene(grid: grid)
-        scene.pointsPerArtPx = grid.pointsPerArtPx
-        presenter.scene = scene
-        presenter.clearColor = scene.backdropColor
-        presenter.update(atTime: 0)
-        loop.host = self
+    #if canImport(Metal)
+    public convenience init(grid: PixelGrid, device: any MTLDevice) throws {
+        self.init(grid: grid, presenter: try PixelPresenter(device: device, artSize: grid.artSize))
     }
 
     /// Presents into `layer` and drives the loop from `view`'s display link.
@@ -40,12 +41,52 @@ public final class SceneHost: FrameLoopHost {
         loop.attach(to: view)
     }
 
+    private func present(_ params: UpscaleParams) {
+        guard let layer else { return }
+        presenter.present(to: layer, params: params)
+    }
+
+    private func detachSurface() {
+        layer = nil
+    }
+    #else
+    public convenience init(grid: PixelGrid) throws {
+        self.init(grid: grid, presenter: try PixelPresenter(artSize: grid.artSize))
+    }
+
+    /// Presents onto `surface` and drives the loop from `ticker` (the window's vertical blank).
+    public func attach(surface: any PixelSurface, ticker: any FrameTicker) {
+        self.surface = surface
+        loop.attach(ticker: ticker)
+    }
+
+    private func present(_ params: UpscaleParams) {
+        guard let surface else { return }
+        presenter.present(to: surface, params: params)
+    }
+
+    private func detachSurface() {
+        surface = nil
+    }
+    #endif
+
+    private init(grid: PixelGrid, presenter: PixelPresenter) {
+        self.grid = grid
+        self.presenter = presenter
+        scene = DeskScene(grid: grid)
+        scene.pointsPerArtPx = grid.pointsPerArtPx
+        presenter.scene = scene
+        presenter.clearColor = scene.backdropColor
+        presenter.update(atTime: 0)
+        loop.host = self
+    }
+
     /// Stops the display link; call before dropping the host.
     public func invalidate() {
         inputTimer?.invalidate()
         inputTimer = nil
         loop.invalidate()
-        layer = nil
+        detachSurface()
     }
 
     /// Adopts a new grid (display, scale or canvas change) and renders once.
@@ -127,8 +168,7 @@ public final class SceneHost: FrameLoopHost {
 
     public func frameLoopRender() {
         renders += 1  // MARK: harden
-        guard let layer else { return }
-        presenter.present(to: layer, params: UpscaleParams(grid: grid, shake: shake + scene.shake))
+        present(UpscaleParams(grid: grid, shake: shake + scene.shake))
     }
 
     public var frameLoopNeedsFrames: Bool { scene.needsFrames }

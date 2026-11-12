@@ -1,5 +1,10 @@
 import Foundation
 
+/// The platform the app runs on, for the strings that name its parts (docs/WINDOWS.md, WP1).
+public enum Platform: String, CaseIterable, Sendable {
+    case mac, windows
+}
+
 /// A language the app speaks (DESIGN §4.1 "strings"; M12).
 public enum Language: String, CaseIterable, Sendable {
     case en, ko
@@ -42,6 +47,7 @@ public enum L10n {
     private final class Box: @unchecked Sendable {
         let lock = NSLock()
         var language = Language.en
+        var platform = Platform.mac
     }
 
     private static let box = Box()
@@ -52,27 +58,36 @@ public enum L10n {
         set { box.lock.withLock { box.language = newValue } }
     }
 
-    /// `key` in the current language (or `language`).
-    public static func text(_ key: L10nKey, _ language: Language? = nil) -> String {
-        let l = language ?? Self.language
-        return l == .ko ? key.ko : key.en
+    /// The platform strings name things for (Finder or File Explorer, ⌘ or Ctrl). Set once at launch; the Mac app
+    /// never sets it.
+    public static var platform: Platform {
+        get { box.lock.withLock { box.platform } }
+        set { box.lock.withLock { box.platform = newValue } }
+    }
+
+    /// `key` in the current language (or `language`) for the current platform.
+    public static func text(_ key: L10nKey, _ language: Language? = nil, platform: Platform? = nil) -> String {
+        key.string(language ?? Self.language, platform: platform ?? Self.platform)
     }
 
     /// A template key filled with `args` in order (`%d` takes an Int, `%@`/`%T` a String; `%T` is translated).
-    public static func format(_ key: L10nKey, _ args: [any Sendable], _ language: Language? = nil) -> String {
-        let l = language ?? Self.language
-        return fill(l == .ko ? key.ko : key.en, args.map { arg in
+    public static func format(
+        _ key: L10nKey, _ args: [any Sendable], _ language: Language? = nil, platform: Platform? = nil
+    ) -> String {
+        let l = language ?? Self.language, p = platform ?? Self.platform
+        return fill(key.string(l, platform: p), args.map { arg in
             if let s = arg as? String { return s }
             return "\(arg)"
-        }, language: l)
+        }, language: l, platform: p)
     }
 
     /// English text built elsewhere, in the current language (or `language`): an exact table match, then the
-    /// first template that matches the whole string, else the text unchanged.
-    public static func tr(_ english: String, _ language: Language? = nil) -> String {
-        let l = language ?? Self.language
-        guard l != .en else { return english }
-        return translate(english, l) ?? english
+    /// first template that matches the whole string, else the text unchanged. On Windows English text goes through
+    /// the table too, for the keys that name Mac things ("Show in Finder" → "Show in File Explorer").
+    public static func tr(_ english: String, _ language: Language? = nil, platform: Platform? = nil) -> String {
+        let l = language ?? Self.language, p = platform ?? Self.platform
+        guard l != .en || p != .mac else { return english }
+        return translate(english, l, p) ?? english
     }
 
     /// Whether `tr` knows `english` (exactly or through a template).
@@ -82,17 +97,17 @@ public enum L10n {
 
     // MARK: Matching
 
-    private static func translate(_ english: String, _ l: Language) -> String? {
-        if let key = index.exact[english] { return text(key, l) }
+    private static func translate(_ english: String, _ l: Language, _ p: Platform = .mac) -> String? {
+        if let key = index.exact[english] { return key.string(l, platform: p) }
         for t in index.templates {
             guard let args = t.match(english) else { continue }
-            return fill(text(t.key, l), args, language: l)
+            return fill(t.key.string(l, platform: p), args, language: l, platform: p)
         }
         return nil
     }
 
     /// Replaces the placeholders of `template` in order; `%T` arguments are translated first.
-    static func fill(_ template: String, _ args: [String], language l: Language) -> String {
+    static func fill(_ template: String, _ args: [String], language l: Language, platform p: Platform = .mac) -> String {
         var out = ""
         var i = template.startIndex
         var n = 0
@@ -101,7 +116,7 @@ public enum L10n {
             let next = template.index(after: i)
             if c == "%", next < template.endIndex, "d@T".contains(template[next]) {
                 let arg = n < args.count ? args[n] : ""
-                out += template[next] == "T" ? tr(arg, l) : arg
+                out += template[next] == "T" ? tr(arg, l, platform: p) : arg
                 n += 1
                 i = template.index(after: next)
             } else {

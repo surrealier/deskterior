@@ -1,6 +1,10 @@
 import DeskCore
 import Foundation
+#if canImport(SpriteKit)
 import SpriteKit
+#else
+import DeskStage
+#endif
 
 /// The wall calendar (Erratum 31): the room draws it for the month it shows, today red, days with a page or a dated
 /// note marked blue and the D-Day purple (`RoomState.calendarMarks`, refreshed on the minute path and with the memos).

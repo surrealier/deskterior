@@ -1,5 +1,9 @@
 import DeskCore
+#if canImport(SpriteKit)
 import SpriteKit
+#else
+import DeskStage
+#endif
 
 /// The phone on its stand (DESIGN §2.2 E4): tokens dropped on the face-up phone become 5×5 app minis (two columns,
 /// three rows; a sparkle "bloops" each arrival; past six they bonk "That's full."), a click on the phone (not on a

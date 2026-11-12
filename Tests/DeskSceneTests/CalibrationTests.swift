@@ -1,4 +1,6 @@
+#if canImport(Metal)
 import Metal
+#endif
 import Testing
 @testable import DeskScene
 import DeskCore

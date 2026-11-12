@@ -32,8 +32,8 @@ Mac 앱입니다. 바탕화면을 Finder 아이콘째 불 켜진 작은 방으�
 - [기능](#기능) · [기능 전체 목록](#기능-전체-목록) · [숨기는 곳](#숨기는-곳) · [조작법](#조작법) ·
   [파일은 안전합니다](#파일은-안전합니다)
 - [설치](#설치) · [처음 실행](#처음-실행) · [설정](#설정) · [안전 모드](#안전-모드) · [제거](#제거)
-- [소스에서 빌드](#소스에서-빌드) · [요구 사항](#요구-사항) · [알려진 한계](#알려진-한계) · [크레딧](#크레딧) ·
-  [라이선스](#라이선스)
+- [소스에서 빌드](#소스에서-빌드) · [Windows (미리보기)](#windows-미리보기) · [요구 사항](#요구-사항) ·
+  [알려진 한계](#알려진-한계) · [크레딧](#크레딧) · [라이선스](#라이선스)
 
 ## 기능
 
@@ -699,6 +699,24 @@ swift run Deskterior --windowed --desktop-folder "$FIX/desk" --state-dir "$FIX/s
 
 더 보기(모두 영문): [docs/DESIGN.md](docs/DESIGN.md)(설계), [docs/DEMOS.md](docs/DEMOS.md)(데모 스크립트),
 [docs/SPIKES.md](docs/SPIKES.md)(플랫폼 확인), [CHANGELOG.md](CHANGELOG.md).
+
+## Windows (미리보기)
+
+`windows-port` 브랜치에서 Windows 버전을 만들고 있습니다. 모델, 장면, 파일 안전 규칙은 Mac 앱과 같은 코드를 씁니다.
+**이 미리보기는 바탕 화면 폴더를 창 안에 보여 주기만 하고 파일은 바꾸지 않습니다.** 항목을 정리하고, 열고, 탐색기에서
+보여 줄 수 있고 배치도 저장되지만, 휴지통으로 이동, 끌어 넣기, 꺼내기, 텍스트 파일로 저장은 지금은 거부됩니다. 아직
+배포판은 없고, CI가 바로 실행할 수 있는 폴더를 만듭니다(워크플로 아티팩트의 `Deskterior-windows`). Windows 10·11에서
+swift.org 툴체인 6.2로 직접 빌드하려면(Git Bash):
+
+```sh
+swift build -c release --product Deskterior
+scripts/package-windows.sh dist/Deskterior
+dist/Deskterior/Deskterior.exe
+```
+
+`--snapshot desk.png`을 붙이면 창 없이 책상을 PNG로 그립니다.
+
+되는 것, 아직 안 되는 것, 실제 Windows PC에서 확인해야 할 것은 [docs/WINDOWS.md](docs/WINDOWS.md)에 있습니다.
 
 ## 요구 사항
 
